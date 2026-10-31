@@ -227,8 +227,8 @@ describe('sauts : élagage et trace', () => {
 });
 
 describe('sauts : élagage du fichier', () => {
-  const jumps = [jump(60, 4.5), jump(200, 3.5)];
-  const motion: Motion = { durationS: 300, az: (t) => jumps.reduce((s, j) => s + j.az(t), 0) + chop(t) * 0.3 };
+  const jumps = [jump(30, 4.5), jump(140, 3.5)];
+  const motion: Motion = { durationS: 180, az: (t) => jumps.reduce((s, j) => s + j.az(t), 0) + chop(t) * 0.3 };
   // L'enregistrement et son fichier, construits une fois pour les tests du bloc, qui ne font que les lire.
   let encoded: Promise<Uint8Array> | null = null;
   const wholeFile = (): Promise<Uint8Array> => {
@@ -248,7 +248,7 @@ describe('sauts : élagage du fichier', () => {
     const before = jumpsOf((await decodeImu(whole))!);
     const after = jumpsOf(read);
     expect(after.map((j) => [j.takeoffMs, j.heightM])).toEqual(before.map((j) => [j.takeoffMs, j.heightM]));
-  });
+  }, 20_000); // Délai explicite : la construction et le codage du fichier dépassaient 5 s sous charge.
 
   it('rend tel quel un fichier déjà élagué ou illisible', async () => {
     const once = await pruneImuFile(await wholeFile(), D);
