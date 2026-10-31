@@ -7,7 +7,7 @@ import { formatLandSpeed } from '../core/units';
 import { finishFitnessRamp, fitnessTestRunner, useFitnessTest, type FitnessTestView } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { effectiveDistanceUnit, effectiveSpeedUnit, useFitnessTestSettings } from '../hooks/useSportSettings';
-import { FITNESS_TESTS, TEST_SIGNAL_LABEL, resolveFitnessTestParams, type FitnessTestId, type TestPhase } from '../recording/fitnessTest';
+import { FITNESS_TESTS, TEST_SIGNAL_LABEL, resolveFitnessTestParams, type FitnessTestId, type TestPhase, type TestSignal } from '../recording/fitnessTest';
 import { formatIntervalClock } from '../recording/intervalTimer';
 import './IntervalCard.css';
 
@@ -29,6 +29,10 @@ const PHASE_LABEL: Record<TestPhase, string> = {
 };
 
 const bpm = (value: number | null): string => (value === null ? '—' : `${Math.round(value)} bpm`);
+
+/** Dernier bip en clair ; sur la rampe, « trop vite » veut dire en avance sur sa progression, pas de freiner l'effort (31/10). */
+const lastSignalText = (signal: TestSignal, phase: TestPhase): string =>
+  signal === 'trop' && phase === 'rampe' ? 'en avance sur la rampe' : TEST_SIGNAL_LABEL[signal].toLowerCase();
 
 /** Résumé du protocole avant le départ. */
 function TestPreview({ testId, activity }: { testId: FitnessTestId; activity: Activity | null }) {
@@ -76,7 +80,7 @@ function TestLive({ view, activity }: { view: FitnessTestView; activity: Activit
         <span className="ivl-live__phase">{title}</span>
         {view.remainingS !== null && <span className="ivl-live__clock num">{formatIntervalClock(view.remainingS)}</span>}
         {reading && <span className="ivl-live__left num">{reading}</span>}
-        {view.lastSignal && <span className="ivl-live__left">Dernier bip : {TEST_SIGNAL_LABEL[view.lastSignal.signal].toLowerCase()}</span>}
+        {view.lastSignal && <span className="ivl-live__left">Dernier bip : {lastSignalText(view.lastSignal.signal, phase)}</span>}
       </div>
       {phase === 'rampe' && (
         <div className="ivl-actions">

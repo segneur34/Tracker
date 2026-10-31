@@ -14,16 +14,23 @@ import { finiteOr, isFiniteNumber } from '../core/basics';
  * Le test avance à chaque position, sur l'heure des positions (le rejeu le
  * fait donc tourner à sa vitesse), pauses manuelles ôtées : son temps est le
  * « temps actif », en millisecondes depuis le premier point. L'échauffement
- * se guide sur la FC lissée, la rampe sur la vitesse GPS lissée (la FC y
- * répond avec 30 à 60 s de retard). Les moyennes sont pondérées par le temps
- * (chaque mesure vaut depuis la précédente) : une trace à 1 Hz et à 5 Hz
- * donnent les mêmes signaux.
+ * se guide sur la FC lissée, croisée avec la tendance de la vitesse (la FC
+ * répond avec 30 à 60 s de retard : on ne dit pas de ralentir à qui ralentit
+ * déjà), la rampe sur la vitesse GPS lissée. Les moyennes sont pondérées par
+ * le temps (chaque mesure vaut depuis la précédente) : une trace à 1 Hz et à
+ * 5 Hz donnent les mêmes signaux.
  *
  * Signaux (réponses de l'utilisateur, 24/10) : 1 bip court = bien, 2 = trop
  * vite, 3 = accélère ; un bip long au début de la rampe et à chaque palier ;
  * corrections espacées de 10 s au moins, « bien » de 30 s ; la même correction
  * trois fois de suite, les suivantes de 30 s. Échauffement en zones 2 à 3 du
- * cardio. Début, fin de la rampe et fin du test : choix montrés dans le plan du lot.
+ * cardio, plafonné (155 bpm par défaut, réglable).
+ *
+ * Protocole v2 (31/10, lot 85) : l'athlète est supposé se donner à fond. Sur
+ * la rampe, « trop vite » ne vient qu'à 1 km/h au-dessus de la cible pendant
+ * 20 s (ne pas monter la rampe trop vite) ; la fin automatique n'est décidée
+ * que sur un effondrement net et durable de la vitesse (20 % sous la cible
+ * pendant 30 s, ou 50 % pendant 10 s), jamais sur un virage ou un bout de terrain.
  */
 
 export type FitnessTestId = 'fc-max';
@@ -43,6 +50,16 @@ export interface FitnessTestProtocol {
   warmupS: number;
   /** Bande de FC de l'échauffement : du bas de la zone `from` au haut de la zone `to`, zones du cardio de Pratiquant. */
   warmupZones: { from: number; to: number };
+  /** Plafond de la bande d'échauffement par défaut, réglable : son haut n'en passe pas. */
+  warmupCeilingBpm: number;
+  /** Largeur minimale de la bande sous le plafond : son bas est repoussé d'autant sous lui au besoin. */
+  warmupMinBandBpm: number;
+  /** Tendance de la vitesse à l'échauffement : moyenne de ces dernières secondes… */
+  warmupTrendRecentS: number;
+  /** … moins celle de ces secondes d'avant. */
+  warmupTrendBeforeS: number;
+  /** Une correction d'échauffement se tait si la vitesse va déjà dans son sens d'au moins tant, en m/s. */
+  warmupTrendMs: number;
   /** Âge pris sans année de naissance dans Pratiquant, pour estimer la FC max des zones. */
   defaultAge: number;
   /** Début de l'échauffement sans correction, le temps que la FC monte. */
@@ -61,10 +78,12 @@ export interface FitnessTestProtocol {
   smoothS: number;
   /** Tolérance autour de la vitesse cible, en m/s. */
   speedToleranceMs: number;
-  /** Fin de la rampe : vitesse lissée sous la cible d'au moins tant (m/s)… */
-  failDeficitMs: number;
+  /** « Trop vite » sur la rampe : vitesse lissée au-dessus de la cible d'au moins tant (m/s)… */
+  rampTooFastMs: number;
   /** … pendant tant de secondes. */
-  failS: number;
+  rampTooFastS: number;
+  /** Fin automatique de la rampe : vitesse lissée sous la cible d'au moins cette part, pendant tant de secondes ; la première règle tenue la finit. */
+  collapseRules: readonly { deficitRatio: number; holdS: number }[];
   /** Sans correction après un palier, une reprise ou le départ de la rampe. */
   stepGraceS: number;
   /** Récupération mesurée après la rampe. */
@@ -91,9 +110,14 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
   'fc-max': {
     id: 'fc-max',
     label: 'FC max',
-    version: 1,
+    version: 2,
     warmupS: 480,
     warmupZones: { from: 2, to: 3 },
+    warmupCeilingBpm: 155,
+    warmupMinBandBpm: 10,
+    warmupTrendRecentS: 20,
+    warmupTrendBeforeS: 30,
+    warmupTrendMs: kmhToMs(0.5),
     defaultAge: 35,
     warmupGraceS: 30,
     stepS: 60,
@@ -103,8 +127,9 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
     fallbackStartMs: kmhToMs(8),
     smoothS: 10,
     speedToleranceMs: kmhToMs(0.3),
-    failDeficitMs: kmhToMs(0.5),
-    failS: 20,
+    rampTooFastMs: kmhToMs(1),
+    rampTooFastS: 20,
+    collapseRules: [{ deficitRatio: 0.2, holdS: 30 }, { deficitRatio: 0.5, holdS: 10 }],
     stepGraceS: 10,
     recoveryS: 120,
     correctionGapS: 10,
@@ -134,10 +159,12 @@ export const fixSpeedMs = (fix: LocationFix, previous: LocationFix | null, maxGa
 /** Réglages de l'utilisateur, avant « Lancer ». */
 export interface FitnessTestSettings {
   warmupS: number;
+  warmupCeilingBpm: number;
 }
 
 export const FITNESS_TEST_LIMITS = {
   warmupS: { min: 180, max: 1200, step: 60 },
+  warmupCeilingBpm: { min: 120, max: 180, step: 5 },
 } as const;
 
 const inRange = (value: unknown, { min, max }: { min: number; max: number }): value is number =>
@@ -148,6 +175,7 @@ export const sanitizeFitnessTestSettings = (raw: unknown, protocol: FitnessTestP
   const r = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
     warmupS: inRange(r.warmupS, FITNESS_TEST_LIMITS.warmupS) ? Math.round(r.warmupS) : protocol.warmupS,
+    warmupCeilingBpm: inRange(r.warmupCeilingBpm, FITNESS_TEST_LIMITS.warmupCeilingBpm) ? Math.round(r.warmupCeilingBpm) : protocol.warmupCeilingBpm,
   };
 };
 
@@ -171,7 +199,9 @@ export interface FitnessTestParams {
   zones: HeartRateZones;
   /** FC max de référence : celle des zones. */
   hrMaxRefBpm: number;
-  /** Bande de FC de l'échauffement. */
+  /** Plafond de la bande d'échauffement. */
+  warmupCeilingBpm: number;
+  /** Bande de FC de l'échauffement, coupée au plafond. */
   warmupLowBpm: number;
   warmupHighBpm: number;
 }
@@ -190,6 +220,7 @@ export const resolveFitnessTestParams = (
   // Toujours des zones : l'âge (au besoin celui par défaut) donne une FC max.
   const zones = heartRateZones(runner.athlete, used, runner.zoneModel, runner.offsetBpm)!;
   const { from, to } = protocol.warmupZones;
+  const ceiling = settings.warmupCeilingBpm;
   return {
     protocol,
     warmupS: settings.warmupS,
@@ -197,8 +228,10 @@ export const resolveFitnessTestParams = (
     ageSource: usable ? 'profil' : 'defaut',
     zones,
     hrMaxRefBpm: zones.hrMax!,
-    warmupLowBpm: zones.bounds[from - 1],
-    warmupHighBpm: zones.bounds[to],
+    warmupCeilingBpm: ceiling,
+    // Haut coupé au plafond ; bas repoussé sous lui s'il le faut, pour garder une bande.
+    warmupLowBpm: Math.min(zones.bounds[from - 1], ceiling - protocol.warmupMinBandBpm),
+    warmupHighBpm: Math.min(zones.bounds[to], ceiling),
   };
 };
 
@@ -219,7 +252,7 @@ export const TEST_SIGNAL_LABEL: Record<TestSignal, string> = {
   finTest: 'Fin du test',
 };
 
-/** Fin de la rampe : vitesse tenue sous la cible, « Finir la rampe », ou enregistrement arrêté (ou activité changée) avant. */
+/** Fin de la rampe : vitesse effondrée sous la cible, « Finir la rampe », ou enregistrement arrêté (ou activité changée) avant. */
 export type TestEndReason = 'auto' | 'manuel' | 'arret';
 
 /** Un palier de la rampe : son début et sa vitesse cible. */
@@ -318,8 +351,10 @@ export interface FitnessTestState {
   rampEndActiveMs: number | null;
   /** Indice du palier en cours. */
   step: number;
-  /** Début du manque en cours (temps actif, heure de la position), `null` sans manque. */
-  deficit: { activeMs: number; timeMs: number } | null;
+  /** Début du manque en cours de chaque règle d'effondrement (temps actif, heure de la position), `null` sans manque. */
+  collapseSince: ({ activeMs: number; timeMs: number } | null)[];
+  /** Début (temps actif) de l'avance sur la cible qui mène à « trop vite », `null` sans avance. */
+  tooFastSince: number | null;
   graceUntilMs: number;
   lastSignalMs: number;
   lastGoodMs: number | null;
@@ -340,7 +375,8 @@ export const startFitnessTest = (params: FitnessTestParams): FitnessTestState =>
   rampStartActiveMs: null,
   rampEndActiveMs: null,
   step: 0,
-  deficit: null,
+  collapseSince: params.protocol.collapseRules.map(() => null),
+  tooFastSince: null,
   graceUntilMs: 0,
   lastSignalMs: -Infinity,
   lastGoodMs: null,
@@ -353,22 +389,36 @@ export const startFitnessTest = (params: FitnessTestParams): FitnessTestState =>
  * Moyenne pondérée par le temps d'un champ sur les `windowS` dernières
  * secondes actives : chaque mesure vaut depuis la précédente. `null` si la
  * fenêtre n'en couvre pas la moitié (départ, reprise après un trou).
+ * `endMs` : fenêtre finissant à cet instant passé plutôt qu'à `nowMs`.
  */
-export const windowMean = (window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS: number, nowMs: number): number | null => {
-  const fromMs = nowMs - windowS * 1000;
+export const windowMean = (
+  window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS: number, nowMs: number, endMs: number = nowMs
+): number | null => {
+  const fromMs = endMs - windowS * 1000;
   let sum = 0;
   let dur = 0;
   for (let i = window.length - 1; i > 0; i--) {
     const cur = window[i];
     const prevMs = window[i - 1].activeMs;
     if (cur.activeMs <= fromMs) break;
+    if (prevMs >= endMs) continue;
     const value = cur[field];
     if (value === undefined) continue;
-    const w = cur.activeMs - Math.max(prevMs, fromMs);
+    const w = Math.min(cur.activeMs, endMs) - Math.max(prevMs, fromMs);
     sum += value * w;
     dur += w;
   }
   return dur >= (windowS * 1000) / 2 ? sum / dur : null;
+};
+
+/**
+ * Tendance de la vitesse : moyenne des `recentS` dernières secondes moins
+ * celle des `beforeS` d'avant ; `null` si l'une n'est pas couverte à moitié.
+ */
+export const speedTrendMs = (window: WindowSample[], recentS: number, beforeS: number, nowMs: number): number | null => {
+  const recent = windowMean(window, 'speedMs', recentS, nowMs);
+  const before = windowMean(window, 'speedMs', beforeS, nowMs, nowMs - recentS * 1000);
+  return recent === null || before === null ? null : recent - before;
 };
 
 /**
@@ -403,6 +453,7 @@ const emit = (state: FitnessTestState, signal: TestSignal, timeMs: number): Test
 const copyState = (state: FitnessTestState): FitnessTestState => ({
   ...state,
   window: state.window.slice(),
+  collapseSince: state.collapseSince.slice(),
   warmupSpeed: { ...state.warmupSpeed },
   test: state.test ? { ...state.test, steps: state.test.steps.slice(), signals: state.test.signals.slice() } : null,
 });
@@ -470,21 +521,22 @@ export const stepFitnessTest = (
   if (options.resumed) {
     // Pause manuelle : son temps ne compte pas ; la mesure repart, une grâce s'ouvre.
     state.window = [];
-    state.deficit = null;
+    resetRampCounts(state);
     state.graceUntilMs = Math.max(state.graceUntilMs, state.activeMs + protocol.stepGraceS * 1000);
   } else {
     state.activeMs += dtMs;
     if (dtMs > protocol.fixGapS * 1000) {
       // Trou sans position : la mesure repart de zéro.
       state.window = [];
-      state.deficit = null;
+      resetRampCounts(state);
     } else if (state.phase === 'echauffement' && sample.speedMs !== undefined) {
       state.warmupSpeed.sum += sample.speedMs * dtMs;
       state.warmupSpeed.durMs += dtMs;
     }
   }
   state.window.push({ activeMs: state.activeMs, speedMs: sample.speedMs, hrBpm: sample.hrBpm });
-  const keepMs = Math.max(protocol.smoothS, protocol.startWindowS) * 1000 + protocol.fixGapS * 1000;
+  const keepMs = Math.max(protocol.smoothS, protocol.startWindowS, protocol.warmupTrendRecentS + protocol.warmupTrendBeforeS) * 1000
+    + protocol.fixGapS * 1000;
   while (state.window.length > 2 && state.window[1].activeMs < state.activeMs - keepMs) state.window.shift();
   const test = state.test!;
 
@@ -503,19 +555,37 @@ export const stepFitnessTest = (
     const hr = windowMean(state.window, 'hrBpm', protocol.smoothS, state.activeMs);
     if (hr === null) return { state, signal: null };
     const kind = verdict(hr, state.params.warmupLowBpm, state.params.warmupHighBpm);
+    // La FC suit avec retard : une correction se tait si la vitesse va déjà dans son sens ; sans tendance mesurable, elle se dit.
+    if (kind !== 'bien') {
+      const trend = speedTrendMs(state.window, protocol.warmupTrendRecentS, protocol.warmupTrendBeforeS, state.activeMs);
+      if (trend !== null && (kind === 'trop' ? trend <= -protocol.warmupTrendMs : trend >= protocol.warmupTrendMs)) return { state, signal: null };
+    }
     return { state, signal: allowed(state, kind) ? emit(state, kind, timeMs) : null };
   }
 
   if (state.phase === 'rampe') {
     const speed = windowMean(state.window, 'speedMs', protocol.smoothS, state.activeMs);
     const target = stepTargetMs(state)!;
-    // Manque : une vitesse lissée tenue sous la cible ; pendant la grâce, un manque en cours continue, aucun ne commence.
-    if (speed === null || speed >= target - protocol.failDeficitMs) state.deficit = null;
-    else if (state.deficit === null && state.activeMs >= state.graceUntilMs) state.deficit = { activeMs: state.activeMs, timeMs };
-    if (state.deficit !== null && state.activeMs - state.deficit.activeMs >= protocol.failS * 1000) {
-      endRamp(state, timeMs, 'auto', state.deficit.timeMs);
+    const outOfGrace = state.activeMs >= state.graceUntilMs;
+    // Effondrement : vitesse lissée tenue sous la cible d'une part de celle-ci, règle par règle ; pendant la grâce,
+    // un manque en cours continue, aucun ne commence. Sur la cible du palier en cours, avant son changement.
+    protocol.collapseRules.forEach((rule, i) => {
+      if (speed === null || speed >= target * (1 - rule.deficitRatio)) state.collapseSince[i] = null;
+      else if (state.collapseSince[i] === null && outOfGrace) state.collapseSince[i] = { activeMs: state.activeMs, timeMs };
+    });
+    const collapsed = protocol.collapseRules.some((rule, i) => {
+      const since = state.collapseSince[i];
+      return since !== null && state.activeMs - since.activeMs >= rule.holdS * 1000;
+    });
+    if (collapsed) {
+      // Début du manque le plus ancien : celui de la règle la moins sévère.
+      const dropMs = Math.min(...state.collapseSince.flatMap((x) => (x === null ? [] : [x.timeMs])));
+      endRamp(state, timeMs, 'auto', dropMs);
       return { state, signal: emit(state, 'finRampe', timeMs) };
     }
+    // Avance sur la cible, comptée comme le manque (même grâce, mêmes remises à zéro).
+    if (speed === null || speed <= target + protocol.rampTooFastMs) state.tooFastSince = null;
+    else if (state.tooFastSince === null && outOfGrace) state.tooFastSince = state.activeMs;
     const step = Math.floor((state.activeMs - state.rampStartActiveMs!) / (protocol.stepS * 1000));
     if (step > state.step) {
       state.step = step;
@@ -524,8 +594,8 @@ export const stepFitnessTest = (
       return { state, signal: emit(state, 'palier', timeMs) };
     }
     if (speed === null) return { state, signal: null };
-    const kind = verdict(speed, target - protocol.speedToleranceMs, target + protocol.speedToleranceMs);
-    return { state, signal: allowed(state, kind) ? emit(state, kind, timeMs) : null };
+    const kind = rampVerdict(state, speed, target);
+    return { state, signal: kind !== null && allowed(state, kind) ? emit(state, kind, timeMs) : null };
   }
 
   if (state.phase === 'recuperation' && state.activeMs - state.rampEndActiveMs! >= protocol.recoveryS * 1000) {
@@ -536,11 +606,29 @@ export const stepFitnessTest = (
   return { state, signal: null };
 };
 
+/**
+ * Signal de la rampe : sous la cible moins la tolérance, « accélère » ; en
+ * avance tenue assez longtemps, « trop vite » ; à la cible, « bien » ; un peu
+ * en avance, rien (ni « bien » à qui monte trop vite, ni frein).
+ */
+const rampVerdict = (state: FitnessTestState, speed: number, target: number): 'bien' | 'trop' | 'accelere' | null => {
+  const { protocol } = state.params;
+  if (speed < target - protocol.speedToleranceMs) return 'accelere';
+  if (state.tooFastSince !== null && state.activeMs - state.tooFastSince >= protocol.rampTooFastS * 1000) return 'trop';
+  return speed <= target + protocol.speedToleranceMs ? 'bien' : null;
+};
+
+/** Comptes de la rampe (manques, avance) remis à zéro : trou, reprise, fin (mutable : appelé sur une copie). */
+const resetRampCounts = (state: FitnessTestState) => {
+  state.collapseSince = state.collapseSince.map(() => null);
+  state.tooFastSince = null;
+};
+
 /** Fin de la rampe (mutable : appelé sur une copie). */
 const endRamp = (state: FitnessTestState, timeMs: number, reason: TestEndReason, dropMs: number) => {
   state.phase = 'recuperation';
   state.rampEndActiveMs = state.activeMs;
-  state.deficit = null;
+  resetRampCounts(state);
   state.graceUntilMs = Infinity;
   const test = state.test!;
   test.rampEndMs = timeMs;

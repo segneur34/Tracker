@@ -30,7 +30,7 @@ const CURVE_HEIGHT_PX = 150;
 const DRAWN_SIGNALS: readonly TestSignal[] = ['debut', 'palier', 'finRampe', 'finTest'];
 
 const END_REASON_LABEL: Record<TestEndReason, string> = {
-  auto: 'vitesse tenue sous la cible',
+  auto: 'vitesse effondrée sous la cible',
   manuel: '« Finir la rampe »',
   arret: "enregistrement arrêté avant la fin",
 };

@@ -10,7 +10,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isTestSport } from '../core/sportProfiles';
-import { kmhToMs } from '../core/units';
+import { formatDecimal, kmhToMs, msToKmh } from '../core/units';
 import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import type { RunnerProfile } from '../running/runnerProfile';
@@ -30,6 +30,16 @@ const range = (min: number, max: number, step: number): number[] => {
   return out;
 };
 const WARMUP_CHOICES_S = range(FITNESS_TEST_LIMITS.warmupS.min, FITNESS_TEST_LIMITS.warmupS.max, FITNESS_TEST_LIMITS.warmupS.step);
+const CEILING_CHOICES_BPM = range(
+  FITNESS_TEST_LIMITS.warmupCeilingBpm.min, FITNESS_TEST_LIMITS.warmupCeilingBpm.max, FITNESS_TEST_LIMITS.warmupCeilingBpm.step
+);
+
+/** Une vitesse du protocole en km/h, en clair (« 0,6 »). */
+const kmh = (ms: number): string => formatDecimal(msToKmh(ms));
+/** Règle de fin automatique, tirée du protocole : « 20 % sous la cible pendant 30 s, ou 50 % pendant 10 s ». */
+const COLLAPSE_TEXT = PROTOCOL.collapseRules
+  .map((r, i) => `${Math.round(r.deficitRatio * 100)} %${i === 0 ? ' sous la cible' : ''} pendant ${r.holdS} s`)
+  .join(', ou ');
 
 /** D'où viennent les zones de l'échauffement, en clair. */
 function ZonesSource({ params, runner }: { params: FitnessTestParams; runner: RunnerProfile }) {
@@ -45,8 +55,8 @@ function ZonesSource({ params, runner }: { params: FitnessTestParams; runner: Ru
 
 /**
  * Test de FC max (24/10), depuis Tests : le protocole (déroulé, bips,
- * ceinture, santé), son graphique annoté, ses réglages (durée de
- * l'échauffement ; sa bande vient des zones du cardio de Pratiquant), et « Lancer », qui ouvre Enregistrer
+ * ceinture, santé), son graphique annoté, ses réglages (durée et plafond de
+ * l'échauffement ; sa bande vient des zones du cardio de Pratiquant, coupée au plafond), et « Lancer », qui ouvre Enregistrer
  * prêt (Entraînement › Tests › FC max, ceinture cochée). Le bouton rond démarre.
  */
 function FitnessTestPage() {
@@ -84,22 +94,28 @@ function FitnessTestPage() {
         <HelpText helpKey="test:deroule" note>Résultats dans l'analyse de la session : FC max, vitesse du dernier palier tenu, vitesse max, récupération.</HelpText>
         <ol className="fit-steps">
           <li><strong>Échauffement, {warmupMin} min</strong>, la FC en zones {from} à {to} du cardio : de {params.warmupLowBpm} à
-            {' '}{params.warmupHighBpm} bpm. En trottinant, ou en marchant vite.</li>
-          <li><strong>Rampe</strong> : elle part à la vitesse moyenne de la dernière minute d'échauffement, arrondie au 0,5 km/h, puis
-            la vitesse cible monte de 0,6 km/h chaque minute. Suivez-la le plus longtemps possible.</li>
-          <li><strong>Fin de la rampe</strong> : quand la vitesse reste 0,5 km/h sous la cible pendant 20 s, ou par « Finir la rampe ».</li>
-          <li><strong>Récupération, 2 min</strong>, en marchant : la baisse de la FC est mesurée.</li>
+            {' '}{params.warmupHighBpm} bpm (plafond {params.warmupCeilingBpm} bpm). En trottinant, ou en marchant vite.</li>
+          <li><strong>Rampe</strong> : elle part à la vitesse moyenne de la dernière minute d'échauffement, arrondie au
+            {' '}{kmh(PROTOCOL.startRoundMs)} km/h, puis la vitesse cible monte de {kmh(PROTOCOL.stepMs)} km/h toutes les {PROTOCOL.stepS} s.
+            Donnez-vous à fond : suivez-la le plus longtemps possible.</li>
+          <li><strong>Fin de la rampe</strong> : quand la vitesse s'effondre, {COLLAPSE_TEXT} ; un ralentissement passager (virage, côte)
+            ne la finit pas. Ou par « Finir la rampe ».</li>
+          <li><strong>Récupération, {Math.round(PROTOCOL.recoveryS / 60)} min</strong>, en marchant : la baisse de la FC est mesurée.</li>
         </ol>
       </Card>
 
       <Card heading={<>Les bips<HelpToggle helpKey="test:bips" label="Les bips" size="s" /></>}>
         <HelpText helpKey="test:bips" note>
           Un bip court au départ. Les corrections viennent au plus toutes les 10 s, et toutes les 30 s quand la même revient trois fois de suite ; « bien » au plus toutes les 30 s ; rien dans les 10 s qui suivent un palier.
-          Pendant l'échauffement, les bips suivent la FC ; pendant la rampe, la vitesse.
+          Pendant l'échauffement, les bips suivent la FC ; comme elle suit l'allure avec retard, ils ne demandent pas de ralentir
+          (ou d'accélérer) quand votre vitesse baisse (ou monte) déjà.
+          Pendant la rampe, ils suivent la vitesse : « accélère » sous la cible ; « trop vite » seulement à {kmh(PROTOCOL.rampTooFastMs)} km/h
+          au-dessus pendant {PROTOCOL.rampTooFastS} s, pour tenir la progression de {kmh(PROTOCOL.stepMs)} km/h par palier sans monter la rampe
+          trop vite, jamais pour freiner l'effort ; un peu au-dessus, rien.
         </HelpText>
         <ul className="fit-beeps">
           <li><span className="fit-beeps__sound">1 court</span>bien</li>
-          <li><span className="fit-beeps__sound">2 courts</span>trop vite</li>
+          <li><span className="fit-beeps__sound">2 courts</span>trop vite ; sur la rampe : en avance sur la progression</li>
           <li><span className="fit-beeps__sound">3 courts</span>accélère</li>
           <li><span className="fit-beeps__sound">1 long</span>début de la rampe, puis chaque palier</li>
           <li><span className="fit-beeps__sound">court, long, long double</span>fin de la rampe</li>
@@ -120,8 +136,16 @@ function FitnessTestPage() {
               {WARMUP_CHOICES_S.map((s) => <option key={s} value={s}>{s / 60} min</option>)}
             </select>
           </label>
+          <label className="fit-settings__row">
+            <span>Plafond d'échauffement</span>
+            <select className="ui-field ui-field--s" value={params.warmupCeilingBpm}
+              onChange={(e) => saveFitnessTestSettings('fc-max', { warmupCeilingBpm: Number(e.target.value) })}>
+              {CEILING_CHOICES_BPM.map((v) => <option key={v} value={v}>{v} bpm</option>)}
+            </select>
+          </label>
           <p className="ui-hint">
-            Échauffement en zones {from} à {to} : {params.warmupLowBpm} à {params.warmupHighBpm} bpm. <ZonesSource params={params} runner={profile} />
+            Échauffement en zones {from} à {to}, sans passer le plafond : {params.warmupLowBpm} à {params.warmupHighBpm} bpm.
+            {' '}<ZonesSource params={params} runner={profile} />
           </p>
         </div>
       </Card>
