@@ -17,7 +17,7 @@ if (!port) {
 }
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, settle, wait, blockNetwork, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, wait, waitFor, blockNetwork, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
 let failures = 0;
 const check = (what, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${detail !== undefined ? ` (${detail})` : ''}`); if (!ok) failures++; };
@@ -78,7 +78,7 @@ const sweep = await evaluate(`(async () => {
   return { bad, longest, closed: document.querySelectorAll('.settings-help').length === 0 };
 })()`);
 check('chaque « ? » déplie un texte, seul (le suivant referme le précédent)', sweep.bad.length === 0, sweep.bad.slice(0, 5).join(' | '));
-check('textes courts (moins de 260 signes)', sweep.longest < 260, sweep.longest);
+check('textes courts (moins de 300 signes ; 260 jusqu’au 26/10, l’aide « Étape » de la notification en compte 282)', sweep.longest < 300, sweep.longest);
 check('un second appui referme', sweep.closed === true);
 
 // Le « ? » du seuil de Voile : son texte, sous sa ligne.
@@ -108,14 +108,16 @@ check('bloc Activités : son aide seule, le seuil refermé', block?.texts.length
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await openAll();
 check('390×844, tout ouvert : aucun débordement', (await overflow()) === 0, await overflow());
-await evaluate(`(() => {
+// La carte de Route peut ne pas être encore dépliée : on retente (ouvre ses cartes, puis l'aide) jusqu'à une seule aide dépliée.
+await waitFor(`(() => {
+  document.querySelectorAll('.settings-activity__toggle[aria-expanded="false"]').forEach((b) => b.click());
   const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('[aria-label="Couleur de Route"]'));
   const row = [...(card?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent === 'Type de vélo');
-  row?.querySelector('.ui-help')?.click();
+  const help = row?.querySelector('.ui-help');
+  if (help && help.getAttribute('aria-expanded') !== 'true') help.click();
   row?.scrollIntoView({ block: 'center' });
-  return 'ok';
-})()`);
-await wait(300);
+  return document.querySelectorAll('.settings-help').length === 1;
+})()`, { timeout: 4000, every: 200 });
 check('390×844, aide du type de vélo ouverte : aucun débordement', (await overflow()) === 0 && (await openTexts()).length === 1, await overflow());
 await shoot('aide-telephone');
 

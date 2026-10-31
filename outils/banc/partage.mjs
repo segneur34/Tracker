@@ -56,7 +56,7 @@ const T_VOILE = Date.UTC(2026, 8, 20, 13, 0, 0);
 const SESSIONS = [
   // `share` : chiffres de l'image (22/10 : la liste entière d'avant, l'onglet « général » n'en montrant plus que l'essentiel).
   { page: 'course', start: T_RUN, gpx: loopGpx(T_RUN), share: ['Distance', 'Distance en mouvement', 'Temps de parcours', /^Temps en mouvement/, 'Moyenne en mouvement', 'Moyenne sur le temps total', 'Dénivelé', 'Altitude'] },
-  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8'), share: ['Distance', 'Distance active', 'Temps total', /^Temps actif/, 'Ratio de vol', 'Vitesse moyenne', /^Moyenne active/] },
+  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8'), share: ['Distance', 'Distance active', 'Temps total', /^Temps en vol/, 'Ratio de vol', 'Vitesse moyenne', /^Moyenne active/] },
 ];
 
 const paths = {};

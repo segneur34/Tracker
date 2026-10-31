@@ -1,7 +1,7 @@
 // Banc de test : test de FC max de l'Entraînement (chantier du 24/10, lot B).
 // Usage : node test-fcmax.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau ; environ 1 min 45, 30 s avec `TEMPS=10` (horloge de la page accélérée). Le script vérifie :
-//  1. la tuile « Tests » de la page Entraînement, la liste des tests, la page du protocole (déroulé, bips, graphique,
+//  1. la tuile « Fractionné et tests » de la page Entraînement, la liste des tests qui est sous ses séances, la page du protocole (déroulé, bips, graphique,
 //     réglages) ; l'échauffement réglé à 3 min, retenu ;
 //  2. « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans le compteur ;
 //  3. la case « FC repos » de la rangée « Test » : pas de « Démarrer », « Ouvrir le test » mène à sa page ;
@@ -23,9 +23,6 @@ if (!port) {
 // --- Protocole ---
 // --- Protocole (lib/cdp.mjs) ---
 const { send, evaluate, go, settle, waitFor, wait, vwait, blockNetwork, importFiles, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
-// Le premier contexte audio du navigateur s'ouvre en 0,6 s de vrai temps (les suivants en 15 ms, mesuré le 29/10) : sous
-// l'horloge accélérée, le premier son de l'application figerait la page plusieurs secondes. Il est ouvert ici, une fois.
-await evaluate(`(() => { new AudioContext().close(); return 'ok'; })()`);
 /** Heure de la page (accélérée par `TEMPS`, lib/horloge.mjs), en ms. */
 const pageNow = () => evaluate('Date.now()');
 const sounds = [];
@@ -55,12 +52,12 @@ await blockNetwork(['https://*']);
 
 // --- 1. Tuile, liste, protocole ---
 await go('/fractionne');
-const raw = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? '(absent)'`);
-const tiles = await evaluate(`[...document.querySelectorAll('.train-hub .train-tile__title')].map((n) => n.textContent).join(', ')`);
-check('tuiles « Fractionné » et « Tests »', tiles === 'Fractionné, Tests', tiles);
-console.log('tuile Tests :', await clickText('Tests', '.train-tile'));
+const tiles = await evaluate(`[...document.querySelectorAll('.train-hub .ui-subtitle')].map((n) => n.textContent).join(', ')`);
+check('tuiles « Fractionné et tests » et « Muscu et timer »', tiles === 'Fractionné et tests, Muscu et timer', tiles);
+console.log('tuile Fractionné et tests :', await clickText('Fractionné et tests', '.train-tile'));
 await wait(800);
-check('liste des tests', (await evaluate('location.pathname')) === '/fractionne/tests' && (await raw('.train-hub')).startsWith('FC max'), await raw('.train-hub'));
+const tests = await evaluate(`[...document.querySelectorAll('.train-hub[aria-label="Tests"] .ui-subtitle')].map((n) => n.textContent).join(', ')`);
+check('liste des tests sous les séances', (await evaluate('location.pathname')) === '/fractionne/seances' && tests === 'FC max, FC repos', tests);
 console.log('FC max :', await clickText('FC max', '.train-tile'));
 await wait(1200);
 check('page du protocole', (await evaluate('location.pathname')) === '/fractionne/tests/fc-max', await evaluate('location.pathname'));
@@ -197,7 +194,7 @@ check('signaux du direct = calcul pur rejoué', JSON.stringify(logged) === JSON.
   `${logged.length} contre ${pure?.out.length} : ${logged.map(([x]) => x).join(' ')}`);
 check('rampe de 7 paliers, fin automatique', pure?.steps === 7 && pure?.endReason === 'auto', JSON.stringify({ steps: pure?.steps, endReason: pure?.endReason }));
 // Le vibreur du bouton « Arrêter » tenu n'est pas un son du test.
-const bips = sounds.filter((x) => /^\[bips\] (court|long|final) /.test(x)).length;
+const bips = sounds.filter((x) => /^\[bips\] (court|bref|long|final) /.test(x)).length;
 check('un bip par son des motifs', bips === pure?.tones, `${bips} bips pour ${pure?.tones} sons`);
 const signalsSeen = new Set(logged.map(([x]) => x));
 check('signaux : début, bien, palier, fin de rampe, fin du test', ['debut', 'bien', 'palier', 'finRampe', 'finTest'].every((x) => signalsSeen.has(x)), [...signalsSeen].join(' '));

@@ -176,6 +176,10 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
     return r?.result?.value;
   };
 
+  // Le premier contexte audio du navigateur s'ouvre en 0,6 s de vrai temps (les suivants en 15 ms, mesuré le 29/10) : sous l'horloge
+  // accélérée, le premier son de l'application figerait la page plusieurs secondes (×TEMPS). Il est ouvert ici, une fois par onglet.
+  if (TEMPS > 1) await evaluate(`(() => { try { new AudioContext().close(); } catch {} return 'ok'; })()`);
+
   /**
    * Attend une page prête : document chargé, racine React non vide (sous charge, le premier rendu peut suivre le
    * chargement), aucun fetch ni requête en vol, aucun minuteur d'au plus 1 s en attente, DOM immobile depuis `quiet` ms,

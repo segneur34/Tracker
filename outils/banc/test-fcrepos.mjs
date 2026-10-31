@@ -17,7 +17,7 @@ if (!port) {
 }
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, wait, blockNetwork, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, wait, waitFor, blockNetwork, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
 let sounds = [];
 onMessage((msg) => {
   if (msg.method !== 'Runtime.consoleAPICalled') return;
@@ -61,8 +61,8 @@ const openHelp = async (label) => {
 await blockNetwork(['https://*']);
 
 // --- 1. Tuile et page ---
-await go('/fractionne/tests');
-const tiles = await evaluate(`[...document.querySelectorAll('.train-hub .train-tile__title')].map((n) => n.textContent).join(', ')`);
+await go('/fractionne/seances');
+const tiles = await evaluate(`[...document.querySelectorAll('.train-hub[aria-label="Tests"] .ui-subtitle')].map((n) => n.textContent).join(', ')`);
 check('liste des tests : FC max, FC repos', tiles === 'FC max, FC repos', tiles);
 console.log('tuile :', await clickText('FC repos', '.train-tile'));
 await wait(1000);
@@ -123,8 +123,8 @@ await wait(500);
 const text4 = await pageText();
 check('« Vos tests » : le test, avec sa valeur', /Vos tests/i.test(text4) && new RegExp(`${expectedLowest} bpm`).test(await evaluate(`document.querySelector('.rest-history')?.innerText ?? ''`)), '');
 console.log('courbe du test gardé :', await clickText('Courbe', '.rest-history button'));
-await wait(600);
-check('courbe du test gardé affichée', (await evaluate(`document.querySelectorAll('.rest-history .rest-chart svg.recharts-surface').length`)) === 1, '');
+await waitFor(`document.querySelectorAll('.rest-history .rest-chart svg.recharts-surface').length === 1`, { timeout: 4000 });
+check('courbe du test gardé affichée', (await evaluate(`document.querySelectorAll('.rest-history .rest-chart svg.recharts-surface').length`)) === 1, String(await evaluate(`(() => { const d = document.querySelector('.rest-history__chart'); const r = d?.getBoundingClientRect(); const li = document.querySelector('.rest-history__item')?.getBoundingClientRect(); return 'graphe ' + Math.round(r?.width ?? -1) + ' × ' + Math.round(r?.height ?? -1) + ' dans une ligne de ' + Math.round(li?.width ?? -1); })()`)));
 await shoot('fcrepos-historique');
 console.log('retirer :', await clickText('Retirer', '.rest-history button'));
 await wait(400);

@@ -111,6 +111,9 @@ const runOn = async (screen) => {
   }
   // 5. Statistiques : la famille.
   await go('/statistiques');
+  // Les rangées sont repliées sous « Sélection » (17/10) : déplier d'abord.
+  await evaluate(`document.querySelector('.stats-choice > button[data-chart-fold][aria-expanded=false]')?.click()`);
+  await wait(300);
   await dragTwo('Famille', screen === 'téléphone' ? 'doigt' : 'souris', `${screen}, Statistiques, `);
   const search = await evaluate('location.search');
   check(`${screen}, Statistiques : famille dans l'adresse`, /famille=/.test(search), search);

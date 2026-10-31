@@ -179,7 +179,7 @@ for (const name of Object.keys(CARDS)) {
   shown[name] = await pills(name);
   console.log(`${name} :`, shown[name], '·', await rowMark(name));
 }
-check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts vent matos et conditions réglages');
+check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts pumping vent matos et conditions réglages');
 // « sauts » caché d'office en Course par son pré-réglage (point 130).
 check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes('(sauts)'));
 check('Route : « tops » enfoncé', / tops /.test(` ${shown.Route} `) && !shown.Route.includes('(tops)'));

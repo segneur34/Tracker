@@ -96,9 +96,9 @@ await settle({ max: 2500 });
 console.log('barre :', await bar());
 
 // 3. Passer à B dans l'application (sans rechargement), relever le champ du vent à plusieurs instants.
-await evaluate(`(() => { window.__w = []; const t0 = performance.now(); const read = () => document.querySelector('.an-sheet__wind strong')?.textContent ?? '(absent)'; let last = null;
-  const tick = () => { const v = read() + ' / ' + new URLSearchParams(location.search).get('session'); if (v !== last) { last = v; window.__w.push([Math.round(performance.now() - t0), v]); } };
-  new MutationObserver(tick).observe(document, { subtree: true, childList: true, characterData: true }); window.__poll = setInterval(tick, 20); tick(); return 'ok'; })()`);
+await evaluate(`(() => { window.__w = []; window.__mut = 0; const t0 = performance.now(); const read = () => document.querySelector('.an-sheet__wind strong')?.textContent ?? '(absent)'; let last = null;
+  const tick = () => { const v = read() + ' / ' + new URLSearchParams(location.search).get('session'); if (v !== last) { last = v; window.__w.push([Math.round(performance.now() - t0), v, window.__mut]); } };
+  new MutationObserver(() => { window.__mut += 1; tick(); }).observe(document, { subtree: true, childList: true, characterData: true }); window.__poll = setInterval(tick, 20); tick(); return 'ok'; })()`);
 const tSwitch = Date.now();
 await navigateInApp(urlOf(B));
 const instants = [];
@@ -114,7 +114,9 @@ const tag = (s) => (s === B ? 'B' : s === A ? 'A' : s);
 console.log('B, instants :', instants.map(([ms, t, s]) => `${ms} ms: ${t} (${tag(s)})`).join(' ; '));
 const trace = await evaluate(`(clearInterval(window.__poll), window.__w)`);
 console.log('B, changements observés (ms, texte / session) :', JSON.stringify(trace));
-const seenA = (trace ?? []).some(([, v]) => v.includes(`Vent ${WIND}°`) && v.endsWith(B));
+// Une relève faite avant la première mutation du DOM suivant le changement d'adresse décrit encore la page de A (l'adresse change
+// par pushState avant que React rende B) : seules comptent les relèves faites une fois la page de B rendue (mutation vue).
+const seenA = (trace ?? []).some(([, v, mut]) => mut > 0 && v.includes(`Vent ${WIND}°`) && v.endsWith(B));
 check('B n\'affiche jamais le vent de A', !seenA && !instants.some(([ms, t, s]) => ms > 0 && s === B && t === `Vent ${WIND}°`));
 console.log('B stable :', await windText(), '|', await windSource(), '| barre', await bar());
 check('B au vent calculé', (await windText()) !== `Vent ${WIND}°`);

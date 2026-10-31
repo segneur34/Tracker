@@ -78,13 +78,17 @@ const tOpen = Date.now();
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 2500);
 for (let k = 0; k < 30 && (await clickButton('surface')) !== 'ok'; k++) await wait(1000);
 console.log('onglet surface cliqué');
+// L'erreur de l'altitude (avec son « Réessayer ») est sous le graphe d'altitude, celle du revêtement dans « surface » : les deux onglets restent ouverts.
+for (let k = 0; k < 30 && (await clickButton('graphiques')) !== 'ok'; k++) await wait(1000);
+console.log('onglet graphiques cliqué');
 await wait(1500);
 console.log('pendant :', await sourceLine(), '| requêtes tenues', held.map((h) => `${h.service} ${h.url.slice(0, 70)}`).join(' ; ') || '(aucune)');
 check('requêtes tenues : IGN et Overpass', firstHeld.ign !== null && firstHeld.overpass !== null, JSON.stringify({ ign: held.filter((h) => h.service === 'ign').length, overpass: held.filter((h) => h.service === 'overpass').length }));
 
-// 3. Attente des messages d'erreur (au plus 170 s depuis l'ouverture).
+// 3. Attente des messages d'erreur (au plus 200 s depuis l'ouverture).
 const seen = new Map();
-for (let k = 0; k < 170 - Math.round((Date.now() - tOpen) / 1000); k++) {
+// Échéance fixée une fois (la borne recalculée à chaque tour, avec le compteur qui monte, coupait l'attente à la moitié).
+while (Date.now() - tOpen < 200_000) {
   const texts = (await retryTexts()) ?? [];
   for (const t of texts) {
     if (!seen.has(t)) {
@@ -96,6 +100,9 @@ for (let k = 0; k < 170 - Math.round((Date.now() - tOpen) / 1000); k++) {
   if (texts.length >= 2) break;
   await wait(1000);
 }
+console.log('page à l\'échéance :', await evaluate(`document.body.innerText.split('\\n').filter((l) => /Réessayer|échec|répond|délai|erreur|impossible|Altitude|voie/i.test(l)).slice(0, 12).join(' | ')`),
+  '| boutons', await evaluate(`[...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean).slice(0, 40).join(' / ')`));
+console.log(`première requête tenue, après l'ouverture : IGN ${firstHeld.ign === null ? '—' : (firstHeld.ign - tOpen) / 1000} s, Overpass ${firstHeld.overpass === null ? '—' : (firstHeld.overpass - tOpen) / 1000} s ; échéance à ${secondsSince(tOpen)} s`);
 console.log('textes d\'erreur relevés :', seen.size, '| requêtes tenues', held.length);
 check('deux messages d\'erreur avec « Réessayer »', seen.size >= 2, [...seen.keys()].join(' || '));
 const texts = [...seen.keys()];

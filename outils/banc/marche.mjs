@@ -81,8 +81,8 @@ await shoot('marche-reglages');
 // 2. Liste de la version 5, sans Marche.
 await seed([SAIL, RUN, TRAIL, ROUTE], 5);
 const v5 = await names();
-check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Course', 'Trail', 'Marche', 'Route', 'Tests']), JSON.stringify(v5));
-check('version 8 rangée', (await stored())?.activitiesVersion === 8);
+check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Course', 'Trail', 'Marche', 'Route', 'Tests', 'Muscu']), JSON.stringify(v5));
+check('version 9 rangée', (await stored())?.activitiesVersion === 9);
 await go('/');
 check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Marche').length === 1);
 
@@ -90,11 +90,11 @@ check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Mar
 const mine = { id: 'a-ma-marche', name: 'marché', base: 'running', color: '#6e1020' };
 await seed([SAIL, RUN, mine, ROUTE], 5);
 const own = (await stored())?.activities?.map((a) => a.id);
-check('« marché » déjà créée : pas de doublon', JSON.stringify(own) === JSON.stringify(['wingfoil', 'running', 'a-ma-marche', 'cycling', 'run-test']), JSON.stringify(own));
+check('« marché » déjà créée : pas de doublon', JSON.stringify(own) === JSON.stringify(['wingfoil', 'running', 'a-ma-marche', 'cycling', 'run-test', 'muscu']), JSON.stringify(own));
 
 // 4. Liste de la version 6 sans Marche : supprimée, elle ne revient pas.
 await seed([SAIL, RUN, ROUTE], 6);
-check('version 6 sans Marche : elle ne revient pas', JSON.stringify(await names()) === JSON.stringify(['Voile', 'Course', 'Route', 'Tests']));
+check('version 6 sans Marche : elle ne revient pas', JSON.stringify(await names()) === JSON.stringify(['Voile', 'Course', 'Route', 'Tests', 'Muscu']));
 
 // 5. Enregistrer, à 390×844 : la Marche dans la liste de choix.
 await evaluate(`(() => { localStorage.clear(); return 'ok'; })()`);

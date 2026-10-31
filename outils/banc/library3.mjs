@@ -25,7 +25,7 @@ console.log('Ouvrir :', await evaluate(`(() => { const b = document.querySelecto
 await settle({ max: 4000 });
 console.log('url :', await evaluate('location.pathname + location.search'));
 console.log('h1 :', await evaluate(`document.querySelector('h1')?.textContent`), '| segments :', await evaluate(`document.querySelectorAll('path.leaflet-interactive').length`), '| graphes :', await evaluate(`document.querySelectorAll('.recharts-surface').length`));
-console.log(await evaluate(`document.body.innerText.split('\n').filter((l) => /Distance|D\\+|Sessions course/.test(l)).slice(0, 5).join(' | ')`));
+console.log(await evaluate(`document.body.innerText.split('\\n').filter((l) => /Distance|D\\+|Sessions course/.test(l)).slice(0, 5).join(' | ')`));
 await go(await evaluate('location.pathname + location.search'), 4000); // rechargement
 console.log('après rechargement, segments :', await evaluate(`document.querySelectorAll('path.leaflet-interactive').length`));
 console.log('--- console ---'); [...new Set(logs)].forEach((l) => console.log(l));

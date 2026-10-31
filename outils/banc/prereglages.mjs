@@ -26,7 +26,7 @@ if (!port) {
 }
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, waitFor, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await blockNetwork(['*://*.openstreetmap.org/*', '*://server.arcgisonline.com/*', '*://data.geopf.fr/*', '*://overpass-api.de/*']);
@@ -205,13 +205,13 @@ for (const s of SESSIONS) {
   const text = await evaluate(`document.body.innerText`);
   const has = (word) => text.includes(word);
   // « Distance en vol » et « Moyenne en vol » en foil, dans le « général » du 22/10.
-  const shown = ['Distance active', 'Distance en vol', 'Temps actif', 'Ratio de navigation', 'Moyenne active', 'Moyenne en vol', "Seuil d'activité"].filter(has);
+  const shown = ['Distance active', 'Distance en vol', 'Temps actif', 'Temps en vol', 'Ratio de navigation', 'Moyenne active', 'Moyenne en vol', "Seuil d'activité"].filter(has);
   if (s.name === 'bateau') {
     check('analyse bateau : ni distance, temps, ratio, moyenne actifs, ni seuil', shown.length === 0, JSON.stringify(shown));
     check('analyse bateau : distance, temps total et moyenne', has('Temps total') && has('Vitesse moyenne'));
     await shoot('prereglages-analyse-bateau');
   } else {
-    check('analyse Voile : chiffres actifs et seuil gardés', ['Distance en vol', 'Temps actif', 'Moyenne en vol', "Seuil d'activité"].every(has), JSON.stringify(shown));
+    check('analyse Voile : chiffres actifs et seuil gardés', ['Distance en vol', 'Temps en vol', 'Moyenne en vol', "Seuil d'activité"].every(has), JSON.stringify(shown));
   }
 }
 
@@ -249,6 +249,9 @@ await shoot('prereglages-course-pause');
 
 // 5. Un réglage du bateau fait après la mise à jour reste.
 await go('/parametres');
+// La carte du Voilier et sa ligne doivent être montées avant d'y écrire (une écriture dans le vide laissait le réglage à 0,3).
+await waitFor(`Boolean(${rowOf('Voilier', 'Pause automatique')}?.querySelector('input'))`, { timeout: 4000, label: 'ligne Pause automatique' });
+await settle({ max: 1000, label: 'cartes' });
 await evaluate(`(() => {
   const input = ${rowOf('Voilier', 'Pause automatique')}?.querySelector('input');
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -260,7 +263,7 @@ await evaluate(`(() => {
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return 'ok';
 })()`);
-await wait(500);
+await waitFor(async () => Math.abs(((await stored())?.autoPause?.['a-voilier']?.speedMs ?? 0) * 3.6 - 0.5) < 1e-6, { timeout: 3000, label: 'pause rangée' });
 const set = (await stored())?.autoPause?.['a-voilier'];
 check('bateau : pause réglée à 0,5 km/h rangée', set && Math.abs(set.speedMs * 3.6 - 0.5) < 1e-6, JSON.stringify(set));
 await go('/');
