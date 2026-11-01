@@ -46,6 +46,8 @@ import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
 import { previewStore } from '../library/previewStore';
 import { previewFingerprint, previewKey, roundPreviewPoints, type PreviewTrack } from '../library/previewTracks';
+import { previewImageStore } from '../library/previewImageStore';
+import { previewImageKey } from '../library/previewImages';
 import bannerCourse from '../assets/bandeaux/course.webp';
 import bannerFractionne from '../assets/bandeaux/fractionne.webp';
 import bannerSurf from '../assets/bandeaux/surf.webp';
@@ -222,10 +224,12 @@ const rememberPoints = (key: string, points: SessionColorTrack['points'], zoom: 
 
 /**
  * Vignettes dessinées (PNG en adresse d'objet), en mémoire le temps de la
- * page seulement : ni dans la fiche ni sur l'appareil, où seuls les points
- * réduits et l'emprise sont gardés (`previewStore`). La clé tient la session,
- * la taille, la densité de l'écran, le thème économe et les bornes de
- * couleur ; une vignette affichée n'est jamais libérée.
+ * page. La clé (`previewImageKey`) tient la session, la trace, la taille, la
+ * densité de l'écran, le thème économe et les bornes de couleur ; une
+ * vignette affichée n'est jamais libérée. D'un lancement à l'autre, l'image
+ * finie (trace sur son fond, toutes tuiles présentes) est gardée sur
+ * l'appareil sous la même clé (`previewImageStore`, lot 121), jamais dans la
+ * fiche ; en économe, rien n'est gardé (pas de fond à attendre).
  */
 const previewImages = createHeldCache<string>(200, (url) => URL.revokeObjectURL(url));
 
@@ -319,7 +323,7 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
     const view = trackPreviewView(meta.bounds, width, height);
     if (!view) return undefined;
     const pixelRatio = window.devicePixelRatio || 1;
-    const imageKey = `${cacheKey}|${width}x${height}@${pixelRatio}|${eco ? 'econome' : 'plan'}|${minMs}|${maxMs}`;
+    const imageKey = previewImageKey({ cacheKey, fingerprint, width, height, pixelRatio, eco, minMs, maxMs });
     const controller = new AbortController();
     let held = false;
     let draft: string | null = null;
@@ -327,12 +331,36 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
       if (draft) URL.revokeObjectURL(draft);
       draft = null;
     };
+    /**
+     * Points réduits une fois au zoom de la vignette, puis gardés ainsi ; arrondis avant le premier dessin à la
+     * précision gardée sur l'appareil, pour que le lancement suivant dessine la même image. Tirés du GPX, ils y sont gardés.
+     */
+    const thinned = (stored: { points: SessionColorTrack['points']; zoom: number }): SessionColorTrack['points'] => {
+      if (stored.zoom === view.zoom) return stored.points;
+      const points = roundPreviewPoints(thinForPreview(stored.points, view));
+      rememberPoints(cacheKey, points, view.zoom);
+      if (stored.zoom === Infinity) void previewStore.keep(storeKey, fingerprint, { zoom: view.zoom, bounds: meta.bounds, suggested: meta.suggested, points });
+      return points;
+    };
     void (async () => {
       const cached = previewImages.acquire(imageKey);
       if (cached) {
         held = true;
         setImage(cached);
         return;
+      }
+      // Image finie gardée sur l'appareil : montrée d'un coup, sans image d'attente ni tuile à relire.
+      if (!eco) {
+        const kept = await previewImageStore.stored(storeKey, imageKey);
+        if (controller.signal.aborted) return;
+        if (kept) {
+          held = true;
+          setImage(previewImages.put(imageKey, URL.createObjectURL(kept)));
+          // Trace oubliée du magasin des traces mais image gardée : l'emprise vient d'être relue du GPX, la trace réduite y retourne.
+          const whole = previewPoints.get(cacheKey);
+          if (whole?.zoom === Infinity) thinned(whole);
+          return;
+        }
       }
       let stored = previewPoints.get(cacheKey);
       if (!stored || stored.zoom < view.zoom) {
@@ -345,14 +373,8 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
         setFailed(true);
         return;
       }
-      // Réduite une fois au zoom de la vignette, puis gardée ainsi ; arrondie avant le premier dessin à la précision
-      // gardée sur l'appareil, pour que le lancement suivant dessine la même image. Tirée du GPX, elle est gardée.
-      const points = stored.zoom === view.zoom ? stored.points : roundPreviewPoints(thinForPreview(stored.points, view));
-      if (stored.zoom !== view.zoom) {
-        rememberPoints(cacheKey, points, view.zoom);
-        if (stored.zoom === Infinity) void previewStore.keep(storeKey, fingerprint, { zoom: view.zoom, bounds: meta.bounds, suggested: meta.suggested, points });
-      }
-      const png = await drawTrackPreview(
+      const points = thinned(stored);
+      const drawn = await drawTrackPreview(
         { view, segments: coloredSegments(points, { minMs, maxMs }), pixelRatio, withMap: !eco },
         {
           signal: controller.signal,
@@ -363,9 +385,11 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
           },
         }
       );
-      if (controller.signal.aborted || !png) return;
+      if (controller.signal.aborted || !drawn) return;
       held = true;
-      setImage(previewImages.put(imageKey, URL.createObjectURL(png)));
+      setImage(previewImages.put(imageKey, URL.createObjectURL(drawn.png)));
+      // Gardée pour le lancement suivant si son fond est entier (une tuile manquante hors réseau : non).
+      if (!eco && drawn.complete) void previewImageStore.keep(storeKey, imageKey, drawn.png);
       // L'image d'attente, remplacée, part après le rendu.
       setTimeout(dropDraft, 0);
     })();
@@ -532,7 +556,9 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   useEffect(() => {
     if (!complete || previewsPruned) return;
     previewsPruned = true;
-    void previewStore.prune(library.folderLabel, library.sessions.map((s) => s.file));
+    const files = library.sessions.map((s) => s.file);
+    void previewStore.prune(library.folderLabel, files);
+    void previewImageStore.prune(library.folderLabel, files);
   }, [complete, library.folderLabel, library.sessions]);
   const { title, accent, banner } = FAMILY[family];
   const { activities, families, isShown } = useVisibility();

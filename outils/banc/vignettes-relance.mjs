@@ -1,12 +1,15 @@
-// Banc de test : vignettes de la bibliothèque gardées d'un lancement à l'autre (lot 118).
+// Banc de test : vignettes de la bibliothèque gardées d'un lancement à l'autre (lot 118 : traces ; lot 121 : images finies).
 // Usage : node vignettes-relance.mjs <port> <dossier de travail, chemin Windows>
 // Sur un profil neuf ; tuiles fausses (`lib/tuiles.mjs`, servies en 50 ms, sans réseau), le reste bloqué. Le script :
 //  1. écrit 30 courses synthétiques de 20 min à 1 Hz (boucles de tailles et de lieux différents) et les importe ;
-//  2. efface les vignettes gardées (cache `tracker-vignettes`), puis ouvre la bibliothèque à pied à 390 × 844, densité 2
-//     (premier lancement : chaque vignette relit son GPX), attend les vignettes visibles, laisse 3 s à l'écriture
-//     du magasin et relève l'empreinte SHA-1 de chaque image visible ;
-//  3. relance la page trois fois, processeur ralenti six fois (`Emulation.setCPUThrottlingRate`), et mesure le temps
-//     depuis la navigation jusqu'à ce que chaque vignette visible porte son image ; médiane des trois ;
+//  2. efface les vignettes gardées (caches `tracker-vignettes` et `tracker-vignettes-images`), puis ouvre la bibliothèque
+//     à pied à 390 × 844, densité 2 (premier lancement : chaque vignette relit son GPX), attend les vignettes visibles,
+//     laisse 3 s à l'écriture du magasin et relève l'empreinte SHA-1 de chaque image visible (la référence), puis le
+//     nombre et le poids moyen des images finies gardées (cache `tracker-vignettes-images` ; 0 avant le lot 121) ;
+//  3. relance la page trois fois, processeur ralenti six fois (`Emulation.setCPUThrottlingRate`), et mesure depuis la
+//     navigation : « trace », jusqu'à ce que chaque vignette visible porte une image (la trace seule, d'attente, compte) ;
+//     « fond », jusqu'à ce que chaque vignette visible ait montré son image finie (empreinte égale à la référence),
+//     heure d'apparition de l'image et non de son empreinte ; médianes des trois ;
 //  4. compare les images de chaque relance à celles du premier lancement.
 // Les durées sont en secondes (le masque commun `N ms` les effacerait) et changent d'un passage à l'autre.
 import { writeFileSync } from 'node:fs';
@@ -59,38 +62,87 @@ console.log('fiches                :', imported ? COUNT : (await records()).leng
 // Vignettes visibles (dans l'écran, même en partie) et vrai quand chacune porte son image.
 const VISIBLE = `[...document.querySelectorAll('.lib-row__preview')].filter((f) => { const r = f.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight; })`;
 const ALL_DRAWN = `(() => { const v = ${VISIBLE}; return document.querySelectorAll('.lib-row').length >= ${COUNT} && v.length > 0 && v.every((f) => f.querySelector('img.lib-row__preview-image')); })()`;
+/** Empreinte SHA-1 (12 premiers chiffres) de l'image d'adresse `src`, dans la page. */
+const HASH_OF = `async (src) => {
+  const bytes = await (await fetch(src)).arrayBuffer();
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', bytes));
+  return [...digest].map((x) => x.toString(16).padStart(2, '0')).join('').slice(0, 12);
+}`;
 const HASHES = `(async () => {
+  const hashOf = ${HASH_OF};
   const out = [];
   for (const f of ${VISIBLE}) {
     const img = f.querySelector('img.lib-row__preview-image');
-    if (!img) { out.push('(sans image)'); continue; }
-    const bytes = await (await fetch(img.src)).arrayBuffer();
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', bytes));
-    out.push([...digest].map((x) => x.toString(16).padStart(2, '0')).join('').slice(0, 12));
+    out.push(img ? await hashOf(img.src) : '(sans image)');
   }
   return out;
 })()`;
+/** Images finies gardées sur l'appareil (lot 121) : nombre et poids total, sans créer le cache s'il manque. */
+const KEPT_IMAGES = `(async () => {
+  if (!(await caches.has('tracker-vignettes-images'))) return { count: 0, bytes: 0 };
+  const cache = await caches.open('tracker-vignettes-images');
+  let count = 0;
+  let bytes = 0;
+  for (const request of await cache.keys()) {
+    if (!request.url.endsWith('.png')) continue;
+    const response = await cache.match(request);
+    if (!response) continue;
+    count++;
+    bytes += (await response.blob()).size;
+  }
+  return { count, bytes };
+})()`;
 
 /**
- * Lance `/course` et rend le temps, en ms depuis le début de la navigation (horloge de la page), jusqu'à ce que
- * chaque vignette visible porte son image ; `null` après 60 s.
+ * Lance `/course` et rend, en ms depuis le début de la navigation (horloge de la page), `trace` : le temps jusqu'à ce
+ * que chaque vignette visible porte une image, et `fond` : jusqu'à ce que chacune ait montré l'image d'empreinte
+ * `expected[i]` (la plus tardive des heures d'apparition de ces images ; `null` sans `expected`). `null` après 60 s.
  */
-const launch = async () => {
+const launch = async (expected = null) => {
   const before = await evaluate(`window.__banc?.doc ?? null`);
   await send('Page.navigate', { url: `${BASE}/course` });
   await waitFor(async () => {
     const doc = await evaluate(`window.__banc?.doc ?? null`);
     return doc && doc !== before;
   }, { timeout: 30000, every: 20, label: 'nouveau document' });
-  return evaluate(`new Promise((resolve) => {
+  return (await evaluate(`new Promise((resolve) => {
+    const expected = ${JSON.stringify(expected)};
+    const hashOf = ${HASH_OF};
     const t0 = performance.now();
+    let trace = null;
+    // Par vignette : chaque adresse d'image vue, l'heure de son apparition et son empreinte (calculée à part).
+    const seen = new Map();
+    const fondAt = (frames) => {
+      if (!expected || frames.length !== expected.length) return null;
+      let last = 0;
+      for (let i = 0; i < frames.length; i++) {
+        const shown = [...(seen.get(frames[i])?.values() ?? [])].filter((r) => r.hash === expected[i]);
+        if (shown.length === 0) return null;
+        last = Math.max(last, Math.min(...shown.map((r) => r.at)));
+      }
+      return last;
+    };
     const tick = () => {
-      if (${ALL_DRAWN}) resolve(performance.now());
-      else if (performance.now() - t0 > 60000) resolve(null);
+      const now = performance.now();
+      const frames = ${VISIBLE};
+      for (const f of frames) {
+        const img = f.querySelector('img.lib-row__preview-image');
+        if (!img) continue;
+        if (!seen.has(f)) seen.set(f, new Map());
+        const images = seen.get(f);
+        if (images.has(img.src)) continue;
+        const record = { at: now, hash: null };
+        images.set(img.src, record);
+        hashOf(img.src).then((h) => { record.hash = h; }, () => { record.hash = '?'; });
+      }
+      if (trace === null && ${ALL_DRAWN}) trace = now;
+      const fond = trace === null ? null : fondAt(frames);
+      if (trace !== null && (!expected || fond !== null)) resolve({ trace, fond });
+      else if (now - t0 > 60000) resolve({ trace, fond });
       else setTimeout(tick, 16);
     };
     tick();
-  })`);
+  })`)) ?? { trace: null, fond: null };
 };
 
 /** Images finales (l'image d'attente de la trace seule remplacée) : page calme puis un temps pour le dernier dessin. */
@@ -102,28 +154,38 @@ const finalHashes = async (label) => {
 
 // 2. Premier lancement : rien de gardé.
 await go('/', 5000);
-await evaluate(`caches.delete('tracker-vignettes').then(() => true, () => true)`);
-const firstMs = await launch();
+await evaluate(`Promise.all(['tracker-vignettes', 'tracker-vignettes-images'].map((name) => caches.delete(name))).then(() => true, () => true)`);
+const firstMs = (await launch()).trace;
 console.log('1er lancement         :', firstMs == null ? '(vignettes absentes après 60 s)' : `${seconds(firstMs)}, sans ralenti`);
 const reference = await finalHashes('1er lancement');
 console.log('vignettes visibles    :', reference.length);
 // Écriture du magasin (2 s après la dernière vignette gardée).
 await wait(3000);
+const kept = (await evaluate(KEPT_IMAGES)) ?? { count: 0, bytes: 0 };
+console.log('images finies gardées :', kept.count === 0
+  ? '0'
+  : `${kept.count}, poids moyen ${(kept.bytes / kept.count / 1000).toFixed(1).replace('.', ',')} ko`);
 
 // 3. Relances, processeur ralenti.
 await send('Emulation.setCPUThrottlingRate', { rate: 6 });
 const times = [];
 let identical = reference.length > 0;
 for (let k = 0; k < 3; k++) {
-  const ms = await launch();
-  times.push(ms);
+  times.push(await launch(reference.length > 0 ? reference : null));
   const hashes = await finalHashes(`relance ${k + 1}`);
   if (hashes.length !== reference.length || hashes.some((h, i) => h !== reference[i])) identical = false;
 }
 await send('Emulation.setCPUThrottlingRate', { rate: 1 });
-const measured = times.filter((t) => t != null).sort((x, y) => x - y);
-console.log('2e lancement ralenti×6:', times.map((t) => (t == null ? 'absentes' : seconds(t))).join(', '));
-console.log('médiane               :', measured.length ? seconds(measured[Math.floor(measured.length / 2)]) : '(aucune)');
+const median = (values) => {
+  const measured = values.filter((t) => t != null).sort((x, y) => x - y);
+  return measured.length ? seconds(measured[Math.floor(measured.length / 2)]) : '(aucune)';
+};
+const traces = times.map((t) => t.trace);
+const fonds = times.map((t) => t.fond);
+console.log('2e lancement ralenti×6:', traces.map((t) => (t == null ? 'absentes' : seconds(t))).join(', '));
+console.log('médiane               :', median(traces));
+console.log('fond de carte ×6      :', fonds.map((t) => (t == null ? 'absent' : seconds(t))).join(', '));
+console.log('médiane fond          :', median(fonds));
 // 4. Mêmes images qu'au premier lancement.
 console.log('vignettes identiques au 1er lancement :', identical ? 'oui' : 'non');
 

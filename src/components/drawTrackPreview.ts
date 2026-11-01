@@ -2,6 +2,7 @@ import type { TrackBounds } from '../core/displayConfig';
 import { fitBoundsView, projectPoint, viewTiles, type ShareView } from '../core/shareImage';
 import { thinToPixels } from '../core/simplify';
 import { PAINT_ORDER_TRANCHES, pathsByColor } from '../core/trackColor';
+import { allTilesPresent } from '../library/previewImages';
 import { loadMapTile, tileImage } from '../platform/mapTiles';
 
 /**
@@ -100,15 +101,23 @@ export interface TrackPreviewContent {
   withMap: boolean;
 }
 
+/** Vignette dessinée : son PNG, et vrai si chaque tuile de son fond était là (`allTilesPresent`). */
+export interface DrawnTrackPreview {
+  png: Blob;
+  complete: boolean;
+}
+
 /**
  * La vignette, en PNG : d'abord la trace seule, rendue à `onTrace` (sur le
  * gris de Leaflet avec un fond), puis, avec un fond, la trace sur ses tuiles.
- * `null` si `signal` est coupé ou si le canevas manque.
+ * `null` si `signal` est coupé ou si le canevas manque. Sans fond, l'image
+ * est complète d'emblée ; avec, si chaque tuile était gardée ou reçue (ni case
+ * vide hors réseau, ni agrandissement d'un zoom inférieur).
  */
 export const drawTrackPreview = async (
   { view, segments, pixelRatio, withMap }: TrackPreviewContent,
   { signal, onTrace }: { signal: AbortSignal; onTrace?: (png: Blob) => void }
-): Promise<Blob | null> => {
+): Promise<DrawnTrackPreview | null> => {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(view.widthPx * pixelRatio);
   canvas.height = Math.round(view.heightPx * pixelRatio);
@@ -136,18 +145,21 @@ export const drawTrackPreview = async (
   paint([]);
   const trace = await toPng(canvas);
   if (signal.aborted) return null;
-  if (!withMap || !trace) return trace;
+  if (!trace) return null;
+  if (!withMap) return { png: trace, complete: true };
   onTrace?.(trace);
 
   const placed = viewTiles(view);
-  const images = await Promise.all(placed.map((p) => loadMapTile(p.tile, 'plan', signal)
-    .then((content) => (content === null ? null : tileImage(content)))
-    .catch(() => null)));
+  const tiles = await Promise.all(placed.map((p) => loadMapTile(p.tile, 'plan', signal)
+    .catch(() => null)
+    .then(async (content) => ({ content, image: content === null ? null : await tileImage(content).catch(() => null) }))));
+  const images = tiles.map((t) => t.image);
   if (signal.aborted) {
     for (const image of images) if (image && 'close' in image) image.close();
     return null;
   }
   paint(placed.map((p, i) => ({ ...p, image: images[i] })));
   for (const image of images) if (image && 'close' in image) image.close();
-  return toPng(canvas);
+  const png = await toPng(canvas);
+  return png ? { png, complete: allTilesPresent(tiles) } : null;
 };
