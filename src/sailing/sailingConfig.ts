@@ -57,6 +57,12 @@ export const MANEUVER_CORE_RATE_DEG_S = 5;
 /** Durée d'observation d'une manœuvre, en secondes. */
 export const MANEUVER_WINDOW_S = 12;
 
+/** Part de la fenêtre d'observation sous laquelle rien n'est observable (fin de trace, coupure d'enregistrement). */
+export const MANEUVER_MIN_WINDOW_SHARE = 0.5;
+
+/** Nombre de fenêtres d'observation, depuis son déclenchement, jusqu'où un virage se prolonge tant que le cap tourne. */
+export const TURN_EXTENSION_MAX_WINDOWS = 2;
+
 /**
  * Durée maximale, en secondes, d'un intervalle unique tenu pour observable
  * quand la fenêtre d'observation ne contient aucun point.
@@ -256,6 +262,9 @@ export const WIND_ESTIMATION_MIN_SPEED_KN = 5;
  * empannage conserve, quelle que soit l'échelle du support.
  */
 export const ORIENTATION_MAX_CONSERVATION = 0.5;
+
+/** Poids total des votes des virages (`orientationVotes`) sous lequel ils ne tranchent pas l'orientation du vent. */
+export const ORIENTATION_MIN_VOTE_WEIGHT = 0.5;
 
 /**
  * Indice de confiance minimal de l'estimation automatique du vent. En dessous,

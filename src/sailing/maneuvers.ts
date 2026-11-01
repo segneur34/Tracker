@@ -11,6 +11,7 @@ import {
   MANEUVER_MAX_STEP_S,
   MANEUVER_MIN_DISTANCE_M,
   MANEUVER_MIN_TURN_DEG,
+  MANEUVER_MIN_WINDOW_SHARE,
   MANEUVER_WINDOW_S,
   ORIENTATION_MAX_CONSERVATION,
   TURN_STRIDE_MIN_S,
@@ -19,7 +20,7 @@ import {
   getDefaultThresholdKn,
   getStillSpeedKn,
 } from './sailingConfig';
-import { CANDIDATE_MIN_SEPARATION, buildWindTimeline, isTurningStep, prepareWindPolar, scanTurnWindow, strideEnd, type PolarWindEstimate, type WindEstimate, type WindOrientationSource, type WindPolarStage } from './wind';
+import { CANDIDATE_MIN_SEPARATION, buildWindTimeline, extendTurn, isTurningStep, prepareWindPolar, scanTurnWindow, slowestPoint, strideEnd, type PolarWindEstimate, type WindEstimate, type WindOrientationSource, type WindPolarStage } from './wind';
 
 export interface ManeuverOptions {
   /**
@@ -31,6 +32,8 @@ export interface ManeuverOptions {
   minEntrySpeedKn?: number;
   /** Durée d'observation d'une manœuvre, en secondes. */
   windowSeconds?: number;
+  /** Part de la fenêtre d'observation sous laquelle rien n'est observable (`MANEUVER_MIN_WINDOW_SHARE`). */
+  minWindowShare?: number;
   /** Temps mort après une manœuvre validée, en secondes. */
   cooldownSeconds?: number;
   /** Durée maximale d'un intervalle unique lu comme virage, en secondes. */
@@ -1152,6 +1155,7 @@ export const measureRotation = (
 export interface DetectionSettings {
   minEntrySpeedKn: number;
   windowMs: number;
+  minWindowShare: number;
   maxStepMs: number;
   minDistanceM: number;
   minCoherence: number;
@@ -1164,7 +1168,7 @@ export interface DetectionSettings {
 /** Réglages de la seule détection, parmi `ManeuverOptions`. */
 export type ManeuverDetectionOptions = Pick<
   ManeuverOptions,
-  'minEntrySpeedKn' | 'windowSeconds' | 'maxStepSeconds' | 'minDistanceM' | 'minCoherence' | 'fullTurnDeg' | 'coreRateDegS' | 'stillSpeedKn' | 'minTurnDeg'
+  'minEntrySpeedKn' | 'windowSeconds' | 'minWindowShare' | 'maxStepSeconds' | 'minDistanceM' | 'minCoherence' | 'fullTurnDeg' | 'coreRateDegS' | 'stillSpeedKn' | 'minTurnDeg'
 >;
 
 /** Réglages du seul classement, parmi `ManeuverOptions` : ceux qui vont avec le vent. */
@@ -1173,6 +1177,7 @@ export type ManeuverClassificationOptions = Pick<ManeuverOptions, 'successThresh
 const resolveDetectionSettings = (options: ManeuverDetectionOptions): DetectionSettings => ({
   minEntrySpeedKn: options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN,
   windowMs: (options.windowSeconds ?? MANEUVER_WINDOW_S) * 1000,
+  minWindowShare: options.minWindowShare ?? MANEUVER_MIN_WINDOW_SHARE,
   maxStepMs: (options.maxStepSeconds ?? MANEUVER_MAX_STEP_S) * 1000,
   minDistanceM: options.minDistanceM ?? MANEUVER_MIN_DISTANCE_M,
   minCoherence: options.minCoherence ?? MANEUVER_MIN_COHERENCE,
@@ -1293,7 +1298,7 @@ export interface ManeuverDetection {
  */
 export const prepareManeuverDetection = (points: PointData[], options: ManeuverDetectionOptions = {}): ManeuverDetection => {
   const settings = resolveDetectionSettings(options);
-  const { minEntrySpeedKn, windowMs, maxStepMs, minDistanceM, minCoherence, fullTurnDeg, coreRateDegS, stillSpeedKn, minTurnDeg } = settings;
+  const { minEntrySpeedKn, windowMs, minWindowShare, maxStepMs, minDistanceM, minCoherence, fullTurnDeg, coreRateDegS, stillSpeedKn, minTurnDeg } = settings;
   const n = points.length;
   const windows = new Array<WindowReading | undefined>(n);
   /** Virages lus depuis leur borne basse libre, par `i`. */
@@ -1307,58 +1312,35 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
     // unique jusqu'à `maxStepMs`. Le virage net y est sommé point à point, la
     // somme des rotations par pas d'au moins `TURN_STRIDE_MIN_S`.
     const scan = scanTurnWindow(points, i, windowMs, maxStepMs);
-    let { j, cumulativeTurn } = scan;
     // Point le plus lent vu par la détection. Il date la manœuvre, à l'instant
     // où le classement lit le vent, et nourrit la lecture qu'en fait
     // l'estimation du vent (`windCriteria`). Il omet le dernier point de la
     // fenêtre initiale : il reste tel quel, car le déplacer changerait le
     // classement et le vent (§10, points 21 et 70). La vitesse minimale
     // affichée est celle de `measureRotation`, sur toute la rotation.
-    let anchorSpeed = Infinity;
-    let anchorIndex = i;
-    for (let k = i; k < j; k++) {
-      if (points[k].smoothedSpeed < anchorSpeed) {
-        anchorSpeed = points[k].smoothedSpeed;
-        anchorIndex = k;
-      }
-    }
+    const initial = slowestPoint(points, i, scan.j, false);
 
     // Rien d'observable : fin de trace, ou coupure d'enregistrement trop
     // longue pour qu'un virage puisse encore s'y lire. Un pas unique retenu
     // ci-dessus dure, lui, plus longtemps que la fenêtre entière.
-    if (points[j].timeMs - points[i].timeMs < windowMs * 0.5) return NOTHING;
-    if (!(Math.abs(cumulativeTurn) > minTurnDeg)) return NOTHING;
+    if (points[scan.j].timeMs - points[i].timeMs < windowMs * minWindowShare) return NOTHING;
+    if (!(Math.abs(scan.cumulativeTurn) > minTurnDeg)) return NOTHING;
 
     // Une chute fait aussi tourner le cap de plus de 60°, mais dans tous les
     // sens : le virage net est petit devant la somme des rotations. Un vrai
     // virage tourne toujours du même côté.
-    const endMs = points[j].timeMs;
-    const coherent = scan.totalRotation > 0 && Math.abs(cumulativeTurn) / scan.totalRotation >= minCoherence;
-    if (!coherent) return { kind: 'rejected', motif: 'incoherent', endMs, turnDeg: cumulativeTurn };
-    if (!(points[i].smoothedSpeed > minEntrySpeedKn)) return { kind: 'rejected', motif: 'slowEntry', endMs, turnDeg: cumulativeTurn };
+    const endMs = points[scan.j].timeMs;
+    const coherent = scan.totalRotation > 0 && Math.abs(scan.cumulativeTurn) / scan.totalRotation >= minCoherence;
+    if (!coherent) return { kind: 'rejected', motif: 'incoherent', endMs, turnDeg: scan.cumulativeTurn };
+    if (!(points[i].smoothedSpeed > minEntrySpeedKn)) return { kind: 'rejected', motif: 'slowEntry', endMs, turnDeg: scan.cumulativeTurn };
     // Un virage déplace le bateau. Sur place, le cap n'est que du bruit de
     // position, et un virage lu en un seul pas est toujours « cohérent ».
-    if (!(distanceBetween(points, i, j) >= minDistanceM)) return { kind: 'rejected', motif: 'tooShort', endMs, turnDeg: cumulativeTurn };
+    if (!(distanceBetween(points, i, scan.j) >= minDistanceM)) return { kind: 'rejected', motif: 'tooShort', endMs, turnDeg: scan.cumulativeTurn };
 
-    // La fenêtre s'est déclenchée dès 60° de virage, souvent avant la fin
-    // de celui-ci. On prolonge l'observation tant que le cap continue de
-    // tourner dans le même sens, par pas d'au moins `TURN_STRIDE_MIN_S`
-    // (règle 2), pour mesurer le virage complet ; le point le plus lent est
-    // suivi sur tous les points du pas.
-    const turnSign = Math.sign(cumulativeTurn);
-    while (j + 1 < n) {
-      const next = strideEnd(points, j, n - 1);
-      if (points[next].timeMs - points[i].timeMs > 2 * windowMs) break;
-      if (!isTurningStep(points, j, next, turnSign)) break;
-      for (let k = j + 1; k <= next; k++) {
-        cumulativeTurn += angleDiff(points[k].bearing, points[k - 1].bearing);
-        if (points[k].smoothedSpeed < anchorSpeed) {
-          anchorSpeed = points[k].smoothedSpeed;
-          anchorIndex = k;
-        }
-      }
-      j = next;
-    }
+    // Prolongation tant que le cap continue de tourner dans le même sens,
+    // pour mesurer le virage complet (`extendTurn`, commun à l'orientation du vent).
+    const turnSign = Math.sign(scan.cumulativeTurn);
+    const { j, cumulativeTurn, slowest } = extendTurn(points, i, { j: scan.j, cumulativeTurn: scan.cumulativeTurn, slowest: initial }, windowMs);
 
     // Borne basse de la recherche du cœur du virage, cherchée en reculant
     // depuis `i`, jamais depuis le début de la trace : le coût reste celui
@@ -1367,7 +1349,7 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
     let lowestFree = i;
     while (lowestFree > 0 && points[lowestFree - 1].timeMs >= points[i].timeMs - windowMs) lowestFree--;
 
-    return { kind: 'turn', j, cumulativeTurn, turnSign, anchorIndex, anchorSpeed, lowestFree };
+    return { kind: 'turn', j, cumulativeTurn, turnSign, anchorIndex: slowest.index, anchorSpeed: slowest.speed, lowestFree };
   };
 
   const readTurn = (i: number, window: TurnWindow, lowest: number): TurnReading => {

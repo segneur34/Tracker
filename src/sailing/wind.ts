@@ -5,6 +5,8 @@ import type { PointData } from './pointData';
 import {
   MANEUVER_MAX_STEP_S,
   ORIENTATION_MAX_CONSERVATION,
+  ORIENTATION_MIN_VOTE_WEIGHT,
+  TURN_EXTENSION_MAX_WINDOWS,
   TURN_STRIDE_MIN_S,
   WIND_CONFIDENCE_MIN,
   WIND_ESTIMATION_MIN_SPEED_KN,
@@ -465,6 +467,74 @@ export const scanTurnWindow = (
   return { j, cumulativeTurn, totalRotation };
 };
 
+/** Point le plus lent d'une plage de la trace, et sa vitesse lissée (`Infinity` sur une plage vide). */
+export interface SlowestPoint {
+  index: number;
+  speed: number;
+}
+
+/**
+ * Point le plus lent de `from` à `to`, le dernier point compris ou non ; à
+ * vitesses égales, le premier l'emporte. Commun aux deux lectures d'un
+ * virage, qui gardent chacune leur règle : la détection des manœuvres omet
+ * le dernier point de la fenêtre initiale (§10, points 21 et 70 : le
+ * déplacer changerait le classement et le vent), l'orientation du vent le
+ * comprend.
+ */
+export const slowestPoint = (points: readonly PointData[], from: number, to: number, includeLast: boolean): SlowestPoint => {
+  let speed = Infinity;
+  let index = from;
+  const last = includeLast ? to : to - 1;
+  for (let k = from; k <= last; k++) {
+    if (points[k].smoothedSpeed < speed) {
+      speed = points[k].smoothedSpeed;
+      index = k;
+    }
+  }
+  return { index, speed };
+};
+
+/** Fenêtre d'un virage, telle que `extendTurn` la reçoit et la rend. */
+export interface TurnExtension {
+  /** Dernier point de la fenêtre. */
+  j: number;
+  /** Virage net, en degrés signés, sommé point à point. */
+  cumulativeTurn: number;
+  /** Point le plus lent de la fenêtre. */
+  slowest: SlowestPoint;
+}
+
+/**
+ * Prolongation de la fenêtre d'un virage déclenché au point `i`, commune à
+ * la détection des manœuvres et à l'orientation du vent. La fenêtre s'est
+ * déclenchée dès 60° de virage, souvent avant la fin de celui-ci : on
+ * l'étend tant que le cap continue de tourner dans le même sens, par pas
+ * d'au moins `TURN_STRIDE_MIN_S` (règle 2) et jusqu'à
+ * `TURN_EXTENSION_MAX_WINDOWS` fenêtres depuis `i`, pour mesurer le virage
+ * complet ; le virage net est sommé point à point et le point le plus lent
+ * suivi sur tous les points de chaque pas.
+ */
+export const extendTurn = (points: readonly PointData[], i: number, from: TurnExtension, windowMs: number): TurnExtension => {
+  let { j, cumulativeTurn } = from;
+  let { index, speed } = from.slowest;
+  const turnSign = Math.sign(cumulativeTurn);
+  const last = points.length - 1;
+  while (j + 1 < points.length) {
+    const next = strideEnd(points, j, last);
+    if (points[next].timeMs - points[i].timeMs > TURN_EXTENSION_MAX_WINDOWS * windowMs) break;
+    if (!isTurningStep(points, j, next, turnSign)) break;
+    for (let k = j + 1; k <= next; k++) {
+      cumulativeTurn += angleDiff(points[k].bearing, points[k - 1].bearing);
+      if (points[k].smoothedSpeed < speed) {
+        speed = points[k].smoothedSpeed;
+        index = k;
+      }
+    }
+    j = next;
+  }
+  return { j, cumulativeTurn, slowest: { index, speed } };
+};
+
 /** Un virage franc relevé dans la trace, avec ce qu'il dit du vent. */
 export interface TurnObservation {
   /** Cap au point le plus lent du virage. Face au vent si le vol a été perdu. */
@@ -497,40 +567,19 @@ export const observeTurns = (
   while (i < points.length - 1) {
     // Même balayage que `analyzeManeuvers`, pour que les deux voient les mêmes virages.
     const scan = scanTurnWindow(points, i, windowMs, MANEUVER_MAX_STEP_S * 1000);
-    let { j, cumulativeTurn } = scan;
-    let minSpd = points[i].smoothedSpeed;
-    let minIndex = i;
-    for (let k = i + 1; k <= j; k++) {
-      if (points[k].smoothedSpeed < minSpd) {
-        minSpd = points[k].smoothedSpeed;
-        minIndex = k;
-      }
-    }
+    // Point le plus lent de la fenêtre, dernier point compris : la détection
+    // des manœuvres l'omet, pas l'orientation (`slowestPoint`).
+    const initial = slowestPoint(points, i, scan.j, true);
 
-    const coherent = scan.totalRotation > 0 && Math.abs(cumulativeTurn) / scan.totalRotation >= TURN_MIN_COHERENCE;
+    const coherent = scan.totalRotation > 0 && Math.abs(scan.cumulativeTurn) / scan.totalRotation >= TURN_MIN_COHERENCE;
     // Un virage commence en vol : la sortie d'une chute, où l'on repart
     // depuis un cap quelconque, n'est pas un virage.
     const entrySpeed = points[i].smoothedSpeed;
     const startsFlying = entrySpeed >= minEntrySpeedKn;
 
-    if (Math.abs(cumulativeTurn) > ORIENTATION_MIN_TURN_DEG && coherent && startsFlying) {
-      // Prolongation tant que le cap tourne franchement dans le même sens, par
-      // pas d'au moins `TURN_STRIDE_MIN_S` (règle 2), le point le plus lent
-      // suivi sur tous les points du pas.
-      const turnSign = Math.sign(cumulativeTurn);
-      while (j + 1 < points.length) {
-        const next = strideEnd(points, j, points.length - 1);
-        if (points[next].timeMs - points[i].timeMs > 2 * windowMs) break;
-        if (!isTurningStep(points, j, next, turnSign)) break;
-        for (let k = j + 1; k <= next; k++) {
-          cumulativeTurn += angleDiff(points[k].bearing, points[k - 1].bearing);
-          if (points[k].smoothedSpeed < minSpd) {
-            minSpd = points[k].smoothedSpeed;
-            minIndex = k;
-          }
-        }
-        j = next;
-      }
+    if (Math.abs(scan.cumulativeTurn) > ORIENTATION_MIN_TURN_DEG && coherent && startsFlying) {
+      // Prolongation tant que le cap tourne franchement dans le même sens (`extendTurn`).
+      const { j, cumulativeTurn, slowest } = extendTurn(points, i, { j: scan.j, cumulativeTurn: scan.cumulativeTurn, slowest: initial }, windowMs);
 
       // Un virage débouche sur un nouveau cap tenu. Le premier pas d'une chute
       // ressemble à un virage propre, mais le cap part ensuite dans tous les
@@ -549,12 +598,12 @@ export const observeTurns = (
 
       if (exitStable) {
         turns.push({
-          headingAtMin: points[minIndex].bearing,
+          headingAtMin: points[slowest.index].bearing,
           midHeading: normalizeAngle(points[i].bearing + cumulativeTurn / 2),
-          minSpeed: minSpd,
-          speedLoss: Math.max(0, entrySpeed - minSpd),
+          minSpeed: slowest.speed,
+          speedLoss: Math.max(0, entrySpeed - slowest.speed),
           cumulativeTurn,
-          slow: minSpd < ORIENTATION_MAX_CONSERVATION * entrySpeed,
+          slow: slowest.speed < ORIENTATION_MAX_CONSERVATION * entrySpeed,
         });
       }
       i = j + 1;
@@ -642,7 +691,7 @@ const orientPolar = (points: PointData[], polar: PolarWindEstimate, minSpeedKn: 
   if (polar.contrast < POLAR_CONTRAST_MIN) {
     const votes = orientationVotes(observeTurns(points, minSpeedKn), candidateA);
     const total = votes.forAxis + votes.forOpposite;
-    if (total > 0.5) {
+    if (total > ORIENTATION_MIN_VOTE_WEIGHT) {
       direction = votes.forAxis >= votes.forOpposite ? candidateA : candidateB;
       orientedBy = 'virages';
       orientationConfidence = Math.abs(votes.forAxis - votes.forOpposite) / total;

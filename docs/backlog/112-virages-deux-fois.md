@@ -55,3 +55,23 @@ Pas de commit, pas de version, aucune décision de l'utilisateur : aucun écart 
 (4) `sailingConfig.ts` : `MANEUVER_MIN_WINDOW_SHARE = 0.5` après `MANEUVER_WINDOW_S` (« part de la fenêtre d'observation sous laquelle rien n'est observable (fin de trace, coupure) »), option `minWindowShare` dans `ManeuverOptions`, le `Pick` de `ManeuverDetectionOptions`, `DetectionSettings`, `resolveDetectionSettings` ; la vérification de `detectionFor` (`maneuvers.ts`:390) le couvre. `ORIENTATION_MIN_VOTE_WEIGHT = 0.5` après `ORIENTATION_MAX_CONSERVATION` (« poids total des votes des virages sous lequel ils ne tranchent pas l'orientation »). `TURN_EXTENSION_MAX_WINDOWS = 2`.
 
 (5) Étapes : 1. relevé avant, dans le brouillon : JSON des `ManeuverStats` et d'`estimateWind` de toutes les `sessions()` (script jetable comme au lot 30) ; 2. `sessions()` sorti, copies gelées et test de comparaison, littéraux relevés, le test passe sur le code non retouché ; 3. `slowestPoint` et `extendTurn` branchés des deux côtés, `vitest run --changed` ; 4. constantes et `minWindowShare`, deux tests calqués sur celui du lot 79 (l. 1851 : avec 0,5, JSON identique ; une détection préparée avec 0,4 refusée par `estimateWind`, comme l. 1847) ; 5. JSON après identique à l'octet au relevé avant, `npm run verif` ; le banc avant et après est lancé par l'orchestrateur (`general`, `bench`, `brouillon-voile`, `manoeuvres-diagnostic`) ; 6. rapport avec le tableau mis à jour. Fichiers : `sailing/wind.ts`, `sailing/maneuvers.ts`, `sailing/sailingConfig.ts`, `sailing/maneuvers.test.ts` ; `wind.test.ts` inchangé.
+
+## Rapport du lot (01/11)
+
+Neutralité prouvée : relevé JSON sur 31 traces synthétiques (`ManeuverStats` pour 5 vents, `estimateWind` à 2 jeux d'options, `observeTurns` à 3 seuils, `windowAt` et `turnAt` pour tout point) identique à l'octet avant et après ; tests gelés intacts ; banc `general`, `bench` identiques, `brouillon-voile` à des millisecondes près, `manoeuvres-diagnostic` identique (vent 4°, 24 manœuvres).
+
+Tableau des écarts après le lot :
+
+| Règle | Manœuvres | Vent | État |
+|---|---|---|---|
+| Vitesse d'entrée | `> minEntrySpeedKn` (4 ; hook min(4, 0,16 × allure)) | `>=` plancher de la polaire (min(profil, 0,2 × allure) ; 5 en wing) | **à soumettre** (Q53) : au seuil des manœuvres, le vent verrait 1 virage de plus sur « clairsemée » (entrée 4,7 nd) et sur « virements bruités 5 Hz graine 3 » ; votes d'orientation changés (point 193) |
+| Point le plus lent | `slowestPoint(…, false)` | `slowestPoint(…, true)` | voulu, points 21 et 70 ; une fonction, option nommée |
+| Cohérence | 0,5 surchargeable | 0,6 (`TURN_MIN_COHERENCE`) | voulu, point 185 ; **à soumettre** (Q53) côté vent : à 0,5 le vent compterait la chute de « virement raté chute » (1 → 2 virages) |
+| Fenêtre trop courte | `MANEUVER_MIN_WINDOW_SHARE`, option `minWindowShare` | aucun garde-fou | aucun écart sur 31 traces (fin de trace tronquée seulement) |
+| Déplacement minimal | 10 m | aucun | aucun écart sur 31 traces |
+| Prolongation | `extendTurn` | `extendTurn` | mis en commun, `TURN_EXTENSION_MAX_WINDOWS` |
+| Stabilité de sortie | aucune | 5 s, pas ≤ 45° | voulu côté vent (chutes) ; jamais déclenchée sur 31 traces |
+| Après un virage retenu | cache (i, lowest), temps mort au classement | `i = j + 1` | voulu, point 193 ; écart dominant de la mesure (134 virages « enjambés » sur 31 traces), absorbé par le temps mort du classement |
+| Seuils en dur | nommés | nommé | fait, même valeur |
+
+Accord mesuré (test `TURNS_AGREEMENT`) : chaque virage du vent est apparié à une fenêtre de la détection sur les 31 traces ; 15 traces en accord parfait ; les fenêtres sans virage côté vent sont 134 enjambées, 3 doublons, 2 entrées entre les seuils, 2 cohérences entre 0,5 et 0,6.
