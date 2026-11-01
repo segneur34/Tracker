@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCloseOnOutsideOrEscape } from '../hooks/useDismiss';
 import { createPortal } from 'react-dom';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -135,21 +136,7 @@ function BaseSwitch({ base, onChange }: { base: MapBase; onChange: (base: MapBas
       control.remove();
     };
   }, [map, container]);
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!container.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open, container]);
+  useCloseOnOutsideOrEscape(open, () => container, () => setOpen(false));
   return createPortal(
     <>
       <button type="button" className="map-base-switch__button" aria-expanded={open} aria-haspopup="menu"

@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, type ReactNode } from 'react';
 import { newId } from '../core/basics';
 import { MAX_GEAR_LABEL_LENGTH, cleanGearName, sameGearName } from '../settings/gear';
 import type { GearGroup, GearItem } from '../library/notes';
-import { pushBackLayer } from '../platform/backButton';
+import { ChoiceOption, ChoiceSheet } from './ui/ChoiceSheet';
 import type { GearChoice } from '../library/notes';
 import Button from './ui/Button';
 import { IconChevronRight } from './icons';
@@ -85,13 +84,13 @@ function GearPicker({ group, choice, onChoose, onAddToList }: Props) {
             </div>
           ) : (
             <>
-              <Option label="Aucun" selected={choice === null} onClick={() => pick(null)} />
+              <ChoiceOption label="Aucun" selected={choice === null} onClick={() => pick(null)} />
               {group.items.map((item) => (
-                <Option key={item.id} label={item.name} selected={choice?.itemId === item.id} onClick={() => pick(item)} />
+                <ChoiceOption key={item.id} label={item.name} selected={choice?.itemId === item.id} onClick={() => pick(item)} />
               ))}
               {/* Pièce gardée pour une session, ou retirée de la liste : montrée choisie, sous son nom de la fiche. */}
               {choice && !current && (
-                <Option label={choice.itemName} selected onClick={() => close()} />
+                <ChoiceOption label={choice.itemName} selected onClick={() => close()} />
               )}
               <button type="button" className="activity-select__option gear-picker__option--add" data-testid="gear-add" onClick={() => setAdding(true)}>
                 <span className="activity-select__option-name">Ajouter…</span>
@@ -104,40 +103,13 @@ function GearPicker({ group, choice, onChoose, onAddToList }: Props) {
   );
 }
 
-function Option({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button type="button" role="option" aria-selected={selected} className="activity-select__option" onClick={onClick}>
-      <span className="activity-select__option-name">{label}</span>
-      <span className="activity-select__radio" aria-hidden="true" />
-    </button>
-  );
-}
-
-/** Liste par-dessus la page, comme celle des activités : Échap, un appui à côté ou le retour d'Android la ferme. */
+/** Liste du matériel : la feuille commune des activités, avec son titre. */
 function GearSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const closeRef = useRef(onClose);
-  useEffect(() => {
-    closeRef.current = onClose;
-  });
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current();
-    };
-    window.addEventListener('keydown', onKey);
-    const removeLayer = pushBackLayer(() => closeRef.current());
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      removeLayer();
-    };
-  }, []);
-  return createPortal(
-    <div className="ui-modal-backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
-      <div className="activity-select__sheet gear-picker__sheet" role="listbox" aria-label={title} data-testid="gear-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="activity-select__heading"><strong>{title}</strong></div>
-        {children}
-      </div>
-    </div>,
-    document.body
+  return (
+    <ChoiceSheet label={title} className="gear-picker__sheet" testId="gear-sheet" onClose={onClose}>
+      <div className="activity-select__heading"><strong>{title}</strong></div>
+      {children}
+    </ChoiceSheet>
   );
 }
 
