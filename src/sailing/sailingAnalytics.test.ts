@@ -190,6 +190,20 @@ describe('calculateVmgStats', () => {
     });
   });
 
+  it('moyenne par bord pondérée par la durée : une cadence irrégulière donne la même moyenne que 1 Hz (lot 117)', () => {
+    // Un seul bord au près tribord : 12 nœuds pendant 200 s, puis 8 nœuds pendant 200 s.
+    const speedAt = (t: number) => (t < 200 ? 12 : 8);
+    const regular = buildTrackAt(regularTimes(400, 1), () => 315, speedAt);
+    // Premiers 200 s à 5 Hz, suivants à 0,5 Hz : les passages rapides ont dix fois plus de points.
+    const irregular = buildTrackAt([...regularTimes(199.8, 0.2), ...regularTimes(400, 2).filter((t) => t >= 200)], () => 315, speedAt);
+    const at1Hz = calculateVmgStats(regular, 0, MIN_KN)!;
+    const mixed = calculateVmgStats(irregular, 0, MIN_KN)!;
+    const middle = 10 * Math.cos(Math.PI / 4);
+    expect(at1Hz.upStbd.avg).toBeCloseTo(middle, 0);
+    // Pondérée par les points, la moyenne penchait vers le passage dense (écart d'environ 1,1 nœud ici) ; pondérée par la durée, elle reste au milieu.
+    expect(Math.abs(mixed.upStbd.avg - at1Hz.upStbd.avg)).toBeLessThan(0.15);
+  });
+
   it('compte tribord quand le cap est à gauche du vent, près positif et portant négatif', () => {
     const track = buildTrackAt(regularTimes(session.durationS, 1), session.bearingAt, session.speedAt);
     const v = calculateVmgStats(track, 0, MIN_KN)!;

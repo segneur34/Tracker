@@ -26,3 +26,8 @@ Tests purs sur la clé, la borne et le tri ; `npm run verif` ; banc bibliothèqu
 ## Ce que le lot ne fait pas
 
 Pas de commit, pas de version. Ne pas toucher à `hooks/useSessionLibrary.ts` (n° 116 et 113). Pas de calcul en arrière-plan (n° 114). Rien dans `docs/` hors ce fichier.
+
+## Questions tranchées par l'orchestrateur (01/11, au plan)
+
+- Empreinte d'une vignette : sport, allure, famille, `summary.startMs`, `summary.endMs`, `summary.pointCount` et une version propre, au lieu de la taille et de la date du GPX, que la page ne voit pas (entrées du dossier privées à `useSessionLibrary.ts`, lot 116) ; un GPX rangé n'est jamais réécrit, cela suffit.
+- Un seul document par appareil (fichier `vignettes.json` dans `Directory.Data` au téléphone, Cache API au navigateur), borné à 3 Mo, les moins récemment vues oubliées d'abord ; une seule entrée par session ; pas de bouton « Vider » ; la courbe de FC des vignettes reste hors du lot.

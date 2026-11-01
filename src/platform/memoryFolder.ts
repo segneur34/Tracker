@@ -169,9 +169,18 @@ const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, l
 /** Nom du dossier mémoire, dans la mémoire privée du navigateur comme sur le téléphone. */
 export const MEMORY_FOLDER_NAME = 'Tracker';
 
+/** Réponse du navigateur à la demande de garder sa mémoire (`persist()`) ; `null` tant qu'elle n'a pas été faite. */
+let persistRequest: Promise<boolean> | null = null;
+
+/**
+ * Le navigateur garantit-il de ne pas vider sa mémoire quand le disque se remplit ? Faux s'il a refusé
+ * (Firefox sur PC, hors dossier choisi) ou n'a pas la fonction ; vrai tant que la demande n'a pas été faite.
+ */
+export const browserMemoryIsGuaranteed = (): Promise<boolean> => persistRequest ?? Promise.resolve(true);
+
 const openBrowserMemory = async (): Promise<MemoryFolder> => {
-  // Demande au navigateur de ne pas vider cette mémoire quand le disque se remplit.
-  void navigator.storage.persist?.().catch(() => false);
+  // Demande au navigateur de ne pas vider cette mémoire quand le disque se remplit ; sa réponse est gardée pour Réglages.
+  persistRequest = (navigator.storage.persist?.() ?? Promise.resolve(false)).catch(() => false);
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(MEMORY_FOLDER_NAME, { create: true });
   return createHandleFolder(dir, 'browser', 'mémoire de ce navigateur');

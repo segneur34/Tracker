@@ -22,3 +22,8 @@ Tests purs pour chaque point, sur une mémoire simulée (écriture refusée, fic
 ## Ce que le lot ne fait pas
 
 Pas de commit, pas de version, aucune décision de produit. Pas de découpage du fichier (n° 113). Ne pas toucher à `useRecorder.ts` au-delà de l'appel à `saveRecordedSession` (le n° 115 y travaille en même temps). Rien dans `docs/` hors ce fichier.
+
+## Réponses et questions tranchées (01/11, au plan)
+
+- Décision de l'utilisateur (01/11) : au changement de dossier (redésignation au téléphone) avec des fiches pas encore écrites, leurs saisies en mémoire sont reportées sur la même session du nouveau dossier, retrouvée par le début de trace (`chooseFolder`).
+- Tranchées par l'orchestrateur : avertissement propre pour une fiche non lue (accès refusé), laissée telle quelle et relue à « Mettre à jour » ; une relecture complète des fiches au premier lancement après la mise à jour (empreinte du cache) ; une fiche en attente illisible ne bloque pas le rangement, et c'est dit ; fiches en attente orphelines effacées sans rien dire.

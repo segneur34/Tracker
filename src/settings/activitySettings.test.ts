@@ -8,7 +8,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, rangeFollowsPace, resetOverrides, resetStoredPresets,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveRecordingProfile, resolveThresholdOverride,
   SETTING_FIELDS, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
@@ -316,5 +316,38 @@ describe("écriture d'un réglage par la table des champs (lot 72)", () => {
     expect(withSetting(base, wing.id, 'pumping', true)?.pumping).toEqual({ [wing.id]: true });
     expect(withSetting(base, 'a-inconnue', 'liveFields', null)).toBeNull();
     expect(withSetting(base, 'a-inconnue', 'customFlatSpeedMs', 3)).toBeNull();
+  });
+});
+
+describe('réglages abîmés relus avec contrôle (lot 117)', () => {
+  const run = DEFAULT_ACTIVITIES.find((a) => a.id === 'running')!;
+  const wrong = (v: unknown) => v as never;
+
+  it("un seuil abîmé retombe sur le pré-réglage, un seuil sain est gardé", () => {
+    const preset = resolveThresholdOverride({}, run);
+    for (const bad of [Number.NaN, Infinity, -2, '5', null, {}]) {
+      expect(resolveThresholdOverride({ thresholds: { [run.id]: wrong(bad) } }, run)).toBe(preset);
+    }
+    expect(resolveThresholdOverride({ thresholds: { [run.id]: 4.5 } }, run)).toBe(4.5);
+  });
+
+  it("une pause automatique incomplète ou abîmée retombe sur le pré-réglage au lieu de couper la pause", () => {
+    const fallback = resolveRecordingProfile({}, run);
+    const def = defaultAutoPauseOf(run);
+    expect(fallback.autoPauseSpeedMs).toBe(def.speedMs);
+    for (const bad of [{}, { speedMs: 0.5 }, { delayS: 10 }, { speedMs: Number.NaN, delayS: 10 }, { speedMs: 0.5, delayS: -1 }, { speedMs: '1', delayS: 3 }, 'x', null, 7]) {
+      const got = resolveRecordingProfile({ autoPause: { [run.id]: wrong(bad) } }, run);
+      expect(got.autoPauseSpeedMs).toBe(def.speedMs);
+      expect(got.autoPauseDelayS).toBe(def.delayS);
+    }
+    const ok = resolveRecordingProfile({ autoPause: { [run.id]: { speedMs: 0.7, delayS: 12 } } }, run);
+    expect(ok.autoPauseSpeedMs).toBe(0.7);
+    expect(ok.autoPauseDelayS).toBe(12);
+  });
+
+  it("la vue des réglages ne montre pas une surcharge abîmée comme réglée", () => {
+    const view = settingsView({ thresholds: { [run.id]: wrong(Number.NaN) }, autoPause: { [run.id]: wrong({}) } }, run);
+    expect(view.isThresholdOverridden).toBe(false);
+    expect(view.isAutoPauseOverridden).toBe(false);
   });
 });

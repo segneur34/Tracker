@@ -2,7 +2,7 @@ import { firstIndexAtOrAfter } from '../core/search';
 import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from './pointData';
 import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
-import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
+import { VMG_MIN_WINDOW_RATIO, VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import { circularStats, interpolateDirection, type TimedDirection } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
 import { formatDecimal, msToKnots } from '../core/units';
@@ -488,7 +488,7 @@ export const calculateVmgStats = (
     while (j + 1 < n && trackData[j + 1].timeMs - trackData[i].timeMs <= windowMs) j++;
     // Fenêtre trop courte : fin de trace, ou trou d'enregistrement juste après i.
     // Dans le second cas on continue, la session reprend plus loin.
-    if (trackData[j].timeMs - trackData[i].timeMs < windowMs * 0.8) {
+    if (trackData[j].timeMs - trackData[i].timeMs < windowMs * VMG_MIN_WINDOW_RATIO) {
       if (j === n - 1) break;
       continue;
     }
@@ -509,13 +509,16 @@ export const calculateVmgStats = (
     }
 
     if (avgSpeed >= minSpeedKn) {
+      // Moyenne pondérée par la durée (règle 2) : chaque fenêtre pèse le pas de son point de départ, borné à la
+      // fenêtre, pour qu'un passage dense en points ne pèse pas plus qu'un passage clairsemé de même durée.
+      const w = Math.min((trackData[i + 1].timeMs - trackData[i].timeMs) / 1000, windowSeconds);
       if (avgVmg > 0) {
-        if (isStarboard) { if (avgVmg > maxUpStbd) maxUpStbd = avgVmg; sumUpStbd += avgVmg; cUpStbd++; }
-        else { if (avgVmg > maxUpPort) maxUpPort = avgVmg; sumUpPort += avgVmg; cUpPort++; }
+        if (isStarboard) { if (avgVmg > maxUpStbd) maxUpStbd = avgVmg; sumUpStbd += avgVmg * w; cUpStbd += w; }
+        else { if (avgVmg > maxUpPort) maxUpPort = avgVmg; sumUpPort += avgVmg * w; cUpPort += w; }
       } else {
         const absVmg = -avgVmg;
-        if (isStarboard) { if (absVmg > maxDownStbd) maxDownStbd = absVmg; sumDownStbd += absVmg; cDownStbd++; }
-        else { if (absVmg > maxDownPort) maxDownPort = absVmg; sumDownPort += absVmg; cDownPort++; }
+        if (isStarboard) { if (absVmg > maxDownStbd) maxDownStbd = absVmg; sumDownStbd += absVmg * w; cDownStbd += w; }
+        else { if (absVmg > maxDownPort) maxDownPort = absVmg; sumDownPort += absVmg * w; cDownPort += w; }
       }
     }
   }

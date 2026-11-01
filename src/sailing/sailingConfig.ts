@@ -240,6 +240,9 @@ export const suggestSpeedRangeMs = (
 /** Fenêtre de moyennage de la VMG, en secondes. */
 export const VMG_WINDOW_S = 10;
 
+/** Part de la fenêtre de VMG sous laquelle elle est trop courte (fin de trace, trou juste après le départ) et ignorée. */
+export const VMG_MIN_WINDOW_RATIO = 0.8;
+
 /** Vitesse minimale, en nœuds, pour qu'un cap alimente l'estimation du vent. */
 export const WIND_ESTIMATION_MIN_SPEED_KN = 5;
 

@@ -233,6 +233,17 @@ export const isValidLongPress = (value: unknown): value is number =>
 export const isValidStopHold = (value: unknown): value is number =>
   value === 0 || inRange(value, 500, 10_000);
 
+/** Seuil d'activité admis : un nombre fini, nul ou positif (même règle à l'écriture, `SETTING_FIELDS`, et à la lecture). */
+export const isValidThreshold = (value: unknown): value is number =>
+  typeof value === 'number' && isFinite(value) && value >= 0;
+
+/** Pause automatique admise : vitesse et délai finis, nuls ou positifs (même règle à l'écriture et à la lecture). */
+export const isValidAutoPause = (value: unknown): value is { speedMs: number; delayS: number } => {
+  if (typeof value !== 'object' || value === null) return false;
+  const { speedMs, delayS } = value as { speedMs?: unknown; delayS?: unknown };
+  return isValidThreshold(speedMs) && isValidThreshold(delayS);
+};
+
 export const isTerrainStep = (value: unknown): value is number =>
   typeof value === 'number' && (TERRAIN_STEP_CHOICES_M as readonly number[]).includes(value);
 
@@ -245,8 +256,10 @@ export const resolveTerrainStepM = (stored: StoredSettings, activity: Activity):
 };
 
 /** Seuil fixé pour une activité, réglé ou pré-réglé ; `null` : le défaut du calcul (en voile, la suggestion selon l'allure). */
-export const resolveThresholdOverride = (stored: StoredSettings, activity: Activity): number | null =>
-  stored.thresholds?.[activity.id] ?? presetOf(activity).threshold ?? null;
+export const resolveThresholdOverride = (stored: StoredSettings, activity: Activity): number | null => {
+  const own = stored.thresholds?.[activity.id];
+  return isValidThreshold(own) ? own : presetOf(activity).threshold ?? null;
+};
 
 /**
  * Bornes de couleur fixes d'une activité : celles réglées, sinon celles de son
@@ -453,7 +466,8 @@ export const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSe
 /** Réglage d'enregistrement d'une activité : le profil de son calcul, sauf surcharge de la pause automatique. */
 export const resolveRecordingProfile = (stored: StoredSettings, activity: Activity): RecordingProfile => {
   const profile = getSportProfile(activity.base);
-  const pause = stored.autoPause?.[activity.id] ?? defaultAutoPauseOf(activity);
+  const own = stored.autoPause?.[activity.id];
+  const pause = isValidAutoPause(own) ? own : defaultAutoPauseOf(activity);
   return { ...profile.recording, autoPauseSpeedMs: pause.speedMs, autoPauseDelayS: pause.delayS };
 };
 
@@ -665,10 +679,10 @@ export const settingsView = (stored: StoredSettings, activity: Activity): SportS
   const profile = getSportProfile(activity.base);
   const unit = stored.speedUnits?.[id];
   const distanceUnit = stored.distanceUnits?.[id];
-  const threshold = stored.thresholds?.[id];
+  const threshold = isValidThreshold(stored.thresholds?.[id]) ? stored.thresholds?.[id] : undefined;
   const range = stored.speedRanges?.[id];
   const grades = stored.gradeRanges?.[id];
-  const autoPauseOverride = stored.autoPause?.[id];
+  const autoPauseOverride = isValidAutoPause(stored.autoPause?.[id]) ? stored.autoPause?.[id] : undefined;
   const bikeWeight = stored.bikeWeights?.[id];
   const carriedLoad = stored.carriedLoads?.[id];
   const paceLevel = stored.paceLevels?.[id];
@@ -761,16 +775,13 @@ const booleanOrNull = (value: unknown): boolean | null | undefined =>
 export const SETTING_FIELDS: Record<SettingField, SettingFieldRule> = {
   speedUnit: { key: 'speedUnits', normalize: plain(isKnownSpeedUnit) },
   distanceUnit: { key: 'distanceUnits', normalize: plain(isKnownDistanceUnit) },
-  activeThreshold: { key: 'thresholds', normalize: plain((v) => typeof v === 'number' && isFinite(v) && v >= 0) },
+  activeThreshold: { key: 'thresholds', normalize: plain(isValidThreshold) },
   terrainStepM: { key: 'terrainSteps', normalize: plain(isTerrainStep) },
   speedRange: { key: 'speedRanges', normalize: plain((v) => isObjectValue(v) && isValidSpeedRange(v)) },
   gradeRange: { key: 'gradeRanges', normalize: plain((v) => isObjectValue(v) && isValidGradeRange(v)) },
   autoPause: {
     key: 'autoPause',
-    normalize: plain((v) => {
-      const a = v as { speedMs: number; delayS: number };
-      return isFinite(a.speedMs) && isFinite(a.delayS) && a.speedMs >= 0 && a.delayS >= 0;
-    }),
+    normalize: plain(isValidAutoPause),
   },
   liveFields: {
     key: 'liveFields',

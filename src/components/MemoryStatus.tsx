@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   canChooseMemoryFolder,
   canImportSessions,
@@ -7,6 +8,7 @@ import {
   switchToBrowserMemory,
   useLibraryFields,
 } from '../hooks/useSessionLibrary';
+import { browserMemoryIsGuaranteed } from '../platform/memoryFolder';
 import { isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
@@ -56,6 +58,14 @@ function MemoryStatus({
   const native = isNativeApp();
   /** Dans Réglages : explications sous des « ? ». */
   const inSettings = useInSettings();
+  /** Le navigateur a-t-il promis de garder sa mémoire ? Seul le refus se dit (Réglages, mémoire du navigateur). */
+  const [guaranteed, setGuaranteed] = useState(true);
+  useEffect(() => {
+    if (status !== 'ready' || folderKind !== 'browser') return;
+    let alive = true;
+    void browserMemoryIsGuaranteed().then((ok) => { if (alive) setGuaranteed(ok); });
+    return () => { alive = false; };
+  }, [status, folderKind]);
 
   const headline = (() => {
     switch (status) {
@@ -190,6 +200,14 @@ function MemoryStatus({
                 ? "Invisible dans l'explorateur de fichiers. Choisissez un dossier (conseil : Documents › Tracker) pour sauvegarder les sessions ou les passer au téléphone."
                 : "Invisible dans l'explorateur de fichiers. Pour un dossier du PC, ouvrez Tracker dans Chrome ou Edge."}
             </HelpText>
+            {!guaranteed && (
+              <p style={mutedStyle}>
+                Ce navigateur ne garantit pas de garder cette mémoire : il peut la vider s'il manque de place.
+                {canChoose
+                  ? " Choisissez un dossier pour que vos sessions restent à l'abri."
+                  : " Pour les garder à l'abri, ouvrez Tracker dans Chrome ou Edge et choisissez un dossier."}
+              </p>
+            )}
             {canChoose && (
               <div style={rowStyle}>
                 <Button variant="primary" onClick={() => void chooseFolder()}>Choisir un dossier</Button>
