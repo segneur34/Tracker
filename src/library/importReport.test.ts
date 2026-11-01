@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { describeImport, type ImportReport } from './importReport';
 
 const report = (patch: Partial<ImportReport> = {}): ImportReport => ({
-  added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0, ...patch,
+  added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0, recordNotRead: 0, ...patch,
 });
 
 describe("compte rendu d'un import (lot 72)", () => {
@@ -18,6 +18,15 @@ describe("compte rendu d'un import (lot 72)", () => {
       '2 sessions ajoutées, 2 déjà présentes, capteurs ajoutés à 1 session déjà présente, '
       + 'fiche complétée pour 3 sessions déjà présentes, 1 illisible (x.gpx), '
       + "1 non rangée : désignez d'abord le dossier mémoire (Réglages › Mémoire).",
+    );
+  });
+
+  it('dit les déjà présentes dont la fiche n’a pas pu être relue, non complétées (lot 116)', () => {
+    expect(describeImport(report({ duplicates: 1, recordNotRead: 1 }))).toBe(
+      '0 sessions ajoutées, 1 déjà présente, fiche non relue pour 1 session déjà présente : non complétée.',
+    );
+    expect(describeImport(report({ duplicates: 2, recordNotRead: 2 }))).toBe(
+      '0 sessions ajoutées, 2 déjà présentes, fiche non relue pour 2 sessions déjà présentes : non complétées.',
     );
   });
 });

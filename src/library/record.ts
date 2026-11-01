@@ -807,6 +807,34 @@ export const completeRecord = (
   return { record: { ...existing, ...patch }, resummarize };
 };
 
+/**
+ * Champs que l'utilisateur saisit dans une fiche (support, activité, nom, notes, réglages de
+ * l'analyse, repères, source de l'altitude), reportés d'une copie de la session à une autre par
+ * `carryRecordEdits`.
+ */
+export const RECORD_EDIT_FIELDS = [
+  'sport', 'activityId', 'name', 'notes', 'analysis', 'marks', 'elevationSource',
+] as const satisfies readonly (keyof SessionRecord)[];
+
+/**
+ * Fiche `target` qui reçoit les saisies d'une autre copie de la même session (`edited`), celle de
+ * la mémoire quand sa fiche n'a pas pu être écrite et qu'on change de dossier : chaque champ de
+ * `RECORD_EDIT_FIELDS` y devient celui de `edited`, retiré s'il en est absent ; le reste (résumé,
+ * sauts, voies, altitude, séances, test) est celui de `target`. Rend `target` si rien ne change.
+ * `resummarize` : le résumé est à refaire (support, activité, réglages ou source de l'altitude changés).
+ */
+export const carryRecordEdits = (target: SessionRecord, edited: SessionRecord): { record: SessionRecord; resummarize: boolean } => {
+  const next: Record<string, unknown> = { ...target };
+  const changed = RECORD_EDIT_FIELDS.filter((key) => !sameJson(target[key], edited[key]));
+  if (changed.length === 0) return { record: target, resummarize: false };
+  for (const key of changed) {
+    if (edited[key] === undefined) delete next[key];
+    else next[key] = edited[key];
+  }
+  const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks');
+  return { record: next as unknown as SessionRecord, resummarize };
+};
+
 /** Vrai si le résumé a été calculé par une version antérieure du calcul. */
 export const isSummaryStale = (record: SessionRecord): boolean =>
   record.summary.calcVersion < SUMMARY_CALC_VERSION;
@@ -854,6 +882,13 @@ export const RECORD_LIGHT_FIELDS = [
   'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
   'summary', 'notes', 'analysis', 'elevationSource', 'intervals', 'marks', 'test',
 ] as const satisfies readonly (keyof SessionRecord)[];
+
+/**
+ * Empreinte de `RECORD_LIGHT_FIELDS`, rangée avec le cache : un cache fait sous une autre liste est
+ * ignoré et refait. Sans elle, un champ devenu léger alors que des fiches le portent déjà manquerait
+ * aux fiches allégées du cache, et `mergeLightRecord` l'effacerait à l'écriture suivante.
+ */
+export const RECORD_LIGHT_FIELDS_KEY = RECORD_LIGHT_FIELDS.join(',');
 
 const LIGHT_FIELDS: ReadonlySet<string> = new Set(RECORD_LIGHT_FIELDS);
 

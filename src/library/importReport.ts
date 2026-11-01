@@ -21,9 +21,11 @@ export interface ImportReport {
   motionAdded: number;
   /** Sessions déjà présentes dont la fiche a été complétée. */
   recordCompleted: number;
+  /** Sessions déjà présentes à compléter dont la fiche n'a pas pu être relue : rien n'y a été ajouté. */
+  recordNotRead: number;
 }
 
-/** Phrase du compte rendu : sessions ajoutées, déjà présentes, complétées, illisibles, non rangées. */
+/** Phrase du compte rendu : sessions ajoutées, déjà présentes, complétées ou non, illisibles, non rangées. */
 export const describeImport = (report: ImportReport): string => {
   const parts: string[] = [];
   parts.push(report.added.length === 1 ? '1 session ajoutée' : `${report.added.length} sessions ajoutées`);
@@ -33,6 +35,10 @@ export const describeImport = (report: ImportReport): string => {
   }
   if (report.recordCompleted > 0) {
     parts.push(`fiche complétée pour ${report.recordCompleted} session${report.recordCompleted > 1 ? 's' : ''} déjà présente${report.recordCompleted > 1 ? 's' : ''}`);
+  }
+  if (report.recordNotRead > 0) {
+    const s = report.recordNotRead > 1 ? 's' : '';
+    parts.push(`fiche non relue pour ${report.recordNotRead} session${s} déjà présente${s} : non complétée${s}`);
   }
   if (report.invalid.length > 0) parts.push(`${report.invalid.length} illisible${report.invalid.length > 1 ? 's' : ''} (${report.invalid.join(', ')})`);
   if (report.unsaved > 0) {

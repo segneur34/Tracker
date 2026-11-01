@@ -1,22 +1,28 @@
-import { imuFileName, isGpxFileName } from './record';
+import { imuFileName, isGpxFileName, recordFileName } from './record';
 
 /**
  * Temporaires laissés dans le dossier des sessions en attente (`en-attente/`,
  * dossier privé du téléphone). Chaque fichier y est écrit sous `<nom>.tmp`,
- * puis renommé (`platform/memoryFolder.ts`, `writeAtomically`) ; les capteurs
- * avant le GPX. Un plantage de l'application entre l'écriture et la fin du
- * renommage laisse un `.tmp` sans sa cible : complet, c'est une session
- * qu'il faut reprendre ; tronqué, un reste qu'il faut effacer. Ce module ne
- * fait que décider, d'après les noms et le texte ; la reprise lit et efface.
+ * puis renommé (`platform/memoryFolder.ts`, `writeAtomically`) ; les capteurs,
+ * puis la fiche, avant le GPX. Un plantage de l'application entre l'écriture et
+ * la fin du renommage laisse un `.tmp` sans sa cible : complet, c'est une
+ * session qu'il faut reprendre ; tronqué, un reste qu'il faut effacer. Un
+ * plantage entre la fiche et le GPX laisse une fiche seule, effacée elle aussi.
+ * Ce module ne fait que décider, d'après les noms et le texte ; la reprise lit
+ * et efface.
  */
 
 /** Suffixe des temporaires, celui de `writeAtomically`. */
 export const PENDING_TEMP_SUFFIX = '.tmp';
 
 const isImuFileName = (name: string): boolean => /\.imu$/i.test(name);
+const isRecordName = (name: string): boolean => /\.json$/i.test(name);
 
 /** GPX d'un nom de capteurs : même nom, extension `.gpx` (inverse d'`imuFileName`). */
 const gpxOfImu = (imuName: string): string => imuName.replace(/\.imu$/i, '') + '.gpx';
+
+/** GPX d'un nom de fiche : même nom, extension `.gpx` (inverse de `recordFileName`). */
+const gpxOfRecord = (recordName: string): string => recordName.replace(/\.json$/i, '') + '.gpx';
 
 /** GPX sans son `.gpx`, à lire : session à reprendre si elle est complète. */
 export interface PendingTempSession {
@@ -28,6 +34,8 @@ export interface PendingTempSession {
   imu: string | null;
   /** Ses capteurs encore temporaires (`.imu.tmp`), à défaut des précédents. */
   imuTemp: string | null;
+  /** Sa fiche (`.json`, écrite avant le GPX), si elle est là. */
+  record: string | null;
 }
 
 export interface PendingTempPlan {
@@ -39,37 +47,52 @@ export interface PendingTempPlan {
   imuTemps: Record<string, string>;
   /** Capteurs temporaires sans capteurs ni GPX, même temporaire : rien à quoi les joindre. */
   orphanImuTemps: string[];
+  /**
+   * Fiches sans GPX, même temporaire (écriture coupée avant lui), et fiches temporaires sans leur
+   * `.json` : rien à ranger avec elles, à effacer sans rien dire.
+   */
+  orphanRecords: string[];
 }
 
 /**
  * Partage les fichiers du dossier en attente (`names`). `busy` : GPX dont
- * l'écriture est en cours dans ce lancement ; leurs temporaires ne sont pas
- * touchés. Un autre `.tmp` (ni GPX ni capteurs) est laissé de côté.
+ * l'écriture est en cours dans ce lancement ; leurs temporaires et leur fiche
+ * ne sont pas touchés. Un autre `.tmp` (ni GPX, ni capteurs, ni fiche) est
+ * laissé de côté.
  */
 export const planPendingTemps = (names: readonly string[], busy: ReadonlySet<string> = new Set()): PendingTempPlan => {
   const present = new Set(names);
-  const plan: PendingTempPlan = { stale: [], sessions: [], imuTemps: {}, orphanImuTemps: [] };
+  const plan: PendingTempPlan = { stale: [], sessions: [], imuTemps: {}, orphanImuTemps: [], orphanRecords: [] };
   const temps = names.filter((name) => name.endsWith(PENDING_TEMP_SUFFIX)).sort();
   for (const temp of temps) {
     const target = temp.slice(0, -PENDING_TEMP_SUFFIX.length);
-    const gpx = isGpxFileName(target) ? target : isImuFileName(target) ? gpxOfImu(target) : null;
+    const gpx = isGpxFileName(target) ? target : isImuFileName(target) ? gpxOfImu(target) : isRecordName(target) ? gpxOfRecord(target) : null;
     if (gpx === null || busy.has(gpx)) continue;
     if (present.has(target)) {
       plan.stale.push(temp);
     } else if (target === gpx) {
       const imu = imuFileName(gpx);
       const imuTemp = imu + PENDING_TEMP_SUFFIX;
+      const record = recordFileName(gpx);
       plan.sessions.push({
         temp,
         gpx,
         imu: present.has(imu) ? imu : null,
         imuTemp: !present.has(imu) && present.has(imuTemp) ? imuTemp : null,
+        record: present.has(record) ? record : null,
       });
+    } else if (isRecordName(target)) {
+      plan.orphanRecords.push(temp);
     } else if (present.has(gpx)) {
       plan.imuTemps[gpx] = temp;
     } else if (!present.has(gpx + PENDING_TEMP_SUFFIX)) {
       plan.orphanImuTemps.push(temp);
     }
+  }
+  for (const name of [...names].sort()) {
+    if (!isRecordName(name)) continue;
+    const gpx = gpxOfRecord(name);
+    if (!busy.has(gpx) && !present.has(gpx) && !present.has(gpx + PENDING_TEMP_SUFFIX)) plan.orphanRecords.push(name);
   }
   return plan;
 };

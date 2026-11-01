@@ -9,9 +9,12 @@ import { EMPTY_NOTES } from './notes';
 import {
   ANALYSIS_KEYS,
   RECORD_FORMAT,
+  RECORD_LIGHT_FIELDS,
+  RECORD_LIGHT_FIELDS_KEY,
   RECORD_VERSION,
   SUMMARY_CALC_VERSION,
   applyRecordPatch,
+  carryRecordEdits,
   completeRecord,
   dedupeSessions,
   findLegacyNotes,
@@ -718,6 +721,40 @@ describe('completeRecord', () => {
   it('accepte une fiche sans résumé', () => {
     const { summary: _unused, ...rest } = record({ name: 'Sortie' });
     expect(completeRecord(record(), { ...rest, summary: null }).record.name).toBe('Sortie');
+  });
+});
+
+describe('carryRecordEdits (changement de dossier, lot 116)', () => {
+  const marks = [{ timeMs: START_MS + 60_000, lat: 43.5, lon: 3.9, label: 'Bouée' }];
+
+  it('reporte les saisies, retire celles que la copie en mémoire n’a plus, et garde le reste de la cible', () => {
+    const jumps: SessionJumps = { version: 2, computedAt: '2026-10-04T15:00:00.000Z', jumps: [] };
+    const target = record({ name: 'Ancien', marks, jumps, elevationSource: 'gps' }, { distanceM: 1 });
+    const edited = record({ name: 'Matin', activityId: 'a-wing', notes: { ...EMPTY_NOTES, comment: 'Bien', savedAt: 1 } }, { distanceM: 2 });
+    const { record: done, resummarize } = carryRecordEdits(target, edited);
+    expect(done.name).toBe('Matin');
+    expect(done.activityId).toBe('a-wing');
+    expect(done.notes?.comment).toBe('Bien');
+    expect(done).not.toHaveProperty('marks');
+    expect(done).not.toHaveProperty('elevationSource');
+    expect(done.jumps).toEqual(jumps);
+    expect(done.summary.distanceM).toBe(1);
+    expect(resummarize).toBe(true);
+  });
+
+  it('rend la cible telle quelle si rien ne change, sans recalcul pour le nom, les notes ou les repères', () => {
+    const target = record({ name: 'Matin', marks });
+    expect(carryRecordEdits(target, record({ name: 'Matin', marks: [...marks] })).record).toBe(target);
+    const named = carryRecordEdits(target, record({ name: 'Soir', marks }));
+    expect(named.record.name).toBe('Soir');
+    expect(named.resummarize).toBe(false);
+  });
+});
+
+describe('empreinte des champs légers du cache (lot 116)', () => {
+  it('suit la liste des champs légers', () => {
+    expect(RECORD_LIGHT_FIELDS_KEY).toBe(RECORD_LIGHT_FIELDS.join(','));
+    expect(RECORD_LIGHT_FIELDS_KEY.split(',')).toContain('marks');
   });
 });
 
