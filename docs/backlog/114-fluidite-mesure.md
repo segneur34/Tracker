@@ -25,3 +25,50 @@ Lire avant : `outils/banc/LISEZMOI.md` (« Lanceur », « Pièges du poste », l
 ## Ce que le lot ne fait pas
 
 Pas de commit, pas de version, rien dans `src/` ni `android/`, aucune décision de l'utilisateur. Ne pas modifier `vignettes-relance.mjs` (lot 121 en parallèle peut l'étendre) ; `scripts.mjs` et `LISEZMOI.md` reçoivent une ligne chacun, rien de plus. Rien dans `docs/` hors ce fichier.
+
+## Relevés
+
+Relevés du 01/11 par `outils/banc/fluidite.mjs` (appel direct, serveur de développement sur 4291, Chrome sans fenêtre, profil neuf ; trois prises, médiane ; « ×6 » = `Emulation.setCPUThrottlingRate` à 6, un Android moyen). Durées depuis le geste ; « tâche max » = la plus longue tâche de plus de 50 ms (API Long Tasks), « bloqué » = leur somme sur la fenêtre. La voile longue : 54 750 points à 5 Hz, 3 h, 7,1 Mo, le motif de `make-gpx.mjs` ; les 30 sessions : voile d'une heure à 1 Hz ; la course : 2 h à 1 Hz avec FC et altitude.
+
+### Tableau des médianes (PC)
+
+| Mesure | ×1 | ×6 |
+|---|---|---|
+| Ouverture voile 3 h 5 Hz, depuis la bibliothèque (navigation dans la page), onglets par défaut : titre / trace / chiffres de « général » | 0,020 s / 1,61 s / 1,61 s | 0,21 s / 17,7 s / 17,7 s (prises : 13,2 ; 17,7 ; 22,0) |
+| Ouverture : tâche max / bloqué / fil libre à | 0,79 s / 1,54 s (2 tâches) / 1,57 s | 9,4 s / 17,6 s (5) / 18,2 s |
+| Ouverture : `DOMParser.parseFromString` seul | 0,60 s | 5,2 s |
+| Ouverture, version compilée (`vite preview`, même profil de mesure) : chiffres / tâche max / bloqué / DOMParser | 1,33 s / 0,77 s / 1,29 s / 0,57 s | 10,7 s / 6,6 s / 10,5 s / 4,9 s |
+| Seuil d'activité changé (onglets général, tops, manœuvres, graphiques, vent, vmg, réglages ouverts) : chiffres refaits / tâche max / bloqué | 0,23 s / 0,27 s / 0,44 s | 1,2 s / 0,60 s / 1,2 s (pire prise : 1,8 s de tâche) |
+| Zoom d'un graphe de la course de 2 h (double-clic, graphiques et cardio ouverts, 5 graphes) : script / images par seconde / image la plus longue / tâche max | 0,30 s / 50 / 0,28 s / 0,28 s | 3,4 s / 6 / 3,4 s / 1,0 s |
+| Résumés de 30 sessions refaits au lancement (fiches en version antérieure, cache effacé), sur l'accueil : total / tâche max / bloqué | 3,4 s / 0,13 s / 2,2 s (30 tâches) | 22,9 s / 0,72 s / 17,4 s (43) |
+| Résumés : latence d'un mouvement de souris pendant ce temps, médiane / max | 0,022 s / 0,09 s | 0,31 s / 0,51 s |
+| Démarrage (serveur de développement, 33 sessions, cache à jour) avec préchargement : accueil rendu / interactif / tâche max / modules | 0,24 s / 0,24 s / 0 / 434 | 0,92 s / 1,9 s / 0,23 s / 434 |
+| Démarrage sans préchargement (`requestIdleCallback` neutralisé) | 0,23 s / 0,23 s / 0 / 188 | 1,1 s / 1,1 s / 0,21 s / 188 |
+| Démarrage, version compilée, avec préchargement | 0,10 s / 0,10 s / 0 / 70 | 0,28 s / 0,28 s / 0,07 s / 70 |
+| Démarrage, version compilée, sans préchargement | 0,09 s / 0,09 s / 0 / 11 | 0,28 s / 0,28 s / 0,07 s / 11 |
+
+### Où le temps part (profil du processeur, `Profiler.start`, prise à part)
+
+- Ouverture de la voile longue, ×1 (1,99 s mesurés) : `parseGpx` 41 % inclus, dont `parseFromString` 30 % (temps propre : 0,60 s) et le parcours du DOM (`pointFieldNodes`, `getAttribute`, `textOf`, `numberOf`) 8 à 10 % ; `estimateWind` 10 % ; `computeKinematics` 7 % ; `(program)` et ramasse-miettes 19 % (7 Mo de texte et 55 000 nœuds DOM à libérer). À ×6 (10,4 s) : `parseGpx` 48 %, `parseFromString` 27 %, `estimateWind` 10 %, `classifyManeuvers`, `referenceOf`, `angleDiff`, `median` 2 à 3 % chacun. L'ouverture tient en deux tâches à ×1 : 0,79 s (lecture et cinématique) puis 0,75 s (manœuvres, vent, rendu) ; à ×6 la première dure 6,6 à 13,5 s.
+- Résumés de 30 sessions, ×1 (2,89 s mesurés) : `analyzeGpx` 67 % inclus, dont `parseGpx` 58 % et `parseFromString` 44 % ; `summarizeSession` 9 % ; `computeKinematics` 5 %. Un résumé = une tâche de 0,07 à 0,13 s à ×1, 0,4 à 0,9 s à ×6, trente fois de suite, sans répit : la page répond, mais avec 0,3 s de retard en médiane.
+- Zoom d'un graphe : tout est rendu (Recharts, 5 graphes de 7 200 points redessinés) ; à ×6 l'image reste figée 3,4 s pour une tâche de 1,0 s (style, mise en page et peinture suivent la tâche).
+- Démarrage : sur le serveur de développement, le préchargement charge 246 modules de plus et retarde l'interactivité de 0,8 s à ×6, en tâches de 0,2 s ; en version compilée (la seule qui compte pour l'APK), accueil en 0,28 s à ×6 et préchargement invisible (une tâche de 65 ms). `useSessionLibrary` chargé d'emblée ne se voit pas non plus.
+
+### L'écran fige-t-il nettement au téléphone ?
+
+**Oui**, par la règle du brief (à ×6 : une tâche de plus d'une seconde, ou plus de deux secondes bloquées en tout sur l'ouverture d'une session ou une mise à jour des résumés) :
+
+- ouverture d'une longue session : une tâche de 6,6 à 13,5 s, 10 à 18 s bloquées en tout ; l'écran est figé du clic jusqu'aux chiffres, et la lecture du GPX par `DOMParser` en est à elle seule la moitié ;
+- résumés refaits après une mise à jour : aucune tâche au-dessus d'une seconde (0,7 s), mais 17 s bloquées sur 23, par petites tâches enchaînées ; l'écran saccade (0,3 à 0,5 s de retard au doigt) sans figer franchement ;
+- en plus, hors règle : le zoom d'un graphe de 2 h fige l'image 3,4 s à ×6 ; le seuil changé coûte 0,6 à 1,8 s, perceptible ; le démarrage ne pose aucun problème en version compilée.
+
+### Gains possibles, par gain sur effort
+
+1. **Décimer les points des graphes** à la largeur du tracé (un couple min-max par pixel, l'`index` de trace gardé pour `hoveredTrackIndex`) : 7 200 points → environ 800 par graphe. Gain fort sur le zoom (3,4 s d'image figée à ×6, et sans doute le pincement au doigt), effort moyen (pièces communes des graphes, `chartHover`, tests du min-max), risque faible (les pics restent par le min-max).
+2. **Lecteur GPX sans `DOMParser`** (balayage du texte, règle 8 : pas de bibliothèque) : `parseFromString` plus le parcours du DOM font 40 à 55 % du temps de toute lecture, et 55 000 nœuds DOM de moins allègent le ramasse-miettes. Gain moyen à fort partout (ouverture, résumés, import), 2 à 3× sur la lecture ; effort moyen (`core/gpxParser.ts` et ses extensions : Doppler, FC, cadence, `timedPoints`, `trk/type`, `metadata`, bloc de `sessionBundle` ; preuve par un test d'égalité résultat à résultat contre l'ancien lecteur sur les traces du banc et les fixtures) ; risque moyen (espaces de noms, CDATA, entités, ordre des balises). C'est aussi le prérequis du worker, qui n'a pas de `DOMParser`.
+3. **Worker pour la lecture, la cinématique et les résumés** (après le découpage 113 et la validation du 116, décision de l'orchestrateur) : la seule voie vers « ne fige pas » sur l'ouverture ; les résumés en arrière-plan n'enlèveraient plus rien au fil. Gain décisif (tâche max de 6 à 13 s → le rendu seul, de l'ordre de la seconde à ×6), effort élevé (chaîne `useGpxSession` → `useSailingSession` à couper en deux, manœuvres et vent à y passer aussi sinon la seconde tâche reste, transfert des tableaux typés, réglages à passer, double chemin navigateur et téléphone), risque moyen (deux copies du pipeline à tenir identiques ; se prouve au banc par texte identique). Sans le lecteur du point 2, impossible.
+4. **Tranches** (`await scheduler.yield()` ou `setTimeout(0)`) entre lecture, cinématique, statistiques, manœuvres et vent : la première image (titre, carte) arrive plus tôt et la tâche max tombe de 6,6 à environ 5 s à ×6 (l'appel `parseFromString` reste atomique) ; gain faible sur le figement, effort faible, risque faible. Pour les résumés, déjà une trace à la fois : rien de plus à découper sans le point 2.
+5. **Mémoïser le GPX lu** (texte et points) pour la dernière session ouverte : `loadSessionGpx` relit et refait tout à chaque ouverture ; gain seulement à la réouverture (retour arrière, changement d'activité), effort faible, risque faible (une seule session gardée).
+6. **Seuil changé** : 0,6 s à ×6, tolérable ; suit le worker s'il vient. **Chargement différé de `useSessionLibrary` et de `preloadPages`** : rien à gagner en version compilée, à écarter.
+
+Limites du relevé : ×6 sur ce PC n'est qu'une approximation du téléphone de l'utilisateur ; les prises à ×6 varient de ±30 % (ramasse-miettes) ; les onglets ouverts à l'ouverture sont ceux par défaut (général seul), les manœuvres et le vent se calculent quand même ; le serveur de développement sert 434 modules séparés, d'où la double mesure du démarrage sur la version compilée.
