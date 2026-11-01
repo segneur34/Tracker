@@ -1200,3 +1200,13 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : `liveStatItems` et `LegCard` passent l'unité de distance de l'activité à `formatSpeed` ; en allure avec des milles nautiques, le direct dit min/NM comme le reste de l'application. L'éditeur de seuil d'effort et le panneau du test de FC n'avaient pas le défaut : `editSpeedUnit` remplace l'allure par des km/h, donc jamais une allure.
     - **Pourquoi** : chiffre faux en silence (allure par kilomètre avec le symbole min/km), relevé à la relecture du lot 98 (point 236).
     - **Piège** : `formatSpeed` garde une unité de distance par défaut (km) pour la voile et le surf ; à pied et à vélo, toute allure affichée doit recevoir l'unité de distance (`formatLandSpeed`).
+
+251. Fleur du Profil en quatre étapes (lot 111, validé le 01/11 au téléphone, essai 96).
+    - **Décision** : la fleur de la racine continue d'évoluer au-delà de l'objectif par semaine, par multiples : bouton de la première minute à 1 fois, cinq pétales à 1 fois, pétales plus longs à 2 fois, second rang à 3 fois, graines et taille maximale à 4 fois, croissance continue entre deux étapes. La bulle dit « n fois l'objectif » et l'étape. La tige, les feuilles et leur chute ne changent pas. DECISIONS §9.
+    - **Pourquoi** : la fleur se figeait à l'objectif ; tenir deux ou trois fois le temps visé n'avait plus aucun effet visible. Maquette « 4 étapes » validée le 31/10.
+    - **Piège** : `progress` reste plafonné à 1 (tige, radicelles) ; la fleur lit `goalTimes`, non plafonné. À 88 px elle doit tenir dans le carré sans être coupée, d'où l'essai.
+
+252. Vignettes de la bibliothèque gardées d'un lancement à l'autre (lot 118, validé le 01/11 au téléphone, essai 97).
+    - **Décision** : traces réduites, emprise et allure des vignettes sont gardées dans un seul document par appareil (`vignettes.json` privé au téléphone, Cache API au navigateur), 3 Mo au plus, les moins récemment vues oubliées d'abord, nettoyage une fois par lancement. Les images dessinées restent en mémoire, les tuiles du fond ne sont pas gardées. Remplace « ni fiche ni Cache » du 30/10. DECISIONS §8.
+    - **Pourquoi** : chaque lancement relisait le GPX de chaque vignette et refaisait sa cinématique sur le fil de l'affichage. Banc `vignettes-relance` : 3,05 s → 2,33 s au deuxième lancement, processeur ralenti, images identiques.
+    - **Piège** : la page ne voit ni taille ni date du GPX, l'empreinte vient donc du résumé de la fiche (un GPX rangé n'est jamais réécrit). Une session sans calcul, montrée dans chaque famille, n'a qu'une entrée et se relit d'une famille à l'autre (ETAT §11). Latence notée : la trace arrive d'abord, puis le fond de carte.
