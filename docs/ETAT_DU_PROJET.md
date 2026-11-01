@@ -358,7 +358,7 @@ Plus de fichier mort, d'export ou de champ inutilisé, ni de `any` dans `src/` (
 - **Écriture en place de repli** : un fournisseur Android qui refuse le renommage d'un document fait écrire la fiche en place, comme avant le point 92 ; une coupure à ce moment la laisserait illisible. Le dossier `Documents` du téléphone renomme : jamais constaté.
 - **Brouillon de session** : le retour arrière du navigateur demande confirmation par une entrée d'historique « garde » (`createHistoryGuard`, `leaveGuard.ts`), hors application Android où le retour passe par `installBackButton`. Une garde restée sous la page quittée par un lien est traversée sans bruit au retour : un appui de plus sur « précédent », sans effet visible.
 - **Recharts** type `Payload.payload` en `any` : les `formatter` d'infobulle (voile, course, itinéraires) annotent la ligne du type attendu. C'est une confiance accordée à Recharts, pas une vérification.
-- **Détection des virages écrite deux fois** (`analyzeManeuvers` et `observeTurns`, qui ne partagent que `scanTurnWindow`), et sens d'un virage vu en un seul pas : voir le §11 → reste à faire n° 43.
+- **Détection des virages écrite deux fois** (`analyzeManeuvers` et `observeTurns`, qui ne partagent que `scanTurnWindow`) → reste à faire n° 112.
 
 ## 10. Historique des décisions et pièges rencontrés
 
@@ -387,7 +387,7 @@ Des faits sur le code, sans intention : ce qui reste à faire est dans `docs/BAC
 - **Seuils par support** : la calibration récente s'est faite sur une trace lente et une trace de wingfoil ; planche, kite, bateau, course et vélo, et un enregistrement dense sur une planche rapide, n'ont pas été éprouvés sur des sessions réelles → essai 65.
 - **Tenus pour bons sans essai sur le terrain** : les bords en voile pendant l'enregistrement (point 62), « Précédent » et la boucle en ligne droite de la planification (point 63), l'activité d'une session changée en route (point 64).
 - **Défaut vu sur PC, non reproduit** (30/09) : vignette juste, analyse sans trace ni onglets ; s'il revient, demander l'erreur de console (F12).
-- **Nommer un virage vu en un seul pas** (point 27) : on connaît le cap avant et le cap après, pas le chemin entre les deux. `angleDiff` retient l'arc court, si bien qu'un virement passé par le lit du vent ressort en empannage → reste à faire n° 43.
+- **Nommer un virage vu en un seul pas** (point 27) : on connaît le cap avant et le cap après, pas le chemin entre les deux. `angleDiff` retient l'arc court, si bien qu'un virement passé par le lit du vent ressort en empannage ; depuis le point 242, un tel virage de 150° ou plus est montré « sens incertain », sans nom ni direction, hors du vent.
 - **Manœuvres, suites de l'audit du point 70** :
   - **`observeTurns` non fusionné** (point 193) : ses règles divergent de la détection commune (cohérence 0,6, pas de garde-fou de 10 m, stabilité de sortie, sans temps mort) ; les fusionner changerait les votes d'orientation.
   - **Changement d'amures exigé** (point 185) : jugé contre le vent retenu, il tient jusqu'à 50° d'erreur de vent ; au-delà, un vrai virement ou empannage peut être écarté (`unclassified`).
