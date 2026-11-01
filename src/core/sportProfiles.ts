@@ -99,13 +99,24 @@ export interface RecordingProfile {
   autoPauseSpeedMs: number;
   /** Temps réel, en secondes, sous ce seuil avant que la pause se déclenche. */
   autoPauseDelayS: number;
+  /**
+   * Temps réel sans position, en secondes, au bout duquel le GPS est dit
+   * perdu (alerte, son, notification ; `recording/gpsWatch.ts`).
+   */
+  gpsLostDelayS: number;
+  /**
+   * Temps réel, en secondes, pendant lequel le GPS revenu doit livrer ses
+   * positions sans trou avant qu'une nouvelle perte soit signalée.
+   */
+  gpsLostRearmS: number;
 }
 
 /**
  * Identique pour tous les supports au départ : 1 Hz, sans filtre de distance.
  * Le 1 Hz tient aussi le coût du recalcul du vent (`docs/HISTORIQUE.md`, point 23).
  * Pause automatique sous 0,3 m/s (environ 1 km/h, sous le bruit GPS au repos)
- * pendant 60 s.
+ * pendant 60 s. GPS perdu après 1 min sans position, signalé de nouveau
+ * seulement après 2 min de positions revenues (décision du 01/11).
  */
 export const DEFAULT_RECORDING: RecordingProfile = {
   intervalMs: 1000,
@@ -113,6 +124,8 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   journalFlushS: 10,
   autoPauseSpeedMs: 0.3,
   autoPauseDelayS: 60,
+  gpsLostDelayS: 60,
+  gpsLostRearmS: 120,
 };
 
 /**

@@ -1,12 +1,16 @@
 import { registerPlugin } from '@capacitor/core';
-import { BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS, TONE_MS, type ToneKind } from '../core/beepDurations';
+import {
+  BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS, GPS_LOST_GAP_MS, GPS_LOST_HIGH_MS, GPS_LOST_LOW_MS, GPS_LOST_NOTES, GPS_LOST_TOTAL_MS, TONE_MS,
+  type ToneKind,
+} from '../core/beepDurations';
 import { isNativeApp } from './runtime';
 
 /**
- * Bips et vibrations : seul accès au son et au vibreur (règle 12). Quatre
+ * Bips et vibrations : seul accès au son et au vibreur (règle 12). Cinq
  * usages : le guidage vers les balises (`getBeeper`), le compteur du
  * fractionné (`getIntervalClock`), un motif joué une fois (`playPattern` :
- * « Écouter » de Réglages) et le retour du bouton « Note » (`buzz`). La
+ * « Écouter » de Réglages), le retour du bouton « Note » (`buzz`) et la
+ * veille du GPS de l'enregistrement (`armGpsWatch`, lot 115). La
  * hauteur de tous les sons se règle d'un coup (`setBeepPitch`, 24/10).
  *
  * Sur le téléphone, un greffon Android tient le rythme sur un fil à lui :
@@ -76,6 +80,9 @@ interface BeeperPlugin {
   buzz(options: { durationMs: number }): Promise<void>;
   pattern(options: { tones: ClockTone[]; vibrate: boolean }): Promise<void>;
   setPitch(options: { hz: number }): Promise<void>;
+  watchGps(options: { delayMs: number }): Promise<void>;
+  unwatchGps(): Promise<void>;
+  addListener(event: 'gpsLost', listener: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
 const nativePlugin = registerPlugin<BeeperPlugin>('Beeper');
@@ -93,16 +100,14 @@ let browserHz = 2000;
 /** Contexte audio du navigateur, partagé par les bips et le compteur. */
 let browserAudio: AudioContext | null = null;
 
-/** Un son du navigateur, consigné pour le banc. */
-const browserTone = (durationMs: number, vibrate: boolean, label: string) => {
-  console.debug(`[bips] ${label} ${durationMs} ms à ${Date.now()}`);
-  if (vibrate && typeof navigator.vibrate === 'function') navigator.vibrate(durationMs);
+/** Une note du navigateur, à `hz`, dans `atMs` millisecondes, sans journal. */
+const browserNote = (durationMs: number, hz: number, atMs = 0) => {
   try {
     browserAudio ??= new AudioContext();
-    const start = browserAudio.currentTime;
+    const start = browserAudio.currentTime + atMs / 1000;
     const oscillator = browserAudio.createOscillator();
     const gain = browserAudio.createGain();
-    oscillator.frequency.value = browserHz;
+    oscillator.frequency.value = hz;
     gain.gain.setValueAtTime(0.3, start);
     gain.gain.setValueAtTime(0, start + durationMs / 1000);
     oscillator.connect(gain).connect(browserAudio.destination);
@@ -111,6 +116,13 @@ const browserTone = (durationMs: number, vibrate: boolean, label: string) => {
   } catch {
     // Pas de son dans ce navigateur : le journal suffit au banc.
   }
+};
+
+/** Un son du navigateur, consigné pour le banc. */
+const browserTone = (durationMs: number, vibrate: boolean, label: string) => {
+  console.debug(`[bips] ${label} ${durationMs} ms à ${Date.now()}`);
+  if (vibrate && typeof navigator.vibrate === 'function') navigator.vibrate(durationMs);
+  browserNote(durationMs, browserHz);
 };
 
 const createBrowserBeeper = (): Beeper => {
@@ -246,4 +258,65 @@ let intervalClock: IntervalClock | null = null;
 export const getIntervalClock = (): IntervalClock => {
   intervalClock ??= isNativeApp() ? nativeIntervalClock : createBrowserIntervalClock();
   return intervalClock;
+};
+
+// --- Veille du GPS de l'enregistrement (lot 115) ---
+
+/** Minuteur de la veille dans le navigateur ; `null` désarmé. */
+let gpsTimer: ReturnType<typeof setTimeout> | null = null;
+/** Abonnés à l'échéance, dans le navigateur. */
+const gpsLostListeners = new Set<() => void>();
+
+/** Son « GPS perdu » du navigateur : deux notes descendantes, deux fois, avec vibration ; consigné une fois. */
+const playBrowserGpsLost = () => {
+  console.debug(`[bips] gps perdu ${GPS_LOST_TOTAL_MS} ms à ${Date.now()}`);
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    const on = GPS_LOST_HIGH_MS + GPS_LOST_LOW_MS;
+    navigator.vibrate([on, GPS_LOST_GAP_MS, on]);
+  }
+  for (const note of GPS_LOST_NOTES) browserNote(note.durationMs, browserHz * note.ratio, note.atMs);
+};
+
+/**
+ * Arme, ou repousse, la veille du GPS : sans nouvel appel dans `delayMs`, le
+ * son « GPS perdu » est joué (avec vibration), les bips d'approche des
+ * balises se taisent, puis les abonnés de `onGpsLost` sont prévenus. Sur le
+ * téléphone, le minuteur est natif (`BeeperPlugin.watchGps`) : il échoit à
+ * l'heure écran éteint, où ceux de la WebView ralentissent.
+ */
+export const armGpsWatch = (delayMs: number): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.watchGps({ delayMs });
+  if (gpsTimer !== null) clearTimeout(gpsTimer);
+  gpsTimer = setTimeout(() => {
+    gpsTimer = null;
+    playBrowserGpsLost();
+    gpsLostListeners.forEach((listener) => listener());
+  }, delayMs);
+  return Promise.resolve();
+};
+
+/** Désarme la veille du GPS. */
+export const disarmGpsWatch = (): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.unwatchGps();
+  if (gpsTimer !== null) clearTimeout(gpsTimer);
+  gpsTimer = null;
+  return Promise.resolve();
+};
+
+/** Échéance de la veille du GPS (le son est déjà parti) ; rend le désabonnement. */
+export const onGpsLost = (listener: () => void): (() => void) => {
+  if (!isNativeApp()) {
+    gpsLostListeners.add(listener);
+    return () => gpsLostListeners.delete(listener);
+  }
+  let removed = false;
+  let remove: (() => void) | null = null;
+  void nativePlugin.addListener('gpsLost', listener).then((handle) => {
+    if (removed) void handle.remove();
+    else remove = () => void handle.remove();
+  }).catch(() => {});
+  return () => {
+    removed = true;
+    remove?.();
+  };
 };

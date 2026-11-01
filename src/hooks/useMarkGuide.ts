@@ -24,7 +24,10 @@ import { createStore } from './createStore';
  * À chaque position reçue (`subscribeToFixes`), l'état avance
  * (`stepMarkGuide`) et le rythme des bips est réglé (`platform/beeper.ts`) ;
  * le greffon Android tient ce rythme entre deux positions. Pendant une pause
- * manuelle, le GPS est coupé : silence. La page le lit par `useMarkGuide`
+ * manuelle, les positions ne lui parviennent plus (le GPS reste allumé pour la
+ * carte seule, lot 104) : silence. GPS perdu (`RecorderState.gpsLost`, lot
+ * 115) : silence aussi, la distance n'étant plus à jour ; la position suivante
+ * relance le rythme. La page le lit par `useMarkGuide`
  * et le pilote par `skipMark` (« Passer ») et `setBeepsMuted` (« Bips »).
  */
 
@@ -64,10 +67,10 @@ const publish = () => {
   store.set(session ? markGuideView(session) : INACTIVE);
 };
 
-/** Règle le rythme d'approche de la balise visée, s'il a changé. */
+/** Règle le rythme d'approche de la balise visée, s'il a changé ; silence en pause manuelle et GPS perdu. */
 const applyRhythm = (current: Session) => {
-  const manualPause = isManualPause(getRecorderState());
-  const intervalMs = current.muted || manualPause || current.distanceM === null
+  const recorder = getRecorderState();
+  const intervalMs = current.muted || isManualPause(recorder) || recorder.gpsLost || current.distanceM === null
     ? null
     : beepIntervalMs(current.distanceM, current.settings);
   const vibrate = current.settings.vibrate;
@@ -152,7 +155,7 @@ const sync = () => {
     session.sent = null;
     publish();
   }
-  // Pause manuelle (GPS coupé) : silence ; à la reprise, la position suivante relance le rythme.
+  // Pause manuelle ou GPS perdu : silence ; à la reprise ou au retour du GPS, la position suivante relance le rythme.
   applyRhythm(session);
 };
 

@@ -71,6 +71,8 @@ import java.util.UUID;
  * ceinture restée liée au téléphone qui ne s'annonce plus. Une tentative
  * toutes les `LOST_RETRY_MS`, puis `LOST_RETRY_SLOW_MS` passé
  * `LOST_FAST_MS` de perte. Chaque tentative laisse une ligne au journal.
+ * Une ceinture jamais jointe depuis `connect` (laissée à la maison) est
+ * recherchée au même rythme, compté depuis `connect` (lot 115).
  */
 @CapacitorPlugin(
     name = "HeartRate",
@@ -87,8 +89,6 @@ public class HeartRatePlugin extends Plugin {
     private static final long DEFAULT_SCAN_MS = 6000;
     /** Recherche de la ceinture avant d'ouvrir la connexion, au plus, en millisecondes. */
     private static final long LOCATE_MS = 5000;
-    /** Pause avant de la rechercher de nouveau quand elle n'a pas encore été jointe (Android refuse plus de 5 recherches par 30 s). */
-    private static final long RELOCATE_PAUSE_MS = 10000;
     /**
      * Ceinture perdue après jonction : pause entre deux tentatives pendant les
      * `LOST_FAST_MS` premières millisecondes de perte. Une recherche de
@@ -133,6 +133,8 @@ public class HeartRatePlugin extends Plugin {
     private boolean joined = false;
     /** Vrai entre l'état « connecté » de la liaison et sa fermeture. */
     private boolean linked = false;
+    /** Dernier `connect` (`SystemClock.elapsedRealtime`) : les recherches d'une ceinture jamais jointe s'espacent passé `LOST_FAST_MS`. */
+    private long connectedAt = 0;
     /** Début de la perte en cours (`SystemClock.elapsedRealtime`), ou -1 hors perte. */
     private long lostSince = -1;
     /** Recherches vaines depuis le début de la perte en cours. */
@@ -355,6 +357,7 @@ public class HeartRatePlugin extends Plugin {
             located = false;
             wanted = true;
             joined = false;
+            connectedAt = SystemClock.elapsedRealtime();
             lostSince = -1;
             vainSearches = 0;
             sendStatus("connecting");
@@ -636,7 +639,9 @@ public class HeartRatePlugin extends Plugin {
      * La connexion est tombée, ou n'a pas abouti (coupure, découverte en
      * échec, liaison muette) : jointe, la ceinture est perdue et cherchée de
      * nouveau, aussitôt au début de la perte puis après `lostDelay` ; jamais
-     * jointe, elle est recherchée après `RELOCATE_PAUSE_MS`.
+     * jointe, elle est recherchée de nouveau au même rythme, compté depuis
+     * `connect` : `LOST_RETRY_MS` les `LOST_FAST_MS` premières millisecondes,
+     * puis `LOST_RETRY_SLOW_MS` (Android refuse plus de 5 recherches par 30 s).
      */
     private void dropped() {
         closeGatt();
@@ -663,9 +668,10 @@ public class HeartRatePlugin extends Plugin {
             if (fresh) locate();
             else retryLostIn(lostDelay());
         } else {
-            // Jamais jointe depuis `connect` : on la recherche de nouveau, après une pause.
+            // Jamais jointe depuis `connect` (laissée à la maison ?) : recherchée de nouveau, de plus en plus rarement.
             sendStatus("searching");
-            main.postDelayed(relocate, RELOCATE_PAUSE_MS);
+            long sinceConnectMs = SystemClock.elapsedRealtime() - connectedAt;
+            main.postDelayed(relocate, sinceConnectMs < LOST_FAST_MS ? LOST_RETRY_MS : LOST_RETRY_SLOW_MS);
         }
     }
 

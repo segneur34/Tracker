@@ -14,7 +14,8 @@ import android.os.VibratorManager;
 /**
  * Sons et vibrations communs aux bips des balises (BeeperPlugin) et au
  * compteur du fractionné (IntervalTimerService) : un bip bref, un bip court, un bip long,
- * et le long double de la fin d'une séance, chacun avec sa vibration.
+ * et le long double de la fin d'une séance, chacun avec sa vibration ; et le
+ * son « GPS perdu » de l'enregistrement (BeeperPlugin.watchGps, lot 115).
  *
  * Le son passe par le flux des alarmes : audible téléphone en silencieux, au
  * volume des alarmes. Les sons sont synthétisés une fois (sinus, fondus de
@@ -38,6 +39,15 @@ final class TonePlayer {
     static final int SHORT_VIBRATION_MS = 80;
     static final int LONG_VIBRATION_MS = 600;
     static final int FINAL_VIBRATION_MS = 1300;
+    /**
+     * « GPS perdu » (comme src/core/beepDurations.ts) : deux notes
+     * descendantes, la hauteur réglée puis ses 2/3, en millisecondes, jouées
+     * deux fois à GPS_LOST_GAP_MS d'écart, toujours avec vibration.
+     */
+    static final int GPS_LOST_HIGH_MS = 250;
+    static final int GPS_LOST_LOW_MS = 500;
+    static final int GPS_LOST_GAP_MS = 150;
+    private static final double GPS_LOST_LOW_RATIO = 2.0 / 3.0;
     /** Hauteur des bips par défaut : vers 2 kHz, un haut-parleur de téléphone porte le mieux. */
     static final int DEFAULT_PITCH_HZ = 2000;
     private static final int MIN_PITCH_HZ = 300;
@@ -55,6 +65,7 @@ final class TonePlayer {
     private AudioTrack shortTone;
     private AudioTrack longTone;
     private AudioTrack finalTone;
+    private AudioTrack gpsLostTone;
     /** Hauteur des sons synthétisés de cette instance. */
     private int builtHz = 0;
 
@@ -114,26 +125,64 @@ final class TonePlayer {
         play(finalTone, vibrate ? FINAL_VIBRATION_MS : 0);
     }
 
+    /** « GPS perdu » : un seul son synthétisé (les quatre notes et le silence), avec sa vibration en deux temps. */
+    void playGpsLost() {
+        ensurePitch();
+        if (gpsLostTone == null) gpsLostTone = buildGpsLostTone(builtHz);
+        play(gpsLostTone, 0);
+        int on = GPS_LOST_HIGH_MS + GPS_LOST_LOW_MS;
+        vibratePattern(new long[] { 0, on, GPS_LOST_GAP_MS, on });
+    }
+
     void release() {
         if (briefTone != null) briefTone.release();
         if (shortTone != null) shortTone.release();
         if (longTone != null) longTone.release();
         if (finalTone != null) finalTone.release();
+        if (gpsLostTone != null) gpsLostTone.release();
         briefTone = null;
         shortTone = null;
         longTone = null;
         finalTone = null;
+        gpsLostTone = null;
     }
 
     /** Sinus de `durationMs` à `hz`, fondu à l'entrée et à la sortie, prêt à être rejoué. */
     private static AudioTrack buildTone(int durationMs, int hz) {
         int n = SAMPLE_RATE * durationMs / 1000;
-        int fade = SAMPLE_RATE * FADE_MS / 1000;
         short[] pcm = new short[n];
+        writeNote(pcm, 0, n, hz);
+        return track(pcm);
+    }
+
+    /** « GPS perdu » : note haute, note basse, silence, puis les deux notes de nouveau, dans un seul son. */
+    private static AudioTrack buildGpsLostTone(int hz) {
+        int high = SAMPLE_RATE * GPS_LOST_HIGH_MS / 1000;
+        int low = SAMPLE_RATE * GPS_LOST_LOW_MS / 1000;
+        int gap = SAMPLE_RATE * GPS_LOST_GAP_MS / 1000;
+        int lowHz = (int) Math.round(hz * GPS_LOST_LOW_RATIO);
+        short[] pcm = new short[2 * (high + low) + gap];
+        int at = 0;
+        for (int k = 0; k < 2; k++) {
+            writeNote(pcm, at, high, hz);
+            writeNote(pcm, at + high, low, lowHz);
+            at += high + low + gap;
+        }
+        return track(pcm);
+    }
+
+    /** Écrit dans `pcm`, à partir de `from`, un sinus de `n` échantillons à `hz`, fondu à l'entrée et à la sortie. */
+    private static void writeNote(short[] pcm, int from, int n, int hz) {
+        int fade = SAMPLE_RATE * FADE_MS / 1000;
         for (int i = 0; i < n; i++) {
             double envelope = Math.min(1.0, Math.min(i, n - 1 - i) / (double) fade);
-            pcm[i] = (short) (Math.sin(2 * Math.PI * hz * i / SAMPLE_RATE) * envelope * Short.MAX_VALUE * 0.9);
+            pcm[from + i] = (short) (Math.sin(2 * Math.PI * hz * i / SAMPLE_RATE) * envelope * Short.MAX_VALUE * 0.9);
         }
+    }
+
+    /** Son statique prêt à être rejoué, sur le flux des alarmes. */
+    private static AudioTrack track(short[] pcm) {
+        int n = pcm.length;
         AudioTrack track = new AudioTrack.Builder()
             .setAudioAttributes(
                 new AudioAttributes.Builder()
@@ -173,14 +222,8 @@ final class TonePlayer {
      * Seule, sans son : le retour du bouton « Note » (BeeperPlugin.buzz).
      */
     void vibrate(int durationMs) {
-        Vibrator vibrator;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            VibratorManager manager = (VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
-            vibrator = manager != null ? manager.getDefaultVibrator() : null;
-        } else {
-            vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
-        }
-        if (vibrator == null || !vibrator.hasVibrator()) return;
+        Vibrator vibrator = vibrator();
+        if (vibrator == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             vibrator.vibrate(
                 VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE),
@@ -193,6 +236,37 @@ final class TonePlayer {
             );
         } else {
             vibrator.vibrate(durationMs, new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
+        }
+    }
+
+    /** Vibreur du téléphone, `null` s'il n'en a pas. */
+    private Vibrator vibrator() {
+        Vibrator vibrator;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager manager = (VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            vibrator = manager != null ? manager.getDefaultVibrator() : null;
+        } else {
+            vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+        }
+        return vibrator != null && vibrator.hasVibrator() ? vibrator : null;
+    }
+
+    /** Vibration d'alarme en plusieurs temps : `timings` alterne attente et vibration, en millisecondes, en commençant par une attente. */
+    private void vibratePattern(long[] timings) {
+        Vibrator vibrator = vibrator();
+        if (vibrator == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(timings, -1),
+                VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+            );
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(timings, -1),
+                new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+            );
+        } else {
+            vibrator.vibrate(timings, -1, new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
         }
     }
 }

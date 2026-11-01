@@ -8,6 +8,8 @@ import { cadenceSeries, joinCadence } from '../running/cadence';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
+import { armGpsWatch, disarmGpsWatch, onGpsLost } from '../platform/beeper';
+import { readPermissions } from '../platform/permissions';
 import {
   findMotionCapture, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture, startMotionCapture,
   stopMotionCapture, type MotionCapture, type MotionSetup,
@@ -19,6 +21,9 @@ import {
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
 import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
+import {
+  START_GPS_WATCH, gpsWatchOnExpired, gpsWatchOnFix, gpsWatchOnPause, gpsWatchOnResume, watchesGps, type GpsWatchState, type GpsWatchStep,
+} from '../recording/gpsWatch';
 import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
@@ -80,10 +85,16 @@ import { createListeners } from './createStore';
  * attend de nouveau. Le journal n'est effacé qu'une fois le GPX écrit, ou la
  * session jetée.
  *
- * Deux pauses : manuelle (l'utilisateur coupe la source GPS, batterie
- * économisée, reprise explicite) et automatique (immobilité prolongée,
- * détectée par `evaluateAutoPause` — la source reste active pour détecter la
- * reprise du mouvement). Les deux ouvrent un nouveau segment à la reprise.
+ * Deux pauses : manuelle (rien n'est gardé, la source GPS reste allumée pour
+ * la carte du direct, reprise explicite, lot 104) et automatique (immobilité
+ * prolongée, détectée par `evaluateAutoPause` — la source reste active pour
+ * détecter la reprise du mouvement). Les deux ouvrent un nouveau segment à la
+ * reprise.
+ *
+ * Veille du GPS (lot 115) : passé `gpsLostDelayS` sans position, hors pause
+ * manuelle, le GPS est dit perdu (`gpsLost`, alerte `GPS_LOST_ERROR`, son et
+ * notification), une fois par perte ; tout s'efface à la position suivante.
+ * La machine est `recording/gpsWatch.ts`, le minuteur natif (`armGpsWatch`).
  *
  * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
  * source GPS ; la ceinture est obligatoire et chaque mesure (une par seconde
@@ -162,6 +173,8 @@ export interface RecorderState {
   pending: PendingSession | null;
   saved: SavedSession | null;
   error: string | null;
+  /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
+  gpsLost: boolean;
 }
 
 const INITIAL_STATE: RecorderState = {
@@ -179,6 +192,7 @@ const INITIAL_STATE: RecorderState = {
   pending: null,
   saved: null,
   error: null,
+  gpsLost: false,
 };
 
 let state = INITIAL_STATE;
@@ -266,6 +280,66 @@ const onSourceError = (message: string): void => {
   setState({ error: message });
 };
 
+/** Alerte de la page Enregistrer quand le GPS se tait (lot 115). */
+export const GPS_LOST_ERROR = "GPS perdu : plus aucune position. L'enregistrement continue, la trace reprendra au retour du GPS.";
+/** Échec de la pause de la capture des capteurs. */
+const SENSORS_PAUSE_ERROR = 'Capteurs : pause impossible, la mesure continue pendant la pause';
+/** Échec de la reprise de la capture des capteurs. */
+const SENSORS_RESUME_ERROR = 'Capteurs : reprise impossible, sauts et cadence arrêtés';
+/** Notifications refusées au départ d'un enregistrement : ajouté une fois à l'alerte. */
+const NOTIFICATIONS_OFF_WARNING = "Notifications refusées : rien ne s'affichera sur l'écran verrouillé pendant l'enregistrement (Réglages › Autorisations).";
+
+/** Veille du GPS de l'enregistrement en cours. */
+let gpsWatch: GpsWatchState = START_GPS_WATCH;
+/** Vrai si l'enregistrement en cours veille sur son GPS (`watchesGps`), fixé au départ comme les options de la source. */
+let gpsWatchOn = false;
+/** Désabonnement de l'échéance du minuteur ; `null` tant que personne n'y est abonné. */
+let offGpsLost: (() => void) | null = null;
+
+/** L'alerte avec « GPS perdu » ajouté à la suite de ce qu'elle disait déjà. */
+const withGpsLost = (error: string | null): string => (error ? `${withoutGpsLost(error)} ${GPS_LOST_ERROR}` : GPS_LOST_ERROR);
+
+/** L'alerte sans « GPS perdu » : ce qu'elle disait avant, ou après (un message ajouté entre-temps), est gardé ; `null` s'il ne reste rien. */
+const withoutGpsLost = (error: string | null): string | null => {
+  if (error === null) return null;
+  const rest = error.replace(` ${GPS_LOST_ERROR}`, '').replace(GPS_LOST_ERROR, '').trim();
+  return rest === '' ? null : rest;
+};
+
+/**
+ * Applique un pas de la veille : minuteur, et « GPS perdu » ajouté à l'alerte
+ * ou retiré seul, sans effacer ce qu'elle disait déjà (notifications
+ * refusées, capteurs, erreur de la source).
+ */
+const applyGpsWatch = (step: GpsWatchStep): void => {
+  gpsWatch = step.state;
+  if (step.disarm) void disarmGpsWatch().catch(() => {});
+  if (step.armMs !== null) void armGpsWatch(step.armMs).catch(() => {});
+  if (step.lost) setState({ gpsLost: true, error: withGpsLost(state.error) });
+  else if (step.cleared && state.gpsLost) setState({ gpsLost: false, error: withoutGpsLost(state.error) });
+};
+
+/** Échéance du minuteur : revérifiée par la veille (une position a pu la repousser entre-temps). */
+const onGpsWatchExpired = (): void => {
+  if (!gpsWatchOn || (state.status !== 'starting' && state.status !== 'recording' && state.status !== 'paused')) return;
+  applyGpsWatch(gpsWatchOnExpired(gpsWatch, Date.now()));
+};
+
+/** Arrête la veille de l'enregistrement : minuteur désarmé, machine remise au départ. */
+const stopGpsWatch = (): void => {
+  if (gpsWatchOn) void disarmGpsWatch().catch(() => {});
+  gpsWatchOn = false;
+  gpsWatch = START_GPS_WATCH;
+};
+
+/** Au départ : des notifications refusées sont dites une fois, dans l'alerte de la page (lot 115). */
+const warnIfNotificationsOff = async (): Promise<void> => {
+  const permissions = await readPermissions().catch(() => null);
+  const refused = permissions?.notifications === 'denied' || permissions?.notifications === 'prompt';
+  if (!refused || state.status === 'idle' || state.status === 'stopping') return;
+  setState({ error: state.error ? `${state.error} ${NOTIFICATIONS_OFF_WARNING}` : NOTIFICATIONS_OFF_WARNING });
+};
+
 const enqueueWrite = (write: () => Promise<void>): Promise<void> => {
   writes = writes.then(write).catch((err) => {
     setState({ error: `Écriture du journal impossible : ${errorMessage(err, 'erreur inconnue')}` });
@@ -273,11 +347,25 @@ const enqueueWrite = (write: () => Promise<void>): Promise<void> => {
   return writes;
 };
 
+/**
+ * Écrit les lignes en attente, prises au moment de l'écriture (pas de
+ * l'appel) : des écritures enchaînées gardent l'ordre. Une écriture qui échoue
+ * remet ses lignes en tête du tampon, pour l'écriture suivante ; un saut de
+ * ligne les précède, au cas où une ligne aurait été écrite à moitié.
+ */
 const flushJournal = (): Promise<void> => {
   if (pendingLines === '') return writes;
-  const lines = pendingLines;
-  pendingLines = '';
-  return enqueueWrite(() => recordingJournal.append(lines));
+  return enqueueWrite(async () => {
+    const lines = pendingLines;
+    if (lines === '') return;
+    pendingLines = '';
+    try {
+      await recordingJournal.append(lines);
+    } catch (err) {
+      pendingLines = '\n' + lines + pendingLines;
+      throw err;
+    }
+  });
 };
 
 /**
@@ -308,6 +396,9 @@ const receiveFix = (received: LocationFix): void => {
   const recording = currentProfile;
   if (role === 'ignore' || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
+  // Veille du GPS, hors pause manuelle : le minuteur est repoussé, ou l'alerte de perte s'efface (avant les abonnés :
+  // le guidage des balises reprend son rythme à cette position).
+  if (role === 'evaluate' && gpsWatchOn) applyGpsWatch(gpsWatchOnFix(gpsWatch, Date.now(), recording));
   // La source envoie de nouveau : son erreur, encore affichée, n'a plus lieu d'être.
   if (sourceError !== null) {
     if (state.error === sourceError) setState({ error: null });
@@ -622,6 +713,7 @@ const startHeartRateRecording = async (activity: Activity, belt: HeartRateBelt):
   } catch (err) {
     setState({ error: `Service de l'enregistrement impossible : ${errorMessage(err, 'erreur inconnue')}. Gardez l'écran allumé.` });
   }
+  void warnIfNotificationsOff();
 };
 
 /**
@@ -670,10 +762,13 @@ export const startRecording = exclusive(async (
   marks = [];
   currentTest = null;
   sourceError = null;
+  stopGpsWatch();
+  gpsWatchOn = watchesGps(profile, withPositions);
+  offGpsLost ??= onGpsLost(onGpsWatchExpired);
   setState({
     status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
-    saved: null, error: null,
+    saved: null, error: null, gpsLost: false,
   });
 
   if (!withPositions) {
@@ -687,6 +782,7 @@ export const startRecording = exclusive(async (
     setState({ status: 'recording' });
   } catch (err) {
     stopSource = null;
+    stopGpsWatch();
     await recordingJournal.remove();
     setState({ status: 'idle', error: `Démarrage impossible : ${errorMessage(err, 'erreur inconnue')}` });
     return;
@@ -707,6 +803,8 @@ export const startRecording = exclusive(async (
       setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
   }
+  // Après les messages du départ (capteurs, ceinture), pour s'y ajouter sans être effacé par eux.
+  void warnIfNotificationsOff();
 });
 
 /**
@@ -724,8 +822,9 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
   belowSinceMs = null;
   // En pause dès l'appui : le GPS restant allumé, une position arrivée pendant l'écriture du journal ne serait pas gardée.
   setState({ status: 'paused', pausedReason: 'manual', pauseClock });
+  if (gpsWatchOn) applyGpsWatch(gpsWatchOnPause(gpsWatch));
   await flushJournal();
-  if (state.measuringMotion) await pauseMotionCapture().catch(() => undefined);
+  if (state.measuringMotion) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
 });
 
 /** Reprend après une pause manuelle : le prochain point gardé ouvre un nouveau segment. La source n'est relancée que si elle s'est arrêtée. */
@@ -744,8 +843,9 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
     // Le GPS est resté allumé pendant la pause : la position suivante ouvre le segment. Jusque-là, la carte reste sur
     // la dernière position reçue en pause (`pauseFixes`, vidé au premier point gardé), pas sur le point de la pause.
     pendingBreak = true;
-    if (state.measuringMotion) await resumeMotionCapture().catch(() => undefined);
-    setState({ status: 'recording', pausedReason: null, pauseClock: null });
+    const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
+    setState({ status: 'recording', pausedReason: null, pauseClock: null, ...(sensorsFailed ? { error: SENSORS_RESUME_ERROR } : {}) });
+    if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), currentProfile));
     return;
   }
   if (currentSource === null) return;
@@ -757,9 +857,10 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
     pendingBreak = true;
     sourceError = null;
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
-    if (state.measuringMotion) await resumeMotionCapture().catch(() => undefined);
+    const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
     // L'erreur de la source peut arriver avant la fin du démarrage (localisation coupée) : elle reste affichée.
-    setState({ status: 'recording', pausedReason: null, pauseClock: null, error: sourceError });
+    setState({ status: 'recording', pausedReason: null, pauseClock: null, error: sourceError ?? (sensorsFailed ? SENSORS_RESUME_ERROR : null) });
+    if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), profile));
   } catch (err) {
     pendingBreak = false;
     setState({ error: `Reprise impossible : ${errorMessage(err, 'erreur inconnue')}` });
@@ -856,7 +957,9 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   const activity = state.activity;
   const stoppedAtMs = Date.now();
   const wasRecording = state.status === 'recording';
-  setState({ status: 'stopping' });
+  stopGpsWatch();
+  // L'alerte de perte du GPS ne survit pas à l'enregistrement.
+  setState({ status: 'stopping', gpsLost: false, error: withoutGpsLost(state.error) });
   try {
     await stopSource?.();
   } catch {

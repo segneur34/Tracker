@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
 import type { LocationFix, LocationSource } from '../platform/location';
-import { journalFixLine } from '../recording/journal';
+import { journalFixLine, parseJournal } from '../recording/journal';
 
 /** Journal en mémoire ; chaque écriture complète (l'en-tête) est relevée. */
 const journal = vi.hoisted(() => {
@@ -51,6 +51,46 @@ vi.mock('../platform/heartRate', async (importOriginal) => ({
     belt.stopKeepAlive += 1;
   },
 }));
+
+/** Veille du GPS simulée (lot 115) : minuteurs armés et désarmés relevés, échéance déclenchée à la demande. */
+const gps = vi.hoisted(() => ({ arms: [] as number[], disarms: 0, expire: null as (() => void) | null }));
+vi.mock('../platform/beeper', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../platform/beeper')>()),
+  armGpsWatch: async (delayMs: number) => {
+    gps.arms.push(delayMs);
+  },
+  disarmGpsWatch: async () => {
+    gps.disarms += 1;
+  },
+  onGpsLost: (listener: () => void) => {
+    gps.expire = listener;
+    return () => undefined;
+  },
+}));
+
+/** Capteurs simulés : la capture démarre et se met en pause ; sa reprise échoue à la demande. */
+const sensors = vi.hoisted(() => ({ resumeFails: false }));
+vi.mock('../platform/motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../platform/motion')>()),
+  startMotionCapture: async () => undefined,
+  pauseMotionCapture: async () => undefined,
+  resumeMotionCapture: async () => {
+    if (sensors.resumeFails) throw new Error('capteurs muets');
+  },
+}));
+
+/** Autorisations simulées : sans objet (navigateur), sauf notifications refusées à la demande. */
+const permissions = vi.hoisted(() => ({ notificationsDenied: false }));
+vi.mock('../platform/permissions', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../platform/permissions')>();
+  return {
+    ...original,
+    readPermissions: async () => {
+      const status = await original.readPermissions();
+      return permissions.notificationsDenied ? { ...status, notifications: 'denied' as const } : status;
+    },
+  };
+});
 
 const recorder = await import('./useRecorder');
 const live = await import('./useLiveRecording');
@@ -365,5 +405,115 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     await recorder.startRecording(muscu, null, { heartRate: ceinture });
     recorder.changeRecordingActivity(activity);
     expect(recorder.getRecorderState().activity?.id).toBe('muscu');
+  });
+});
+
+describe('prévenir quand ça rate (lot 115)', () => {
+  it("GPS perdu après 1 min sans position : alerte posée une fois, effacée à la position suivante ; muet en pause manuelle", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    gps.arms = [];
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    // Rien d'armé avant la première position.
+    expect(gps.arms).toEqual([]);
+    source.emit(0);
+    source.emit(1);
+    expect(gps.arms).toEqual([60_000, 60_000]);
+    // Échéance périmée (une position l'a repoussée) : rien.
+    vi.setSystemTime(T0 + 30_000);
+    gps.expire?.();
+    expect(recorder.getRecorderState().gpsLost).toBe(false);
+    vi.setSystemTime(T0 + 61_000);
+    gps.expire?.();
+    expect(recorder.getRecorderState().gpsLost).toBe(true);
+    expect(recorder.getRecorderState().error).toBe(recorder.GPS_LOST_ERROR);
+    source.emit(62);
+    expect(recorder.getRecorderState().gpsLost).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+    // Pause manuelle : minuteur désarmé, une échéance qui arriverait quand même est ignorée.
+    const disarms = gps.disarms;
+    await recorder.pauseRecording();
+    expect(gps.disarms).toBe(disarms + 1);
+    vi.setSystemTime(T0 + 600_000);
+    gps.expire?.();
+    expect(recorder.getRecorderState().gpsLost).toBe(false);
+  });
+
+  it("« GPS perdu » s'ajoute à l'alerte déjà affichée et se retire seul au retour : l'avertissement des notifications reste", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    permissions.notificationsDenied = true;
+    try {
+      const source = fakeSource();
+      await recorder.startRecording(activity, source);
+      // L'avertissement part après le départ, sans le retenir.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const warning = recorder.getRecorderState().error;
+      expect(warning).toMatch(/^Notifications refusées/);
+      source.emit(0);
+      vi.setSystemTime(T0 + 61_000);
+      gps.expire?.();
+      expect(recorder.getRecorderState().gpsLost).toBe(true);
+      expect(recorder.getRecorderState().error).toBe(`${warning} ${recorder.GPS_LOST_ERROR}`);
+      source.emit(62);
+      expect(recorder.getRecorderState().gpsLost).toBe(false);
+      expect(recorder.getRecorderState().error).toBe(warning);
+    } finally {
+      permissions.notificationsDenied = false;
+    }
+  });
+
+  it("muscu : aucune veille du GPS", async () => {
+    gps.arms = [];
+    await recorder.startRecording(baseActivity('muscu'), null, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    belt.emit(T0, 100);
+    belt.emit(T0 + 1000, 101);
+    expect(gps.arms).toEqual([]);
+  });
+
+  it("une écriture du journal qui échoue garde ses lignes : le journal finit complet et dans l'ordre", async () => {
+    const append = journal.append;
+    let failures = 0;
+    journal.append = async (text: string) => {
+      if (failures === 0) {
+        failures += 1;
+        throw new Error('disque plein');
+      }
+      await append(text);
+    };
+    try {
+      const source = fakeSource();
+      await recorder.startRecording(activity, source);
+      for (let s = 0; s <= 30; s++) {
+        source.emit(s);
+        // Laisse partir l'écriture d'un paquet avant la position suivante.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      await recorder.stopRecording();
+      expect(failures).toBe(1);
+      const times = parseJournal(journal.text ?? '').fixes.map((f) => (f.timeMs - T0) / 1000);
+      expect(times).toEqual(Array.from({ length: 31 }, (_, s) => s));
+    } finally {
+      journal.append = append;
+    }
+  });
+
+  it('reprise des capteurs impossible : dit dans l’alerte, la mesure reste annoncée', async () => {
+    sensors.resumeFails = true;
+    try {
+      const source = fakeSource();
+      await recorder.startRecording(activity, source, { motion: { placement: 'poitrine', foil: false, jumps: false, cadence: true } });
+      source.emit(0);
+      source.emit(1);
+      await recorder.pauseRecording();
+      await recorder.resumeRecording();
+      const state = recorder.getRecorderState();
+      expect(state.status).toBe('recording');
+      expect(state.error).toBe('Capteurs : reprise impossible, sauts et cadence arrêtés');
+      expect(state.measuringMotion).toBe(true);
+    } finally {
+      sensors.resumeFails = false;
+    }
   });
 });

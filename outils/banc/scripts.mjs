@@ -58,6 +58,8 @@ export const SCRIPTS = [
   { nom: 'fractionne', args: ['{port}', '{travail}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'], solo: true },
   { nom: 'general', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'velo', 'surf'] },
   { nom: 'glisser', args: ['{port}', '{captures?}'], pages: ['profil', 'statistiques'] },
+  // GPS perdu (lot 115) : rejeu ×1 avec un trou de 90 s ; alerte, son unique et notification, puis tout effacé au retour.
+  { nom: 'gps-perdu', args: ['{port}', '{travail}'], pages: ['enregistrer'], solo: true },
   { nom: 'graphes', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'voile'] },
   { nom: 'icones', args: ['{port}', '{captures?}'], pages: ['accueil', 'bibliotheque', 'reglages'] },
   { nom: 'imports', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'voile', 'course', 'velo', 'surf'] },
