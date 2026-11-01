@@ -44,6 +44,8 @@ import { activitySpeedRanges, effectiveDistanceUnit, effectiveSpeedUnit, useVisi
 import type { LibrarySession } from '../library/record';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
+import { previewStore } from '../library/previewStore';
+import { previewFingerprint, previewKey, roundPreviewPoints, type PreviewTrack } from '../library/previewTracks';
 import bannerCourse from '../assets/bandeaux/course.webp';
 import bannerFractionne from '../assets/bandeaux/fractionne.webp';
 import bannerSurf from '../assets/bandeaux/surf.webp';
@@ -189,9 +191,12 @@ const PREVIEW_META_MAX = 400;
 /**
  * Points des vignettes déjà calculées (E-O7) : revenir sur la bibliothèque, ou
  * changer de bornes ou de taille, ne relit ni ne réanalyse le GPX. Chaque
- * trace est gardée réduite au zoom de sa vignette (`zoom`) ; une vignette
- * d'un zoom plus fort relit le GPX. Au plus `PREVIEW_POINTS_MAX` points en
- * tout, les moins récents oubliés d'abord.
+ * trace est gardée réduite au zoom de sa vignette (`zoom`, `Infinity` pour les
+ * points entiers tirés du GPX) ; une vignette d'un zoom plus fort relit le
+ * GPX. Au plus `PREVIEW_POINTS_MAX` points en tout, les moins récents oubliés
+ * d'abord. D'un lancement à l'autre, les traces réduites sont gardées sur
+ * l'appareil (`previewStore`, lot 118) : au lancement suivant, une vignette
+ * trouvée là se dessine sans relire le GPX.
  */
 const previewPoints = new Map<string, { points: SessionColorTrack['points']; zoom: number }>();
 const PREVIEW_POINTS_MAX = 400_000;
@@ -217,9 +222,10 @@ const rememberPoints = (key: string, points: SessionColorTrack['points'], zoom: 
 
 /**
  * Vignettes dessinées (PNG en adresse d'objet), en mémoire le temps de la
- * page seulement : ni dans la fiche ni dans un cache de l'appareil. La clé
- * tient la session, la taille, la densité de l'écran, le thème économe et les
- * bornes de couleur ; une vignette affichée n'est jamais libérée.
+ * page seulement : ni dans la fiche ni sur l'appareil, où seuls les points
+ * réduits et l'emprise sont gardés (`previewStore`). La clé tient la session,
+ * la taille, la densité de l'écran, le thème économe et les bornes de
+ * couleur ; une vignette affichée n'est jamais libérée.
  */
 const previewImages = createHeldCache<string>(200, (url) => URL.revokeObjectURL(url));
 
@@ -248,6 +254,10 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   const sport = session.record.sport;
   const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
   const cacheKey = `${folderLabel}|${file}|${sport}|${referenceOverrideMs}|${family}`;
+  /** Clé et empreinte de la trace gardée sur l'appareil. */
+  const storeKey = previewKey(folderLabel, file);
+  const { startMs, endMs, pointCount } = session.record.summary;
+  const fingerprint = previewFingerprint({ sport, referenceOverrideMs, family, summary: { startMs, endMs, pointCount } });
   /** Emprise et bornes suggérées tirées du GPX par cette vignette, pour sa clé. */
   const [loaded, setLoaded] = useState<{ key: string; meta: PreviewMeta } | null>(null);
   const meta = previewMeta.get(cacheKey) ?? (loaded?.key === cacheKey ? loaded.meta : null);
@@ -256,27 +266,38 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   const [image, setImage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
-  /** Trace colorée tirée du GPX, comme l'analyse la calcule, gardée pour la vignette ; `null` si elle manque ou est illisible. */
-  const loadTrack = useCallback(async (): Promise<SessionColorTrack | null> => {
+  /**
+   * Trace de la vignette, gardée pour elle : celle gardée sur l'appareil si
+   * elle est réduite à `minZoom` ou plus fin, sinon tirée du GPX comme
+   * l'analyse la calcule (points entiers, zoom `Infinity`) ; `null` si elle
+   * manque ou est illisible.
+   */
+  const loadTrack = useCallback(async (minZoom: number): Promise<PreviewTrack | null> => {
+    const kept = await previewStore.stored(storeKey, fingerprint);
+    if (kept && kept.zoom >= minZoom) {
+      rememberMeta(cacheKey, { bounds: kept.bounds, suggested: kept.suggested });
+      rememberPoints(cacheKey, kept.points, kept.zoom);
+      return kept;
+    }
     const gpx = await readSessionGpx(file);
     if (gpx === null) return null;
     try {
       const track = sessionColorTrack(gpx, sport, referenceOverrideMs, family);
-      if (track) {
-        rememberMeta(cacheKey, { bounds: track.bounds, suggested: track.suggested });
-        // Points entiers, réduits au premier dessin.
-        rememberPoints(cacheKey, track.points, Infinity);
-      }
-      return track;
+      if (!track) return null;
+      rememberMeta(cacheKey, { bounds: track.bounds, suggested: track.suggested });
+      // Points entiers, réduits au premier dessin.
+      rememberPoints(cacheKey, track.points, Infinity);
+      return { ...track, zoom: Infinity };
     } catch {
       return null;
     }
-  }, [file, sport, referenceOverrideMs, family, cacheKey]);
+  }, [file, sport, referenceOverrideMs, family, cacheKey, storeKey, fingerprint]);
 
   useEffect(() => {
     if (!near || meta) return undefined;
     let cancelled = false;
-    void loadTrack().then((track) => {
+    // Emprise seule : toute trace gardée convient, quel que soit son zoom.
+    void loadTrack(0).then((track) => {
       if (cancelled) return;
       if (track) setLoaded({ key: cacheKey, meta: { bounds: track.bounds, suggested: track.suggested } });
       else setFailed(true);
@@ -315,17 +336,22 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
       }
       let stored = previewPoints.get(cacheKey);
       if (!stored || stored.zoom < view.zoom) {
-        const track = await loadTrack();
-        stored = track ? { points: track.points, zoom: Infinity } : undefined;
+        // Zoom de la trace rendue, pas `Infinity` d'office : celle gardée sur l'appareil est déjà réduite.
+        const track = await loadTrack(view.zoom);
+        stored = track ? { points: track.points, zoom: track.zoom } : undefined;
       }
       if (controller.signal.aborted) return;
       if (!stored) {
         setFailed(true);
         return;
       }
-      // Réduite une fois au zoom de la vignette, puis gardée ainsi.
-      const points = stored.zoom === view.zoom ? stored.points : thinForPreview(stored.points, view);
-      if (stored.zoom !== view.zoom) rememberPoints(cacheKey, points, view.zoom);
+      // Réduite une fois au zoom de la vignette, puis gardée ainsi ; arrondie avant le premier dessin à la précision
+      // gardée sur l'appareil, pour que le lancement suivant dessine la même image. Tirée du GPX, elle est gardée.
+      const points = stored.zoom === view.zoom ? stored.points : roundPreviewPoints(thinForPreview(stored.points, view));
+      if (stored.zoom !== view.zoom) {
+        rememberPoints(cacheKey, points, view.zoom);
+        if (stored.zoom === Infinity) void previewStore.keep(storeKey, fingerprint, { zoom: view.zoom, bounds: meta.bounds, suggested: meta.suggested, points });
+      }
       const png = await drawTrackPreview(
         { view, segments: coloredSegments(points, { minMs, maxMs }), pixelRatio, withMap: !eco },
         {
@@ -348,7 +374,7 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
       dropDraft();
       if (held) previewImages.release(imageKey);
     };
-  }, [meta, minMs, maxMs, width, height, eco, cacheKey, loadTrack]);
+  }, [meta, minMs, maxMs, width, height, eco, cacheKey, loadTrack, storeKey, fingerprint]);
 
   return (
     <div ref={frame} className="lib-row__preview" role="link" aria-label="Ouvrir l'analyse" onClick={onOpen}>
@@ -494,9 +520,20 @@ const readSort = (): SessionSort => {
   return isSessionSort(stored) ? stored : SESSION_SORT_DEFAULT;
 };
 
+/** Vignettes gardées des sessions disparues déjà oubliées dans ce lancement. */
+let previewsPruned = false;
+
 function SessionLibrary({ family }: { family: SportFamily }) {
   // Les champs lus seulement : ni le compteur du balayage ni les messages ne redessinent la liste.
   const library = useLibraryFields('sessions', 'status', 'scanning', 'folderLabel');
+  // Une fois par lancement, la bibliothèque complète : les vignettes gardées des sessions qu'elle ne porte plus sont oubliées.
+  // Vide, elle n'oublie rien (dossier mémoire mal ouvert) : la borne du magasin finit par les écarter.
+  const complete = library.status === 'ready' && library.scanning === null && library.sessions.length > 0;
+  useEffect(() => {
+    if (!complete || previewsPruned) return;
+    previewsPruned = true;
+    void previewStore.prune(library.folderLabel, library.sessions.map((s) => s.file));
+  }, [complete, library.folderLabel, library.sessions]);
   const { title, accent, banner } = FAMILY[family];
   const { activities, families, isShown } = useVisibility();
   /** Famille cachée, ouverte par son adresse : tout y est montré. */

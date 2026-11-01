@@ -109,6 +109,9 @@ export const SCRIPTS = [
   { nom: 'timer', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true },
   // Mesure (lot 74) : 150 vignettes défilées (cartes vivantes, DOM, tas, tuiles), mention d'OSM, captures par thème et largeur, list() à 10 000 tuiles.
   { nom: 'vignettes', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course'], sansCache: true, dev: true, delaiMin: 20 },
+  // Mesure (lot 118) : vignettes gardées d'un lancement à l'autre ; temps jusqu'aux vignettes visibles à la relance, processeur
+  // ralenti six fois (en s, change à chaque passage), et images identiques au premier lancement.
+  { nom: 'vignettes-relance', args: ['{port}', '{travail}'], pages: ['bibliotheque'], solo: true, sansCache: true },
   { nom: 'vides', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'surf', 'accueil', 'reglages'] },
   { nom: 'zoom-carte', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'surf'] },
 ];
