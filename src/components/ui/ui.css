@@ -287,8 +287,11 @@
   pointer-events: none;
 }
 
-.ui-btn:not(:disabled):hover {
-  filter: brightness(0.95);
+/* Survol réservé aux pointeurs qui survolent : au toucher, il resterait collé jusqu'au toucher suivant (lot 143). */
+@media (hover: hover) {
+  .ui-btn:not(:disabled):hover {
+    filter: brightness(0.95);
+  }
 }
 
 .ui-btn--l {
@@ -533,8 +536,10 @@
   vertical-align: middle;
 }
 
-.ui-help:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ui-help:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .ui-help[aria-expanded='true'] {
@@ -563,9 +568,14 @@
   cursor: pointer;
 }
 
-.ui-more__button:hover,
 .ui-more__button[aria-expanded='true'] {
   background: var(--surface-hover);
+}
+
+@media (hover: hover) {
+  .ui-more__button:hover {
+    background: var(--surface-hover);
+  }
 }
 
 /* Au-dessus des cartes Leaflet, comme le menu des sports de la barre du bas. */
@@ -611,9 +621,11 @@
   flex-shrink: 0;
 }
 
-.ui-more__panel .ui-btn:not(:disabled):not(.ui-btn--off):hover {
-  filter: none;
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ui-more__panel .ui-btn:not(:disabled):not(.ui-btn--off):hover {
+    filter: none;
+    background: var(--surface-hover);
+  }
 }
 
 /* Ligne d'information en tête du menu (nombre de sessions, emplacement). */

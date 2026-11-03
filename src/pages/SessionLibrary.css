@@ -33,8 +33,10 @@
   cursor: pointer;
 }
 
-.lib-row__main:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .lib-row__main:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .lib-row__head {

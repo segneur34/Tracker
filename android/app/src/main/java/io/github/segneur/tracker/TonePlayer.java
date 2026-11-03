@@ -180,38 +180,54 @@ final class TonePlayer {
         }
     }
 
-    /** Son statique prêt à être rejoué, sur le flux des alarmes. */
+    /**
+     * Son statique prêt à être rejoué, sur le flux des alarmes ; `null` si
+     * Android refuse la piste (sortie audio occupée, trop de pistes ouvertes) :
+     * la vibration reste seule, l'application ne s'arrête pas (lot 143). Une
+     * piste refusée est redemandée au bip suivant.
+     */
     private static AudioTrack track(short[] pcm) {
         int n = pcm.length;
-        AudioTrack track = new AudioTrack.Builder()
-            .setAudioAttributes(
-                new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                new AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(n * 2)
-            .build();
-        track.write(pcm, 0, n);
+        AudioTrack track;
+        try {
+            track = new AudioTrack.Builder()
+                .setAudioAttributes(
+                    new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    new AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(n * 2)
+                .build();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        // Piste statique : STATE_NO_STATIC_DATA jusqu'à l'écriture du son, STATE_UNINITIALIZED si Android l'a refusée.
+        if (track.getState() == AudioTrack.STATE_UNINITIALIZED || track.write(pcm, 0, n) < 0) {
+            track.release();
+            return null;
+        }
         return track;
     }
 
-    /** Joue un son depuis son début, puis vibre `vibrationMs` (0 : sans vibration). */
+    /** Joue un son depuis son début (sans son si sa piste a été refusée), puis vibre `vibrationMs` (0 : sans vibration). */
     private void play(AudioTrack track, int vibrationMs) {
-        try {
-            if (track.getPlayState() != AudioTrack.PLAYSTATE_STOPPED) track.stop();
-            track.reloadStaticData();
-            track.play();
-        } catch (IllegalStateException e) {
-            // Son indisponible (sortie audio occupée ou coupée) : la vibration reste.
+        if (track != null) {
+            try {
+                if (track.getPlayState() != AudioTrack.PLAYSTATE_STOPPED) track.stop();
+                track.reloadStaticData();
+                track.play();
+            } catch (RuntimeException e) {
+                // Son indisponible (sortie audio occupée ou coupée) : la vibration reste.
+            }
         }
         if (vibrationMs > 0) vibrate(vibrationMs);
     }

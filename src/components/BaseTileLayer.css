@@ -18,9 +18,14 @@
   cursor: pointer;
 }
 
-.map-base-switch__button:hover,
 .map-base-switch__button[aria-expanded='true'] {
   background: var(--surface-hover);
+}
+
+@media (hover: hover) {
+  .map-base-switch__button:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .map-base-switch__menu {
@@ -50,8 +55,10 @@
   cursor: pointer;
 }
 
-.map-base-switch__choice:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .map-base-switch__choice:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .map-base-switch__choice[aria-checked='true'] {

@@ -5,7 +5,7 @@ import Card from './ui/Card';
 import HoldButton from './ui/HoldButton';
 import { IconPause, IconPlay } from './icons';
 import {
-  closeIntervals, forgetClosedIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopAndCloseIntervals, stopIntervals,
+  forgetClosedIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopAndCloseIntervals, stopIntervals,
   useIntervalTimer,
   type IntervalTimerView,
 } from '../hooks/useIntervalTimer';
@@ -111,8 +111,9 @@ const askEdit = () => {
 
 /**
  * Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne.
- * `stopRecording` : à la fin de la séance (« terminée », pas « arrêtée »), le bouton tenu qui arrête
- * l'enregistrement, proposé à côté de « Fermer » ; jamais d'arrêt seul (31/10, lot 103).
+ * `stopRecording` : à la fin de la séance, « terminée » ou « arrêtée » (lot 143), le bouton tenu qui
+ * arrête l'enregistrement, proposé à côté de « Tout clore » ; jamais d'arrêt seul (31/10, lot 103).
+ * « Tout clore » (lot 143, ex-« Fermer ») ferme le compteur et retire sa notification, jamais l'enregistrement.
  */
 function CounterView({ kind, recording, muscu, timer, stopRecording }: {
   kind: WorkoutKind; recording: boolean; muscu: boolean; timer: IntervalTimerView; stopRecording?: ReactNode;
@@ -129,8 +130,8 @@ function CounterView({ kind, recording, muscu, timer, stopRecording }: {
           <span>{workoutLabel(run.workout)}</span>
         </div>
         <div className="ivl-actions">
-          <Button onClick={closeIntervals}>Fermer</Button>
-          {state.status === 'finished' && recording && stopRecording}
+          <Button onClick={stopAndCloseIntervals}>Tout clore</Button>
+          {recording && stopRecording}
         </div>
       </>
     );

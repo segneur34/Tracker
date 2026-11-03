@@ -75,9 +75,14 @@
   cursor: pointer;
 }
 
-.surface-bar__row:hover,
 .surface-bar__row[aria-pressed='true'] {
   background: var(--surface-sunken);
+}
+
+@media (hover: hover) {
+  .surface-bar__row:hover {
+    background: var(--surface-sunken);
+  }
 }
 
 .surface-bar__swatch {

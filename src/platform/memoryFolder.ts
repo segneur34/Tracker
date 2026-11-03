@@ -326,25 +326,50 @@ interface DeviceFolderChoice {
   label: string;
 }
 
+/** Phrase montrée quand le dossier désigné n'existe plus (déplacé, renommé ou effacé). */
+export const MISSING_FOLDER_MESSAGE = 'Le dossier mémoire est introuvable. Désignez-le de nouveau dans Réglages › Mémoire.';
+
+/**
+ * Erreur du sélecteur d'Android rendue en clair : un dossier désigné qui
+ * n'existe plus donne « … Missing file for primary:Documents/Tracker at
+ * /storage/… » (lot 143, idée 122), remplacé par `MISSING_FOLDER_MESSAGE` ;
+ * le détail technique ne va qu'en console. Toute autre erreur est rendue telle quelle.
+ */
+export const readableFolderError = (err: unknown): unknown => {
+  const detail = errorMessage(err, '');
+  if (!/missing file for|filenotfoundexception/i.test(detail)) return err;
+  console.warn(`Dossier mémoire introuvable : ${detail}`);
+  return new Error(MISSING_FOLDER_MESSAGE);
+};
+
+/** Appel du plugin dont l'échec est rendu en clair (`readableFolderError`). */
+const inPlainWords = async <T,>(call: Promise<T>): Promise<T> => {
+  try {
+    return await call;
+  } catch (err) {
+    throw readableFolderError(err);
+  }
+};
+
 const createDeviceFolder = ({ uri, base, label }: DeviceFolderChoice): MemoryFolder => {
   const full = (path: string) => [...splitPath(base), ...splitPath(path)].join('/');
   return {
     kind: 'device',
     label,
-    list: async (path) => (await nativeFolder.list({ uri, path: full(path) })).entries,
-    readText: async (path) => (await nativeFolder.readText({ uri, path: full(path) })).text,
+    list: async (path) => (await inPlainWords(nativeFolder.list({ uri, path: full(path) }))).entries,
+    readText: async (path) => (await inPlainWords(nativeFolder.readText({ uri, path: full(path) }))).text,
     writeText: async (path, text) => {
-      await nativeFolder.writeText({ uri, path: full(path), text });
+      await inPlainWords(nativeFolder.writeText({ uri, path: full(path), text }));
     },
     readBytes: async (path) => {
-      const { data } = await nativeFolder.readBase64({ uri, path: full(path) });
+      const { data } = await inPlainWords(nativeFolder.readBase64({ uri, path: full(path) }));
       return data === null ? null : base64ToBytes(data);
     },
     writeBytes: async (path, bytes) => {
-      await nativeFolder.writeBase64({ uri, path: full(path), data: bytesToBase64(bytes) });
+      await inPlainWords(nativeFolder.writeBase64({ uri, path: full(path), data: bytesToBase64(bytes) }));
     },
     remove: async (path) => {
-      await nativeFolder.remove({ uri, path: full(path) });
+      await inPlainWords(nativeFolder.remove({ uri, path: full(path) }));
     },
   };
 };
@@ -376,7 +401,7 @@ const readDeviceChoice = (): DeviceFolderChoice | null => {
 const openDeviceFolder = async (): Promise<MemoryAccess> => {
   const choice = readDeviceChoice();
   if (!choice) return { state: 'unavailable', reason: 'Aucun dossier mémoire choisi.' };
-  const { granted } = await nativeFolder.hasAccess({ uri: choice.uri });
+  const { granted } = await inPlainWords(nativeFolder.hasAccess({ uri: choice.uri }));
   return granted
     ? { state: 'ready', folder: createDeviceFolder(choice) }
     : { state: 'needs-permission', label: choice.label };

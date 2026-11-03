@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   handsOverToRecording, INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, intervalStepAt, isRunClosed, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
-  runCommand, runLaps, sameWorkout, sanitizePresets, sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule,
+  readStoredIntervalRun, runCommand, runLaps, runToResume, sameWorkout, sanitizePresets, sanitizeWorkout, seriesBlocks, seriesWithin, startRun, storedIntervalRun,
+  timerStateAt, upcomingSchedule,
   withoutPreset, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel, workoutPhases,
   type IntervalBlock, type IntervalRun, type IntervalTone, type IntervalWorkout,
 } from './intervalTimer';
@@ -356,5 +357,35 @@ describe('handsOverToRecording (muscu, lot I du 25/10)', () => {
     expect(handsOverToRecording({ kind: 'timer' }, false)).toBe(true);
     expect(handsOverToRecording({ kind: 'timer' }, null)).toBe(false);
     expect(handsOverToRecording({}, null)).toBe(false);
+  });
+});
+
+describe('séance reprise au lancement (lot 143, 124)', () => {
+  /** La séance gardée telle que l'appareil la relit. */
+  const reread = (r: IntervalRun | null, confided: boolean) => readStoredIntervalRun(JSON.parse(JSON.stringify(storedIntervalRun(r, confided))));
+
+  it('garde la marque « confiée » avec la séance, et relit une séance gardée sans elle comme non confiée', () => {
+    expect(reread(run, true)).toEqual({ run, confided: true });
+    expect(reread(run, false)).toEqual({ run, confided: false });
+    expect(storedIntervalRun(run, false)).toBe(run);
+    expect(storedIntervalRun(null, true)).toBeNull();
+    expect(readStoredIntervalRun(null)).toEqual({ run: null, confided: false });
+    expect(readStoredIntervalRun({ confided: true })).toEqual({ run: null, confided: true });
+  });
+
+  it("reprend une séance qui court ou attend en pause, pas une séance close", () => {
+    expect(runToResume(reread(run, false), at(30))).toEqual(run);
+    const paused = withCommands(run, ['pause', 10]);
+    expect(runToResume(reread(paused, false), at(5000))).toEqual(paused);
+    expect(runToResume(reread(run, false), at(400))).toBeNull();
+    expect(runToResume(reread(withCommands(run, ['stop', 10]), false), at(30))).toBeNull();
+    expect(runToResume(reread(null, false), at(30))).toBeNull();
+  });
+
+  it("ne reprend jamais une séance confiée à un enregistrement : coupé avec la page, elle s'arrête avec lui, rien ne sonne seul", () => {
+    expect(runToResume(reread(run, true), at(30))).toBeNull();
+    expect(runToResume(reread(withCommands(run, ['pause', 10]), true), at(30))).toBeNull();
+    // Une séance du Timer confiée à une muscu, de même.
+    expect(runToResume(reread(startRun(workout, T0, 'timer'), true), at(30))).toBeNull();
   });
 });

@@ -98,8 +98,10 @@
   cursor: pointer;
 }
 
-.profile-figure--link:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .profile-figure--link:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .profile-figure__art {

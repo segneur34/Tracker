@@ -290,10 +290,14 @@ public class BeeperPlugin extends Plugin {
         }
     }
 
-    /** Arrête le compteur du fractionné : silence, plus de notification. */
+    /**
+     * Arrête le compteur du fractionné : silence, plus de notification, même
+     * restée seule d'un service déjà arrêté (lot 143).
+     */
     @PluginMethod
     public void stopIntervals(PluginCall call) {
         getContext().stopService(new Intent(getContext(), IntervalTimerService.class));
+        IntervalTimerService.cancelNotification(getContext());
         call.resolve();
     }
 

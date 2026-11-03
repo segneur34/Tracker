@@ -4,7 +4,8 @@ import { hasPositions } from '../core/sportProfiles';
 import { getIntervalClock } from '../platform/beeper';
 import { jsonStore } from '../platform/storage';
 import {
-  handsOverToRecording, isRunClosed, phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
+  handsOverToRecording, isRunClosed, phaseName, readStoredIntervalRun, runCommand, runToResume, startRun, storedIntervalRun, timerStateAt,
+  upcomingSchedule,
   type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { createListeners, createTickingStore } from './createStore';
@@ -27,7 +28,8 @@ import { rememberIntervalWorkout } from './useSportSettings';
  *
  * La séance est aussi gardée sur l'appareil (`tracker.intervalRun`) : si
  * Android ferme la page pendant qu'elle court, la page rouverte la reprend
- * telle quelle, et peut encore l'arrêter.
+ * telle quelle, et peut encore l'arrêter ; sauf une séance confiée à un
+ * enregistrement, que la fermeture a coupé : elle s'arrête avec lui (lot 143).
  */
 
 /** Clé de l'appareil où la séance en cours est gardée. */
@@ -51,6 +53,8 @@ export interface IntervalTimerView {
 }
 
 let run: IntervalRun | null = null;
+/** Vrai si la séance en cours a été confiée à un enregistrement (`note`). */
+let confided = false;
 let error: string | null = null;
 /** Abonnés hors React, prévenus à chaque commande. */
 const commandListeners = createListeners();
@@ -102,17 +106,20 @@ const reschedule = (announce: boolean): void => {
   }
 };
 
-/** Garde la séance sur l'appareil, ou l'efface. */
-const persist = (): void => jsonStore.write(STORAGE_KEY, run);
+/** Garde la séance sur l'appareil, marquée si un enregistrement la reçoit, ou l'efface. */
+const persist = (): void => jsonStore.write(STORAGE_KEY, storedIntervalRun(run, confided));
 
 /**
  * Confie la séance à l'enregistreur, s'il tourne ; une séance du Timer
  * seulement à un enregistrement sans position (muscu, lot I du 25/10).
+ * La séance est alors marquée confiée, pour s'arrêter avec lui s'il est coupé.
  */
 const note = (r: IntervalRun): void => {
   const { status, activity } = getRecorderState();
   const recording = status === 'idle' || activity === null ? null : hasPositions(activity.base);
-  if (handsOverToRecording(r, recording)) noteIntervalRun(r);
+  if (!handsOverToRecording(r, recording)) return;
+  noteIntervalRun(r);
+  confided = true;
 };
 
 const command = (kind: IntervalCommand, announce: boolean): void => {
@@ -120,8 +127,8 @@ const command = (kind: IntervalCommand, announce: boolean): void => {
   const next = runCommand(run, kind, Date.now());
   if (next === run) return;
   run = next;
-  persist();
   note(run);
+  persist();
   reschedule(announce);
   publish();
 };
@@ -133,9 +140,10 @@ export const startIntervals = (workout: IntervalWorkout, kind: WorkoutKind = 'fr
     note(run);
   }
   run = startRun(workout, Date.now(), kind);
+  confided = false;
+  note(run);
   persist();
   rememberIntervalWorkout(kind, workout);
-  note(run);
   // Le compte à rebours du départ porte son propre signal.
   reschedule(false);
   publish();
@@ -151,13 +159,14 @@ export const stopIntervals = (): void => command('stop', false);
 export const closeIntervals = (): void => {
   if (run && isActive(timerStateAt(run, Date.now()))) return;
   run = null;
+  confided = false;
   persist();
   reschedule(false);
   publish();
 };
 
 /**
- * Oublie une séance close (finie ou arrêtée), comme « Fermer » : la carte du
+ * Oublie une séance close (finie ou arrêtée), comme « Tout clore » : la carte du
  * compteur l'appelle en s'ouvrant et en se fermant, pour qu'on ne revienne
  * jamais sur l'écran « terminée » (26/10). Sans effet sur une séance qui
  * court ou attend en pause, celle d'un enregistrement comprise, ni sans séance.
@@ -166,7 +175,11 @@ export const forgetClosedIntervals = (): void => {
   if (run && isRunClosed(run, Date.now())) closeIntervals();
 };
 
-/** « Modifier » du Timer (26/10) : la séance s'arrête et se ferme, la carte rend l'éditeur sur elle (dernière lancée). */
+/**
+ * « Modifier » du Timer (26/10) : la séance s'arrête et se ferme, la carte rend l'éditeur sur elle (dernière lancée).
+ * Aussi « Tout clore » d'une séance finie ou arrêtée (lot 143) : le compteur fermé, le téléphone se tait et
+ * retire la notification du compteur ; l'enregistrement, lui, continue.
+ */
 export const stopAndCloseIntervals = (): void => {
   stopIntervals();
   closeIntervals();
@@ -181,16 +194,19 @@ let wasStopping = false;
 
 /**
  * Branche le compteur, une fois, au démarrage de l'application : une séance
- * gardée qui court encore est reprise, et son programme rendu au téléphone ;
- * une séance close est oubliée, et un service resté seul, arrêté. Puis un
- * enregistrement lancé pendant une séance la reçoit, et l'arrête avec lui.
+ * gardée qui court encore est reprise, et son programme rendu au téléphone,
+ * sauf si elle était confiée à un enregistrement, coupé avec la page (elle
+ * s'arrête avec lui, `runToResume`) ; une séance close est oubliée, et un
+ * service resté seul, arrêté. Puis un enregistrement lancé pendant une
+ * séance la reçoit, et l'arrête avec lui.
  */
 export const startIntervalTimer = (): void => {
   if (started) return;
   started = true;
-  const stored = readIntervalRun(jsonStore.read<unknown>(STORAGE_KEY));
-  run = stored && isActive(timerStateAt(stored, Date.now())) ? stored : null;
-  if (!run && stored) persist();
+  const stored = readStoredIntervalRun(jsonStore.read<unknown>(STORAGE_KEY));
+  run = runToResume(stored, Date.now());
+  confided = false;
+  if (!run && stored.run) persist();
   reschedule(false);
   publish();
   subscribeToRecorder(() => {
@@ -198,7 +214,10 @@ export const startIntervalTimer = (): void => {
     const recording = status !== 'idle';
     const stopping = status === 'stopping';
     const active = run !== null && isActive(timerStateAt(run, Date.now()));
-    if (recording && !wasRecording && active && run) note(run);
+    if (recording && !wasRecording && active && run) {
+      note(run);
+      persist();
+    }
     // La séance confiée à la session s'arrête avec elle (Q12, 28/10), l'arrêt écrit encore dans la session.
     if (stopping && !wasStopping && active && run && activity && handsOverToRecording(run, hasPositions(activity.base))) stopIntervals();
     wasRecording = recording;
@@ -219,7 +238,7 @@ export const subscribeToIntervalCommands = (listener: () => void): (() => void) 
 /** Le compteur, relu à chaque changement et, pendant une séance qui avance, au quart de seconde. */
 export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(subscribe, ticking.get);
 
-/** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Fermer » ; ne redessine qu'à ce changement. */
+/** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Tout clore » ; ne redessine qu'à ce changement. */
 export const useIntervalTimerOpen = (): boolean => useSyncExternalStore(subscribe, () => ticking.get().run !== null);
 
 /** Vrai tant qu'une séance avance ou est en pause, pas une fois finie : l'écran reste allumé ; ne redessine qu'à ce changement. */

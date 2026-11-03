@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { folderImportPaths, isMemorySubfolder, shouldDescendIntoMemory } from './memoryFolder';
+import { describe, expect, it, vi } from 'vitest';
+import { MISSING_FOLDER_MESSAGE, folderImportPaths, isMemorySubfolder, readableFolderError, shouldDescendIntoMemory } from './memoryFolder';
 
 describe('shouldDescendIntoMemory', () => {
   it('garde le dossier Tracker désigné, même vide', () => {
@@ -51,5 +51,20 @@ describe('folderImportPaths', () => {
       [file('LISEZMOI.txt'), dir('x.gpx')],
       [file('photo.jpg'), dir('vieux')]
     )).toEqual([]);
+  });
+});
+
+describe('readableFolderError (lot 143, idée 122)', () => {
+  it('rend en clair un dossier désigné qui n’existe plus, le détail en console', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const err = readableFolderError(new Error('Écriture impossible : Missing file for primary:Documents/Tracker at /storage/emulated/0/Documents/Tracker'));
+    expect((err as Error).message).toBe(MISSING_FOLDER_MESSAGE);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Missing file for'));
+    warn.mockRestore();
+  });
+
+  it('rend telle quelle une autre erreur', () => {
+    const other = new Error('Écriture impossible : disque plein');
+    expect(readableFolderError(other)).toBe(other);
   });
 });

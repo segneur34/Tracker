@@ -62,8 +62,10 @@
   cursor: pointer;
 }
 
-.gear-editor__icon:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .gear-editor__icon:hover {
+    background: var(--surface-hover);
+  }
 }
 
 /* Choix d'une pièce dans l'onglet du matériel : le nom du groupe, puis le bouton au gabarit d'un champ. */

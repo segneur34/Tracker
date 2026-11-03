@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ACTIVITIES } from '../core/activities';
+import { EMPTY_RUNNER_PROFILE } from '../running/runnerProfile';
 import {
   SETTINGS_FORMAT,
   SETTINGS_VERSION,
   adoptedValues,
   buildSettingsFile,
+  checkedValues,
   chooseSettings,
   cleanDeviceName,
   deviceFileName,
@@ -230,12 +232,21 @@ describe('adoptedValues', () => {
         thresholds: { wingfoil: 12 }, intervalPresets: [1], timerPresets: [2], recordActivity: 'wingfoil',
         lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 }, lastTimerWorkout: { reps: 8, workS: 40, restS: 20 },
       },
-      'tracker.runnerProfile': { me: { weightKg: 80 } },
+      'tracker.runnerProfile': { me: { ...EMPTY_RUNNER_PROFILE, weightKg: 80 } },
     });
   });
 
-  it('rend tel quel un fichier sans réglage de support', () => {
-    const theirs = { 'tracker.runnerProfile': { me: { weightKg: 80 } } };
+  it('rend tel quel un fichier sans réglage de support ni profil', () => {
+    const theirs = { 'tracker.autre': 1 };
     expect(adoptedValues(theirs, { 'tracker.sportSettings': { recordActivity: 'x' } })).toBe(theirs);
+  });
+
+  it('relit le profil du pratiquant champ par champ (lot 143)', () => {
+    const theirs = { 'tracker.runnerProfile': { me: { weightKg: 9000, hrMax: 190, inconnu: 1 } } };
+    expect(adoptedValues(theirs, {})).toEqual({ 'tracker.runnerProfile': { me: { ...EMPTY_RUNNER_PROFILE, hrMax: 190, hrMaxSource: { kind: 'saisie', atMs: null } } } });
+  });
+
+  it("ne reprend pas un profil qui n'a pas la forme attendue", () => {
+    expect(checkedValues({ 'tracker.runnerProfile': 'abîmé', 'tracker.sportSettings': {} })).toEqual({ 'tracker.sportSettings': {} });
   });
 });

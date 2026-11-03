@@ -58,6 +58,7 @@ import {
   TRAVELLING_KEYS,
   adoptedValues,
   buildSettingsFile,
+  checkedValues,
   chooseSettings,
   cleanDeviceName,
   deviceFileName,
@@ -733,16 +734,33 @@ const deviceName = (): string => {
 
 /** Dernière lecture de `reglages/`, tenue à jour par les écritures de l'appareil. */
 let settingsEntries: SettingsEntry[] = [];
+/** Fichiers de `reglages/` qui ne se lisent pas, à la dernière lecture : jamais écrits par-dessus. */
+let unreadableSettings: string[] = [];
 
-/** Fichiers lisibles de `reglages/` ; un fichier abîmé ou d'un autre format est ignoré. */
-const readSettingsEntries = async (f: MemoryFolder): Promise<SettingsEntry[]> => {
+/**
+ * Fichiers de `reglages/` : les lisibles, et les noms de ceux qui ne se
+ * lisent pas (abîmés, ou d'un autre format). Ceux-ci ne sont ni proposés ni
+ * repris, mais leur nom reste pris : on ne sait pas de quel appareil ils
+ * sont, et l'appareil n'écrit jamais par-dessus (lot 143).
+ */
+const readSettingsListing = async (f: MemoryFolder): Promise<{ entries: SettingsEntry[]; unreadable: string[] }> => {
   const entries: SettingsEntry[] = [];
+  const unreadable: string[] = [];
   for (const entry of await f.list(SETTINGS_DIR)) {
     if (entry.kind !== 'file' || !/\.json$/i.test(entry.name)) continue;
     const file = parseSettingsFile(await f.readText(settingsPath(entry.name)));
     if (file) entries.push({ fileName: entry.name, file });
+    else unreadable.push(entry.name);
   }
-  return entries;
+  return { entries, unreadable };
+};
+
+/** Relit `reglages/` dans `settingsEntries` et `unreadableSettings`, et rend les lisibles. */
+const readSettingsEntries = async (f: MemoryFolder): Promise<SettingsEntry[]> => {
+  const listing = await readSettingsListing(f);
+  settingsEntries = listing.entries;
+  unreadableSettings = listing.unreadable;
+  return listing.entries;
 };
 
 const settingsFileInfo = (e: SettingsEntry, id: string): SettingsFileInfo => ({
@@ -764,9 +782,9 @@ const publishSettingsFiles = (): void => {
 
 /**
  * Écrit le fichier de l'appareil, sous son nom. Le fichier d'un autre
- * appareil qui porte déjà ce nom n'est jamais écrasé : l'appareil prend un
- * nom libre (« Téléphone 2 ») et l'annonce. Son fichier précédent, sous un
- * autre nom, est retiré.
+ * appareil qui porte déjà ce nom n'est jamais écrasé, ni un fichier qui ne se
+ * lit pas, fût-il le sien : l'appareil prend un nom libre (« Téléphone 2 »)
+ * et l'annonce. Son fichier précédent, sous un autre nom, est retiré.
  */
 const writeOwnSettings = async (f: MemoryFolder, savedAt: number): Promise<void> => {
   // Stockage illisible au démarrage : les réglages en mémoire ne sont pas ceux de l'appareil, son fichier reste tel quel.
@@ -776,12 +794,18 @@ const writeOwnSettings = async (f: MemoryFolder, savedAt: number): Promise<void>
   }
   const id = deviceId();
   const own = ownSettingsEntry(settingsEntries, id);
-  const othersFiles = new Set(settingsEntries.filter((e) => e !== own).map((e) => e.fileName.toLowerCase()));
+  const unreadable = new Set(unreadableSettings.map((n) => n.toLowerCase()));
+  const othersFiles = new Set([...settingsEntries.filter((e) => e !== own).map((e) => e.fileName.toLowerCase()), ...unreadable]);
   const wanted = deviceName();
   const name = freeDeviceName(wanted, othersFiles);
   if (name !== wanted) {
     jsonStore.write(DEVICE_NAME_KEY, name);
-    setState({ message: `Cet appareil s'appelle désormais « ${name} » : un autre appareil du dossier s'appelle déjà « ${wanted} ».` });
+    const blocked = deviceFileName(wanted);
+    setState({
+      message: unreadable.has(blocked) && !settingsEntries.some((e) => e !== own && e.fileName.toLowerCase() === blocked)
+        ? `Cet appareil s'appelle désormais « ${name} » : le fichier de réglages ${blocked} du dossier ne se lit pas, il est gardé tel quel.`
+        : `Cet appareil s'appelle désormais « ${name} » : un autre appareil du dossier s'appelle déjà « ${wanted} ».`,
+    });
   }
   const fileName = deviceFileName(name);
   const file = buildSettingsFile(localTravellingValues(), savedAt, own?.file ?? null, { id, name });
@@ -798,7 +822,7 @@ const flushSettings = async (): Promise<void> => {
   const savedAt = readLocalSavedAt();
   if (!f || savedAt === null) return;
   try {
-    settingsEntries = await readSettingsEntries(f);
+    await readSettingsEntries(f);
     await writeOwnSettings(f, savedAt);
   } catch (err) {
     setState({ error: `Réglages non recopiés dans le dossier : ${errorMessage(err, 'erreur inconnue')}` });
@@ -877,7 +901,7 @@ const applySettingsValues = (values: Record<string, unknown>): boolean => {
  */
 const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   const id = deviceId();
-  settingsEntries = await readSettingsEntries(f);
+  await readSettingsEntries(f);
   const own = ownSettingsEntry(settingsEntries, id);
   const legacy = parseSettingsFile(await f.readText(SETTINGS_FILE));
   let savedAt = readLocalSavedAt();
@@ -895,7 +919,7 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
       if (newest && newest !== own) setState({ message: `Réglages repris de « ${settingsEntryName(newest)} », le fichier le plus récent du dossier.` });
     }
   } else if (!own && legacy && chooseSettings(savedAt, legacy) === 'folder') {
-    changed = applySettingsValues(legacy.values);
+    changed = applySettingsValues(checkedValues(legacy.values));
     savedAt = legacy.savedAt;
   }
   if (savedAt === null) savedAt = Date.now();
@@ -943,7 +967,7 @@ export const adoptSettingsFile = async (fileName: string): Promise<void> => {
     const now = Date.now();
     jsonStore.write(SETTINGS_SAVED_AT_KEY, now);
     lastSignature = settingsSignature(localTravellingValues());
-    settingsEntries = await readSettingsEntries(f);
+    await readSettingsEntries(f);
     await writeOwnSettings(f, now);
     setState({ message: `Réglages repris de « ${settingsEntryName({ fileName, file })} ».`, settingsOffer: null });
     await applySettingsChange(true);
@@ -964,16 +988,19 @@ export const renameDevice = async (raw: string): Promise<string | null> => {
   await opening;
   const f = folder;
   try {
-    const entries = f ? await readSettingsEntries(f) : [];
+    const { entries, unreadable } = f ? await readSettingsListing(f) : { entries: [], unreadable: [] };
     const own = ownSettingsEntry(entries, deviceId());
     const clash = entries.find((e) => e !== own && e.fileName.toLowerCase() === deviceFileName(name));
     if (clash) return `Le fichier ${clash.fileName} est déjà celui de « ${settingsEntryName(clash)} » : choisissez un autre nom.`;
+    const unreadableClash = unreadable.find((n) => n.toLowerCase() === deviceFileName(name));
+    if (unreadableClash) return `Le fichier ${unreadableClash} du dossier ne se lit pas et porte déjà ce nom : choisissez un autre nom.`;
     jsonStore.write(DEVICE_NAME_KEY, name);
     if (!f) {
       setState({ deviceName: name });
       return null;
     }
     settingsEntries = entries;
+    unreadableSettings = unreadable;
     await writeOwnSettings(f, readLocalSavedAt() ?? Date.now());
     return null;
   } catch (err) {
@@ -998,7 +1025,7 @@ export const importSettingsFile = async (picked: File): Promise<{ file: Settings
     if (!file) return { refusal: `${picked.name} n'est pas un fichier de réglages de Tracker.` };
     const id = deviceId();
     if (file.device?.id === id) return { refusal: `${picked.name} est le fichier de réglages de cet appareil.` };
-    settingsEntries = await readSettingsEntries(f);
+    await readSettingsEntries(f);
     const taken = new Set((await f.list(SETTINGS_DIR)).map((e) => e.name.toLowerCase()));
     const fileName = importedSettingsFileName(file, picked.name, settingsEntries, taken);
     await f.writeText(settingsPath(fileName), text);
@@ -1593,6 +1620,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
   publishPending = false;
   knownNames = new Set();
   settingsEntries = [];
+  unreadableSettings = [];
   refreshFailed.clear();
   setState({
     status,

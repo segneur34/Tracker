@@ -82,8 +82,10 @@
   cursor: pointer;
 }
 
-.plan-results button:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .plan-results button:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .plan-results span {

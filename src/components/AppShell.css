@@ -288,8 +288,10 @@
   white-space: nowrap;
 }
 
-.shell-toplink:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .shell-toplink:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .shell-toplink.active {
@@ -343,8 +345,10 @@
   text-decoration: none;
 }
 
-.shell-topplan:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .shell-topplan:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .shell-topplan.active {

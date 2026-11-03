@@ -1,5 +1,6 @@
 import { readActivities } from '../core/activities';
 import { isObject, parseJson, stringifyJson } from '../core/basics';
+import { sanitizeRunnerProfile } from '../running/runnerProfile';
 
 /**
  * Fichiers de réglages du dossier mémoire (§10, point 90) : un par appareil,
@@ -205,10 +206,25 @@ export const settingsSignature = (values: Record<string, unknown>): string => {
 };
 
 /**
+ * Valeurs d'un fichier relues avec contrôle avant d'être reprises : chaque
+ * profil du pratiquant (`tracker.runnerProfile`, rangé par clé) champ par
+ * champ (`sanitizeRunnerProfile`) ; un profil qui n'a pas la forme d'une liste
+ * rangée par clé n'est pas repris (celui de l'appareil reste).
+ */
+export const checkedValues = (values: Record<string, unknown>): Record<string, unknown> => {
+  const key = 'tracker.runnerProfile';
+  if (!(key in values)) return values;
+  const { [key]: profiles, ...rest } = values;
+  if (!isObject(profiles)) return rest;
+  return { ...rest, [key]: Object.fromEntries(Object.entries(profiles).map(([k, v]) => [k, sanitizeRunnerProfile(v)])) };
+};
+
+/**
  * Valeurs à prendre en reprenant le fichier d'un autre appareil : les
  * siennes, sauf les choix retenus, qui restent ceux de cet appareil.
  */
-export const adoptedValues = (theirs: Record<string, unknown>, mine: Record<string, unknown>): Record<string, unknown> => {
+export const adoptedValues = (raw: Record<string, unknown>, mine: Record<string, unknown>): Record<string, unknown> => {
+  const theirs = checkedValues(raw);
   const theirSport = theirs['tracker.sportSettings'];
   if (!isObject(theirSport)) return theirs;
   const mySport = mine['tracker.sportSettings'];

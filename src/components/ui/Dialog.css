@@ -38,8 +38,10 @@
   cursor: pointer;
 }
 
-.ui-dialog__close:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ui-dialog__close:hover {
+    background: var(--surface-hover);
+  }
 }
 
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {

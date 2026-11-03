@@ -332,6 +332,49 @@ describe('stockage illisible au démarrage (A3)', () => {
   });
 });
 
+describe('fichiers de réglages illisibles et profil relu (lot 143, 123 b et d)', () => {
+  beforeEach(() => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) });
+    vi.stubGlobal('document', { addEventListener: () => undefined, visibilityState: 'visible' });
+    vi.stubGlobal('window', { addEventListener: () => undefined });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("n'écrit jamais par-dessus un fichier illisible qui porte le nom de l'appareil : il prend « PC 2 »", async () => {
+    files.set('reglages/pc.json', '{ abîmé');
+    const library = await openFresh();
+    await settle(library);
+    expect(files.get('reglages/pc.json')).toBe('{ abîmé');
+    expect(log).not.toContain('write reglages/pc.json');
+    expect(log).toContain('write reglages/pc-2.json');
+    expect(library.readLibraryState().deviceName).toBe('PC 2');
+    expect(library.readLibraryState().message).toContain('ne se lit pas');
+  });
+
+  it('refuse de renommer l’appareil sous le nom d’un fichier illisible', async () => {
+    files.set('reglages/atelier.json', 'pas du JSON');
+    const library = await openFresh();
+    await settle(library);
+    expect(await library.renameDevice('Atelier')).toContain('ne se lit pas');
+    expect(files.get('reglages/atelier.json')).toBe('pas du JSON');
+  });
+
+  it('reprend le profil du pratiquant champ par champ : une valeur hors plage ou de travers reste vide', async () => {
+    const { buildSettingsFile, serializeSettingsFile } = await import('../library/settingsFile');
+    files.set('reglages/autre.json', serializeSettingsFile(buildSettingsFile(
+      { 'tracker.runnerProfile': { me: { name: 'Autre', weightKg: 9999, heightCm: '180', hrMax: 190, sex: 'x', inconnu: 1 } } },
+      1000, null, { id: 'autre', name: 'Autre' },
+    )));
+    const library = await openFresh();
+    await settle(library);
+    const { jsonStore } = await import('../platform/storage');
+    const me = jsonStore.read<Record<string, Record<string, unknown>>>('tracker.runnerProfile')?.me;
+    expect(me).toMatchObject({ name: 'Autre', weightKg: null, heightCm: null, hrMax: 190, sex: null });
+    expect(me).not.toHaveProperty('inconnu');
+  });
+});
+
 describe('capteurs ajoutés par un import à une session présente (D10)', () => {
   it('republient la session : une analyse ouverte voit ses capteurs sans attendre un autre rendu', async () => {
     const library = await openFresh();

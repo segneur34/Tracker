@@ -79,9 +79,14 @@
   cursor: pointer;
 }
 
-.activity-select__option:hover,
 .activity-select__option:focus-visible {
   background: var(--surface-hover);
+}
+
+@media (hover: hover) {
+  .activity-select__option:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .activity-select__option[aria-selected='true'] {

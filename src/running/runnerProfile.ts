@@ -1,6 +1,7 @@
 import { finiteOr, inRange } from '../core/basics';
 import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
-import { heartRateZones, type HeartRateZones } from '../core/heartRate';
+import { heartRateZones, isValidThresholds, isValidZoneBounds, type HeartRateZones } from '../core/heartRate';
+import { ROOT_GOAL } from '../library/rootGrowth';
 import type { HeartRateProfile } from '../core/sportProfiles';
 
 /**
@@ -145,3 +146,40 @@ export const runnerHrSource = (profile: Partial<RunnerProfile>, field: 'hrMax' |
  */
 export const runnerHeartRateZones = (profile: RunnerProfile, heartRate: HeartRateProfile, offsetBpm: number): HeartRateZones | null =>
   heartRateZones(profile, runnerAge(profile), heartRate.zoneModel, offsetBpm);
+
+/**
+ * Profil relu champ par champ (fichier de réglages d'un autre appareil, lot
+ * 143) : un champ d'une forme inattendue ou hors de sa plage (`RUNNER_BOUNDS`,
+ * `ROOT_GOAL` pour l'objectif de la racine) est remis à vide, jamais repris
+ * tel quel ; un champ inconnu est écarté.
+ */
+export const sanitizeRunnerProfile = (raw: unknown): RunnerProfile => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ...EMPTY_RUNNER_PROFILE };
+  const p = raw as Partial<Record<keyof RunnerProfile, unknown>>;
+  const bounded = (field: Exclude<RunnerNumberField, 'rootWeeklyGoalMin'>): number | null => {
+    const [lo, hi] = RUNNER_BOUNDS[field];
+    return inRange(p[field], lo, hi) ? p[field] : null;
+  };
+  const numbers = (value: unknown): number[] | null => (Array.isArray(value) ? value.slice() as number[] : null);
+  const thresholds = numbers(p.hrThresholds);
+  const zones = numbers(p.hrZones);
+  const hrMax = bounded('hrMax');
+  const hrRest = bounded('hrRest');
+  const forSource = { hrMax, hrRest, hrMaxSource: p.hrMaxSource, hrRestSource: p.hrRestSource } as Partial<RunnerProfile>;
+  return {
+    name: runnerName({ name: p.name as string | null }),
+    avatar: runnerAvatar({ avatar: p.avatar as RunnerAvatar | null }),
+    weightKg: bounded('weightKg'),
+    heightCm: bounded('heightCm'),
+    birthYear: bounded('birthYear'),
+    sex: p.sex === 'f' || p.sex === 'm' ? p.sex : null,
+    hrMax,
+    hrMaxSource: runnerHrSource(forSource, 'hrMax'),
+    hrRest,
+    hrRestSource: runnerHrSource(forSource, 'hrRest'),
+    hrThresholds: isValidThresholds(thresholds) ? thresholds : null,
+    hrZones: isValidZoneBounds(zones) ? zones : null,
+    economyMlKgKm: bounded('economyMlKgKm'),
+    rootWeeklyGoalMin: inRange(p.rootWeeklyGoalMin, ROOT_GOAL.min, ROOT_GOAL.max) ? p.rootWeeklyGoalMin : null,
+  };
+};

@@ -598,6 +598,39 @@ export const seriesBlocks = (series: IntervalSeries): IntervalBlockSeries[] => {
   return out;
 };
 
+// --- Séance gardée sur l'appareil ---
+
+/** Séance gardée sur l'appareil, et si elle était confiée à l'enregistrement en cours. */
+export interface StoredIntervalRun {
+  run: IntervalRun | null;
+  /** Vrai si un enregistrement la recevait (`handsOverToRecording`). */
+  confided: boolean;
+}
+
+/** Forme gardée sur l'appareil : la séance, marquée `confided` si un enregistrement la recevait ; `null` sans séance. */
+export const storedIntervalRun = (run: IntervalRun | null, confided: boolean): unknown =>
+  run && confided ? { ...run, confided: true } : run;
+
+/** Séance relue de l'appareil (`storedIntervalRun`) ; une séance gardée avant la marque n'était pas confiée. */
+export const readStoredIntervalRun = (value: unknown): StoredIntervalRun => ({
+  run: readIntervalRun(value),
+  confided: typeof value === 'object' && value !== null && (value as Record<string, unknown>).confided === true,
+});
+
+/**
+ * Séance à reprendre au lancement de l'application : celle gardée qui court
+ * ou attend en pause, sauf si elle était confiée à un enregistrement. Au
+ * lancement, plus rien n'enregistre : celui qui la recevait a été coupé
+ * (arrêt brutal), sa session revient en attente, et la séance s'arrête avec
+ * elle, comme à « Arrêter » (§5 ; lot 143) : rien ne sonne sans session.
+ * `null` : rien à reprendre.
+ */
+export const runToResume = (stored: StoredIntervalRun, nowMs: number): IntervalRun | null => {
+  if (!stored.run || stored.confided) return null;
+  const { status } = timerStateAt(stored.run, nowMs);
+  return status === 'running' || status === 'paused' ? stored.run : null;
+};
+
 /** Séance relue d'une ligne de journal ; `null` si elle n'en est pas une. */
 export const readIntervalRun = (value: unknown): IntervalRun | null => {
   if (typeof value !== 'object' || value === null) return null;

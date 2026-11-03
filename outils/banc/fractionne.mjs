@@ -125,7 +125,7 @@ console.log('à 21 s :', await card());
 console.log('sons :', timeline(first));
 console.log('attendu : court@0 court@1 long@2 court@5 court@6 long@7 court@10 court@11 long@12 court@14.2 long@15.2 final@16.2');
 console.log('notification :', sounds.slice(first).filter((s) => s.startsWith('[compteur]')).map((s) => s.replace(/ à \d+/, '').replace('[compteur] ', '')).join(' → '));
-console.log('Fermer :', await clickText('Fermer'));
+console.log('Tout clore :', await clickText('Tout clore'));
 await wait(300);
 
 // 4. Pause, reprise, Passer, rechargement en pleine séance, bandeau, arrêt.
@@ -147,7 +147,7 @@ console.log('de retour :', await card());
 console.log('Arrêter :', await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`));
 await wait(300);
 console.log('arrêté :', await card(), '| gardée :', await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun'))?.commands.map((c) => c.kind).join(',')`));
-console.log('Fermer :', await clickText('Fermer'), '| oubliée :', await evaluate(`localStorage.getItem('tracker.intervalRun')`));
+console.log('Tout clore :', await clickText('Tout clore'), '| oubliée :', await evaluate(`localStorage.getItem('tracker.intervalRun')`));
 
 // 5. Pendant un enregistrement : rejeu ×1 d'une trace datée de maintenant, 5 s à 5 m/s puis 5 s à 1 m/s.
 const t0 = Date.now();

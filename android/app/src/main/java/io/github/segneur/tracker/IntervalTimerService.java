@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -62,6 +63,13 @@ public class IntervalTimerService extends Service {
 
     /** Service en marche, pour lui signaler la notification de l'enregistrement ; `null` sinon. */
     private static volatile IntervalTimerService running;
+
+    /**
+     * Vrai dès l'arrêt du service (onDestroy) : un changement de phase ou une
+     * notification reposée sur le fil du compteur, partis juste avant, ne
+     * reposent plus la notification, qui resterait seule, sans service (lot 143).
+     */
+    private volatile boolean destroyed = false;
 
     private HandlerThread thread;
     private Handler handler;
@@ -124,6 +132,7 @@ public class IntervalTimerService extends Service {
     /** Remplace le programme en cours ; sur le fil du compteur. */
     private void apply(long[] toneDelays, int[] toneKinds, long[] cueDelays, long[] cuePhaseMs, String[] cueTitles,
                        boolean vibrate, long stopAfterMs) {
+        if (destroyed) return;
         handler.removeCallbacksAndMessages(null);
         long lastMs = 0;
         for (int i = 0; i < toneDelays.length && i < toneKinds.length; i++) {
@@ -148,6 +157,7 @@ public class IntervalTimerService extends Service {
     }
 
     private void show(String cueTitle, long phaseMs) {
+        if (destroyed) return;
         title = cueTitle;
         phaseEndAt = phaseMs > 0 ? System.currentTimeMillis() + phaseMs : 0;
         NotificationManager manager = getSystemService(NotificationManager.class);
@@ -162,9 +172,19 @@ public class IntervalTimerService extends Service {
 
     /** Repose la notification de la phase en cours, décompte compris. */
     private void repost() {
+        if (destroyed) return;
         long phaseMs = phaseEndAt > 0 ? Math.max(1, phaseEndAt - System.currentTimeMillis()) : 0;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) manager.notify(NOTIFICATION_ID, notification(title, phaseMs));
+    }
+
+    /**
+     * Retire la notification du compteur, service arrêté ou non : rien ne
+     * doit en rester une fois la séance arrêtée ou fermée (BeeperPlugin.stopIntervals, lot 143).
+     */
+    static void cancelNotification(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager != null) manager.cancel(NOTIFICATION_ID);
     }
 
     /** Notification de la phase : son nom, et le décompte de son temps quand elle en a un. */
@@ -208,12 +228,18 @@ public class IntervalTimerService extends Service {
 
     @Override
     public void onDestroy() {
+        destroyed = true;
         if (running == this) running = null;
         handler.removeCallbacksAndMessages(null);
-        handler.post(() -> tones.release());
+        // Après un changement de phase peut-être en cours sur le fil : la notification qu'il aurait reposée est retirée.
+        handler.post(() -> {
+            tones.release();
+            cancelNotification(this);
+        });
         thread.quitSafely();
         releaseWakeLock();
         stopForeground(STOP_FOREGROUND_REMOVE);
+        cancelNotification(this);
         super.onDestroy();
     }
 
