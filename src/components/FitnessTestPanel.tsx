@@ -17,7 +17,7 @@ import {
   editSpeedUnit,
   SPEED_UNIT_LABEL, formatClockMinutes, formatShortDuration, formatSpeed, toDisplaySpeed, type SpeedUnit,
 } from '../core/units';
-import type { ChartZoom } from '../hooks/useChartZoom';
+import { useZoomState, type ChartZoomSource } from '../hooks/useChartZoom';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
 import { fitnessTestResults } from '../running/fitnessTestResults';
 import StatTile from './ui/StatTile';
@@ -72,7 +72,7 @@ const targetAt = (test: SessionTest, t: number, rampEndMs: number): number | nul
  * du protocole ; zoom commun, survol relié à la carte (`hoveredTrackIndex`).
  * Partagées par l'onglet « test » et la carte en plein écran.
  */
-export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom, onShowOnMap }: {
+export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom: source, onShowOnMap }: {
   track: readonly TrackPoint[];
   test: SessionTest;
   /** Minutes de chaque point depuis le début de la trace : l'axe et son zoom. */
@@ -81,9 +81,11 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   speedsMs: readonly number[];
   hrSmoothed: readonly (number | null)[];
   speedUnit: SpeedUnit;
-  zoom: ChartZoom;
+  /** Zoom commun aux deux courbes, lu ici : zoomer ne redessine qu'elles (lot 127). */
+  zoom: ChartZoomSource;
   onShowOnMap?: () => void;
 }) {
+  const zoom = useZoomState(source);
   // Une allure ferait un axe inversé : km/h, comme le nuage FC / vitesse.
   const unit: SpeedUnit = editSpeedUnit(speedUnit);
   const t0 = track[0]?.timeMs ?? 0;
@@ -176,7 +178,7 @@ export default function FitnessTestPanel({
   /** FC max saisie dans Pratiquant. */
   profileHrMax: number | null;
   onRetainHrMax: (bpm: number) => void;
-  zoom: ChartZoom;
+  zoom: ChartZoomSource;
   onShowOnMap?: () => void;
   open: boolean;
   onToggle: () => void;

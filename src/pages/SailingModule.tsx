@@ -23,7 +23,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
 import { SAILING_TABS, tabDefaults, type SailingTab } from '../core/analysisTabs';
-import { sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
+import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { nearestIndexAtTime } from '../core/search';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -56,6 +56,8 @@ import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/TrackChart';
+import ZoomView from '../components/ZoomView';
+import type { ChartZoom } from '../hooks/useChartZoom';
 import { zoomHint } from '../components/zoomHint';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
@@ -513,34 +515,46 @@ function SailingModule() {
    */
   const timeChart = useTimeChartAxis(trackData, sessionKey);
   const { minutes: trackMinutes, zoom: chartZoom, cardioZoom } = timeChart;
-  /** Points de trace des graphes sur la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
+  /**
+   * Points de trace des graphes sur une plage, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. Lus dans
+   * les blocs qui suivent le zoom (`ZoomView`), chacun gardé pour la dernière plage (`lastByRange`) : « graphiques »,
+   * « vent » et la carte en plein écran lisent les mêmes lignes sans les refaire, et zoomer ne redessine pas le module.
+   */
   const speedSeries = useMemo(() => trackData.map((p) => p.smoothedSpeed), [trackData]);
-  const visibleRange = useMemo(
-    () => (trackData.length === 0 ? null : visibleIndexRange(trackMinutes, chartZoom.view)),
-    [trackData, trackMinutes, chartZoom.view]
+  const visibleRangeAt = useMemo(
+    () => lastByRange((view) => (trackData.length === 0 ? null : visibleIndexRange(trackMinutes, view))),
+    [trackData, trackMinutes]
   );
   /** Lignes de la vitesse et de la FC : les extrêmes de l'une et de l'autre restent (un pic bref de FC aussi). */
-  const chartIndices = useMemo(() => {
+  const chartIndicesAt = useMemo(() => lastByRange((view): number[] => {
+    const visibleRange = visibleRangeAt(view);
     if (!visibleRange) return [];
     return sampledIndicesKeeping(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, heart.present ? [speedSeries, heart.smoothed] : [speedSeries]);
-  }, [visibleRange, speedSeries, heart]);
+  }), [visibleRangeAt, speedSeries, heart]);
   /** Lignes du vent : ses points suivent la vitesse seule. */
-  const windIndices = useMemo(
-    () => (visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, speedSeries) : []),
-    [visibleRange, speedSeries]
+  const windIndicesAt = useMemo(() => lastByRange((view): number[] => {
+    const visibleRange = visibleRangeAt(view);
+    return visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, speedSeries) : [];
+  }), [visibleRangeAt, speedSeries]);
+  const speedRowsAt = useMemo(
+    () => lastByRange((view) => chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) }))),
+    [chartIndicesAt, trackMinutes, trackData, speedUnit]
   );
-  const speedRows = useMemo(
-    () => chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) })),
-    [chartIndices, trackMinutes, trackData, speedUnit]
+  const heartRowsAt = useMemo(
+    () => lastByRange((view) => (heart.present
+      ? chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) }))
+      : [])),
+    [heart, chartIndicesAt, trackMinutes]
   );
-  const heartRows = useMemo(
-    () => (heart.present ? chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) })) : []),
-    [heart, chartIndices, trackMinutes]
+  const windRowsAt = useMemo(
+    () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, windIndicesAt(view)) : [])),
+    [windStats, trackData, windIndicesAt]
   );
-  const windRows = useMemo(
-    () => (windStats ? windChartRows(trackData, windStats, windIndices) : []),
-    [windStats, trackData, windIndices]
-  );
+  /**
+   * La courbe de FC a des lignes, quelle que soit la plage : avec la FC et au moins deux points, la plage zoomée en
+   * garde toujours deux (`visibleIndexRange` prend un voisin de chaque côté). Lu hors des blocs du zoom.
+   */
+  const heartChartShown = heart.present && trackData.length > 1;
   /** Traits des repères sur les graphes, en minutes depuis le premier point. */
   const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
@@ -562,37 +576,36 @@ function SailingModule() {
   const retainSessionHrMax = useCallback((bpm: number) => retainHr('hrMax', bpm, { kind: 'seance', atMs: firstMs }), [retainHr, firstMs]);
   const { show: showZoomOnMap } = zoomOnMap;
   const showCardioOnMap = useCallback(() => showZoomOnMap('cardio'), [showZoomOnMap]);
-  /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent (`HoverReadout`), s'il est dans la plage zoomée. */
-  const readable = (i: number): boolean => timeChart.readable(chartZoom, i);
+  /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent (`HoverReadout`), s'il est dans la plage zoomée `z`. */
   const readAt = timeChart.readAt;
-  const readSpeed = (i: number): Readout | null => (readable(i)
+  const readSpeed = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i)
     ? speedReadout(`${showKn(trackData[i].smoothedSpeed)} ${speedSymbol}`, readAt(i), SAILING_SPEED_COLOR)
     : null);
-  const readHeart = (i: number): Readout | null => (readable(i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
-  const windReadout = (i: number): Readout | null => {
-    if (!readable(i) || !windStats) return null;
+  const readHeart = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
+  const windReadout = (z: ChartZoom) => (i: number): Readout | null => {
+    if (!timeChart.readable(z, i) || !windStats) return null;
     const direction = windStats.windAt(trackData[i].timeMs);
     return { values: [{ text: direction === null ? '—' : `${normalizeDeg(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
   };
   const zoomText = zoomHint(narrow);
 
   /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
-  const speedChart = (style: CSSProperties) => (
-    <TrackChart rows={speedRows} zoom={chartZoom} x={timeChart.timeX} yAxes={SPEED_AXES} series={SPEED_SERIES} syncId={SAILING_SYNC_ID}
+  const speedChart = (z: ChartZoom, style: CSSProperties) => (
+    <TrackChart rows={speedRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={SPEED_AXES} series={SPEED_SERIES} syncId={SAILING_SYNC_ID}
       onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       {markLines}
     </TrackChart>
   );
   /** Graphe du vent : dans l'onglet « vent », et sous la carte en plein écran. */
-  const windChart = (style: CSSProperties) => (
-    <TrackChart rows={windRows} zoom={chartZoom} x={timeChart.timeX} yAxes={WIND_AXES} series={WIND_SERIES}
+  const windChart = (z: ChartZoom, style: CSSProperties) => (
+    <TrackChart rows={windRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={WIND_AXES} series={WIND_SERIES}
       onShowOnMap={() => zoomOnMap.show('vent')} style={style}>
       {markLines}
     </TrackChart>
   );
   /** Courbe de FC de « graphiques », sur le temps de la session ; ses boutons de zoom quand la vitesse est repliée. */
-  const heartChart = (style: CSSProperties) => (
-    <HeartRateChart data={heartRows} zoom={chartZoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
+  const heartChart = (z: ChartZoom, style: CSSProperties) => (
+    <HeartRateChart data={heartRowsAt(z.view)} zoom={z} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
       syncId={SAILING_SYNC_ID} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
     </HeartRateChart>
@@ -602,27 +615,35 @@ function SailingModule() {
     switch (panel) {
       case 'graphiques':
         return (
-          <>
-            {graphFolds.open.vitesse && (
+          <ZoomView zoom={chartZoom}>
+            {(z) => (
               <>
-                <HoverReadout line read={readSpeed} label="Vitesse" color={SAILING_SPEED_COLOR} />
-                {speedChart(COMPANION_CHART_STYLE)}
+                {graphFolds.open.vitesse && (
+                  <>
+                    <HoverReadout line read={readSpeed(z)} label="Vitesse" color={SAILING_SPEED_COLOR} />
+                    {speedChart(z, COMPANION_CHART_STYLE)}
+                  </>
+                )}
+                {heartChartShown && graphFolds.open.fc && (
+                  <>
+                    <HoverReadout line read={readHeart(z)} label="FC" color={HEART_RATE_COLOR} />
+                    {heartChart(z, COMPANION_CHART_STYLE)}
+                  </>
+                )}
               </>
             )}
-            {heart.present && heartRows.length > 1 && graphFolds.open.fc && (
-              <>
-                <HoverReadout line read={readHeart} label="FC" color={HEART_RATE_COLOR} />
-                {heartChart(COMPANION_CHART_STYLE)}
-              </>
-            )}
-          </>
+          </ZoomView>
         );
       case 'vent':
         return windStats ? (
-          <>
-            <HoverReadout line read={windReadout} label="Vent" color={WIND_COLOR} />
-            {windChart(COMPANION_CHART_STYLE)}
-          </>
+          <ZoomView zoom={chartZoom}>
+            {(z) => (
+              <>
+                <HoverReadout line read={windReadout(z)} label="Vent" color={WIND_COLOR} />
+                {windChart(z, COMPANION_CHART_STYLE)}
+              </>
+            )}
+          </ZoomView>
         ) : null;
       case 'cardio':
         return <CardioCompanion minutes={trackMinutes} heart={heart} zoom={cardioZoom} zones={hrZones} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />;
@@ -1084,20 +1105,33 @@ function SailingModule() {
 
                 {graphFolds.open.vitesse ? (
                 <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  {graphTitle('vitesse', 'Historique de Vitesse', readSpeed)}
-                  <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                    {speedChart(FILL_STYLE)}
-                  </div>
+                  {/* Le graphe suit le zoom, pas le module ni la polaire (lot 127). */}
+                  <ZoomView zoom={chartZoom}>
+                    {(z) => (
+                      <>
+                        {graphTitle('vitesse', 'Historique de Vitesse', readSpeed(z))}
+                        <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
+                          {speedChart(z, FILL_STYLE)}
+                        </div>
+                      </>
+                    )}
+                  </ZoomView>
                 </ResizablePanel>
                 ) : foldedGraph('vitesse', 'Historique de Vitesse', 500)}
 
-                {heart.present && heartRows.length > 1 && (
+                {heartChartShown && (
                   graphFolds.open.fc ? (
                   <ResizablePanel id="sailing.graph.fc" defaultHeight={250} minWidth={250} minHeight={160} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    {graphTitle('fc', 'Fréquence cardiaque', readHeart)}
-                    <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                      {heartChart(FILL_STYLE)}
-                    </div>
+                    <ZoomView zoom={chartZoom}>
+                      {(z) => (
+                        <>
+                          {graphTitle('fc', 'Fréquence cardiaque', readHeart(z))}
+                          <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
+                            {heartChart(z, FILL_STYLE)}
+                          </div>
+                        </>
+                      )}
+                    </ZoomView>
                   </ResizablePanel>
                   ) : foldedGraph('fc', 'Fréquence cardiaque', 500)
                 )}
@@ -1222,12 +1256,18 @@ function SailingModule() {
                 </div>
 
                 <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  <div className="chart-head" style={{ marginBottom: '10px' }}>
-                    <HoverReadout read={windReadout} label="Évolution du Vent" color={WIND_COLOR} />
-                  </div>
-                  <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                    {windChart(FILL_STYLE)}
-                  </div>
+                  <ZoomView zoom={chartZoom}>
+                    {(z) => (
+                      <>
+                        <div className="chart-head" style={{ marginBottom: '10px' }}>
+                          <HoverReadout read={windReadout(z)} label="Évolution du Vent" color={WIND_COLOR} />
+                        </div>
+                        <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
+                          {windChart(z, FILL_STYLE)}
+                        </div>
+                      </>
+                    )}
+                  </ZoomView>
                 </ResizablePanel>
               </div>
             )}

@@ -20,7 +20,7 @@ import {
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit, formatDecimal, commaDecimal } from '../core/units';
-import type { ChartZoom } from '../hooks/useChartZoom';
+import { useZoomState, type ChartZoomSource } from '../hooks/useChartZoom';
 import type { RunnerProfile } from '../running/runnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
@@ -55,8 +55,8 @@ interface Props {
   onSelectZone: (zone: number | null) => void;
   /** Course et vélo seulement. */
   efficiency?: HeartRateEfficiency;
-  /** Zoom de la courbe, tenu par le module (« +carte », plein écran carte + graphes) ; « tout voir » à chaque session. */
-  zoom: ChartZoom;
+  /** Zoom de la courbe, tenu par le module (« +carte », plein écran carte + graphes) ; « tout voir » à chaque session. Lu par la courbe seule. */
+  zoom: ChartZoomSource;
   /** « +carte » de la courbe zoomée. */
   onShowOnMap?: () => void;
   /** Session sans trace (muscu) : ni colonne « Carte » des zones, ni mention de la carte. */
@@ -72,12 +72,13 @@ const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
  * Courbe de FC de l'onglet « cardio », sur le temps écoulé, avec sa lecture
  * au-dessus : dans le panneau, et sous la carte en plein écran. `minutes` est
  * le temps de chaque point de la trace (`useTimeChartAxis`) ; `children` ajoute
- * des éléments au graphe (bandes des phases, traits des repères).
+ * des éléments au graphe (bandes des phases, traits des repères). Elle suit
+ * son zoom elle-même : zoomer ne redessine qu'elle (lot 127).
  */
-export function CardioCurve({ minutes, smoothed, zoom, zones, thresholds, onShowOnMap, style, children }: {
+export function CardioCurve({ minutes, smoothed, zoom: source, zones, thresholds, onShowOnMap, style, children }: {
   minutes: readonly number[];
   smoothed: readonly (number | null)[];
-  zoom: ChartZoom;
+  zoom: ChartZoomSource;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
   thresholds?: { s1: number; s2: number } | null;
@@ -85,6 +86,7 @@ export function CardioCurve({ minutes, smoothed, zoom, zones, thresholds, onShow
   style?: CSSProperties;
   children?: ReactNode;
 }) {
+  const zoom = useZoomState(source);
   const rows = useMemo(() => {
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
@@ -118,7 +120,7 @@ export function CardioCurve({ minutes, smoothed, zoom, zones, thresholds, onShow
 export function CardioCompanion({ minutes, heart, zoom, zones, onShowOnMap, style }: {
   minutes: readonly number[];
   heart: SessionHeartRate;
-  zoom: ChartZoom;
+  zoom: ChartZoomSource;
   zones: HeartRateZones | null;
   onShowOnMap?: () => void;
   style?: CSSProperties;

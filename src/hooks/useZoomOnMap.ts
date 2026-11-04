@@ -1,7 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { axisRangePath, type XRange } from '../core/chartZoom';
 import { trackBounds, type TrackBounds } from '../core/displayConfig';
-import type { ChartZoom } from './useChartZoom';
+import { currentZoomView, type ChartZoomSource } from './useChartZoom';
 import type { HighlightKeys, MapHighlight } from './useMapHighlight';
 
 /** Demande de cadrage de la carte (`AnalysisMap`, prop `focus`) : un objet neuf à chaque demande. */
@@ -11,13 +11,27 @@ export interface MapFocus {
 
 /** Graphe d'un onglet : son zoom, et la valeur de son axe en chaque point de la trace (distance affichée, minutes). */
 export interface ZoomedChart {
-  zoom: ChartZoom;
+  zoom: ChartZoomSource;
   axis: ArrayLike<number>;
 }
 
+/**
+ * Tronçon montré en violet, à lire par la couche de la carte qui le trace
+ * (`AnalysisBaseLayers`) : le zoom du graphe montré, son axe, la trace, et
+ * s'il a été montré entier. La couche suit le zoom elle-même (lot 127) :
+ * zoomer ne redessine pas le module, le tronçon suit quand même.
+ */
+export interface ZoomPathSource {
+  zoom: ChartZoomSource;
+  axis: ArrayLike<number>;
+  points: ReadonlyArray<{ lat: number; lon: number }>;
+  /** Montré sans zoom : sans zoom, le tronçon est toute la trace (`zoomPathRange`). */
+  whole: boolean;
+}
+
 export interface ZoomOnMap<P extends string> {
-  /** Tronçon montré en violet : la partie vue du graphe montré (plage zoomée, ou toute la trace), vide sinon. */
-  path: [number, number][];
+  /** Tronçon montré en violet : la partie vue du graphe montré (plage zoomée, ou toute la trace), `null` sinon. */
+  path: ZoomPathSource | null;
   /** Dernier cadrage demandé, tant que le tronçon est montré. */
   focus: MapFocus | null;
   /** « +carte » ou « Afficher » du graphe de `panel` ; un second clic sur la même plage retire le tronçon. */
@@ -29,8 +43,6 @@ export interface ZoomOnMap<P extends string> {
   /** Ramène la carte à l'écran (ordinateur), sous la barre du haut, si elle n'y est pas entière. */
   scrollToMap: () => void;
 }
-
-const NO_PATH: [number, number][] = [];
 
 /**
  * Partie d'un graphe vue sur la carte, dans les trois modules (23/10, revu
@@ -69,14 +81,22 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
   const panel = highlight.zoomPanel;
   const chart = panel !== null ? charts[panel] : undefined;
   const whole = focus?.whole === true;
-  const view = chart?.zoom.view ?? null;
-  // Montré zoomé, zoom revenu à tout voir : le tronçon s'efface pendant ce rendu, comme dans `useMapHighlight`.
-  if (panel !== null && view === null && !whole) highlight.show(panel, null);
-  const range = view ?? (whole ? chart?.zoom.full ?? null : null);
+  const zoom = chart?.zoom;
   const axis = chart?.axis;
+  const { show: showHighlight } = highlight;
+  // Montré zoomé, zoom revenu à tout voir (« Tout voir », pincement, autre session) : le tronçon s'efface.
+  // Le zoom est hors de l'état du module : on l'écoute, et seul ce retour redessine le module (lot 127).
+  useEffect(() => {
+    if (panel === null || whole) return;
+    const clearWhenWhole = () => {
+      if (!zoom || currentZoomView(zoom) === null) showHighlight(panel, null);
+    };
+    clearWhenWhole();
+    return zoom?.subscribe(clearWhenWhole);
+  }, [panel, whole, zoom, showHighlight]);
   const path = useMemo(
-    () => (range && axis ? axisRangePath(points, axis, range) : []),
-    [range, axis, points]
+    (): ZoomPathSource | null => (panel !== null && zoom && axis ? { zoom, axis, points, whole } : null),
+    [panel, zoom, axis, points, whole]
   );
 
   /** Carte entière à l'écran, sous la barre du haut (sa marge de défilement) ? */
@@ -103,15 +123,17 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
     const c = charts[target];
     if (!c) return;
     const inPage = narrow && !mapExpanded;
+    // Plage vue à l'instant du clic : le zoom n'est pas dans l'état du module.
+    const view = currentZoomView(c.zoom);
     // Graphe entier, dans la page du téléphone : carte et graphes de l'onglet ensemble, sur toute la trace, sans tronçon.
-    if (!c.zoom.view && inPage) {
+    if (!view && inPage) {
       setCompanionPanel(target);
       openMap();
       return;
     }
-    const shown = c.zoom.view ?? c.zoom.full;
+    const shown = view ?? c.zoom.full;
     if (!shown) return;
-    const isWhole = c.zoom.view === null;
+    const isWhole = view === null;
     // Second clic sur la même plage : le tronçon se retire.
     if (panel === target && focus && focus.whole === isWhole && focus.range.min === shown.min && focus.range.max === shown.max) {
       highlight.show(target, null);
@@ -134,11 +156,10 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
   }, [mapOnScreen, scrollToMap]);
   const closeCompanion = useCallback(() => setCompanionPanel(null), []);
 
-  const shownPath = panel !== null ? path : NO_PATH;
   const shownFocus = panel !== null ? focus : null;
   const shownCompanion = mapExpanded ? companionPanel : null;
   return useMemo(
-    () => ({ path: shownPath, focus: shownFocus, show, scrollToMap, companionPanel: shownCompanion, closeCompanion }),
-    [shownPath, shownFocus, show, scrollToMap, shownCompanion, closeCompanion]
+    () => ({ path, focus: shownFocus, show, scrollToMap, companionPanel: shownCompanion, closeCompanion }),
+    [path, shownFocus, show, scrollToMap, shownCompanion, closeCompanion]
   );
 };

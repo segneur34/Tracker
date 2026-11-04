@@ -38,7 +38,7 @@ import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/hi
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
-import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
+import { lastByRange, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
 import { nearestIndexAtTime } from '../core/search';
@@ -67,6 +67,8 @@ import MapToggle from '../components/ui/MapToggle';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
+import ZoomView from '../components/ZoomView';
+import type { ChartZoom } from '../hooks/useChartZoom';
 
 /**
  * Analyse d'une session de surf (§10, point 97), selon le patron commun
@@ -156,7 +158,7 @@ function SurfModule() {
 
   // Session de l'adresse et son brouillon : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
   const {
-    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, reading, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family: 'surf', activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
 
   /** Seuil et foil de l'activité : ceux que la fiche de la session porte, sinon ceux de cet appareil (Q57). */
@@ -317,9 +319,13 @@ function SurfModule() {
   const timeChart = useTimeChartAxis(track, gpx.sessionKey);
   const { minutes: trackMinutes, zoom, cardioZoom } = timeChart;
   const speedSeries = useMemo(() => track.map((p) => p.smoothedSpeedMs), [track]);
-  const chartData = useMemo(() => {
+  /**
+   * Lignes des graphes sur une plage, au plus `CHART_MAX_POINTS` : lues dans le bloc qui suit le zoom (`ZoomView`),
+   * gardées pour la dernière plage (`lastByRange`) : le panneau et la carte en plein écran ne les refont pas.
+   */
+  const chartDataAt = useMemo(() => lastByRange((view): ChartRow[] => {
     if (track.length === 0 || !open.graphiques) return [];
-    const [first, last] = visibleIndexRange(trackMinutes, zoom.view);
+    const [first, last] = visibleIndexRange(trackMinutes, view);
     // Les extrêmes de la vitesse et de la FC restent : un pic bref de FC ne disparaît pas.
     return sampledIndicesKeeping(first, last, CHART_MAX_POINTS, [speedSeries, heart.smoothed]).map((i): ChartRow => ({
       index: i,
@@ -328,12 +334,18 @@ function SurfModule() {
       speedMs: track[i].smoothedSpeedMs,
       hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
     }));
-  }, [track, open.graphiques, trackMinutes, zoom.view, speedUnit, heart.smoothed, speedSeries]);
-  /** Point survolé lu au-dessus des graphes (`HoverReadout`), s'il est dans la plage zoomée. */
-  const readable = (i: number): boolean => timeChart.readable(zoom, i);
+  }), [track, open.graphiques, trackMinutes, speedUnit, heart.smoothed, speedSeries]);
+  /**
+   * Les graphes ont des lignes, quelle que soit la plage : au moins deux points, la plage zoomée en garde toujours deux
+   * (`visibleIndexRange` prend un voisin de chaque côté). Lu hors du bloc du zoom : le panneau ne dépend pas de la plage.
+   */
+  const chartsShown = open.graphiques && track.length > 1;
+  /** Point survolé lu au-dessus des graphes (`HoverReadout`), s'il est dans la plage zoomée `z`. */
   const readAt = timeChart.readAt;
-  const readSpeed = (i: number): Readout | null => (readable(i) ? speedReadout(formatSpeed(track[i].smoothedSpeedMs, speedUnit), readAt(i)) : null);
-  const readHeart = (i: number): Readout | null => (readable(i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
+  const readSpeed = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i)
+    ? speedReadout(formatSpeed(track[i].smoothedSpeedMs, speedUnit), readAt(i))
+    : null);
+  const readHeart = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
@@ -380,15 +392,15 @@ function SurfModule() {
   const hrThresholds = useMemo(() => (hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null), [hrZones]);
 
   /** Graphe de vitesse : bandes des vagues et des vols, repères ; dans l'onglet, et sous la carte en plein écran. */
-  const speedChart = (style: CSSProperties) => (
-    <MemoTrackChart rows={chartData} zoom={zoom} x={timeChart.timeX} series={SPEED_SERIES} syncId={SURF_SYNC_ID}
+  const speedChart = (z: ChartZoom, chartData: ChartRow[], style: CSSProperties) => (
+    <MemoTrackChart rows={chartData} zoom={z} x={timeChart.timeX} series={SPEED_SERIES} syncId={SURF_SYNC_ID}
       yAxes={speedYAxes} onShowOnMap={showGraphsOnMap} style={style}>
       {speedOverlays}
     </MemoTrackChart>
   );
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
-  const heartChart = (speedShown: boolean) => (
-    <MemoHeartRateChart data={chartData} zoom={zoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrThresholds}
+  const heartChart = (z: ChartZoom, chartData: ChartRow[], speedShown: boolean) => (
+    <MemoHeartRateChart data={chartData} zoom={z} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrThresholds}
       syncId={SURF_SYNC_ID} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={CHART_STYLE}>
       {heartOverlays}
     </MemoHeartRateChart>
@@ -398,21 +410,28 @@ function SurfModule() {
     switch (panel) {
       case 'graphiques': {
         const speedShown = !heart.present || graphFolds.open.vitesse;
-        return chartData.length > 1 ? (
-          <>
-            {speedShown && (
-              <>
-                <HoverReadout line read={readSpeed} label="Vitesse" color={SPEED_COLOR} />
-                {speedChart(CHART_STYLE)}
-              </>
-            )}
-            {heart.present && graphFolds.open.fc && (
-              <>
-                <HoverReadout line read={readHeart} label="FC" color={HEART_RATE_COLOR} />
-                {heartChart(speedShown)}
-              </>
-            )}
-          </>
+        return chartsShown ? (
+          <ZoomView zoom={zoom}>
+            {(z) => {
+              const chartData = chartDataAt(z.view);
+              return chartData.length > 1 ? (
+                <>
+                  {speedShown && (
+                    <>
+                      <HoverReadout line read={readSpeed(z)} label="Vitesse" color={SPEED_COLOR} />
+                      {speedChart(z, chartData, CHART_STYLE)}
+                    </>
+                  )}
+                  {heart.present && graphFolds.open.fc && (
+                    <>
+                      <HoverReadout line read={readHeart(z)} label="FC" color={HEART_RATE_COLOR} />
+                      {heartChart(z, chartData, speedShown)}
+                    </>
+                  )}
+                </>
+              ) : null;
+            }}
+          </ZoomView>
         ) : null;
       }
       case 'cardio':
@@ -439,6 +458,7 @@ function SurfModule() {
   return (
     <AnalysisShell title="Analyse Surf" family="surf" backLabel="Surf" file={gpx.fileName}
       share={{ segments: mapSegments, stats: generalStats }} error={sessionError} draft={draft} loadError={gpx.error}
+      reading={reading}
       empty={!summary && !gpx.error && requestedFile === null}
       map={{
         panelId: panelId('carte'),
@@ -673,7 +693,7 @@ function SurfModule() {
               </ResizablePanel>
             )}
 
-            {open.graphiques && chartData.length > 1 && (() => {
+            {chartsShown && (() => {
               // Sans FC, un seul graphe : pas de repli. Avec, chacun le sien, « Tout voir » sur le premier montré.
               const folds = heart.present;
               const speedShown = !folds || graphFolds.open.vitesse;
@@ -681,27 +701,37 @@ function SurfModule() {
               return (
               <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
-                <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Vitesse" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="surf:graphiques" />
-                  {!folds && <HoverReadout read={readSpeed} />}
-                </div>
-                <HelpText helpKey="surf:graphiques" note>
-                  Le survol déplace le repère sur la carte.
-                  {folds ? ' Chaque graphe se replie par son nom.' : ''}
-                  {` ${zoomHint(narrow)}`}
-                </HelpText>
-                {folds && (
-                  <GraphFoldHead label="Vitesse" color={SPEED_COLOR} open={graphFolds.open.vitesse} onToggle={() => graphFolds.toggle('vitesse')}
-                    read={speedShown ? readSpeed : undefined}
-                    title={graphFolds.open.vitesse ? 'Replier le graphe de vitesse' : 'Montrer le graphe de vitesse'} />
-                )}
-                {speedShown && speedChart(folds ? CHART_STYLE : FILL_STYLE)}
-                {folds && (
-                  <GraphFoldHead label="FC" color={HEART_RATE_COLOR} open={graphFolds.open.fc} onToggle={() => graphFolds.toggle('fc')}
-                    read={hrShown ? readHeart : undefined} style={{ marginTop: '8px' }}
-                    title={graphFolds.open.fc ? 'Replier le graphe de FC' : 'Montrer le graphe de FC'} />
-                )}
-                {hrShown && heartChart(speedShown)}
+                {/* Le panneau suit le zoom, pas le module (lot 127). */}
+                <ZoomView zoom={zoom}>
+                  {(z) => {
+                    const chartData = chartDataAt(z.view);
+                    return (
+                      <>
+                        <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
+                          <PanelTitle label="Vitesse" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="surf:graphiques" />
+                          {!folds && <HoverReadout read={readSpeed(z)} />}
+                        </div>
+                        <HelpText helpKey="surf:graphiques" note>
+                          Le survol déplace le repère sur la carte.
+                          {folds ? ' Chaque graphe se replie par son nom.' : ''}
+                          {` ${zoomHint(narrow)}`}
+                        </HelpText>
+                        {folds && (
+                          <GraphFoldHead label="Vitesse" color={SPEED_COLOR} open={graphFolds.open.vitesse} onToggle={() => graphFolds.toggle('vitesse')}
+                            read={speedShown ? readSpeed(z) : undefined}
+                            title={graphFolds.open.vitesse ? 'Replier le graphe de vitesse' : 'Montrer le graphe de vitesse'} />
+                        )}
+                        {speedShown && speedChart(z, chartData, folds ? CHART_STYLE : FILL_STYLE)}
+                        {folds && (
+                          <GraphFoldHead label="FC" color={HEART_RATE_COLOR} open={graphFolds.open.fc} onToggle={() => graphFolds.toggle('fc')}
+                            read={hrShown ? readHeart(z) : undefined} style={{ marginTop: '8px' }}
+                            title={graphFolds.open.fc ? 'Replier le graphe de FC' : 'Montrer le graphe de FC'} />
+                        )}
+                        {hrShown && heartChart(z, chartData, speedShown)}
+                      </>
+                    );
+                  }}
+                </ZoomView>
                 <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
                   Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}.
                 </div>

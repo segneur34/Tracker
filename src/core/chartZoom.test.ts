@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { trackBounds } from './displayConfig';
 import {
   axisRangePath, CHART_EXTREME_TOLERANCE, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, sampledIndicesKeeping,
-  visibleIndexRange, zoomAtRange,
+  lastByRange, sameRange, visibleIndexRange, zoomAtRange, zoomPathRange, zoomViewOf,
 } from './chartZoom';
 
 const FULL = { min: 0, max: 10 };
@@ -341,4 +341,80 @@ describe('indices tracés, plusieurs séries (pics gardés)', () => {
     const raw = [0, 1, 2, 3].map((s) => Array.from({ length: n }, (_, k) => noise(k + s * n)));
     expect(sampledIndicesKeeping(0, n - 1, 500, raw).length).toBeLessThanOrEqual(grid * (1 + 2 * raw.length));
   });
+});
+
+describe('zoom hors du module (lot 127)', () => {
+  it('sameRange : mêmes bornes, null compris', () => {
+    expect(sameRange(null, null)).toBe(true);
+    expect(sameRange({ min: 1, max: 2 }, { min: 1, max: 2 })).toBe(true);
+    expect(sameRange({ min: 1, max: 2 }, { min: 1, max: 3 })).toBe(false);
+    expect(sameRange({ min: 1, max: 2 }, null)).toBe(false);
+    expect(sameRange(null, { min: 1, max: 2 })).toBe(false);
+  });
+
+  it('zoomViewOf : la plage rangée ramenée dans l\'étendue du moment', () => {
+    expect(zoomViewOf(null, FULL, 0.1)).toBeNull();
+    expect(zoomViewOf({ min: 2, max: 4 }, null, 0.1)).toBeNull();
+    expect(zoomViewOf({ min: 2, max: 4 }, FULL, 0.1)).toEqual({ min: 2, max: 4 });
+    // Étendue rétrécie : la plage reste dedans ; elle la couvre toute : tout voir.
+    expect(zoomViewOf({ min: 8, max: 10 }, { min: 0, max: 9 }, 0.1)).toEqual({ min: 7, max: 9 });
+    expect(zoomViewOf({ min: 0, max: 9 }, { min: 0, max: 5 }, 0.1)).toBeNull();
+    // Comme l'ancien `useChartZoom` : la plage d'abord bornée à la pose, puis à l'affichage.
+    const raw = { min: 0.3, max: 2.7 };
+    const posed = clampRange(raw, FULL, 0.1);
+    expect(zoomViewOf(posed, FULL, 0.1)).toEqual(clampRange(posed!, FULL, 0.1));
+  });
+
+  it('zoomPathRange : zoomé, entier, revenu à tout voir', () => {
+    const view = { min: 2, max: 4 };
+    expect(zoomPathRange(view, FULL, false)).toBe(view);
+    expect(zoomPathRange(view, FULL, true)).toBe(view);
+    expect(zoomPathRange(null, FULL, true)).toBe(FULL);
+    expect(zoomPathRange(null, FULL, false)).toBeNull();
+    expect(zoomPathRange(null, null, true)).toBeNull();
+  });
+
+  it('lastByRange : un seul calcul pour une même plage, refait quand elle change', () => {
+    let calls = 0;
+    const at = lastByRange((view) => {
+      calls++;
+      return { view };
+    });
+    const first = at({ min: 1, max: 2 });
+    expect(at({ min: 1, max: 2 })).toBe(first);
+    expect(calls).toBe(1);
+    const whole = at(null);
+    expect(calls).toBe(2);
+    expect(at(null)).toBe(whole);
+    expect(calls).toBe(2);
+    expect(at({ min: 1, max: 2.5 })).not.toBe(first);
+    expect(calls).toBe(3);
+  });
+});
+
+describe('une plage zoomée garde toujours deux lignes (panneaux montrés hors du bloc du zoom, lot 127)', () => {
+  for (const hz of [1, 5]) {
+    it(`${hz} Hz, avec un trou de 10 min : toute plage bornée garde au moins deux points`, () => {
+      // 30 min de trace, un seul intervalle de 10 min au milieu (règle 10 : rien entre deux points).
+      const minutes: number[] = [];
+      for (let k = 0; k <= 10 * 60 * hz; k++) minutes.push(k / hz / 60);
+      for (let k = 0; k <= 10 * 60 * hz; k++) minutes.push(20 + k / hz / 60);
+      const full = { min: 0, max: minutes[minutes.length - 1] };
+      const minSpan = (full.max - full.min) * 0.002;
+      const views = [
+        null,
+        { min: 12, max: 13 },
+        { min: 10.5, max: 10.5 },
+        { min: 0, max: 0.001 },
+        { min: 29.999, max: 30 },
+        { min: 5, max: 25 },
+      ];
+      for (const raw of views) {
+        const view = raw ? clampRange(raw, full, minSpan) : null;
+        const [first, last] = visibleIndexRange(minutes, view);
+        expect(last).toBeGreaterThan(first);
+        expect(sampledIndicesKeeping(first, last, 500, [minutes]).length).toBeGreaterThanOrEqual(2);
+      }
+    });
+  }
 });

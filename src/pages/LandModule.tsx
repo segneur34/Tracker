@@ -51,7 +51,7 @@ import { inChartView } from '../components/chartHover';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import { LAND_TABS, tabDefaults, type LandTab } from '../core/analysisTabs';
-import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { lastByRange, sampledIndices, visibleIndexRange, type XRange } from '../core/chartZoom';
 import { trackChartRows, type TrackChartRow } from '../core/chartRows';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
@@ -67,7 +67,8 @@ import {
   DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatLandSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed, commaDecimal
 } from '../core/units';
-import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
+import { useChartZoomSource, type ChartZoom } from '../hooks/useChartZoom';
+import ZoomView from '../components/ZoomView';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
@@ -176,6 +177,12 @@ type LandHighlightKeys = { zones: GradeZoneKey; surface: SurfaceCategory };
  */
 const GRAPH_FOLDS_DEFAULT = { vitesse: true, altitude: true, fc: true, cadence: true };
 type GraphFold = keyof typeof GRAPH_FOLDS_DEFAULT;
+/** Un bloc de « graphiques » ou de « zones de pente » à une plage (`ZoomView`) : son zoom, ses lignes, le dégradé de pente de l'altitude. */
+interface GraphView {
+  z: ChartZoom;
+  rows: TrackChartRow[];
+  stops: ReturnType<typeof gradeGradientStops>;
+}
 /** Graphe d'altitude de l'onglet « zones de pente », déplié tant qu'on ne le replie pas. */
 const ZONES_FOLDS_DEFAULT = { tableau: true, graphe: true };
 
@@ -440,10 +447,13 @@ function LandModule({ family }: { family: LandFamily }) {
     () => (energy && open.energie ? smoothMovingPower(energy.power, gpx.track, ENERGY_POWER_SMOOTHING_S) : []),
     [energy, open.energie, gpx.track]
   );
-  /** Lignes du graphe d'énergie sur la plage visible, au plus `CHART_MAX_POINTS`. */
-  const energyChartData = useMemo(() => {
+  /**
+   * Lignes du graphe d'énergie sur une plage, au plus `CHART_MAX_POINTS` : lues dans le bloc qui suit le zoom
+   * (`ZoomView`), gardées pour la dernière plage (`lastByRange`) ; zoomer ne redessine pas le module (lot 127).
+   */
+  const energyRowsAt = useMemo(() => lastByRange((view): EnergyChartRow[] => {
     if (!energy || smoothedPower.length === 0) return [];
-    const [first, last] = visibleIndexRange(trackMinutes, energyZoom.view);
+    const [first, last] = visibleIndexRange(trackMinutes, view);
     return sampledIndices(first, last, CHART_MAX_POINTS, smoothedPower).map((i): EnergyChartRow => {
       const power = smoothedPower[i];
       return {
@@ -455,7 +465,9 @@ function LandModule({ family }: { family: LandFamily }) {
         grade: isFinite(grades[i]) ? grades[i] : null,
       };
     });
-  }, [energy, smoothedPower, trackMinutes, energyZoom.view, gpx.track, grades]);
+  }), [energy, smoothedPower, trackMinutes, gpx.track, grades]);
+  /** Le graphe d'énergie a des lignes, quelle que soit la plage (deux points au moins, `visibleIndexRange` en garde deux). */
+  const energyChartShown = Boolean(energy) && smoothedPower.length > 0 && trackMinutes.length > 1;
 
   /** Meilleurs segments, dans l'unité affichée (km/h pour une allure). */
   const topUnit = editSpeedUnit(speedUnit);
@@ -556,12 +568,15 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   /** Distance de chaque point dans l'unité choisie : l'axe des graphes et de leur zoom. */
   const trackDist = useMemo(() => cumulative.cumDist.map((m) => toDisplayDistance(m, distanceUnit)), [cumulative, distanceUnit]);
-  /** Zoom des graphes de vitesse et d'altitude, qui partagent leur axe ; « tout voir » à chaque session. */
-  const zoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
+  /**
+   * Zoom des graphes de vitesse et d'altitude, qui partagent leur axe ; « tout voir » à chaque session. Les zooms sont
+   * hors de l'état du module, lus par les blocs de graphes (`ZoomView`) : zoomer ne redessine qu'eux (lot 127).
+   */
+  const zoom = useChartZoomSource(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
   /** Zoom du profil de « général », à part : zoomer « général » ne zoome pas « graphiques ». */
-  const profileZoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
+  const profileZoom = useChartZoomSource(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
   /** Zoom des courbes de l'onglet « test », sur le temps. */
-  const testZoom = useChartZoom(timeRange, gpx.sessionKey);
+  const testZoom = useChartZoomSource(timeRange, gpx.sessionKey);
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
@@ -589,16 +604,22 @@ function LandModule({ family }: { family: LandFamily }) {
    */
   const chartRowsNeeded = open.graphiques || open.zones
     || zoomOnMap.companionPanel === 'graphiques' || zoomOnMap.companionPanel === 'zones';
-  const chartData = useMemo(
-    () => (chartRowsNeeded
+  /** Lignes d'une plage, gardées pour la dernière (`lastByRange`) : « graphiques », « zones » et le plein écran les partagent. */
+  const chartDataAt = useMemo(
+    () => lastByRange((view): TrackChartRow[] => (chartRowsNeeded
       ? trackChartRows({
-          pointCount: gpx.track.length, dist: trackDist, view: zoom.view, speedMs: chartSpeed, altitude: elevation.smoothed,
+          pointCount: gpx.track.length, dist: trackDist, view, speedMs: chartSpeed, altitude: elevation.smoothed,
           hasElevation: Boolean(stats?.hasElevation), grades, speedUnit, distanceUnit, inverse, heartRate: heart.smoothed,
           cadence: cadencePresent ? cadence!.smoothed : null,
         })
-      : []),
-    [chartRowsNeeded, gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]
+      : [])),
+    [chartRowsNeeded, gpx.track, trackDist, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]
   );
+  /**
+   * Les graphes ont des lignes, quelle que soit la plage : au moins deux points, la plage zoomée en garde toujours deux
+   * (`visibleIndexRange` prend un voisin de chaque côté). Lu hors des blocs du zoom : les panneaux ne dépendent pas de la plage.
+   */
+  const chartRowsShown = chartRowsNeeded && gpx.track.length > 1 && trackDist.length > 1;
   /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
   /** Rappels de l'onglet « cardio », stables : le panneau, mémoïsé, ne se redessine pas au zoom d'un autre graphe. */
   const firstMs = gpx.track[0]?.timeMs ?? null;
@@ -608,14 +629,14 @@ function LandModule({ family }: { family: LandFamily }) {
   const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
   /** Arrêts du dégradé de pente, sur l'étendue des lignes qui portent une altitude (celle de l'aire tracée). */
-  const gradeStops = useMemo(
-    () => gradeGradientStops(chartData.filter((row) => row.altitude !== null), gradeRange),
-    [chartData, gradeRange]
+  const gradeStopsAt = useMemo(
+    () => lastByRange((view) => gradeGradientStops(chartDataAt(view).filter((row) => row.altitude !== null), gradeRange)),
+    [chartDataAt, gradeRange]
   );
   /** Profil compact de l'onglet « général » : sa plage zoomée, au plus `PROFILE_MAX_POINTS` lignes. */
-  const profileRows = useMemo((): ElevationProfileRow[] => {
+  const profileRowsAt = useMemo(() => lastByRange((view): ElevationProfileRow[] => {
     if (!open.general || !stats?.hasElevation || gpx.track.length < 2) return [];
-    const [first, last] = visibleIndexRange(trackDist, profileZoom.view);
+    const [first, last] = visibleIndexRange(trackDist, view);
     return sampledIndices(first, last, PROFILE_MAX_POINTS, elevation.smoothed).map((i) => {
       const altitude = elevation.smoothed[i];
       return {
@@ -625,10 +646,12 @@ function LandModule({ family }: { family: LandFamily }) {
         grade: isFinite(grades[i]) ? grades[i] : null,
       };
     });
-  }, [open.general, stats, gpx.track, elevation, trackDist, grades, profileZoom.view]);
-  const profileStops = useMemo(
-    () => gradeGradientStops(profileRows.filter((row) => row.altitude !== null), gradeRange),
-    [profileRows, gradeRange]
+  }), [open.general, stats, gpx.track, elevation, trackDist, grades]);
+  /** Le profil a des lignes, quelle que soit la plage (deux points au moins). */
+  const profileShown = open.general && Boolean(stats?.hasElevation) && gpx.track.length > 1 && trackDist.length > 1;
+  const profileStopsAt = useMemo(
+    () => lastByRange((view) => gradeGradientStops(profileRowsAt(view).filter((row) => row.altitude !== null), gradeRange)),
+    [profileRowsAt, gradeRange]
   );
   const gradientId = useId();
   const overlayGradientId = `${gradientId}-superpose`;
@@ -709,14 +732,14 @@ function LandModule({ family }: { family: LandFamily }) {
       }
     }
   };
-  /** Lecture des graphes sur la distance (`HoverReadout`) au point survolé, s'il est dans la plage zoomée de `chartZoom`. */
-  const graphReadout = (keys: readonly GraphFold[], chartZoom: ChartZoom = zoom) => (hoveredIndex: number): Readout | null =>
-    trackDist[hoveredIndex] !== undefined && inChartView(chartZoom.view, trackDist[hoveredIndex])
+  /** Lecture des graphes sur la distance (`HoverReadout`) au point survolé, s'il est dans la plage zoomée `view` (`ZoomView`). */
+  const graphReadout = (keys: readonly GraphFold[], view: XRange | null) => (hoveredIndex: number): Readout | null =>
+    trackDist[hoveredIndex] !== undefined && inChartView(view, trackDist[hoveredIndex])
       ? { values: keys.map((key) => graphValue(key, hoveredIndex)), at: distanceLabel(trackDist[hoveredIndex]) }
       : null;
-  /** Lecture du graphe d'énergie : puissance ou cumul, puis vitesse et pente. */
-  const energyReadout = (hoveredIndex: number): Readout | null => energy && trackMinutes[hoveredIndex] !== undefined
-    && inChartView(energyZoom.view, trackMinutes[hoveredIndex])
+  /** Lecture du graphe d'énergie : puissance ou cumul, puis vitesse et pente, dans la plage zoomée `view`. */
+  const energyReadout = (view: XRange | null) => (hoveredIndex: number): Readout | null => energy && trackMinutes[hoveredIndex] !== undefined
+    && inChartView(view, trackMinutes[hoveredIndex])
     ? (() => {
       const i = hoveredIndex;
       const power = smoothedPower[i];
@@ -769,10 +792,13 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Place d'un graphe de la pile : une hauteur de base, et sa part de la hauteur tirée à la poignée. */
   const chartBox = (heightPx: number): CSSProperties => ({ width: '100%', flex: `1 0 ${heightPx}px`, height: `${heightPx}px`, marginTop: '4px' });
 
+  /** Plage d'un bloc de « graphiques » ou de « zones de pente » (`ZoomView`) : son zoom, ses lignes et le dégradé de pente. */
+  const graphViewOf = (z: ChartZoom): GraphView => ({ z, rows: chartDataAt(z.view), stops: gradeStopsAt(z.view) });
+
   /** Graphe d'altitude coloré par la pente : onglet « graphiques » et onglet « zones de pente ». */
-  const altitudeChart = (gradientKey: string, showReset: boolean, panel: 'graphiques' | 'zones') => (
-    <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={[altitudeAxis('left')]}
-      series={[{ kind: 'area', key: 'altitude', name: 'Altitude', yAxisId: 'altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.35, gradient: { id: gradientKey, stops: gradeStops } }]}
+  const altitudeChart = (v: GraphView, gradientKey: string, showReset: boolean, panel: 'graphiques' | 'zones') => (
+    <TrackChart rows={v.rows} zoom={v.z} x={distX} yAxes={[altitudeAxis('left')]}
+      series={[{ kind: 'area', key: 'altitude', name: 'Altitude', yAxisId: 'altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.35, gradient: { id: gradientKey, stops: v.stops } }]}
       syncId={page.storageId} showReset={showReset} onShowOnMap={() => zoomOnMap.show(panel)} style={chartBox(CHART_HEIGHT_PX)}>
       {markLines('altitude')}
     </TrackChart>
@@ -818,11 +844,11 @@ function LandModule({ family }: { family: LandFamily }) {
   /** « +carte » des graphes de « graphiques ». */
   const showGraphsOnMap = () => zoomOnMap.show('graphiques');
   /** Un graphe de la pile, en mode séparé ; « Tout voir » sur le premier montré, « +carte » sur chacun. */
-  const separateChart = (key: GraphFold, showReset: boolean, altitudeGradientId: string): ReactNode => {
+  const separateChart = (v: GraphView, key: GraphFold, showReset: boolean, altitudeGradientId: string): ReactNode => {
     switch (key) {
       case 'vitesse':
         return (
-          <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={[speedAxis]} series={[speedSeries]}
+          <TrackChart rows={v.rows} zoom={v.z} x={distX} yAxes={[speedAxis]} series={[speedSeries]}
             syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
             {markLines('speed')}
           </TrackChart>
@@ -830,13 +856,13 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'altitude':
         return (
           <>
-            {altitudeChart(altitudeGradientId, showReset, 'graphiques')}
+            {altitudeChart(v, altitudeGradientId, showReset, 'graphiques')}
             {gradeLegend}
           </>
         );
       case 'fc':
         return (
-          <HeartRateChart data={chartData} zoom={zoom} x={distX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
+          <HeartRateChart data={v.rows} zoom={v.z} x={distX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
             style={chartBox(CHART_HEIGHT_PX)}>
             {markLines('hr')}
@@ -844,7 +870,7 @@ function LandModule({ family }: { family: LandFamily }) {
         );
       case 'cadence':
         return (
-          <TrackChart rows={chartData} zoom={zoom} x={distX}
+          <TrackChart rows={v.rows} zoom={v.z} x={distX}
             yAxes={[{ id: 'cadence', color: CADENCE_COLOR, unit: 'pas/min', domain: ['dataMin - 5', 'dataMax + 5'], allowDecimals: false, width: 46, tickFormatter: (v) => `${Math.round(v)}` }]}
             series={[{ kind: 'line', key: 'cadence', name: 'Cadence', yAxisId: 'cadence', color: CADENCE_COLOR, width: 2, activeDotR: 5 }]}
             syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
@@ -868,12 +894,12 @@ function LandModule({ family }: { family: LandFamily }) {
   if (graphShown('fc')) overlayAxes.push({ id: 'hr', color: HEART_RATE_COLOR, hide: shownGraphs.length > 1, domain: ['dataMin - 5', 'dataMax + 5'], width: 46 });
   if (graphShown('cadence')) overlayAxes.push({ id: 'cadence', color: CADENCE_COLOR, hide: shownGraphs.length > 1, domain: ['dataMin - 5', 'dataMax + 5'], width: 46 });
   /** Séries du graphe superposé, l'aire d'altitude dessous ; `idSuffix` distingue son dégradé. */
-  const overlaySeries = (idSuffix: string): TrackSeries<TrackChartRow>[] => {
+  const overlaySeries = (v: GraphView, idSuffix: string): TrackSeries<TrackChartRow>[] => {
     const series: TrackSeries<TrackChartRow>[] = [];
     if (graphShown('altitude')) {
       series.push({
         kind: 'area', key: 'altitude', name: 'Altitude', yAxisId: 'altitude', color: ALTITUDE_COLOR, width: 1.5, activeDotR: 4, fillOpacity: 0.3,
-        gradient: { id: `${overlayGradientId}${idSuffix}`, stops: gradeStops },
+        gradient: { id: `${overlayGradientId}${idSuffix}`, stops: v.stops },
       });
     }
     if (graphShown('vitesse')) series.push(speedSeries);
@@ -885,74 +911,100 @@ function LandModule({ family }: { family: LandFamily }) {
   /**
    * Pile des graphes de « graphiques », Séparés ou Superposés, replis
    * compris : dans le panneau, et sous la carte en plein écran (`idSuffix`
-   * y distingue leurs dégradés).
+   * y distingue leurs dégradés). Elle suit le zoom elle-même (`ZoomView`) :
+   * zoomer ne redessine qu'elle, pas le module (lot 127).
    */
-  const graphStack = (idSuffix: string): ReactNode => chartMode === 'overlay' ? (
-    <>
-      {/* Les mêmes replis : une série repliée n'est pas tracée. */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
-        {graphCharts.map((c) => graphFold(c))}
-      </div>
-      <HoverReadout line read={graphReadout(shownGraphs.map((c) => c.key))} />
-      {shownGraphs.length > 0 && (
-        <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={overlayAxes} series={overlaySeries(idSuffix)}
-          syncId={page.storageId} onShowOnMap={showGraphsOnMap} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
-          {markLines(overlayMarkAxis)}
-        </TrackChart>
-      )}
-      {graphShown('altitude') && gradeLegend}
-    </>
-  ) : graphCharts.map((c, k) => (
-    <Fragment key={c.key}>
-      {/* Nom du graphe (son repli) et sa lecture à droite. */}
-      <div className="chart-head" style={{ marginTop: k > 0 ? '8px' : 0 }}>
-        {graphFold(c)}
-        {graphOpen(c.key) && <HoverReadout read={graphReadout([c.key])} label={graphFoldable ? undefined : c.label} color={c.color} />}
-      </div>
-      {graphOpen(c.key) && separateChart(c.key, shownGraphs[0]?.key === c.key, `${separateGradientId}${idSuffix}`)}
-    </Fragment>
-  ));
+  const graphStack = (idSuffix: string): ReactNode => (
+    <ZoomView zoom={zoom}>
+      {(z) => {
+        const v = graphViewOf(z);
+        return chartMode === 'overlay' ? (
+          <>
+            {/* Les mêmes replis : une série repliée n'est pas tracée. */}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
+              {graphCharts.map((c) => graphFold(c))}
+            </div>
+            <HoverReadout line read={graphReadout(shownGraphs.map((c) => c.key), z.view)} />
+            {shownGraphs.length > 0 && (
+              <TrackChart rows={v.rows} zoom={z} x={distX} yAxes={overlayAxes} series={overlaySeries(v, idSuffix)}
+                syncId={page.storageId} onShowOnMap={showGraphsOnMap} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
+                {markLines(overlayMarkAxis)}
+              </TrackChart>
+            )}
+            {graphShown('altitude') && gradeLegend}
+          </>
+        ) : graphCharts.map((c, k) => (
+          <Fragment key={c.key}>
+            {/* Nom du graphe (son repli) et sa lecture à droite. */}
+            <div className="chart-head" style={{ marginTop: k > 0 ? '8px' : 0 }}>
+              {graphFold(c)}
+              {graphOpen(c.key) && <HoverReadout read={graphReadout([c.key], z.view)} label={graphFoldable ? undefined : c.label} color={c.color} />}
+            </div>
+            {graphOpen(c.key) && separateChart(v, c.key, shownGraphs[0]?.key === c.key, `${separateGradientId}${idSuffix}`)}
+          </Fragment>
+        ));
+      }}
+    </ZoomView>
+  );
 
-  /** Graphe de l'onglet énergie, avec sa lecture au-dessus : dans le panneau, et sous la carte en plein écran. */
-  const energyChart = energy && energyChartData.length > 1 ? (
-    <>
-      <HoverReadout line read={energyReadout} label={energyMode === 'power' ? 'Puissance' : 'Énergie'} color={ENERGY_COLOR} />
-      <TrackChart rows={energyChartData} zoom={energyZoom} x={elapsedX()}
-        yAxes={[{ color: ENERGY_COLOR, unit: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, domain: [0, 'auto'], width: 50 }]}
-        series={energyMode === 'power'
-          ? [{ kind: 'line', key: 'power', name: 'Puissance', color: ENERGY_COLOR, width: 2, activeDotR: 5 }]
-          : [{ kind: 'area', key: 'cumulative', name: 'Énergie dépensée', color: ENERGY_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.15 }]}
-        onShowOnMap={() => zoomOnMap.show('energie')} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }} />
-    </>
+  /** Graphe de l'onglet énergie, avec sa lecture au-dessus : dans le panneau, et sous la carte en plein écran ; il suit son zoom lui-même. */
+  const energyChart = energy && energyChartShown ? (
+    <ZoomView zoom={energyZoom}>
+      {(z) => {
+        const rows = energyRowsAt(z.view);
+        return rows.length > 1 ? (
+          <>
+            <HoverReadout line read={energyReadout(z.view)} label={energyMode === 'power' ? 'Puissance' : 'Énergie'} color={ENERGY_COLOR} />
+            <TrackChart rows={rows} zoom={z} x={elapsedX()}
+              yAxes={[{ color: ENERGY_COLOR, unit: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, domain: [0, 'auto'], width: 50 }]}
+              series={energyMode === 'power'
+                ? [{ kind: 'line', key: 'power', name: 'Puissance', color: ENERGY_COLOR, width: 2, activeDotR: 5 }]
+                : [{ kind: 'area', key: 'cumulative', name: 'Énergie dépensée', color: ENERGY_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.15 }]}
+              onShowOnMap={() => zoomOnMap.show('energie')} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }} />
+          </>
+        ) : null;
+      }}
+    </ZoomView>
   ) : null;
 
-  /** Graphe d'altitude de l'onglet « zones de pente », et sa légende. */
-  const zonesAltitude = (idSuffix: string) => (
+  /** Graphe d'altitude de l'onglet « zones de pente », et sa légende, dans la plage `v` (`ZoomView`). */
+  const zonesAltitude = (v: GraphView, idSuffix: string) => (
     <>
-      {altitudeChart(`${zonesGradientId}${idSuffix}`, true, 'zones')}
+      {altitudeChart(v, `${zonesGradientId}${idSuffix}`, true, 'zones')}
       {gradeLegend}
     </>
   );
 
-  /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`). */
+  /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`) ; il suit son zoom lui-même. */
   const generalProfile = (gradientSuffix: string) => (
-    <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}
-      zoom={profileZoom} read={graphReadout(['altitude'], profileZoom)}
-      onShowOnMap={() => zoomOnMap.show('general')} />
+    <ZoomView zoom={profileZoom}>
+      {(z) => {
+        const rows = profileRowsAt(z.view);
+        return rows.length > 1 ? (
+          <ElevationProfileMini rows={rows} stops={profileStopsAt(z.view)} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}
+            zoom={z} read={graphReadout(['altitude'], z.view)}
+            onShowOnMap={() => zoomOnMap.show('general')} />
+        ) : null;
+      }}
+    </ZoomView>
   );
 
   const companionCharts = (panel: LandTab | null): ReactNode => {
     switch (panel) {
       case 'general':
-        return profileRows.length > 1 ? generalProfile('-plein') : null;
+        return profileShown ? generalProfile('-plein') : null;
       case 'graphiques':
         return graphStack('-plein');
       case 'zones':
         return (
-          <>
-            <HoverReadout line read={graphReadout(['altitude'])} label="Altitude" color={ALTITUDE_COLOR} />
-            {zonesAltitude('-plein')}
-          </>
+          <ZoomView zoom={zoom}>
+            {(z) => (
+              <>
+                <HoverReadout line read={graphReadout(['altitude'], z.view)} label="Altitude" color={ALTITUDE_COLOR} />
+                {zonesAltitude(graphViewOf(z), '-plein')}
+              </>
+            )}
+          </ZoomView>
         );
       case 'energie':
         return energyChart;
@@ -1021,7 +1073,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 <GeneralStats stats={overviewStats} />
-                {profileRows.length > 1 && generalProfile('')}
+                {profileShown && generalProfile('')}
                 {!stats.hasElevation && (
                   <div style={{ color: 'var(--danger)', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
@@ -1068,7 +1120,7 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
-            {open.graphiques && chartData.length > 1 && (
+            {open.graphiques && chartRowsShown && (
               <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
@@ -1222,12 +1274,12 @@ function LandModule({ family }: { family: LandFamily }) {
                 <HelpText helpKey="analyse:zones" note>
                   Pente mesurée sur {2 * profile.grade.halfWindowM} m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
                 </HelpText>
-                {chartData.length > 1 && (
+                {chartRowsShown && (
                   <ChartFold label="Tableau" open={zonesFold.open.tableau} onToggle={() => zonesFold.toggle('tableau')}
                     title={zonesFold.open.tableau ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
                     style={{ marginBottom: '6px' }} />
                 )}
-                {(zonesFold.open.tableau || chartData.length <= 1) && (<>
+                {(zonesFold.open.tableau || !chartRowsShown) && (<>
                 <table className="ui-table" style={{ flexShrink: 0 }}>
                   <thead>
                     <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
@@ -1265,18 +1317,22 @@ function LandModule({ family }: { family: LandFamily }) {
                 )}
                 </>)}
                 {/* Le graphe d'altitude de l'onglet « graphiques », avec ses options : même zoom, même survol, même « Voir sur la carte ». */}
-                {chartData.length > 1 && (
-                  <>
-                    <GraphFoldHead label="Altitude" color={ALTITUDE_COLOR} open={zonesFold.open.graphe} onToggle={() => zonesFold.toggle('graphe')}
-                      read={graphReadout(['altitude'])} style={{ marginTop: '12px' }}
-                      title={zonesFold.open.graphe ? "Replier le graphe d'altitude" : "Montrer le graphe d'altitude"} />
-                    {zonesFold.open.graphe && (
+                {chartRowsShown && (
+                  <ZoomView zoom={zoom}>
+                    {(z) => (
                       <>
-                        {zonesAltitude('')}
-                        {elevationSource}
+                        <GraphFoldHead label="Altitude" color={ALTITUDE_COLOR} open={zonesFold.open.graphe} onToggle={() => zonesFold.toggle('graphe')}
+                          read={graphReadout(['altitude'], z.view)} style={{ marginTop: '12px' }}
+                          title={zonesFold.open.graphe ? "Replier le graphe d'altitude" : "Montrer le graphe d'altitude"} />
+                        {zonesFold.open.graphe && (
+                          <>
+                            {zonesAltitude(graphViewOf(z), '')}
+                            {elevationSource}
+                          </>
+                        )}
                       </>
                     )}
-                  </>
+                  </ZoomView>
                 )}
               </ResizablePanel>
             )}

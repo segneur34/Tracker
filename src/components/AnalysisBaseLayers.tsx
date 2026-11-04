@@ -1,11 +1,27 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { axisRangePath, zoomPathRange } from '../core/chartZoom';
 import type { LocatedMark } from '../core/sessionMarks';
 import type { SportFamily } from '../core/sportProfiles';
+import { useZoomState } from '../hooks/useChartZoom';
+import type { ZoomPathSource } from '../hooks/useZoomOnMap';
 import BaseTileLayer from './BaseTileLayer';
 import { HoveredTrackMarker } from './HoverMarker';
 import { SessionMarksLayer } from './SessionMarks';
 import HighlightPath from './HighlightPath';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
+
+/**
+ * Tronçon du graphe montré, en violet : il suit le zoom de ce graphe (§2,
+ * « le violet suit le zoom ») en ne redessinant que lui, pas le module ni
+ * ses autres couches (lot 127).
+ */
+function ZoomPathLayer({ source }: { source: ZoomPathSource }) {
+  const { view, full } = useZoomState(source.zoom);
+  const range = zoomPathRange(view, full, source.whole);
+  const { points, axis } = source;
+  const path = useMemo(() => (range ? axisRangePath(points, axis, range) : []), [range, points, axis]);
+  return path.length > 1 ? <HighlightPath positions={path} color={HIGHLIGHT_SHOWN_COLOR} /> : null;
+}
 
 /**
  * Couches de la carte communes aux analyses (voile, course, vélo, fractionné,
@@ -22,8 +38,8 @@ function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, 
   zonePaths: [number, number][][];
   /** Zone montrée : change la clé de ses tracés. */
   zonePathsKey: number | null;
-  /** Partie vue du graphe zoomé (`useZoomOnMap`), vide sinon. */
-  zoomPath: [number, number][];
+  /** Partie vue du graphe montré (`useZoomOnMap`), `null` sinon. */
+  zoomPath: ZoomPathSource | null;
   marks: ReadonlyArray<Pick<LocatedMark, 'mark' | 'n'>>;
   shownMark: number | null;
   children?: ReactNode;
@@ -35,7 +51,7 @@ function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, 
       {zonePaths.map((path, idx) => (
         <HighlightPath key={`cardio-${zonePathsKey}-${idx}`} positions={path} color={HIGHLIGHT_SHOWN_COLOR} />
       ))}
-      {zoomPath.length > 1 && <HighlightPath key="zoom" positions={zoomPath} color={HIGHLIGHT_SHOWN_COLOR} />}
+      {zoomPath && <ZoomPathLayer source={zoomPath} />}
       <SessionMarksLayer located={marks} shownMs={shownMark} />
       <HoveredTrackMarker points={track} />
     </>

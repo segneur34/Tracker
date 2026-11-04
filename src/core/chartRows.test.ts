@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toFixedNumber } from './basics';
-import { sampledIndices, sampledIndicesKeeping, visibleIndexRange, type XRange } from './chartZoom';
+import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange, type XRange } from './chartZoom';
 import { CHART_MAX_POINTS } from './displayConfig';
 import { trackChartRows, type TrackChartRow } from './chartRows';
 import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from './units';
@@ -183,4 +183,33 @@ describe('trackChartRows, copie gelée de `chartData` (lignes de plus au lot 61)
     expect(one).toHaveLength(1);
     compare({ dist: [0], speed: [2.5], altitude: [12.4], grades: [0.01], hr: [141.5], cadence: [170.4] }, SPEED);
   });
+});
+
+describe('trackChartRows gardé par plage (`lastByRange`, lot 127)', () => {
+  for (const hz of [1, 5]) {
+    it(`${hz} Hz : les mêmes lignes que l'appel direct, zoom après zoom, sans calcul refait pour une même plage`, () => {
+      const s = session(1800, hz);
+      const end = s.dist[s.dist.length - 1];
+      const input = (view: XRange | null) => ({
+        pointCount: s.speed.length, dist: s.dist, view, speedMs: s.speed, altitude: s.altitude, hasElevation: true, grades: s.grades,
+        speedUnit: 'minkm' as const, distanceUnit: 'km' as const, inverse: true, heartRate: s.hr, cadence: s.cadence,
+      });
+      let calls = 0;
+      const rowsAt = lastByRange((view) => {
+        calls++;
+        return trackChartRows(input(view));
+      });
+      const views: (XRange | null)[] = [null, { min: end * 0.2, max: end * 0.45 }, { min: end * 0.2, max: end * 0.45 }, { min: end * 0.7, max: end * 0.71 }, null];
+      for (const view of views) {
+        const rows = rowsAt(view);
+        expect(rows).toEqual(trackChartRows(input(view)));
+        // Le panneau et la carte en plein écran lisent la même plage : mêmes lignes, même objet.
+        expect(rowsAt(view === null ? null : { ...view })).toBe(rows);
+        // Les lignes d'avant le lot 60, recopiées : inchangées par la mise en cache.
+        expect(rows).toEqual(frozenChartData({ length: s.speed.length }, s.dist, view, s.speed, { smoothed: s.altitude }, { hasElevation: true },
+          s.grades, 'minkm', 'km', true, s.hr, { smoothed: s.cadence }, true, rows.map((r) => r.index)));
+      }
+      expect(calls).toBe(4);
+    });
+  }
 });

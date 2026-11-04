@@ -26,6 +26,45 @@ export const clampRange = (range: XRange, full: XRange, minSpan: number): XRange
   return { min, max: min + span };
 };
 
+/** Deux plages égales (mêmes bornes), `null` compris : « tout voir » égale « tout voir ». */
+export const sameRange = (a: XRange | null, b: XRange | null): boolean => (
+  a === b || (a !== null && b !== null && a.min === b.min && a.max === b.max)
+);
+
+/**
+ * Plage zoomée affichée, à partir de celle qui est rangée : ramenée dans
+ * l'étendue `full` du moment (elle peut avoir changé depuis : point ajouté à
+ * un itinéraire), `null` pour tout voir ou sans étendue.
+ */
+export const zoomViewOf = (raw: XRange | null, full: XRange | null, minSpan: number): XRange | null => (
+  raw && full ? clampRange(raw, full, minSpan) : null
+);
+
+/**
+ * Plage du tronçon montré en violet sur la carte (« Afficher », « +carte ») :
+ * la plage zoomée ; sans zoom, toute l'étendue si le graphe a été montré
+ * entier (`whole`), rien sinon (montré zoomé puis revenu à tout voir).
+ */
+export const zoomPathRange = (view: XRange | null, full: XRange | null, whole: boolean): XRange | null => (
+  view ?? (whole ? full : null)
+);
+
+/**
+ * Calcul d'une plage gardé pour la dernière plage demandée (égalité des
+ * bornes, `sameRange`) : deux graphes au zoom commun, ou un panneau et la
+ * carte en plein écran, lisent les mêmes lignes sans les refaire, et une
+ * image de zoom qui ne bouge pas la plage ne refait rien.
+ */
+export const lastByRange = <T>(compute: (view: XRange | null) => T): ((view: XRange | null) => T) => {
+  let last: { view: XRange | null; value: T } | null = null;
+  return (view) => {
+    if (last && sameRange(last.view, view)) return last.value;
+    const value = compute(view);
+    last = { view, value };
+    return value;
+  };
+};
+
 /**
  * Plage après un geste à deux doigts : les valeurs qui étaient sous chaque
  * doigt au début du geste (`startPx`, plage `start`) restent sous lui
