@@ -262,7 +262,12 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
 
     @Override
     protected void handleOnDestroy() {
-        if (handler != null) handler.post(this::closeCapture);
+        Handler h = handler;
+        if (h != null) {
+            // La fermeture passe avant la sortie du fil : quitSafely finit les messages déjà postés.
+            h.post(this::closeCapture);
+            thread.quitSafely();
+        }
         super.handleOnDestroy();
     }
 

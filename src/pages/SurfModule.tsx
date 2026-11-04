@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import { ReferenceArea } from 'recharts';
@@ -130,6 +130,11 @@ const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () 
 /** Une ligne du graphe : `index` renvoie au point de trace d'origine. */
 /** Curseur commun aux graphes de vitesse et de FC (Q38) : ils lisent les mêmes lignes. */
 const SURF_SYNC_ID = 'surf';
+/** Graphes mémoïsés : sans changement de leurs props, un clic d'onglet ou un tri ne refait pas le dessin Recharts. */
+const MemoTrackChart = memo(TrackChart) as typeof TrackChart;
+const MemoHeartRateChart = memo(HeartRateChart) as typeof HeartRateChart;
+const CHART_STYLE = chartBox(CHART_HEIGHT_PX);
+const FILL_STYLE: CSSProperties = { width: '100%', flex: 1, minHeight: 0 };
 const SPEED_SERIES: TrackSeries<ChartRow>[] = [{ kind: 'line', key: 'speed', name: 'Vitesse', color: SPEED_COLOR, width: 1.5, activeDotR: 4 }];
 
 interface ChartRow {
@@ -324,7 +329,6 @@ function SurfModule() {
       hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
     }));
   }, [track, open.graphiques, trackMinutes, zoom.view, speedUnit, heart.smoothed, speedSeries]);
-  const minutesOf = (ms: number) => (track.length > 0 ? (ms - track[0].timeMs) / 60000 : 0);
   /** Point survolé lu au-dessus des graphes (`HoverReadout`), s'il est dans la plage zoomée. */
   const readable = (i: number): boolean => timeChart.readable(zoom, i);
   const readAt = timeChart.readAt;
@@ -345,33 +349,49 @@ function SurfModule() {
     mapExpanded,
     openMap: () => setMapExpanded(true),
   });
-  const showGraphsOnMap = () => zoomOnMap.show('graphiques');
   /** Rappels de l'onglet « cardio », stables : le panneau, mémoïsé, ne se redessine pas au zoom d'un autre graphe. */
   const firstMs = track[0]?.timeMs ?? null;
   const retainSessionHrMax = useCallback((bpm: number) => retainHr('hrMax', bpm, { kind: 'seance', atMs: firstMs }), [retainHr, firstMs]);
   const { show: showZoomOnMap } = zoomOnMap;
   const showCardioOnMap = useCallback(() => showZoomOnMap('cardio'), [showZoomOnMap]);
+  const showGraphsOnMap = useCallback(() => showZoomOnMap('graphiques'), [showZoomOnMap]);
+  /** Axes, repères et bandes des graphes : stables tant que la session, l'unité et les repères ne changent pas. */
+  const speedYAxes = useMemo(
+    () => [{ color: SPEED_COLOR, unit: SPEED_UNIT_LABEL[speedUnit], domain: [0, 'auto'] as [number, 'auto'], width: 46, tickFormatter: (v: number) => formatSpeedValue(v, speedUnit) }],
+    [speedUnit]
+  );
+  const speedOverlays = useMemo(() => {
+    const t0 = track.length > 0 ? track[0].timeMs : 0;
+    const minutes = (ms: number) => (track.length > 0 ? (ms - t0) / 60000 : 0);
+    return [
+      ...markReferenceLines(marks.located, (m) => minutes(m.mark.timeMs), shownMark),
+      ...(foil ? flights : []).map((f) => (
+        <ReferenceArea key={`vol-${f.n}`} x1={minutes(f.startMs)} x2={minutes(f.endMs)} fill={FLIGHT_BAND_COLOR} fillOpacity={0.1} ifOverflow="hidden" />
+      )),
+      ...waves.map((w) => (
+        <ReferenceArea key={`vague-${w.n}`} x1={minutes(w.startMs)} x2={minutes(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
+      )),
+    ];
+  }, [track, marks.located, shownMark, foil, flights, waves]);
+  const heartOverlays = useMemo(() => {
+    const t0 = track.length > 0 ? track[0].timeMs : 0;
+    return markReferenceLines(marks.located, (m) => (m.mark.timeMs - t0) / 60000, shownMark, 'hr');
+  }, [track, marks.located, shownMark]);
+  const hrThresholds = useMemo(() => (hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null), [hrZones]);
 
   /** Graphe de vitesse : bandes des vagues et des vols, repères ; dans l'onglet, et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (
-    <TrackChart rows={chartData} zoom={zoom} x={timeChart.timeX} series={SPEED_SERIES} syncId={SURF_SYNC_ID}
-      yAxes={[{ color: SPEED_COLOR, unit: unitLabel, domain: [0, 'auto'], width: 46, tickFormatter: (v) => formatSpeedValue(v, speedUnit) }]}
-      onShowOnMap={showGraphsOnMap} style={style}>
-      {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark)}
-      {foil && flights.map((f) => (
-        <ReferenceArea key={`vol-${f.n}`} x1={minutesOf(f.startMs)} x2={minutesOf(f.endMs)} fill={FLIGHT_BAND_COLOR} fillOpacity={0.1} ifOverflow="hidden" />
-      ))}
-      {waves.map((w) => (
-        <ReferenceArea key={`vague-${w.n}`} x1={minutesOf(w.startMs)} x2={minutesOf(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
-      ))}
-    </TrackChart>
+    <MemoTrackChart rows={chartData} zoom={zoom} x={timeChart.timeX} series={SPEED_SERIES} syncId={SURF_SYNC_ID}
+      yAxes={speedYAxes} onShowOnMap={showGraphsOnMap} style={style}>
+      {speedOverlays}
+    </MemoTrackChart>
   );
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (speedShown: boolean) => (
-    <HeartRateChart data={chartData} zoom={zoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      syncId={SURF_SYNC_ID} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
-      {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
-    </HeartRateChart>
+    <MemoHeartRateChart data={chartData} zoom={zoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrThresholds}
+      syncId={SURF_SYNC_ID} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={CHART_STYLE}>
+      {heartOverlays}
+    </MemoHeartRateChart>
   );
   /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
   const companionCharts = (panel: SurfTab | null): ReactNode => {
@@ -383,7 +403,7 @@ function SurfModule() {
             {speedShown && (
               <>
                 <HoverReadout line read={readSpeed} label="Vitesse" color={SPEED_COLOR} />
-                {speedChart(chartBox(CHART_HEIGHT_PX))}
+                {speedChart(CHART_STYLE)}
               </>
             )}
             {heart.present && graphFolds.open.fc && (
@@ -675,7 +695,7 @@ function SurfModule() {
                     read={speedShown ? readSpeed : undefined}
                     title={graphFolds.open.vitesse ? 'Replier le graphe de vitesse' : 'Montrer le graphe de vitesse'} />
                 )}
-                {speedShown && speedChart(folds ? chartBox(CHART_HEIGHT_PX) : { width: '100%', flex: 1, minHeight: 0 })}
+                {speedShown && speedChart(folds ? CHART_STYLE : FILL_STYLE)}
                 {folds && (
                   <GraphFoldHead label="FC" color={HEART_RATE_COLOR} open={graphFolds.open.fc} onToggle={() => graphFolds.toggle('fc')}
                     read={hrShown ? readHeart : undefined} style={{ marginTop: '8px' }}

@@ -10,6 +10,8 @@ import {
   closeSessionTest,
   finishRamp,
   fixSpeedMs,
+  guideReadings,
+  phaseRemainingS,
   readSessionTest,
   replayFitnessTest,
   resolveFitnessTestParams,
@@ -571,5 +573,78 @@ describe('rejeu sur les positions relues d\'un journal (lot 156)', () => {
     const fixes = samples(1, 100).map(asFix);
     const state = lived([fixes]);
     expect(replayFitnessTest(params(), [[...before, ...fixes]], state.test!).state).toEqual(state);
+  });
+});
+
+/** État du scénario à `endS` secondes de test, échantillonné à `hz`. */
+const stateAt = (hz: number, endS: number): FitnessTestState => run(samples(hz, endS)).state;
+
+describe('phaseRemainingS', () => {
+  it('rien avant la première position ni après le test', () => {
+    expect(phaseRemainingS(startFitnessTest(params()))).toBeNull();
+    expect(phaseRemainingS({ ...stateAt(1, 100), phase: 'fini' })).toBeNull();
+  });
+
+  it('échauffement : décompte depuis 480 s, plancher 0', () => {
+    const early = stateAt(1, 100);
+    expect(early.phase).toBe('echauffement');
+    expect(phaseRemainingS(early)).toBeCloseTo(380, 6);
+    expect(phaseRemainingS({ ...early, activeMs: 600_000 })).toBe(0);
+  });
+
+  it('rampe : temps restant du palier de 60 s, qui repart à chaque palier', () => {
+    const mid = stateAt(1, 480 + 15);
+    expect(mid.phase).toBe('rampe');
+    expect(phaseRemainingS(mid)).toBeCloseTo(45, 6);
+    // Troisième palier, 10 s dedans.
+    expect(phaseRemainingS(stateAt(1, 480 + 130))).toBeCloseTo(50, 6);
+    // Pile à un changement de palier : palier entier devant soi.
+    expect(phaseRemainingS(stateAt(1, 480 + 120))).toBeCloseTo(60, 6);
+  });
+
+  it('récupération : décompte depuis 120 s, plancher 0', () => {
+    const rec = stateAt(1, 880 + 30);
+    expect(rec.phase).toBe('recuperation');
+    expect(phaseRemainingS(rec)).toBeCloseTo(PROTOCOL.recoveryS - 30, 6);
+    expect(phaseRemainingS({ ...rec, activeMs: rec.activeMs + 500_000 })).toBe(0);
+  });
+
+  it('même décompte à 1 Hz et à 5 Hz', () => {
+    for (const t of [100, 495, 610, 900]) {
+      expect(phaseRemainingS(stateAt(5, t))).toBeCloseTo(phaseRemainingS(stateAt(1, t))!, 6);
+    }
+  });
+});
+
+describe('guideReadings', () => {
+  it('sans position, rien', () => {
+    expect(guideReadings(startFitnessTest(params()))).toEqual({ speedMs: null, hrBpm: null });
+  });
+
+  it('moyenne sur les 10 s de lissage : vitesse constante rendue telle quelle, FC en rampe lissée', () => {
+    const state = stateAt(1, 300);
+    const { speedMs, hrBpm } = guideReadings(state);
+    expect(speedMs).toBeCloseTo(kmhToMs(6), 6);
+    expect(hrBpm).toBe(84);
+    // Palier 1 (t 540 à 600) à 6,6 km/h, pris en son milieu ; la FC monte de 0,24 bpm/s, moyenne de la fenêtre au milieu de ses 10 s.
+    const ramp = guideReadings(stateAt(1, 570));
+    expect(ramp.speedMs).toBeCloseTo(kmhToMs(stepKmh(1)), 6);
+    expect(ramp.hrBpm).toBeCloseTo(84 + (96 * (565.5 - 480)) / 400, 1);
+  });
+
+  it('sans FC reçue, la vitesse seule', () => {
+    const state = run(samples(1, 300, { hr: false })).state;
+    const r = guideReadings(state);
+    expect(r.hrBpm).toBeNull();
+    expect(r.speedMs).toBeCloseTo(kmhToMs(6), 6);
+  });
+
+  it('mêmes valeurs à 1 Hz et à 5 Hz (fenêtre en secondes)', () => {
+    for (const t of [300, 450, 570, 690]) {
+      const a = guideReadings(stateAt(1, t));
+      const b = guideReadings(stateAt(5, t));
+      expect(b.speedMs).toBeCloseTo(a.speedMs!, 3);
+      expect(Math.abs(b.hrBpm! - a.hrBpm!)).toBeLessThan(0.5);
+    }
   });
 });

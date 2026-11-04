@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAvatar, runnerHrSource, runnerName, sanitizeRunnerProfile, type RunnerAvatar, type RunnerProfile,
+  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHrSource, runnerName, sanitizeRunnerProfile, type RunnerAvatar, type RunnerProfile,
 } from './runnerProfile';
 
 describe('runnerName', () => {
@@ -83,5 +83,28 @@ describe('sanitizeRunnerProfile (fichier de réglages repris, lot 143)', () => {
     const p = sanitizeRunnerProfile({ hrThresholds: [140, 165], rootWeeklyGoalMin: 120 }, GOAL);
     expect(p.hrThresholds).toEqual([140, 165]);
     expect(p.rootWeeklyGoalMin).toBe(120);
+  });
+});
+
+describe('runnerAge', () => {
+  const at = (y: number, m: number, d: number) => new Date(y, m, d, 12).getTime();
+  const born = (birthYear: number | null): RunnerProfile => ({ ...EMPTY_RUNNER_PROFILE, birthYear });
+
+  it('sans année de naissance, pas d’âge', () => {
+    expect(runnerAge(EMPTY_RUNNER_PROFILE, at(2026, 10, 4))).toBeNull();
+  });
+
+  it('année en cours moins année de naissance, sans regard pour l’anniversaire', () => {
+    expect(runnerAge(born(1990), at(2026, 0, 1))).toBe(36);
+    expect(runnerAge(born(1990), at(2026, 11, 31))).toBe(36);
+    expect(runnerAge(born(1990), at(2027, 0, 1))).toBe(37);
+  });
+
+  it('année de naissance courante : 0', () => {
+    expect(runnerAge(born(2026), at(2026, 5, 1))).toBe(0);
+  });
+
+  it('sans date donnée, prend la date du jour', () => {
+    expect(runnerAge(born(2000))).toBe(new Date().getFullYear() - 2000);
   });
 });
