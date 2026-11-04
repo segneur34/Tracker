@@ -1,6 +1,5 @@
 // @vitest-environment node
-import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseGpx } from '../core/gpxParser';
 import { buildGpx, buildHeartRateGpx } from './gpxWriter';
 
@@ -95,10 +94,6 @@ describe('buildGpx', () => {
 });
 
 describe('buildHeartRateGpx (muscu, lot I du 25/10)', () => {
-  beforeAll(() => {
-    vi.stubGlobal('DOMParser', XmlDomParser);
-  });
-
   const segments = [
     [{ timeMs: T0, heartRateBpm: 92 }, { timeMs: T0 + 1000, heartRateBpm: 95 }],
     [{ timeMs: T0 + 60_000, heartRateBpm: 120 }, { timeMs: T0 + 61_000 }],

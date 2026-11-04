@@ -51,8 +51,6 @@ export interface CorpusEntry {
     chemin?: number;
     trackName?: string;
     trackType?: string;
-    /** Le fichier est refusé sous xmldom (environnement des tests), avec ce bout de message ; les chiffres ne comptent pas. */
-    refusSousXmldom?: string;
   };
 }
 
@@ -387,9 +385,9 @@ export const GPX_CORPUS: CorpusEntry[] = [
   {
     nom: 'BOM en tête (Strava)',
     texte: '﻿' + stravaGpx(segmentsOf(basePoints()), RUN),
-    // Ce que fait le lecteur d'aujourd'hui sous xmldom, noté sans le juger (décision du 04/11) : xmldom refuse la
-    // déclaration XML qui suit le BOM. Le navigateur peut différer (partie B) ; `Blob.text()` retire déjà le BOM.
-    attendu: { points: 0, segments: 0, hasDeviceSpeed: false, avecFc: false, refusSousXmldom: 'xml declaration' },
+    // BOM ignoré (lot 126, décision 1 du 04/11), comme le navigateur et `Blob.text()` : xmldom refusait la déclaration
+    // qui le suit, et le test du corpus compare donc ce texte, BOM retiré, à la copie gelée.
+    attendu: { points: N, segments: 1, hasDeviceSpeed: false, avecFc: true, trackName: RUN.name, trackType: 'running' },
   },
   {
     nom: 'CDATA dans le nom',

@@ -1,5 +1,4 @@
-import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { getSportProfile } from '../core/sportProfiles';
 import { knotsToMs } from '../core/units';
 import { fixesAlong, T0 } from '../test/geo.fixture';
@@ -37,10 +36,6 @@ describe("bornes de couleur hors de l'analyse (vignettes, partage)", () => {
 });
 
 describe('trace colorée tirée du GPX', () => {
-  // L'environnement de test est node, sans `DOMParser` : xmldom (dépendance de dev) en tient lieu.
-  beforeAll(() => vi.stubGlobal('DOMParser', XmlDomParser));
-  afterAll(() => vi.unstubAllGlobals());
-
   it('suggère des bornes en voile, pas à pied ; bateau aux siennes', () => {
     const gpx = straightGpx(knotsToMs(15), 120);
     const wing = sessionColorTrack(gpx, 'wingfoil', null, 'voile');

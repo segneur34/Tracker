@@ -1,12 +1,10 @@
 // @vitest-environment node
+// xmldom ne sert plus qu'au test du lot 56, qui relit les points par le DOM pour comparer : le lecteur s'en passe (lot 126).
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseGpx, parseGpxPath } from './gpxParser';
 
-// L'environnement de test est node, sans `DOMParser` : xmldom (dépendance de dev) en tient lieu.
-beforeAll(() => {
-  vi.stubGlobal('DOMParser', XmlDomParser);
-});
+const MALFORMED = 'Fichier GPX illisible : le XML est mal formé.';
 
 const NS = 'xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"';
 const gpx = (body: string) => `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" ${NS}>${body}</gpx>`;
@@ -81,8 +79,7 @@ describe('parseGpx', () => {
   });
 
   it('refuse un XML mal formé', () => {
-    // Navigateur : élément parsererror, donc notre message ; xmldom lève sa propre erreur. Dans les deux cas, une erreur.
-    expect(() => parseGpx('<gpx><trk><trkseg></gpx>')).toThrow();
+    expect(() => parseGpx('<gpx><trk><trkseg></gpx>')).toThrow(MALFORMED);
   });
 
   it('un fichier vide de points rend une liste vide', () => {
@@ -104,7 +101,7 @@ describe('parseGpxPath', () => {
   });
 
   it('refuse un XML mal formé', () => {
-    expect(() => parseGpxPath('<gpx>')).toThrow();
+    expect(() => parseGpxPath('<gpx>')).toThrow(MALFORMED);
   });
 });
 
@@ -227,5 +224,114 @@ describe('parseGpx : un seul parcours des descendants par point (lot 56)', () =>
     expect(r.rawPoints.map((p) => p.hr)).toEqual([150, 141, undefined, undefined, undefined]);
     expect(r.rawPoints.map((p) => p.speedMs)).toEqual([4.5, undefined, undefined, 6.2, 2]);
     expect(r.rawPoints[2].cadence).toBe(70);
+  });
+});
+
+describe('parseGpx : lecture du XML sans DOMParser (lot 126)', () => {
+  const T = (s: number) => `2026-10-01T10:00:${String(s).padStart(2, '0')}Z`;
+  const trk = (points: string, head = '') => gpx(`<trk>${head}<trkseg>${points}</trkseg></trk>`);
+
+  it('décode entités et CDATA dans le nom et dans l’heure', () => {
+    const r = parseGpx(trk(`<trkpt lat="45" lon="5"><time>2026-10-01T10:00:0&#48;Z</time></trkpt><trkpt lat="45" lon="5.001"><time><![CDATA[${T(1)}]]></time></trkpt>`,
+      '<name>A &amp; B &lt;&#233;&#x45;&gt; &quot;&apos; <![CDATA[<c> & d]]></name>'));
+    expect(r.trackName).toBe(`A & B <éE> "' <c> & d`);
+    expect(r.rawPoints.map((p) => p.time)).toEqual([T(0), T(1)]);
+  });
+
+  it('saute un commentaire dans l’heure, garde le texte d’un élément dans l’heure', () => {
+    const r = parseGpx(trk(`<trkpt lat="45" lon="5"><time>2026-10-01T10:00<!-- :59 -->:02Z</time></trkpt><trkpt lat="45" lon="5.001"><time>2026-10-01<b>T10:00:03</b>Z</time></trkpt>`));
+    expect(r.rawPoints.map((p) => p.time)).toEqual([T(2), T(3)]);
+  });
+
+  it('ramène CRLF et CR à une fin de ligne dans le nom', () => {
+    expect(parseGpx(trk(`<trkpt lat="45" lon="5"><time>${T(0)}</time></trkpt>`, '<name> Ligne 1\r\nLigne 2\rLigne 3 </name>')).trackName).toBe('Ligne 1\nLigne 2\nLigne 3');
+  });
+
+  it('lit lat et lon entre apostrophes, dans l’autre ordre, avec des blancs autour de =', () => {
+    const r = parseGpx(trk(`<trkpt lon='5' lat='45'><time>${T(0)}</time></trkpt><trkpt lon = "5.001"  lat= '45.5' ><time>${T(1)}</time></trkpt >`));
+    expect(r.rawPoints.map((p) => [p.lat, p.lon])).toEqual([[45, 5], [45.5, 5.001]]);
+  });
+
+  it('un point fermé sur lui-même : sans heure pour la trace, gardé pour le tracé', () => {
+    const xml = trk(`<trkpt lat="45" lon="5"/><trkpt lat="45" lon="5.001" /><trkpt lat="45" lon="5.002"><time>${T(2)}</time></trkpt>`);
+    expect(parseGpx(xml).rawPoints.map((p) => p.lon)).toEqual([5.002]);
+    expect(parseGpxPath(xml).points.map((p) => p.lon)).toEqual([5, 5.001, 5.002]);
+  });
+
+  it('un point préfixé (gpx:trkpt) n’est pas lu, comme par le DOM', () => {
+    const xml = gpx(`<trk><trkseg><g:trkpt xmlns:g="urn:g" lat="1" lon="1"><time>${T(0)}</time></g:trkpt><trkpt lat="45" lon="5"><time>${T(1)}</time></trkpt></trkseg></trk>`);
+    expect(parseGpx(xml).rawPoints.map((p) => p.lon)).toEqual([5]);
+  });
+
+  it('un <parsererror> dans un fichier bien formé le fait refuser, comme avant', () => {
+    expect(() => parseGpx(gpx('<parsererror>x</parsererror>'))).toThrow(MALFORMED);
+    expect(() => parseGpxPath(gpx('<parsererror>x</parsererror>'))).toThrow(MALFORMED);
+  });
+
+  it('ignore le BOM, avec ou sans déclaration XML', () => {
+    const body = `<gpx ${NS}><trk><name>Bom</name><trkseg><trkpt lat="45" lon="5"><time>${T(0)}</time></trkpt></trkseg></trk></gpx>`;
+    const bom = String.fromCharCode(0xfeff);
+    for (const xml of [`${bom}<?xml version="1.0" encoding="UTF-8"?>${body}`, bom + body]) {
+      const r = parseGpx(xml);
+      expect(r.rawPoints).toHaveLength(1);
+      expect(r.trackName).toBe('Bom');
+    }
+  });
+
+  it.each([
+    ['vide', ''],
+    ['blancs seuls', ' \n\t '],
+    ['texte seul', 'pas du XML'],
+    ['texte avant la racine', `x<gpx ${NS}/>`],
+    ['tronqué', gpx(`<trk><trkseg><trkpt lat="45" lon="5"><time>${T(0)}</time></trkpt>`).slice(0, -20)],
+    ['balises croisées', gpx('<trk><name>a</trk></name>')],
+    ['balise non fermée', '<gpx><trk></gpx>'],
+    ['contenu après la racine', `${gpx('')}<gpx/>`],
+    ['texte après la racine', `${gpx('')}x`],
+    ['préfixe non déclaré', gpx('<trk><x:name>a</x:name></trk>')],
+    ['préfixe d’attribut non déclaré', gpx('<trk x:a="1"/>')],
+    ['attribut en double', gpx('<trk><trkseg><trkpt lat="45" lat="46" lon="5"/></trkseg></trk>')],
+    ['attribut sans guillemets', gpx('<trk><trkseg><trkpt lat=45 lon="5"/></trkseg></trk>')],
+    ['attributs sans blanc entre eux', gpx('<trk><trkseg><trkpt lat="45"lon="5"/></trkseg></trk>')],
+    ['< dans une valeur', gpx('<trk a="<"/>')],
+    ['< seul dans un texte', gpx('<trk><name>a < b</name></trk>')],
+    ['déclaration pas en tête', ` ${gpx('')}`],
+    ['déclaration dans la racine', `<gpx><?xml version="1.0"?></gpx>`],
+    ['commentaire à double tiret', gpx('<!-- a -- b -->')],
+    ['commentaire non fermé', gpx('<!-- a')],
+    ['CDATA hors de la racine', `<![CDATA[x]]>${gpx('')}`],
+    ['DOCTYPE après la racine', `${gpx('')}<!DOCTYPE gpx>`],
+    ['caractère de contrôle', gpx('<trk><name>a\u0001</name></trk>')],
+    ['UTF-16 lu en UTF-8 (octets nuls)', '<\u0000g\u0000p\u0000x\u0000/\u0000>\u0000'],
+    // Lus par xmldom, refusés par Chrome : on suit Chrome.
+    [']]> dans un texte', gpx('<trk><name>a ]]> b</name></trk>')],
+    ['référence à un caractère interdit dans un texte', gpx('<trk><name>a&#0;</name></trk>')],
+    ['référence à un caractère interdit dans un attribut', gpx('<trk><trkseg><trkpt lat="45&#x1;" lon="5"/></trkseg></trk>')],
+  ])('refuse avec le message de l’application : %s', (_, xml) => {
+    expect(() => parseGpx(xml)).toThrow(MALFORMED);
+    expect(() => parseGpxPath(xml)).toThrow(MALFORMED);
+  });
+
+  it(']]> et une référence interdite sont permis là où le navigateur les permet : attribut, commentaire, CDATA', () => {
+    const r = parseGpx(gpx(`<trk desc="a ]]> b"><!-- &#0; ]]> --><name><![CDATA[&#0;]]> &#233;</name><trkseg><trkpt lat="4&#53;" lon="5"><time>${T(0)}</time></trkpt></trkseg></trk>`));
+    expect(r.trackName).toBe('&#0; é');
+    expect(r.rawPoints.map((p) => p.lat)).toEqual([45]);
+  });
+
+  it('une entité inconnue ou un & seul restent tels quels (décision 2 du 04/11)', () => {
+    expect(parseGpx(gpx('<trk><name>Pêche & voile &inconnue;</name></trk>')).trackName).toBe('Pêche & voile &inconnue;');
+  });
+
+  it.each([1, 5])('une trace de 10 min à %i Hz : chaque point lu, segments et extensions compris', (hz) => {
+    const n = 600 * hz;
+    const t0 = Date.parse(T(0));
+    const points = Array.from({ length: n }, (_, i) =>
+      `<trkpt lat="${45 + i * 1e-5}" lon="5"><ele>${i % 50}</ele><time>${new Date(t0 + (i * 1000) / hz).toISOString()}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${100 + (i % 60)}</gpxtpx:hr><gpxtpx:speed>${(i % 30) / 10}</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions></trkpt>`);
+    const half = n / 2;
+    const r = parseGpx(gpx(`<trk><trkseg>\n${points.slice(0, half).join('\n')}\n</trkseg><trkseg>\r\n${points.slice(half).join('\r\n')}</trkseg></trk>`));
+    expect(r.rawPoints).toHaveLength(n);
+    expect(r.rawPoints.flatMap((p, i) => (p.segmentStart ? [i] : []))).toEqual([half]);
+    expect(r.rawPoints[n - 1]).toMatchObject({ ele: (n - 1) % 50, hr: 100 + ((n - 1) % 60), speedMs: ((n - 1) % 30) / 10 });
+    expect(r.rawPoints[n - 1].rawTimeMs! - r.rawPoints[0].rawTimeMs!).toBe(((n - 1) * 1000) / hz);
   });
 });
