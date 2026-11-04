@@ -4,6 +4,8 @@ import { toFixedNumber } from '../core/basics';
 import type { PointData } from './pointData';
 import {
   MANEUVER_MAX_STEP_S,
+  MANEUVER_MIN_COHERENCE,
+  MANEUVER_MIN_ENTRY_SPEED_KN,
   ORIENTATION_MAX_CONSERVATION,
   ORIENTATION_MIN_VOTE_WEIGHT,
   TURN_EXTENSION_MAX_WINDOWS,
@@ -367,13 +369,6 @@ export const estimateWindFromPolar = (
 const ORIENTATION_MIN_TURN_DEG = 60;
 /** Durée d'observation d'un virage pour l'orientation, en secondes. */
 const ORIENTATION_WINDOW_S = 12;
-/**
- * Cohérence minimale d'un virage : rapport entre le virage net et la somme
- * des rotations. Un vrai virage tourne toujours dans le même sens, rapport
- * proche de 1. Une chute produit un cap qui part dans tous les sens, rapport
- * faible, et ne doit pas passer pour un virement.
- */
-export const TURN_MIN_COHERENCE = 0.6;
 /** Durée, en secondes, de cap stable exigée après un virage. */
 const EXIT_STABILITY_S = 5;
 /** Variation de cap maximale sur un pas d'au moins `TURN_STRIDE_MIN_S`, en degrés, pour un cap tenu. */
@@ -552,13 +547,15 @@ export interface TurnObservation {
  * Relève tous les virages cohérents de plus de 60° de la trace.
  *
  * `minEntrySpeedKn` écarte les sorties de chute, où l'on repart d'un cap
- * quelconque. C'est la vitesse plancher du support, celle qui sert déjà à la
- * polaire, et non une constante : une planche lente n'a jamais 5 nœuds au
- * départ d'un virage, et tous ses virages disparaîtraient.
+ * quelconque. C'est la vitesse d'entrée de la détection des manœuvres,
+ * accordée à l'allure de la session (`sessionManeuverThresholds`), lue avec la
+ * même comparaison stricte, et la cohérence est la sienne aussi (Q53, 04/11) :
+ * un virage est vu des deux côtés ou d'aucun. Jusque-là, l'orientation lisait
+ * la vitesse plancher de la polaire (5 nd) et une cohérence de 0,6.
  */
 export const observeTurns = (
   points: PointData[],
-  minEntrySpeedKn: number = WIND_ESTIMATION_MIN_SPEED_KN
+  minEntrySpeedKn: number = MANEUVER_MIN_ENTRY_SPEED_KN
 ): TurnObservation[] => {
   const turns: TurnObservation[] = [];
   const windowMs = ORIENTATION_WINDOW_S * 1000;
@@ -571,11 +568,11 @@ export const observeTurns = (
     // des manœuvres l'omet, pas l'orientation (`slowestPoint`).
     const initial = slowestPoint(points, i, scan.j, true);
 
-    const coherent = scan.totalRotation > 0 && Math.abs(scan.cumulativeTurn) / scan.totalRotation >= TURN_MIN_COHERENCE;
+    const coherent = scan.totalRotation > 0 && Math.abs(scan.cumulativeTurn) / scan.totalRotation >= MANEUVER_MIN_COHERENCE;
     // Un virage commence en vol : la sortie d'une chute, où l'on repart
-    // depuis un cap quelconque, n'est pas un virage.
+    // depuis un cap quelconque, n'est pas un virage. Strict, comme `readWindow`.
     const entrySpeed = points[i].smoothedSpeed;
-    const startsFlying = entrySpeed >= minEntrySpeedKn;
+    const startsFlying = entrySpeed > minEntrySpeedKn;
 
     if (Math.abs(scan.cumulativeTurn) > ORIENTATION_MIN_TURN_DEG && coherent && startsFlying) {
       // Prolongation tant que le cap tourne franchement dans le même sens (`extendTurn`).
@@ -662,7 +659,10 @@ export interface WindEstimate {
 }
 
 export interface WindEstimateOptions {
+  /** Vitesse plancher de la polaire, en nœuds (`WIND_ESTIMATION_MIN_SPEED_KN`). */
   minSpeedKn?: number;
+  /** Vitesse d'entrée des virages qui orientent l'axe, en nœuds : celle de la détection des manœuvres (Q53). */
+  minEntrySpeedKn?: number;
 }
 
 /** Contraste minimal du score polaire pour que l'orientation soit acquise sans aide. */
@@ -676,11 +676,16 @@ const POLAR_CONTRAST_MIN = 0.15;
  */
 export const estimateWindPolar = (points: PointData[], options: WindEstimateOptions = {}): WindEstimate => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
-  return orientPolar(points, estimateWindFromPolar(points, minSpeedKn), minSpeedKn);
+  const minEntrySpeedKn = options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN;
+  return orientPolar(points, estimateWindFromPolar(points, minSpeedKn), minEntrySpeedKn);
 };
 
-/** Orientation de `estimateWindPolar`, sur le meilleur candidat de la polaire déjà trouvé. */
-const orientPolar = (points: PointData[], polar: PolarWindEstimate, minSpeedKn: number): WindEstimate => {
+/**
+ * Orientation de `estimateWindPolar`, sur le meilleur candidat de la polaire
+ * déjà trouvé ; les virages qui tranchent sont lus à `minEntrySpeedKn`, la
+ * vitesse d'entrée de la détection des manœuvres (Q53).
+ */
+const orientPolar = (points: PointData[], polar: PolarWindEstimate, minEntrySpeedKn: number): WindEstimate => {
   const candidateA = polar.direction;
   const candidateB = (polar.direction + 180) % 360;
 
@@ -689,7 +694,7 @@ const orientPolar = (points: PointData[], polar: PolarWindEstimate, minSpeedKn: 
   let orientationConfidence = Math.min(1, polar.contrast / POLAR_CONTRAST_MIN);
 
   if (polar.contrast < POLAR_CONTRAST_MIN) {
-    const votes = orientationVotes(observeTurns(points, minSpeedKn), candidateA);
+    const votes = orientationVotes(observeTurns(points, minEntrySpeedKn), candidateA);
     const total = votes.forAxis + votes.forOpposite;
     if (total > ORIENTATION_MIN_VOTE_WEIGHT) {
       direction = votes.forAxis >= votes.forOpposite ? candidateA : candidateB;
@@ -712,13 +717,16 @@ const orientPolar = (points: PointData[], polar: PolarWindEstimate, minSpeedKn: 
 /**
  * Ce que l'estimation du vent lit de la trace sans le seuil d'activité : la
  * polaire et ses candidats, l'estimation polaire orientée (virages compris) et
- * le soutien de la trace. Préparé une fois par trace et par vitesse plancher
- * de la polaire (`prepareWindPolar`), il évite de tout refaire à chaque cran
- * du seuil, qui ne change que le classement des manœuvres.
+ * le soutien de la trace. Préparé une fois par trace, par vitesse plancher de
+ * la polaire et par vitesse d'entrée des virages (`prepareWindPolar`), il
+ * évite de tout refaire à chaque cran du seuil, qui ne change que le
+ * classement des manœuvres.
  */
 export interface WindPolarStage {
   readonly points: PointData[];
   readonly minSpeedKn: number;
+  /** Vitesse d'entrée des virages lus par l'orientation : celle de la détection des manœuvres (Q53). */
+  readonly minEntrySpeedKn: number;
   /** Candidats de la polaire, par score décroissant (`polarWindCandidates`, trois au plus). */
   readonly candidates: readonly PolarWindEstimate[];
   /** Descripteur d'une direction imposée, sur la même polaire (`describeWindCandidate`). */
@@ -736,15 +744,20 @@ export interface WindPolarStage {
  * candidat est le même que celui d'`estimateWindFromPolar` : le tri ne dépend
  * pas du nombre de candidats gardés.
  */
-export const prepareWindPolar = (points: PointData[], minSpeedKn = WIND_ESTIMATION_MIN_SPEED_KN): WindPolarStage => {
+export const prepareWindPolar = (
+  points: PointData[],
+  minSpeedKn = WIND_ESTIMATION_MIN_SPEED_KN,
+  minEntrySpeedKn = MANEUVER_MIN_ENTRY_SPEED_KN
+): WindPolarStage => {
   const maxSpeeds = buildMaxSpeedsByBearing(points, minSpeedKn);
   const candidates = candidatesOf(maxSpeeds, 3);
   return {
     points,
     minSpeedKn,
+    minEntrySpeedKn,
     candidates,
     describe: (direction) => describeDirection(maxSpeeds, direction),
-    polar: orientPolar(points, candidates[0], minSpeedKn),
+    polar: orientPolar(points, candidates[0], minEntrySpeedKn),
     sampling: polarSampling(points),
   };
 };

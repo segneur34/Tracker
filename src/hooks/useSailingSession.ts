@@ -161,12 +161,13 @@ export const useSailingSession = ({
   /**
    * Étage polaire du vent (polaire, candidats, orientation par les virages,
    * soutien de la trace), préparé une fois par trace : il ne dépend pas du
-   * seuil d'activité.
+   * seuil d'activité. Les virages qui orientent l'axe sont lus à la vitesse
+   * d'entrée de la détection (Q53).
    */
   const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
   const polarStage = useMemo(
-    () => (trackData.length > 0 ? prepareWindPolar(trackData, polarMinSpeedKn) : null),
-    [trackData, polarMinSpeedKn]
+    () => (trackData.length > 0 ? prepareWindPolar(trackData, polarMinSpeedKn, minEntrySpeedKn) : null),
+    [trackData, polarMinSpeedKn, minEntrySpeedKn]
   );
 
   // Les seuils viennent du profil du support et de la surcharge de

@@ -36,7 +36,9 @@ import {
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
-import { MANEUVER_LABELS, MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LOST_FLIGHT_S } from '../sailing/sailingConfig';
+import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import type { ManeuverLocation } from '../sailing/maneuvers';
 import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
 import CardioTab from '../components/CardioTab';
@@ -277,6 +279,14 @@ function SailingModule() {
 
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
+  /** Mentions d'une manœuvre, les mêmes dans la bulle de la carte et la liste des détails : amures, vol perdu, décollage. */
+  const maneuverNotes = useCallback((loc: ManeuverLocation): string[] => {
+    const notes: string[] = [];
+    if (loc.tack) notes.push(`${TACK_LABELS[loc.tack].toLowerCase()} → ${TACK_LABELS[oppositeTack(loc.tack)].toLowerCase()}`);
+    if (loc.lostFlightS > 0) notes.push(`${foil ? 'vol perdu' : 'sous le seuil'} ${formatDecimal(loc.lostFlightS, 1)} s`);
+    if (loc.takeoff) notes.push('au décollage');
+    return notes;
+  }, [foil]);
   /** Pumping de la session (brouillon, puis fiche), sinon celui de l'activité ; sur foil seulement (lot 22). */
   const pumping = foil && profile.pump !== null && (edits.pumping ?? activityPumping);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans « graphiques ». */
@@ -353,6 +363,8 @@ function SailingModule() {
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
   const [showUndecidedOnMap, setShowUndecidedOnMap] = useState<boolean>(false);
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
+  /** Genre montré dans le tableau par amure (note 135) : virements ou empannages. */
+  const [tackTableType, setTackTableType] = useState<'tack' | 'jibe'>('tack');
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
   const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
   const windHelpOpen = useHelp('voile:vent')?.open ?? false;
@@ -463,7 +475,10 @@ function SailingModule() {
                 fillOpacity: 1,
                 weight: 3
               }}>
-              <Popup>{MANEUVER_LABELS[loc.type]} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {formatKnots(loc.vmin, speedUnit)} {SPEED_UNIT_SYMBOL[speedUnit]}</Popup>
+              <Popup>
+                {MANEUVER_LABELS[loc.type]} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {formatKnots(loc.vmin, speedUnit)} {SPEED_UNIT_SYMBOL[speedUnit]}
+                {maneuverNotes(loc).map((note) => <span key={note}><br />{note}</span>)}
+              </Popup>
             </CircleMarker>
           );
         })}
@@ -480,7 +495,7 @@ function SailingModule() {
         })}
       </>
     );
-  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, showUndecidedOnMap, selectedTopMap, mapTops, maneuverTopArray, selectedManeuverTop, speedUnit]);
+  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, showUndecidedOnMap, selectedTopMap, mapTops, maneuverTopArray, selectedManeuverTop, speedUnit, maneuverNotes]);
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
@@ -697,7 +712,7 @@ function SailingModule() {
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, ...(showManeuverDetails ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={toggleOf('manoeuvres')} helpKey="voile:manoeuvres" />
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>ratée si moins de {showThreshold(activeThresholdKn)} {speedSymbol} pendant au moins {MANEUVER_LOST_FLIGHT_S} s</span>
       </div>
 
       <div className="an-man-scroll">
@@ -737,6 +752,42 @@ function SailingModule() {
         </tbody>
       </table>
       </div>
+
+      {/* Par amure (note 135, 04/11) : virements ou empannages selon l'amure d'avant la manœuvre, médianes. */}
+      {(maneuverSummary.tack || maneuverSummary.jibe) && (
+        <div className="an-man-scroll" style={{ marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+            <strong className="ui-subtitle">Par amure</strong>
+            <SegmentedControl<'tack' | 'jibe'> label="Manœuvres par amure" accent="var(--voile)" value={tackTableType} onChange={setTackTableType}
+              items={[{ key: 'tack', label: 'Virements' }, { key: 'jibe', label: 'Empannages' }]} />
+          </div>
+          <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+            <thead>
+              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                <th style={{ textAlign: 'left' }} title="Amure avant la manœuvre : d'où vient le vent">Amure</th>
+                <th title="Manœuvres réussies sur le total de cette amure">Réussis</th>
+                <th title="Vitesse minimale pendant la manœuvre, médiane sur cette amure">Vmin méd. ({speedSymbol})</th>
+                <th title="Vitesse minimale sur vitesse d'approche, médiane sur cette amure">Conservation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(['starboard', 'port'] as const).map((tack) => {
+                const onTack = maneuverSummary.byTack[tackTableType][tack];
+                return (
+                  <tr key={tack} className="ui-table__row">
+                    <td style={{ fontWeight: 700 }}>{TACK_LABELS[tack]}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      {onTack ? <><span style={{ color: 'var(--success)', fontWeight: 700 }}>{onTack.success}</span>{` / ${onTack.count}`}</> : '-'}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{onTack ? showKn(onTack.vminMedian) : '-'}</td>
+                    <td style={{ textAlign: 'center' }}>{onTack ? formatMetric('conservation', onTack.conservationMedian) : '-'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {maneuverHelpOpen && (<>
       <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
@@ -798,7 +849,7 @@ function SailingModule() {
           {m.rejected.tooShort > 0 && (
             <>
               <br />
-              <strong>{m.rejected.tooShort}</strong> sur place, moins de 10 m parcourus : à cette distance le cap n'est que du bruit de position.
+              <strong>{m.rejected.tooShort}</strong> sur place (moins de 10 m parcourus : à cette distance le cap n'est que du bruit de position) ou entamé{m.rejected.tooShort > 1 ? 's' : ''} dans les dernières secondes de la trace.
             </>
           )}
         </p>
@@ -880,6 +931,18 @@ function SailingModule() {
                   })}
                 </tbody>
               </table>
+            )}
+            {summary && (
+              <ul style={{ margin: '8px 0 0', paddingLeft: '18px', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
+                {m.locations.filter((loc) => loc.type === type).map((loc) => (
+                  <li key={loc.timeMs}>
+                    {formatTimeOfDay(loc.timeMs)}{' · '}
+                    <span style={{ color: loc.success ? 'var(--success)' : 'var(--danger)' }}>{loc.success ? 'réussi' : 'raté'}</span>
+                    {` · Vmin ${showKn(loc.vmin)} ${speedSymbol}`}
+                    {maneuverNotes(loc).map((note) => ` · ${note}`).join('')}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         ))}

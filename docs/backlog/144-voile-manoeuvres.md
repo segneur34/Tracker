@@ -23,3 +23,10 @@
 
 - 130 · [bogue] Voile › manœuvres : une manœuvre ne devrait compter que si la vitesse reste sous le seuil au moins 2 s (aujourd'hui un ralentissement ou un rebond bref en vol suffit), la perte de vitesse (vitesse mini) restant la mesure ; et le dernier virement de la session du 02/11, fait juste après un décollage, n'est pas compté · noté 02/11 · gros · Fable/high · à briefer · dépend de : le GPX du 02/11 à copier sur le PC, lot 112 (validation) · détail : docs/backlog/130-manoeuvres-arret-deux-secondes.md
 - 135 · [idée] Voile › manœuvres : statistiques des virements et des empannages selon l'amure, tribord ou bâbord (réussis, vitesse mini, perte de vitesse par amure) ; voulu pour la prochaine sortie, entre en Ensuite dès qu'une place se libère · noté 02/11 · petit · Opus/high
+
+## Réponses du 04/11 et brief
+
+- Plan approuvé : `~/.claude/plans/2-v-rit-de-steady-starlight.md` (sections « Lot 144 », A à D).
+- Q53 (posée le 01/11 au lot 112) : **aligner** l'orientation du vent sur la détection des manœuvres (cohérence 0,5, vitesse d'entrée des manœuvres, 4 nd ou 0,16 × allure, comparaison stricte). Fait dans ce lot.
+- Décollage : un virage entamé sous le seuil de vol compte s'il est en vol au franchissement de l'axe du vent et en sortie (option 1) ; l'utilisateur précise qu'il est « clairement en vol à +8 nd quand il attaque le virement » du 02/11 : l'entrée se lit donc au vrai départ de la rotation (max de la médiane 12 à 2 s avant et de la vitesse lissée au départ), ce qui suffit pour ce virement.
+- La « perte de vitesse » par amure est rendue par la conservation (métrique existante, rapport sans dimension), pas par une seconde formule : tranché par l'orchestrateur.

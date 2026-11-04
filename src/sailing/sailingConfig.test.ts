@@ -5,6 +5,7 @@ import type { TrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
 import {
   MANEUVER_FULL_TURN_DEG,
+  MANEUVER_LOST_FLIGHT_S,
   MANEUVER_MIN_COHERENCE,
   SLOW_SESSION_ACTIVE_THRESHOLD_KN,
   getStillSpeedKn,
@@ -12,7 +13,6 @@ import {
   resolveSailingThresholds,
   suggestSpeedRangeMs,
 } from './sailingConfig';
-import { TURN_MIN_COHERENCE } from './wind';
 
 /** Trace synthétique : vitesse imposée point par point, cadence réglable. */
 const buildTrack = (speedsMs: number[], stepSeconds = 1): TrackPoint[] => {
@@ -84,9 +84,12 @@ describe('suggestSpeedRangeMs', () => {
 });
 
 describe('seuils de la détection des manœuvres (28/10)', () => {
-  it('garde-fou de cohérence plus large pour les manœuvres que pour la polaire, qui garde le sien', () => {
+  it('un seul garde-fou de cohérence, pour les manœuvres comme pour l\'orientation du vent (Q53, 04/11)', () => {
     expect(MANEUVER_MIN_COHERENCE).toBe(0.5);
-    expect(TURN_MIN_COHERENCE).toBe(0.6);
+  });
+
+  it('une manœuvre n\'est ratée que si la vitesse reste sous le seuil au moins 2 s (04/11)', () => {
+    expect(MANEUVER_LOST_FLIGHT_S).toBe(2);
   });
 
   it('tient un virage de 270° ou plus pour un tour complet', () => {

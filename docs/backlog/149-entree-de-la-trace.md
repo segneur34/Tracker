@@ -35,3 +35,7 @@ Sondes de l'audit à reprendre comme tests : `C2-degenere.test.ts` (« temps rec
 ## Questions
 
 - Q56 : le temps actif et les vols doivent-ils lire la même règle sur un trou parcouru en mouvement ? Par défaut : oui, le trou mobile compte dans les deux (règle 10).
+
+## Réponse du 04/11
+
+- Q56 : **oui, le trou mobile compte partout** (temps actif et vols) ; seul le masque d'activité décide, `activeRuns` ne coupe plus sur la durée. Plan : `~/.claude/plans/2-v-rit-de-steady-starlight.md` (sections E à H).

@@ -13,7 +13,8 @@
 // suggestion de l'application ; `--vent` le vent saisi, sinon le vent estimé.
 // Sont imprimés : allure et seuils, ratio de l'application, part de vol par
 // seuil de 5 à 10 nd, chronologie des vols, vent estimé, chaque manœuvre
-// comptée, les demi-tours hors vol et les tours complets écartés ; avec
+// comptée (amure d'avant, durée sous le seuil « perdu s », lue au décollage
+// ou non), les demi-tours hors vol et les tours complets écartés ; avec
 // `--ecartes`, tous les virages écartés, par motif. Les caps « de contrôle »
 // d'une manœuvre sont relus par l'outil (médianes de 10 à 2 s avant la
 // rotation et de 1 à 8 s après la sortie) : ils ne viennent pas de la
@@ -168,7 +169,8 @@ const medianHeading = (fromMs, toMs) => {
 };
 const side = (heading, windDeg) => (angleDiff(heading, windDeg) < 0 ? 'G' : 'D');
 
-console.log('  n   début  repère  type  ok   entrée  vmin  cons  relance  cap°  ctrl avant→après  côtés  bissectrice  vent loc  stab  vol avant/après');
+console.log('  n   début  repère  type  ok   amure  perdu s  décol.  entrée  vmin  cons  relance  cap°  ctrl avant→après  côtés  bissectrice  vent loc  stab  vol avant/après');
+const tackLabel = { starboard: 'tribord', port: 'bâbord' };
 const mask = withThreshold ? thresholdActivityMask(track, profile, seuil) : null;
 const flyingAt = (index) => (mask ? (mask[Math.max(0, Math.min(mask.length - 1, index))] ? 'vol' : 'non') : '—');
 result.locations.forEach((m, n) => {
@@ -185,13 +187,13 @@ result.locations.forEach((m, n) => {
   let k = m.entryIndex;
   while (k > 0 && pts[k].timeMs > entryMs - 6000) k--;
   console.log(
-    `${String(n + 1).padStart(3)}  ${clock(entryMs)}  ${clock(m.timeMs)}  ${kind.padEnd(4)}  ${m.success ? 'ok' : 'KO'}  ${r1(m.entrySpeed).padStart(6)}  ${r1(m.vmin).padStart(4)}  ${r1(m.conservation).padStart(4)}  ${String(m.relaunchS === null ? '—' : Math.round(m.relaunchS)).padStart(7)}  ${String(Math.round(m.headingChange)).padStart(4)}  ${deg(before)} → ${deg(after)}          ${sides.padEnd(5)}  ${deg(bisector)}          ${deg(directedTurn ? m.localWind : null)}       ${m.stableHeadings ? 'oui' : 'non'}   ${flyingAt(k)}/${flyingAt(m.exitIndex)}`
+    `${String(n + 1).padStart(3)}  ${clock(entryMs)}  ${clock(m.timeMs)}  ${kind.padEnd(4)}  ${m.success ? 'ok' : 'KO'}  ${(m.tack ? tackLabel[m.tack] : '—').padEnd(7)}${r1(m.lostFlightS ?? null).padStart(5)}  ${(m.takeoff ? 'oui' : '—').padEnd(6)}  ${r1(m.entrySpeed).padStart(6)}  ${r1(m.vmin).padStart(4)}  ${r1(m.conservation).padStart(4)}  ${String(m.relaunchS === null ? '—' : Math.round(m.relaunchS)).padStart(7)}  ${String(Math.round(m.headingChange)).padStart(4)}  ${deg(before)} → ${deg(after)}          ${sides.padEnd(5)}  ${deg(bisector)}          ${deg(directedTurn ? m.localWind : null)}       ${m.stableHeadings ? 'oui' : 'non'}   ${flyingAt(k)}/${flyingAt(m.exitIndex)}`
   );
 });
 
 // --- Demi-tours hors vol et tours complets, puis tous les écartés ---
 const rejectedTurns = result.rejectedTurns;
-const label = { noFlight: 'demi-tour hors vol', fullTurn: 'tour complet', unclassified: 'non classé', incoherent: 'incohérent', still: 'planche arrêtée', slowEntry: 'entrée lente', tooShort: 'sur place' };
+const label = { noFlight: 'demi-tour hors vol', fullTurn: 'tour complet', unclassified: 'non classé', incoherent: 'incohérent', still: 'planche arrêtée', slowEntry: 'entrée lente', tooShort: 'sur place/fin' };
 const describe = (r) =>
   `  ${clock(r.timeMs)}  ${(label[r.motif] ?? r.motif).padEnd(18)}  virage ${String(Math.round(r.turnDeg)).padStart(4)}°  vitesse ${r1(r.speedKn).padStart(5)} nd${r.type ? `  (${r.type === 'tack' ? 'virement' : 'empannage'})` : ''}`;
 if (!rejectedTurns) {

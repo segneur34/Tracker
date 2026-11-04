@@ -36,14 +36,26 @@ export const MANEUVER_MIN_TURN_DEG = 60;
 export const MANEUVER_FULL_TURN_DEG = 270;
 
 /**
- * Cohérence minimale d'un virage de manœuvre : virage net sur somme des
- * rotations pas à pas. Simple garde-fou contre la chute, où le cap part dans
- * tous les sens : le changement d'amures exigé écarte déjà loffs, abattées et
- * chutes. Plus bas que celui de la polaire (`TURN_MIN_COHERENCE`, 0,6), qui
- * n'en dépend pas : à 1 Hz, le bruit de cap d'un wing suffisait à écarter un
- * vrai virement (0,57).
+ * Cohérence minimale d'un virage : virage net sur somme des rotations pas à
+ * pas. Simple garde-fou contre la chute, où le cap part dans tous les sens :
+ * le changement d'amures exigé écarte déjà loffs, abattées et chutes. À 1 Hz,
+ * le bruit de cap d'un wing suffisait à écarter un vrai virement à 0,6 (0,57).
+ * La même pour la détection des manœuvres et pour l'orientation du vent
+ * (`observeTurns`), qui lisait 0,6 jusqu'au 04/11 (Q53 : mêmes règles des deux
+ * côtés, pour qu'un virage ne soit pas vu par l'un et pas par l'autre).
  */
 export const MANEUVER_MIN_COHERENCE = 0.5;
+
+/**
+ * Durée minimale, en secondes, pendant laquelle la vitesse doit rester sous
+ * le seuil de réussite pour qu'une manœuvre soit ratée (04/11). Un rebond sur
+ * l'eau ou un ralentissement d'un instant en restant en vol passait pour un
+ * vol perdu, parce que la vitesse minimale seule décidait ; elle reste la
+ * mesure affichée, les 2 s ne changent que le verdict. Lue sur la même série
+ * et la même fenêtre que la vitesse minimale, bornes interpolées en temps
+ * (règle 2). Surchargeable (`ManeuverOptions.lostFlightSeconds`).
+ */
+export const MANEUVER_LOST_FLIGHT_S = 2;
 
 /**
  * Vitesse de rotation minimale, en degrés par seconde, du cœur d'un virage :

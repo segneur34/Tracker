@@ -1,7 +1,8 @@
+import { median } from '../core/basics';
 import { firstIndexAtOrAfter } from '../core/search';
 import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from './pointData';
-import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
+import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type ManeuverLocation, type ManeuverStats, type Tack, type WindReference } from './maneuvers';
 import { VMG_MIN_WINDOW_RATIO, VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import { circularStats, interpolateDirection, type TimedDirection } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
@@ -231,6 +232,15 @@ export const MANEUVER_LABELS: Record<ManeuverKind, string> = {
   undecided: 'Sens incertain',
 };
 
+/** Nom d'une amure, dans le tableau par amure et le détail d'une manœuvre. */
+export const TACK_LABELS: Record<Tack, string> = {
+  starboard: 'Tribord',
+  port: 'Bâbord',
+};
+
+/** L'autre amure : celle d'après un virement ou un empannage. */
+export const oppositeTack = (tack: Tack): Tack => (tack === 'starboard' ? 'port' : 'starboard');
+
 export const MANEUVER_METRICS: {
   key: ManeuverMetric;
   label: string;
@@ -301,11 +311,26 @@ export interface ManeuverTypeSummary {
   tops: Record<ManeuverMetric, ManeuverTop[]>;
 }
 
+/** Virements ou empannages d'une amure : comptés, réussis, et leurs médianes. */
+export interface ManeuverTackSummary {
+  count: number;
+  success: number;
+  /** Vitesse minimale médiane, en nœuds, non arrondie. */
+  vminMedian: number;
+  /** Conservation de vitesse médiane (`MANEUVER_METRICS`, `conservation`), de 0 à 1. */
+  conservationMedian: number;
+}
+
+/** Manœuvres d'un genre dirigé, par amure avant la manœuvre ; `null` sans manœuvre sur cette amure. */
+export type ManeuversByTack = Record<Tack, ManeuverTackSummary | null>;
+
 export interface ManeuverSummary {
   tack: ManeuverTypeSummary | null;
   jibe: ManeuverTypeSummary | null;
   /** Sens incertain : moyennes seulement, aucun podium (`MANEUVER_METRICS[].ranked`). */
   undecided: ManeuverTypeSummary | null;
+  /** Virements et empannages par amure avant la manœuvre (note 135, 04/11). */
+  byTack: Record<'tack' | 'jibe', ManeuversByTack>;
 }
 
 const metricValue = (m: ManeuverLocation, metric: ManeuverMetric): number | null => {
@@ -416,13 +441,40 @@ const summarizeType = (
   };
 };
 
-/** Moyennes et podiums des métriques de qualité, par type de manœuvre. */
+/**
+ * Manœuvres d'un genre dirigé sur une amure : comptées, réussies, vitesse
+ * minimale et conservation médianes, la conservation lue par `metricValue`,
+ * jamais par une seconde formule.
+ */
+const summarizeTack = (locations: ManeuverLocation[], type: 'tack' | 'jibe', tack: Tack): ManeuverTackSummary | null => {
+  const onTack = locations.filter((m) => m.type === type && m.tack === tack);
+  if (onTack.length === 0) return null;
+  const conservations = onTack
+    .map((m) => metricValue(m, 'conservation'))
+    .filter((value): value is number => value !== null);
+  return {
+    count: onTack.length,
+    success: onTack.filter((m) => m.success).length,
+    vminMedian: median(onTack.map((m) => m.vmin)),
+    conservationMedian: median(conservations),
+  };
+};
+
+const byTackOf = (locations: ManeuverLocation[], type: 'tack' | 'jibe'): ManeuversByTack => ({
+  starboard: summarizeTack(locations, type, 'starboard'),
+  port: summarizeTack(locations, type, 'port'),
+});
+
+const EMPTY_BY_TACK: ManeuversByTack = { starboard: null, port: null };
+
+/** Moyennes et podiums des métriques de qualité, par type de manœuvre, et le détail par amure. */
 export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): ManeuverSummary => {
-  if (!maneuverStats) return { tack: null, jibe: null, undecided: null };
+  if (!maneuverStats) return { tack: null, jibe: null, undecided: null, byTack: { tack: EMPTY_BY_TACK, jibe: EMPTY_BY_TACK } };
   return {
     tack: summarizeType(maneuverStats.locations, 'tack'),
     jibe: summarizeType(maneuverStats.locations, 'jibe'),
     undecided: summarizeType(maneuverStats.locations, 'undecided'),
+    byTack: { tack: byTackOf(maneuverStats.locations, 'tack'), jibe: byTackOf(maneuverStats.locations, 'jibe') },
   };
 };
 

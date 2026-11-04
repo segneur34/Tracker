@@ -273,7 +273,7 @@ describe('calculateVmgStats', () => {
 });
 
 const fakeManeuver = (localWind: number, timeMs: number): ManeuverLocation => ({
-  lat: 43.6, lon: 3.8, type: 'tack', success: true, vmin: 6, localWind, timeMs, trackIndex: 0, stableHeadings: true,
+  lat: 43.6, lon: 3.8, type: 'tack', success: true, lostFlightS: 0, tack: 'starboard', takeoff: false, vmin: 6, localWind, timeMs, trackIndex: 0, stableHeadings: true,
   windCriteria: { conservation: 0.5, success: true }, entrySpeed: 12, conservation: 0.5, relaunchS: 4, headingChange: 90,
   distanceM: 40, windwardGainM: 10, apexIndex: 0, entryIndex: 0, exitIndex: 0, entryHeading: 315, exitHeading: 45, path: [],
 });

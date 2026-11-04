@@ -6,6 +6,7 @@ import {
   MANEUVER_COOLDOWN_S,
   MANEUVER_CORE_RATE_DEG_S,
   MANEUVER_FULL_TURN_DEG,
+  MANEUVER_LOST_FLIGHT_S,
   MANEUVER_MIN_COHERENCE,
   MANEUVER_MIN_ENTRY_SPEED_KN,
   MANEUVER_MAX_STEP_S,
@@ -28,6 +29,11 @@ export interface ManeuverOptions {
    * Dépend du support et reste réglable par l'utilisateur.
    */
   successThresholdKn?: number;
+  /**
+   * Durée, en secondes, que la vitesse doit passer d'affilée sous le seuil de
+   * réussite pour que la manœuvre soit ratée (`MANEUVER_LOST_FLIGHT_S`).
+   */
+  lostFlightSeconds?: number;
   /** Vitesse minimale d'entrée de manœuvre, en nœuds. */
   minEntrySpeedKn?: number;
   /** Durée d'observation d'une manœuvre, en secondes. */
@@ -74,12 +80,41 @@ export interface ManeuverOptions {
  */
 export type ManeuverKind = 'tack' | 'jibe' | 'undecided';
 
+/**
+ * Amure : le bord d'où la planche reçoit le vent. Tribord amure quand le vent
+ * vient de tribord (cap à gauche du vent : vent 0°, cap 315°), bâbord amure
+ * quand il vient de bâbord (cap 45°). Convention de `calculateVmgStats`.
+ */
+export type Tack = 'starboard' | 'port';
+
+/** Amure d'un cap, en degrés, sous un vent donné : tribord quand le cap est à gauche du vent. */
+export const tackOf = (headingDeg: number, windDeg: number): Tack =>
+  angleDiff(headingDeg, windDeg) < 0 ? 'starboard' : 'port';
+
 export interface ManeuverLocation {
   lat: number;
   lon: number;
   type: ManeuverKind;
-  /** Vrai si la vitesse minimale reste au seuil de réussite ou au-dessus. */
+  /**
+   * Vrai si la vitesse n'est pas restée sous le seuil de réussite pendant
+   * `MANEUVER_LOST_FLIGHT_S` d'affilée (`lostFlightS`) : un creux plus bref,
+   * rebond ou ralentissement en vol, ne fait pas une manœuvre ratée (04/11).
+   */
   success: boolean;
+  /**
+   * Plus longue durée, en secondes, passée d'affilée sous le seuil de réussite
+   * pendant la manœuvre, sur la fenêtre et la série de `vmin` ; 0 si la
+   * vitesse n'est jamais passée dessous.
+   */
+  lostFlightS: number;
+  /** Amure avant la manœuvre ; `null` pour un sens incertain, qui ne lit pas le vent. */
+  tack: Tack | null;
+  /**
+   * Vrai pour une manœuvre entamée sous le seuil de vol mais en vol au
+   * franchissement de l'axe du vent et à la sortie : décollage pendant le
+   * virage, chiffres lus à partir du décollage (04/11, option 1).
+   */
+  takeoff: boolean;
   /**
    * Vitesse minimale, en nœuds, du début de la rotation jusqu'au retour à
    * 90 % de la vitesse d'approche, et au plus 10 s après la rotation : le
@@ -113,7 +148,12 @@ export interface ManeuverLocation {
    */
   windCriteria: { conservation: number; success: boolean };
 
-  /** Vitesse d'approche, en nœuds : médiane de la vitesse retenue de 12 s à 2 s avant la rotation. */
+  /**
+   * Vitesse d'approche, en nœuds : la médiane de la vitesse retenue de 12 s à
+   * 2 s avant la rotation, ou la vitesse lissée au départ de la rotation si
+   * elle est plus haute (décollage juste avant le virage, silence GPS dans la
+   * fenêtre : 04/11). Lue au décollage pour une manœuvre `takeoff`.
+   */
   entrySpeed: number;
   /**
    * Taux de conservation de la vitesse, de 0 à 1 : vitesse minimale sur
@@ -153,7 +193,11 @@ export interface ManeuverLocation {
    * sur la vitesse non filtrée, dans la même fenêtre : son point peut différer.
    */
   apexIndex: number;
-  /** Indices de trace du début de la rotation et de la sortie (relance, sinon fin de la rotation). */
+  /**
+   * Indices de trace du début de la manœuvre (début de la rotation, ou le
+   * décollage pour une manœuvre `takeoff`) et de la sortie (relance, sinon fin
+   * de la rotation).
+   */
   entryIndex: number;
   exitIndex: number;
   /**
@@ -184,7 +228,11 @@ export interface ManeuverRejections {
   still: number;
   /** Virage franc et net, mais dont la bissectrice ne tombe près d'aucun axe du vent. */
   unclassified: number;
-  /** Cap franc, mais sur une distance trop courte pour qu'il veuille dire quelque chose. */
+  /**
+   * Cap franc, mais sur une distance trop courte pour qu'il veuille dire
+   * quelque chose ; ou virage entamé dans la dernière demi-fenêtre de la trace,
+   * inobservable (04/11 : compté ici plutôt que perdu en silence).
+   */
   tooShort: number;
   /** Tour complet (un 360) : ni virement ni empannage, jamais compté. */
   fullTurn: number;
@@ -359,21 +407,24 @@ export interface WindEstimationOptions {
    * Étage polaire préparé une fois sur `points` (`prepareWindPolar`), commun
    * à tous les seuils d'activité ; absent, l'estimation le prépare elle-même.
    * Il doit porter sur la même trace, avec la même vitesse plancher de la
-   * polaire (`minSpeedKn`), sans quoi il est refusé.
+   * polaire (`minSpeedKn`) et la même vitesse d'entrée des virages
+   * (`minEntrySpeedKn`, Q53), sans quoi il est refusé.
    */
   polarStage?: WindPolarStage;
 }
 
 /**
  * Étage polaire de l'estimation : celui que les options apportent, vérifié
- * (même trace, même vitesse plancher), sinon préparé ici.
+ * (même trace, même vitesse plancher, même vitesse d'entrée), sinon préparé ici.
  */
 const polarStageFor = (points: PointData[], options: WindEstimationOptions): WindPolarStage => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
+  const minEntrySpeedKn = options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN;
   const given = options.polarStage;
-  if (!given) return prepareWindPolar(points, minSpeedKn);
+  if (!given) return prepareWindPolar(points, minSpeedKn, minEntrySpeedKn);
   if (given.points !== points) throw new Error(`L'étage polaire préparé ne porte pas sur cette trace.`);
   if (given.minSpeedKn !== minSpeedKn) throw new Error(`L'étage polaire préparé n'a pas la vitesse plancher de cette estimation.`);
+  if (given.minEntrySpeedKn !== minEntrySpeedKn) throw new Error(`L'étage polaire préparé n'a pas la vitesse d'entrée de virage de cette estimation.`);
   return given;
 };
 
@@ -902,20 +953,29 @@ export interface DetectedTurn {
   type: 'tack' | 'jibe';
 }
 
-/** Mesures d'une manœuvre, définies comme les champs de même nom de `ManeuverLocation`. */
-export interface ManeuverMeasure {
-  /** Dernier point encore au cap d'approche : la rotation part de là. */
-  rotationStartIndex: number;
-  /** Premier point au cap de sortie : la rotation s'achève là. */
-  rotationEndIndex: number;
+/**
+ * Mesures de la vitesse d'une manœuvre, depuis son point d'entrée : définies
+ * comme les champs de même nom de `ManeuverLocation`.
+ */
+export interface SpeedMeasure {
+  /** Point d'où la manœuvre se lit : le début de la rotation, ou le décollage. */
+  entryIndex: number;
   apexIndex: number;
   exitIndex: number;
   entrySpeed: number;
   vmin: number;
   conservation: number;
   relaunchS: number | null;
-  headingChange: number;
   distanceM: number | null;
+}
+
+/** Mesures d'une manœuvre, définies comme les champs de même nom de `ManeuverLocation`. */
+export interface ManeuverMeasure extends SpeedMeasure {
+  /** Dernier point encore au cap d'approche : la rotation part de là. */
+  rotationStartIndex: number;
+  /** Premier point au cap de sortie : la rotation s'achève là. */
+  rotationEndIndex: number;
+  headingChange: number;
   /** Gain au vent pendant la rotation, en mètres, que la manœuvre soit réussie ou non. */
   gainM: number;
 }
@@ -1020,7 +1080,7 @@ const crossingMs = (points: PointData[], k: number, fromDeg: number, toDeg: numb
 export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg: number): ManeuverMeasure => {
   const { triggerIndex, endIndex, turnSign, type } = turn;
   const rotation = measureRotation(points, triggerIndex, endIndex, turnSign, turnHeadings(points, triggerIndex, endIndex));
-  const { rotationStartMs: _startMs, rotationEndMs: _endMs, ...measure } = rotation;
+  const { rotationStartMs: _startMs, rotationEndMs: _endMs, lostFlightMs: _lost, ...measure } = rotation;
   return { ...measure, gainM: windwardGainM(points, rotation, type, windDeg) };
 };
 
@@ -1029,7 +1089,161 @@ export interface RotationMeasure extends Omit<ManeuverMeasure, 'gainM'> {
   /** Instants où le cap quitte celui d'approche et atteint celui de sortie, pour le gain au vent. */
   rotationStartMs: number;
   rotationEndMs: number;
+  /**
+   * Plus longue durée, en millisecondes, passée d'affilée sous un seuil de
+   * réussite, sur la fenêtre et la série de `vmin` (`longestUnderMs`). Une
+   * fonction, parce que le seuil n'est connu qu'au classement, et que la
+   * rotation se mesure une fois pour tous les vents (`rotationOf`).
+   */
+  lostFlightMs: (thresholdKn: number) => number;
 }
+
+/** Un point de la série de vitesse d'une manœuvre : instant et vitesse, en nœuds. */
+export interface SpeedSample {
+  timeMs: number;
+  speedKn: number;
+}
+
+/** Instant où la vitesse franchit `thresholdKn` entre deux points de la série, interpolé en temps. */
+const speedCrossingMs = (a: SpeedSample, b: SpeedSample, thresholdKn: number): number => {
+  const span = b.speedKn - a.speedKn;
+  const ratio = span === 0 ? 0 : (thresholdKn - a.speedKn) / span;
+  return a.timeMs + Math.min(1, Math.max(0, ratio)) * (b.timeMs - a.timeMs);
+};
+
+/**
+ * Plus longue durée continue, en millisecondes, passée sous `thresholdKn` par
+ * une série de vitesse rangée par le temps, bornes interpolées entre deux
+ * points (règle 2 : la même à 1 Hz et à 5 Hz, et un demi-tour vu en un seul
+ * pas interpole sur ce pas). Une série qui commence ou finit sous le seuil
+ * compte depuis son premier point, ou jusqu'à son dernier : la fenêtre borne
+ * la mesure comme elle borne la vitesse minimale. Une vitesse égale au seuil
+ * n'est pas en dessous.
+ */
+export const longestUnderMs = (samples: readonly SpeedSample[], thresholdKn: number): number => {
+  let longest = 0;
+  let startMs: number | null = null;
+  for (let k = 0; k < samples.length; k++) {
+    const sample = samples[k];
+    const under = sample.speedKn < thresholdKn;
+    if (under && startMs === null) {
+      startMs = k === 0 ? sample.timeMs : speedCrossingMs(samples[k - 1], sample, thresholdKn);
+    } else if (!under && startMs !== null) {
+      longest = Math.max(longest, speedCrossingMs(samples[k - 1], sample, thresholdKn) - startMs);
+      startMs = null;
+    }
+  }
+  if (startMs !== null && samples.length > 0) longest = Math.max(longest, samples[samples.length - 1].timeMs - startMs);
+  return longest;
+};
+
+/**
+ * Mesures de la vitesse d'une manœuvre lue depuis le point `from` (le début de
+ * la rotation, ou le décollage), la rotation s'achevant à `rotationEnd`.
+ *
+ * Vitesse d'approche : la médiane de 12 s à 2 s avant `from` (à son premier
+ * point, le rider a souvent déjà ralenti, et la manœuvre passait pour
+ * parfaite), ou la vitesse lissée à `from` si elle est plus haute : un
+ * décollage juste avant le virage, ou un silence GPS dans la fenêtre,
+ * faisaient lire une approche sous le seuil de vol à un virement attaqué en
+ * vol (04/11).
+ *
+ * Point le plus lent : sur toute la rotation, puis au-delà tant que la
+ * vitesse n'est pas revenue, le creux d'un virement venant souvent une fois
+ * le nouveau cap pris. Le creux de la vitesse filtrée borne la fenêtre et
+ * fait partir la relance ; la vitesse minimale se lit, dans la même fenêtre,
+ * sur la vitesse non filtrée, que la médiane de 3 s ne remonte pas (creux en
+ * V : conservation surestimée de 0,05 à 0,1). Le plus bas des deux, pour
+ * qu'une trace sans vitesse non filtrée ne change pas. La durée sous le seuil
+ * (`lostFlightMs`) se lit sur la série, point par point, du plus bas des deux :
+ * son minimum est `vmin`.
+ */
+const measureSpeeds = (points: PointData[], from: number, rotationEnd: number): SpeedMeasure & Pick<RotationMeasure, 'lostFlightMs'> => {
+  const startMs = points[from].timeMs;
+  const approachSpeeds: number[] = [];
+  for (let k = from - 1; k >= 0 && points[k].timeMs >= startMs - APPROACH_SPEED_FROM_S * 1000; k--) {
+    if (points[k].timeMs <= startMs - APPROACH_SPEED_TO_S * 1000) approachSpeeds.push(points[k].smoothedSpeed);
+  }
+  const entrySpeed = Math.max(approachSpeeds.length > 0 ? median(approachSpeeds) : 0, points[from].smoothedSpeed);
+
+  const recoveredSpeed = RELAUNCH_RATIO * entrySpeed;
+  const apexSearchEndMs = points[rotationEnd].timeMs + APEX_SEARCH_AFTER_S * 1000;
+  let apexIndex = from;
+  let rawMin = rawSpeedAround(points, from);
+  const samples: SpeedSample[] = [{ timeMs: startMs, speedKn: Math.min(rawMin, points[from].smoothedSpeed) }];
+  for (let k = from + 1; k < points.length && points[k].timeMs <= apexSearchEndMs; k++) {
+    if (k > rotationEnd && points[k].smoothedSpeed >= recoveredSpeed) {
+      // Le point qui clôt la fenêtre entre dans la série, sur la vitesse
+      // lissée qui l'a vu relancé : un creux encore ouvert au point d'avant se
+      // ferme au franchissement interpolé, pas sur ce point (règle 2). Hors de
+      // `vmin` : relancé, il n'est jamais le minimum.
+      samples.push({ timeMs: points[k].timeMs, speedKn: points[k].smoothedSpeed });
+      break;
+    }
+    if (points[k].smoothedSpeed < points[apexIndex].smoothedSpeed) apexIndex = k;
+    const raw = rawSpeedAround(points, k);
+    rawMin = Math.min(rawMin, raw);
+    samples.push({ timeMs: points[k].timeMs, speedKn: Math.min(raw, points[k].smoothedSpeed) });
+  }
+  const vmin = Math.min(rawMin, points[apexIndex].smoothedSpeed);
+
+  const relaunchIndex = entrySpeed > 0 ? findRelaunch(points, apexIndex, entrySpeed) : null;
+  const exitIndex = relaunchIndex === null ? rotationEnd : Math.max(rotationEnd, relaunchIndex);
+
+  return {
+    entryIndex: from,
+    apexIndex,
+    exitIndex,
+    entrySpeed,
+    vmin,
+    conservation: entrySpeed > 0 ? Math.min(1, vmin / entrySpeed) : 0,
+    relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - points[apexIndex].timeMs) / 1000,
+    distanceM: relaunchIndex === null ? null : distanceBetween(points, from, exitIndex),
+    lostFlightMs: (thresholdKn) => longestUnderMs(samples, thresholdKn),
+  };
+};
+
+/**
+ * Décollage pendant le virage (04/11, option 1) : une manœuvre entamée sous le
+ * seuil de vol compte quand même si la planche vole au franchissement de
+ * l'axe du vent (`axisDeg` : le vent pour un virement, son opposé pour un
+ * empannage) et à la sortie. Le franchissement se lit entre deux points, par
+ * interpolation du cap déroulé, la vitesse lissée interpolée en temps au même
+ * instant ; un axe jamais atteint dans la rotation se lit à sa fin. Rend le
+ * point de décollage, début du vol qui porte le franchissement, ou `null` :
+ * la manœuvre reste un demi-tour hors vol.
+ */
+const takeoffIndexOf = (
+  points: PointData[],
+  rotation: RotationMeasure,
+  headings: TurnHeadings,
+  turnSign: number,
+  axisDeg: number,
+  flightThresholdKn: number
+): number | null => {
+  const { rotationStartIndex: start, rotationEndIndex: end, exitIndex } = rotation;
+  const { headingAt, approach } = headings;
+  /** Angle, dans le sens du virage, du cap d'approche à l'axe. */
+  let toAxis = turnSign * angleDiff(axisDeg, approach.heading);
+  if (toAxis < 0) toAxis += 360;
+  const turnedAt = (k: number): number => turnSign * (headingAt(k) - approach.heading);
+
+  let crossing = end;
+  let speedAtCrossing = points[end].smoothedSpeed;
+  for (let k = start + 1; k <= end; k++) {
+    if (turnedAt(k) < toAxis) continue;
+    const before = turnedAt(k - 1);
+    const ratio = turnedAt(k) === before ? 1 : Math.min(1, Math.max(0, (toAxis - before) / (turnedAt(k) - before)));
+    speedAtCrossing = points[k - 1].smoothedSpeed + ratio * (points[k].smoothedSpeed - points[k - 1].smoothedSpeed);
+    crossing = k;
+    break;
+  }
+  if (speedAtCrossing < flightThresholdKn || points[exitIndex].smoothedSpeed < flightThresholdKn) return null;
+
+  let takeoff = crossing;
+  while (takeoff > start && points[takeoff - 1].smoothedSpeed >= flightThresholdKn) takeoff--;
+  return takeoff;
+};
 
 /**
  * Gain au vent d'une rotation mesurée, en mètres : vers le vent pour un
@@ -1101,49 +1315,14 @@ export const measureRotation = (
     }
   }
 
-  // Vitesse d'approche, lue avant la rotation : à son premier point, le rider
-  // a souvent déjà ralenti, et la manœuvre passait pour parfaite.
-  const startMs = points[rotationStart].timeMs;
-  const approachSpeeds: number[] = [];
-  for (let k = rotationStart - 1; k >= 0 && points[k].timeMs >= startMs - APPROACH_SPEED_FROM_S * 1000; k--) {
-    if (points[k].timeMs <= startMs - APPROACH_SPEED_TO_S * 1000) approachSpeeds.push(points[k].smoothedSpeed);
-  }
-  const entrySpeed = approachSpeeds.length > 0 ? median(approachSpeeds) : points[rotationStart].smoothedSpeed;
-
-  // Point le plus lent : sur toute la rotation, puis au-delà tant que la
-  // vitesse n'est pas revenue, le creux d'un virement venant souvent une fois
-  // le nouveau cap pris. Le creux de la vitesse filtrée borne la fenêtre et
-  // fait partir la relance ; la vitesse minimale se lit, dans la même
-  // fenêtre, sur la vitesse non filtrée, que la médiane de 3 s ne remonte pas
-  // (creux en V : conservation surestimée de 0,05 à 0,1). Le plus bas des
-  // deux, pour qu'une trace sans vitesse non filtrée ne change pas.
-  const recoveredSpeed = RELAUNCH_RATIO * entrySpeed;
-  const apexSearchEndMs = points[rotationEnd].timeMs + APEX_SEARCH_AFTER_S * 1000;
-  let apexIndex = rotationStart;
-  let rawMin = rawSpeedAround(points, rotationStart);
-  for (let k = rotationStart + 1; k < points.length && points[k].timeMs <= apexSearchEndMs; k++) {
-    if (k > rotationEnd && points[k].smoothedSpeed >= recoveredSpeed) break;
-    if (points[k].smoothedSpeed < points[apexIndex].smoothedSpeed) apexIndex = k;
-    rawMin = Math.min(rawMin, rawSpeedAround(points, k));
-  }
-  const vmin = Math.min(rawMin, points[apexIndex].smoothedSpeed);
-
-  const relaunchIndex = entrySpeed > 0 ? findRelaunch(points, apexIndex, entrySpeed) : null;
-  const exitIndex = relaunchIndex === null ? rotationEnd : Math.max(rotationEnd, relaunchIndex);
-
+  // Vitesse d'approche, creux, relance et distance, lus depuis le début de la rotation (`measureSpeeds`).
   return {
     rotationStartIndex: rotationStart,
     rotationEndIndex: rotationEnd,
     rotationStartMs,
     rotationEndMs,
-    apexIndex,
-    exitIndex,
-    entrySpeed,
-    vmin,
-    conservation: entrySpeed > 0 ? Math.min(1, vmin / entrySpeed) : 0,
-    relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - points[apexIndex].timeMs) / 1000,
     headingChange: Math.abs(exitHeading - approachHeading),
-    distanceM: relaunchIndex === null ? null : distanceBetween(points, rotationStart, exitIndex),
+    ...measureSpeeds(points, rotationStart, rotationEnd),
   };
 };
 
@@ -1172,7 +1351,7 @@ export type ManeuverDetectionOptions = Pick<
 >;
 
 /** Réglages du seul classement, parmi `ManeuverOptions` : ceux qui vont avec le vent. */
-export type ManeuverClassificationOptions = Pick<ManeuverOptions, 'successThresholdKn' | 'flightThresholdKn' | 'cooldownSeconds'>;
+export type ManeuverClassificationOptions = Pick<ManeuverOptions, 'successThresholdKn' | 'lostFlightSeconds' | 'flightThresholdKn' | 'cooldownSeconds'>;
 
 const resolveDetectionSettings = (options: ManeuverDetectionOptions): DetectionSettings => ({
   minEntrySpeedKn: options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN,
@@ -1322,14 +1501,21 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
 
     // Rien d'observable : fin de trace, ou coupure d'enregistrement trop
     // longue pour qu'un virage puisse encore s'y lire. Un pas unique retenu
-    // ci-dessus dure, lui, plus longtemps que la fenêtre entière.
-    if (points[scan.j].timeMs - points[i].timeMs < windowMs * minWindowShare) return NOTHING;
+    // ci-dessus dure, lui, plus longtemps que la fenêtre entière. Un virage
+    // franc, entamé en mouvement dans cette dernière demi-fenêtre, ne
+    // disparaît plus en silence : il est compté avec les virages trop courts,
+    // sans être classé (04/11) ; planche arrêtée, le cap n'est que du bruit.
+    const endMs = points[scan.j].timeMs;
+    if (endMs - points[i].timeMs < windowMs * minWindowShare) {
+      return Math.abs(scan.cumulativeTurn) > minTurnDeg && points[i].smoothedSpeed > minEntrySpeedKn
+        ? { kind: 'rejected', motif: 'tooShort', endMs, turnDeg: scan.cumulativeTurn }
+        : NOTHING;
+    }
     if (!(Math.abs(scan.cumulativeTurn) > minTurnDeg)) return NOTHING;
 
     // Une chute fait aussi tourner le cap de plus de 60°, mais dans tous les
     // sens : le virage net est petit devant la somme des rotations. Un vrai
     // virage tourne toujours du même côté.
-    const endMs = points[scan.j].timeMs;
     const coherent = scan.totalRotation > 0 && Math.abs(scan.cumulativeTurn) / scan.totalRotation >= minCoherence;
     if (!coherent) return { kind: 'rejected', motif: 'incoherent', endMs, turnDeg: scan.cumulativeTurn };
     if (!(points[i].smoothedSpeed > minEntrySpeedKn)) return { kind: 'rejected', motif: 'slowEntry', endMs, turnDeg: scan.cumulativeTurn };
@@ -1485,6 +1671,7 @@ export const classifyManeuvers = (
   const { points, settings } = detection;
   const { windowMs } = settings;
   const successThresholdKn = options.successThresholdKn ?? getDefaultThresholdKn();
+  const lostFlightMs = (options.lostFlightSeconds ?? MANEUVER_LOST_FLIGHT_S) * 1000;
   const cooldownMs = (options.cooldownSeconds ?? MANEUVER_COOLDOWN_S) * 1000;
   const flightThresholdKn = options.flightThresholdKn;
 
@@ -1571,7 +1758,7 @@ export const classifyManeuvers = (
       continue;
     }
 
-    const { turn, turnStart, turnEnd, turnEndMs, headings, before, stableHeadings, bisector } = reading;
+    const { turn, turnSign, turnStart, turnEnd, turnEndMs, headings, before, stableHeadings, bisector } = reading;
     // Lecture de la détection, pour l'estimation du vent : vitesse du bord
     // stabilisé avant, sinon celle du début du virage détecté, et point le
     // plus lent de la détection.
@@ -1580,36 +1767,46 @@ export const classifyManeuvers = (
       conservation: windEntrySpeed > 0 ? Math.min(1, anchorSpeed / windEntrySpeed) : 0,
       success: anchorSpeed >= successThresholdKn,
     };
-    /** Manœuvre comptée, ses métriques de qualité tirées de la mesure. */
+    /**
+     * Manœuvre comptée, ses métriques de qualité tirées de la mesure. Ratée
+     * si la vitesse est restée sous le seuil de réussite au moins
+     * `lostFlightMs` d'affilée ; la vitesse minimale reste la mesure (04/11).
+     */
     const locationOf = (
       measure: RotationMeasure,
-      fields: Pick<ManeuverLocation, 'type' | 'success' | 'localWind' | 'stableHeadings' | 'windwardGainM'>
-    ): ManeuverLocation => ({
-      lat: points[anchorIndex].lat,
-      lon: points[anchorIndex].lon,
-      type: fields.type,
-      success: fields.success,
-      vmin: measure.vmin,
-      localWind: fields.localWind,
-      timeMs,
-      trackIndex: anchorIndex,
-      stableHeadings: fields.stableHeadings,
-      windCriteria,
-      entrySpeed: measure.entrySpeed,
-      conservation: measure.conservation,
-      relaunchS: measure.relaunchS,
-      headingChange: measure.headingChange,
-      distanceM: measure.distanceM,
-      windwardGainM: fields.windwardGainM,
-      apexIndex: measure.apexIndex,
-      entryIndex: measure.rotationStartIndex,
-      exitIndex: measure.exitIndex,
-      entryHeading: points[turnStart].bearing,
-      exitHeading: points[turnEnd].bearing,
-      path: points
-        .slice(measure.rotationStartIndex, measure.exitIndex + 1)
-        .map((p) => [p.lat, p.lon] as [number, number]),
-    });
+      fields: Pick<ManeuverLocation, 'type' | 'localWind' | 'stableHeadings' | 'windwardGainM' | 'tack' | 'takeoff'>
+    ): ManeuverLocation => {
+      const underMs = measure.lostFlightMs(successThresholdKn);
+      return {
+        lat: points[anchorIndex].lat,
+        lon: points[anchorIndex].lon,
+        type: fields.type,
+        success: underMs < lostFlightMs,
+        lostFlightS: underMs / 1000,
+        tack: fields.tack,
+        takeoff: fields.takeoff,
+        vmin: measure.vmin,
+        localWind: fields.localWind,
+        timeMs,
+        trackIndex: anchorIndex,
+        stableHeadings: fields.stableHeadings,
+        windCriteria,
+        entrySpeed: measure.entrySpeed,
+        conservation: measure.conservation,
+        relaunchS: measure.relaunchS,
+        headingChange: measure.headingChange,
+        distanceM: measure.distanceM,
+        windwardGainM: fields.windwardGainM,
+        apexIndex: measure.apexIndex,
+        entryIndex: measure.entryIndex,
+        exitIndex: measure.exitIndex,
+        entryHeading: points[turnStart].bearing,
+        exitHeading: points[turnEnd].bearing,
+        path: points
+          .slice(measure.entryIndex, measure.exitIndex + 1)
+          .map((p) => [p.lat, p.lon] as [number, number]),
+      };
+    };
 
     // Demi-tour vu en un seul pas, assez grand pour que l'arc long soit aussi
     // plausible que l'arc court : un virement passé par le lit du vent peut
@@ -1628,11 +1825,13 @@ export const classifyManeuvers = (
       stats.locations.push(
         locationOf(measure, {
           type: 'undecided',
-          success: measure.vmin >= successThresholdKn,
           // Bissectrice de l'arc court, jamais lue : le vent ne lit que les manœuvres dirigées.
           localWind: normalizeDeg(Math.round(bisector)),
           stableHeadings: false,
           windwardGainM: null,
+          // Sans direction, pas d'amure ; et pas d'axe du vent où lire un décollage.
+          tack: null,
+          takeoff: false,
         })
       );
       stats.undecided++;
@@ -1657,32 +1856,45 @@ export const classifyManeuvers = (
     // Métriques de qualité, sur des bornes propres à la mesure : celles de
     // la détection ne servent qu'à trouver et classer le virage. Un virage
     // entamé avant le déclenchement se mesure depuis son début.
-    const measure = detection.rotationOf(reading);
+    const rotation = detection.rotationOf(reading);
     ignoreUntilMs = turnEndMs + cooldownMs;
-    previousEndIndex = measure.exitIndex;
+    previousEndIndex = rotation.exitIndex;
+    let measure = rotation;
+    let takeoff = false;
     // Entamé sous le seuil de vol : un demi-tour en archimédien, qui n'est
-    // ni réussi ni raté (décision du 28/10).
-    if (flightThresholdKn !== undefined && measure.entrySpeed < flightThresholdKn) {
-      setAside('noFlight', anchorIndex, turn, measure.entrySpeed, type);
-      continue;
+    // ni réussi ni raté (décision du 28/10)… sauf si la planche a décollé
+    // pendant le virage, en vol à l'axe du vent et en sortie (04/11) : la
+    // manœuvre compte, lue à partir du décollage.
+    if (flightThresholdKn !== undefined && rotation.entrySpeed < flightThresholdKn) {
+      const takeoffIndex = takeoffIndexOf(points, rotation, headings, turnSign, type === 'tack' ? windDeg : windDeg + 180, flightThresholdKn);
+      if (takeoffIndex === null) {
+        setAside('noFlight', anchorIndex, turn, rotation.entrySpeed, type);
+        continue;
+      }
+      measure = { ...rotation, ...measureSpeeds(points, takeoffIndex, rotation.rotationEndIndex) };
+      previousEndIndex = measure.exitIndex;
+      takeoff = true;
     }
-    const success = measure.vmin >= successThresholdKn;
     const location = locationOf(measure, {
       type,
-      success,
       // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
       // Arrondi puis normalisé : 359,7° donne 0, jamais 360.
       localWind: normalizeDeg(Math.round(type === 'tack' ? bisector : bisector + 180)),
       stableHeadings,
       // Le gain se projette au vent retenu, et non à la bissectrice de la
-      // manœuvre même, qui rendrait la mesure circulaire.
-      windwardGainM: success ? windwardGainM(points, measure, type, windDeg) : null,
+      // manœuvre même, qui rendrait la mesure circulaire. Posé plus bas, une
+      // fois la réussite connue.
+      windwardGainM: null,
+      // Amure avant la manœuvre : celle du cap d'approche sous le vent retenu.
+      tack: tackOf(headings.approach.heading, windDeg),
+      takeoff,
     });
+    if (location.success) location.windwardGainM = windwardGainM(points, measure, type, windDeg);
 
     if (type === 'tack') {
-      if (success) stats.tackSuccess++; else stats.tackFail++;
+      if (location.success) stats.tackSuccess++; else stats.tackFail++;
     } else {
-      if (success) stats.jibeSuccess++; else stats.jibeFail++;
+      if (location.success) stats.jibeSuccess++; else stats.jibeFail++;
     }
     stats.locations.push(location);
   }

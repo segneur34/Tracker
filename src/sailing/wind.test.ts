@@ -225,16 +225,20 @@ describe('prepareWindPolar', () => {
     for (let b = 0; b < 360; b += 2) symmetric.push({ bearing: b, speed: 12 });
     for (const points of [buildPoints(realisticPolar(0)), buildPoints(realisticPolar(137)), buildPoints(symmetric), []]) {
       for (const minSpeedKn of [2, 5]) {
-        const stage = prepareWindPolar(points, minSpeedKn);
-        expect(stage.points).toBe(points);
-        expect(stage.minSpeedKn).toBe(minSpeedKn);
-        expect(stage.candidates).toEqual(polarWindCandidates(points, minSpeedKn, 3));
-        expect(stage.candidates[0]).toEqual(estimateWindFromPolar(points, minSpeedKn));
-        for (const direction of [0, 90, 211, -90, 450]) {
-          expect(stage.describe(direction)).toEqual(describeWindCandidate(points, direction, minSpeedKn));
+        // La vitesse d'entrée des virages fait partie de l'étage (Q53) : par défaut, celle de la détection des manœuvres.
+        for (const minEntrySpeedKn of [undefined, 2, 4]) {
+          const stage = prepareWindPolar(points, minSpeedKn, minEntrySpeedKn);
+          expect(stage.points).toBe(points);
+          expect(stage.minSpeedKn).toBe(minSpeedKn);
+          expect(stage.minEntrySpeedKn).toBe(minEntrySpeedKn ?? 4);
+          expect(stage.candidates).toEqual(polarWindCandidates(points, minSpeedKn, 3));
+          expect(stage.candidates[0]).toEqual(estimateWindFromPolar(points, minSpeedKn));
+          for (const direction of [0, 90, 211, -90, 450]) {
+            expect(stage.describe(direction)).toEqual(describeWindCandidate(points, direction, minSpeedKn));
+          }
+          expect(stage.polar).toEqual(estimateWindPolar(points, { minSpeedKn, minEntrySpeedKn }));
+          expect(stage.sampling).toBe(polarSampling(points));
         }
-        expect(stage.polar).toEqual(estimateWindPolar(points, { minSpeedKn }));
-        expect(stage.sampling).toBe(polarSampling(points));
       }
     }
   });
@@ -262,6 +266,23 @@ describe('observeTurns', () => {
 
     const turns = observeTurns(buildPoints(samples));
     expect(turns.filter((t) => t.slow)).toHaveLength(0);
+  });
+
+  it('lit l\'entrée comme la détection des manœuvres : plus de 4 nœuds, strictement (Q53, 04/11)', () => {
+    // Jusqu'au 04/11, l'orientation exigeait la vitesse plancher de la
+    // polaire, 5 nœuds, atteinte ou dépassée : un virage entré à 4,5 nœuds
+    // était compté par les manœuvres et ignoré par le vent. Même seuil, même
+    // comparaison des deux côtés : à 4 nœuds justes, aucun des deux ne le voit.
+    const turnAt = (entryKn: number): { bearing: number; speed: number }[] => {
+      const samples: { bearing: number; speed: number }[] = [];
+      for (let t = 0; t < 20; t++) samples.push({ bearing: 45, speed: entryKn });
+      for (let t = 0; t <= 6; t++) samples.push({ bearing: 45 - t * 15, speed: entryKn });
+      for (let t = 0; t < 20; t++) samples.push({ bearing: 315, speed: entryKn });
+      return samples;
+    };
+    expect(observeTurns(buildPoints(turnAt(4.5)))).toHaveLength(1);
+    expect(observeTurns(buildPoints(turnAt(4)))).toHaveLength(0);
+    expect(observeTurns(buildPoints(turnAt(4)), 3.9)).toHaveLength(1);
   });
 });
 
