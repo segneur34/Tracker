@@ -38,3 +38,7 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Questions
 
 - Q55 : planification, option (a) ou (b) ? Par défaut : (b).
+
+## Réponse du 04/11 (Q55)
+
+- **Option (b)** : dans la version vendue, le planificateur routier (BRouter, Overpass, IGN, revêtements, profil, boucle de retour, durée par tronçon) est retiré, la planification se réduit au parcours de balises en ligne droite et aux itinéraires importés ; les anciens itinéraires restent lisibles. **À faire après le fork** : sur la copie destinée à la vente, une fois séparée du dépôt de l'utilisateur, jamais avant ; la version de l'utilisateur garde le routeur complet.
