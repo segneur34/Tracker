@@ -3,6 +3,7 @@ import { activityFamily, sessionActivity, type Activity } from '../core/activiti
 import type { SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
 import { statSessionOf, type StatSession } from '../library/stats';
+import { sessionFoil } from '../library/summaryOptions';
 import { useLibrarySelector } from './useSessionLibrary';
 import { effectiveFoil, useVisibility } from './useSportSettings';
 
@@ -11,7 +12,7 @@ import { effectiveFoil, useVisibility } from './useSportSettings';
  * pages : classées et visibles, une seule règle. Une session peut tenir d'une
  * activité de base, hors de la liste (son calcul sans activité créée, activité
  * supprimée) : elle est gardée, et son activité ajoutée à `activityById` pour
- * son nom et sa couleur. `foil` : celui de la session, sinon de son activité.
+ * son nom et sa couleur. `foil` : celui de la session, sinon de son activité (`sessionFoil`).
  */
 export interface VisibleStatSessions {
   all: StatSession[];
@@ -36,7 +37,7 @@ export const visibleStatSessions = (
     if (!a) continue;
     if (!isShown(a) && !(openFamily !== null && activityFamily(a) === openFamily)) continue;
     if (!activityById.has(a.id)) activityById.set(a.id, a);
-    all.push(statSessionOf(s.file, s.record, a, s.record.analysis?.foil ?? effectiveFoil(a) ?? false));
+    all.push(statSessionOf(s.file, s.record, a, sessionFoil(s.record, effectiveFoil(a))));
   }
   return { all, activityById };
 };

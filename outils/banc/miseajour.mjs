@@ -7,6 +7,8 @@
 //     fiche dans sessions/ : « Mettre à jour » fait apparaître les deux, range la fiche avec son GPX,
 //     garde son nom et son activité, et crée la fiche du second ;
 //  3. relit une fois de plus : « rien de nouveau » ; enfin, le bouton est là dans Réglages › Mémoire, carte repliée comprise ;
+//  3 bis. fiche changée en OPFS sous l'application ouverte (lot 148) : le nom saisi dans l'analyse et les notes de l'autre appareil sont gardés
+//     tous les deux, le résumé aussi, sans message ;
 //  4. marqueur d'une version plus récente (lot 148) : à l'ouverture et à « Mettre à jour », aucun fichier ne change (noms, tailles,
 //     dates), un GPX à la racine et un GPX sans fiche restent tels quels, l'import est grisé et la carte de la mémoire le dit.
 import { writeFileSync } from 'node:fs';
@@ -108,6 +110,21 @@ console.log('après :', await memory());
 await go('/parametres');
 console.log('Réglages :', await memory(), '| import d\'un dossier :',
   await evaluate(`[...document.querySelectorAll('label, button')].some((x) => x.textContent.trim() === "Ajouter les sessions d'un dossier")`));
+
+// 3 bis. La fiche change sous l'application : sa prochaine écriture la fond au lieu de l'écraser.
+await go(`/velo/analyse?session=${encodeURIComponent(gpx)}`);
+await settle({ max: 3000, label: 'analyse' });
+const onDisk = JSON.parse(await readOpfs('sessions', recordName));
+await writeOpfs('sessions', recordName, JSON.stringify({ ...onDisk, notes: { ...(onDisk.notes ?? {}), comment: "Saisi sur l'autre appareil", savedAt: Date.now() } }, null, 2));
+const opened = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer'); if (!b) return false; b.click(); return true; })()`);
+await wait(200);
+await evaluate(`(() => { const i = document.querySelector('input[aria-label="Nom de la session"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Renommée ici'); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 'ok'; })()`);
+// Une lecture peut tomber sur l'écriture en cours de l'application : retentée.
+await waitFor(async () => { const text = await readOpfs('sessions', recordName); return Boolean(text) && JSON.parse(text).name === 'Renommée ici'; }, { timeout: 4000, label: 'fiche fondue' });
+const fondue = JSON.parse(await readOpfs('sessions', recordName));
+console.log('fiche changée sous l\'application : Renommer', opened, '| nom', fondue.name, '| commentaire', fondue.notes?.comment, '| résumé gardé', Math.round(fondue.summary.distanceM) === Math.round(onDisk.summary.distanceM));
+console.log('message :', await evaluate(`document.querySelector('.ui-alert--danger')?.textContent.trim() ?? '(aucun)'`));
+await go('/parametres');
 
 // 4. Marqueur d'une version plus récente : le dossier se lit, rien n'y est écrit.
 /** Tous les fichiers du dossier, avec taille et date : la moindre écriture s'y voit, même d'un contenu identique. */

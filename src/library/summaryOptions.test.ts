@@ -4,7 +4,8 @@ import { SUMMARY_CALC_VERSION, type SessionAnalysis, type SessionRecord } from '
 import { sessionRecord } from '../test/record.fixture';
 import { phasesTrack } from '../test/track.fixture';
 import {
-  analyzeGpx, isSummaryOutdated, outdatedRefreshFiles, summaryOptions, summaryOptionsKey, withSummary, type ActivitySummarySettings,
+  analyzeGpx, carriedThresholdNote, isSummaryOutdated, outdatedRefreshFiles, sessionActivitySettings, sessionFoil, summaryOptions, summaryOptionsKey, withSummary,
+  type ActivitySummarySettings,
 } from './summaryOptions';
 
 // Pas de `DOMParser` dans l'environnement node : le « GPX » de ces tests est le JSON des points bruts.
@@ -71,19 +72,24 @@ describe('résumé à refaire quand les réglages changent (lot 37)', () => {
     return { ...record, summary: { ...record.summary, optionsKey: summaryOptionsKey(sport, summaryOptions(sport, record.analysis, activity)) } };
   };
 
-  it("seuil de l'activité changé : périmée ; mêmes réglages : rien", () => {
+  it("autres réglages sur cet appareil : rien, la session garde les siens (Q57) ; un geste : périmée", () => {
     const record = keyed('running', course);
     expect(isSummaryOutdated(record, of(course))).toBe(false);
-    expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: 7 }))).toBe(true);
+    expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: 7 }))).toBe(false);
+    expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: undefined }))).toBe(false);
+    expect(isSummaryOutdated(record, of(course), () => ({ threshold: 7 }))).toBe(true);
     // Seuil retiré (défaut du calcul) ou mis à 0 (aucun seuil) : ce n'est pas le même résumé.
-    expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: undefined }))).toBe(true);
-    expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: 0 }))).toBe(true);
+    expect(isSummaryOutdated(record, of(course), () => ({ threshold: null }))).toBe(true);
+    expect(isSummaryOutdated(record, of(course), () => ({ threshold: 0 }))).toBe(true);
+    // Geste déjà appliqué, ou revenu au réglage porté : rien.
+    expect(isSummaryOutdated(record, of(course), () => ({ threshold: 6 }))).toBe(false);
   });
 
-  it("session à seuil propre : rien quand celui de l'activité change", () => {
+  it("session à seuil propre : rien quand les réglages de l'appareil diffèrent ; un geste la réécrit, pour que son porté suive", () => {
     const record = keyed('running', course, { analysis: analysis({ activeThreshold: 8 }) });
     expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: 7 }))).toBe(false);
     expect(isSummaryOutdated(record, of({ ...course, thresholdOverride: undefined }))).toBe(false);
+    expect(isSummaryOutdated(record, of(course), () => ({ threshold: 7 }))).toBe(true);
   });
 
   it('allure imposée changée : cette session seule', () => {
@@ -96,14 +102,22 @@ describe('résumé à refaire quand les réglages changent (lot 37)', () => {
     expect(isSummaryOutdated(changed, of(wing))).toBe(false);
   });
 
-  it("foil de l'activité changé : périmée en surf, pas en voile ni à pied", () => {
+  it("foil de l'activité : un geste rend périmée en surf ; autre foil sur l'appareil, rien", () => {
     const foil: ActivitySummarySettings = { thresholdOverride: undefined, foil: true };
     const noFoil: ActivitySummarySettings = { thresholdOverride: undefined, foil: false };
-    expect(isSummaryOutdated(keyed('surf', foil), of(noFoil))).toBe(true);
+    expect(isSummaryOutdated(keyed('surf', foil), of(noFoil))).toBe(false);
+    expect(isSummaryOutdated(keyed('surf', foil), of(noFoil), () => ({ foil: false }))).toBe(true);
     expect(isSummaryOutdated(keyed('wingfoil', foil), of(noFoil))).toBe(false);
     expect(isSummaryOutdated(keyed('running', foil), of(noFoil))).toBe(false);
     // Foil de la session : celui de l'activité n'y change rien.
     expect(isSummaryOutdated(keyed('surf', foil, { analysis: analysis({ foil: true }) }), of(noFoil))).toBe(false);
+  });
+
+  it("empreinte qui ne dit plus la fiche (fiche changée sur l'autre appareil) : périmée, sur les deux pareil", () => {
+    const record = keyed('wingfoil', course);
+    const edited = { ...record, analysis: analysis({ activeThreshold: 12 }) };
+    expect(isSummaryOutdated(edited, of(course))).toBe(true);
+    expect(isSummaryOutdated(edited, of({ ...course, thresholdOverride: 99 }))).toBe(true);
   });
 
   it("fiche d'avant l'empreinte : périmée une fois", () => {
@@ -141,9 +155,16 @@ describe('résumé à refaire quand les réglages changent (lot 37)', () => {
         expect(analyzed!.summary.optionsKey).toBeTypeOf('string');
         const record = withSummary(sessionRecord({ sport, analysis: sessionAnalysis }), analyzed!.summary);
         expect(isSummaryOutdated(record, of(activity))).toBe(false);
-        if (own?.activeThreshold === undefined) {
-          expect(isSummaryOutdated(record, of({ ...activity, thresholdOverride: (activity.thresholdOverride ?? 3) + 1 }))).toBe(true);
-        }
+        // Sur un autre appareil, d'autres réglages : aucun recalcul. Un geste : un recalcul, qui y met fin.
+        const other = { ...activity, thresholdOverride: (activity.thresholdOverride ?? 3) + 1 };
+        expect(isSummaryOutdated(record, of(other))).toBe(false);
+        const pending = { threshold: other.thresholdOverride };
+        expect(isSummaryOutdated(record, of(other), () => pending)).toBe(true);
+        const again = analyzeGpx(JSON.stringify(phasesTrack(phases, hz)), sport, sessionAnalysis, () => sessionActivitySettings(record, other, pending));
+        const redone = withSummary(record, again!.summary);
+        expect(redone.summary.activitySettings?.threshold).toBe(other.thresholdOverride);
+        expect(isSummaryOutdated(redone, of(activity), () => pending)).toBe(false);
+        expect(isSummaryOutdated(redone, of(activity))).toBe(false);
       });
     }
   });
@@ -151,6 +172,65 @@ describe('résumé à refaire quand les réglages changent (lot 37)', () => {
   it("sans calcul connu, le résumé ne porte pas d'empreinte", () => {
     const analyzed = analyzeGpx(JSON.stringify(phasesTrack([[60, 3]])), null, null, of(course));
     expect(analyzed!.summary.optionsKey).toBeUndefined();
+  });
+});
+
+describe('réglages portés par la session (Q57)', () => {
+  const device: ActivitySummarySettings = { thresholdOverride: 10, foil: true };
+
+  it('le geste, puis le porté, puis l\'appareil ; le même pour une fiche neuve (appareil)', () => {
+    const carried = sessionRecord({ sport: 'surf' }, { activitySettings: { threshold: 8, foil: false } });
+    expect(sessionActivitySettings(carried, device)).toEqual({ thresholdOverride: 8, foil: false });
+    expect(sessionActivitySettings(carried, device, { threshold: 9 })).toEqual({ thresholdOverride: 9, foil: false });
+    expect(sessionActivitySettings(null, device)).toEqual(device);
+    expect(sessionActivitySettings(sessionRecord(), device)).toEqual(device);
+  });
+
+  it("porté null : aucun réglé, pas celui de l'appareil (la suggestion reste calculée dans les hooks)", () => {
+    const record = sessionRecord({}, { activitySettings: { threshold: null } });
+    expect(sessionActivitySettings(record, device).thresholdOverride).toBeUndefined();
+  });
+
+  it("composant inconnu : celui de l'appareil", () => {
+    expect(sessionActivitySettings(sessionRecord({}, { activitySettings: {} }), device)).toEqual(device);
+  });
+
+  it("ancienne fiche : lu dans l'empreinte, seulement là où la session n'a pas le sien", () => {
+    const old = sessionRecord({ sport: 'surf' }, { optionsKey: JSON.stringify([8, null, false, null]) });
+    expect(sessionActivitySettings(old, device)).toEqual({ thresholdOverride: 8, foil: false });
+    const own = { ...old, analysis: analysis({ activeThreshold: 12, foil: true }) };
+    expect(sessionActivitySettings(own, device)).toEqual(device);
+  });
+
+  it('analyse et empreinte portent les réglages à 1 Hz comme à 5 Hz ; foil en surf seulement', () => {
+    for (const hz of [1, 5]) {
+      const track = JSON.stringify(phasesTrack([[300, 0.8], [20, 6], [300, 0.8]], hz));
+      expect(analyzeGpx(track, 'surf', null, () => ({ thresholdOverride: 4, foil: true }))!.summary.activitySettings).toEqual({ threshold: 4, foil: true });
+      expect(analyzeGpx(track, 'running', null, () => ({ thresholdOverride: undefined, foil: null }))!.summary.activitySettings).toEqual({ threshold: null });
+    }
+  });
+
+  it('foil lu hors de l\'analyse : le sien, le porté, puis l\'appareil', () => {
+    const surf = sessionRecord({ sport: 'surf' }, { activitySettings: { foil: false } });
+    expect(sessionFoil(surf, true)).toBe(false);
+    expect(sessionFoil({ ...surf, analysis: analysis({ foil: true }) }, false)).toBe(true);
+    expect(sessionFoil(sessionRecord({ sport: 'surf' }, { optionsKey: '[null,null,true,null]' }), false)).toBe(true);
+    // Voile : le foil ne change pas le résumé, il n'est pas porté.
+    expect(sessionFoil(sessionRecord({ sport: 'wingfoil' }, { activitySettings: { threshold: 8 } }), true)).toBe(true);
+    expect(sessionFoil(null, true)).toBe(true);
+    expect(sessionFoil(null, null)).toBe(false);
+  });
+
+  it("phrase de l'onglet réglages : seulement si l'appareil dit autre chose", () => {
+    const show = (v: number) => `${v} nd`;
+    expect(carriedThresholdNote(undefined, 10, show)).toBeNull();
+    expect(carriedThresholdNote(10, 10, show)).toBeNull();
+    expect(carriedThresholdNote(null, null, show)).toBeNull();
+    expect(carriedThresholdNote(8, 10, show)).toBe(
+      "Calculée avec 8 nd, le réglage de l'activité à ce moment-là. Réglages dit 10 nd sur cet appareil : le changer recalcule les sessions de l'activité."
+    );
+    expect(carriedThresholdNote(null, 10, show)).toContain('sans seuil réglé');
+    expect(carriedThresholdNote(8, null, show)).toContain("Réglages n'en règle aucun");
   });
 });
 

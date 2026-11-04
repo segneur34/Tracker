@@ -43,6 +43,7 @@ import {
   parseRecordWithRaw,
   readAnalysis,
   recordFileName,
+  sameJson,
   serializeRecord,
   type LibrarySession,
   type ParsedRecord,
@@ -53,7 +54,9 @@ import {
   type SessionRecord,
   type SessionSource,
   type SessionSummary,
+  type SummaryActivitySettings,
 } from '../library/record';
+import { addRecordEdits, conflictLabels, mergeChangedRecord } from '../library/recordMerge';
 import { indexByRecordName, lowerRecordExtension, planReconcile, type LibraryCache } from '../library/reconcile';
 import { unbundleSessionGpx } from '../library/sessionBundle';
 import { isCompleteGpxText, planPendingTemps } from '../library/pendingTemps';
@@ -79,8 +82,9 @@ import {
   type SettingsEntry,
 } from '../library/settingsFile';
 import { surfRides } from '../library/summary';
+import { activityValues, noteGestures, readSummaryGestures, settleGestures, type SummaryGestures } from '../library/summaryGestures';
 import {
-  analyzeGpx, isSummaryOutdated, outdatedRefreshFiles, summaryOptions, withSummary, type ActivitySummarySettings, type AnalyzedGpx,
+  analyzeGpx, isSummaryOutdated, outdatedRefreshFiles, sessionActivitySettings, summaryOptions, withSummary, type ActivitySummarySettings, type AnalyzedGpx,
 } from '../library/summaryOptions';
 import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
@@ -94,6 +98,7 @@ import {
   READ_ONLY_MEMORY_MESSAGE,
   readOnlyFolder,
   reconnectMemoryFolder,
+  type FileStat,
   type FolderEntry,
   type ImportEntry,
   type MemoryFolder,
@@ -563,21 +568,74 @@ const activitySummarySettings = (activityId: string | null | undefined) => (spor
 export const summarizeGpxText = (text: string, sport: SportType, activityId: string | null): SessionSummary | null =>
   analyzeGpx(text, sport, null, activitySummarySettings(activityId))?.summary ?? null;
 
+/** Gestes dans Réglages qui changent les résumés (`library/summaryGestures.ts`), rangés sur l'appareil : ils ne voyagent pas. */
+const GESTURES_KEY = 'tracker.summaryGestures';
+
+const readGestures = (): SummaryGestures | null => readSummaryGestures(jsonStore.read<unknown>(GESTURES_KEY));
+
 /**
- * Test « résumé à refaire » (`isSummaryOutdated`) pour tout un passage sur la liste : les réglages
- * de chaque activité ne sont lus qu'une fois. À reprendre à chaque passage, les réglages ayant pu changer.
+ * Compare les réglages de l'appareil à la dernière comparaison : un changement devient un geste à appliquer
+ * aux sessions de l'activité, gardé jusqu'à ce qu'elles soient refaites, même d'un lancement à l'autre.
+ * `adopted` : réglages repris d'eux-mêmes (appareil neuf), pas un geste. Stockage illisible au démarrage : aucune
+ * comparaison, des défauts passeraient pour un geste.
  */
-const summaryOutdatedTest = (): ((record: SessionRecord) => boolean) => {
-  const read = new Map<string, ActivitySummarySettings>();
-  return (record) => isSummaryOutdated(record, (sport) => {
-    const key = `${record.activityId ?? ''}|${sport}`;
+const noteSettingsGestures = (adopted = false): void => {
+  if (storageStartupFailure()) return;
+  const before = readGestures();
+  const values = activityValues(readStoredActivities(), (activity) => ({ thresholdOverride: effectiveThresholdOverride(activity), foil: effectiveFoil(activity) }));
+  const next = noteGestures(before, values, adopted);
+  if (!before || !sameJson(before, next)) jsonStore.write(GESTURES_KEY, next);
+};
+
+/**
+ * Activité dont un geste s'applique à une session : la sienne, ou la première de son calcul sans activité
+ * choisie ; `null` si son activité a été supprimée : elle ne suit plus aucun geste et garde ce qu'elle porte.
+ */
+const gestureActivityId = (sport: SportType, activityId: string | null | undefined): string | null => {
+  if (!activityId) return activityOfSession(sport, null).id;
+  return readStoredActivities().some((a) => a.id === activityId && a.base === sport) ? activityId : null;
+};
+
+/**
+ * Réglages de l'appareil et geste en attente pour chaque activité, lus une fois chacun : à reprendre à
+ * chaque passage, les réglages ayant pu changer.
+ */
+const activitySettingsReader = () => {
+  const gestures = readGestures();
+  const withPending = gestures !== null && Object.keys(gestures.pending).length > 0;
+  const read = new Map<string, { device: ActivitySummarySettings; pending: SummaryActivitySettings | undefined }>();
+  return (activityId: string | null | undefined, sport: SportType) => {
+    const key = `${activityId ?? ''}|${sport}`;
     let settings = read.get(key);
     if (!settings) {
-      settings = activitySummarySettings(record.activityId)(sport);
+      const gesture = withPending ? gestureActivityId(sport, activityId) : null;
+      settings = { device: activitySummarySettings(activityId)(sport), pending: gesture === null ? undefined : gestures?.pending[gesture] };
       read.set(key, settings);
     }
     return settings;
-  });
+  };
+};
+
+/**
+ * Réglages du résumé d'une session (`analyzeGpx`) : le geste en attente, ceux que sa fiche porte, sinon ceux de
+ * l'appareil (`sessionActivitySettings`). Sans fiche (session neuve, hors de la mémoire) : ceux de l'appareil.
+ */
+const sessionSummarySettings = (
+  record: RecordWithoutSummary | null | undefined,
+  activityId: string | null | undefined = record?.activityId
+) => (sport: SportType): ActivitySummarySettings => {
+  const { device, pending } = activitySettingsReader()(activityId, sport);
+  return sessionActivitySettings(record, device, pending);
+};
+
+/** Test « résumé à refaire » (`isSummaryOutdated`) pour tout un passage sur la liste. */
+const summaryOutdatedTest = (): ((record: SessionRecord) => boolean) => {
+  const reader = activitySettingsReader();
+  return (record) => isSummaryOutdated(
+    record,
+    (sport) => reader(record.activityId, sport).device,
+    (sport) => reader(record.activityId, sport).pending
+  );
 };
 
 /**
@@ -586,6 +644,22 @@ const summaryOutdatedTest = (): ((record: SessionRecord) => boolean) => {
  * le sont à la prochaine ouverture ou à « Mettre à jour ».
  */
 const refreshFailed = new Set<string>();
+
+/** Gestes dont plus aucune session n'est à refaire, ni en échec (reprises à la prochaine ouverture), retirés. Rien en lecture seule : rien n'a été réécrit. */
+const settleSettingsGestures = (f: MemoryFolder): void => {
+  const gestures = readGestures();
+  if (!gestures || Object.keys(gestures.pending).length === 0 || f.readOnly) return;
+  const isOutdated = summaryOutdatedTest();
+  const waiting = new Set<string>();
+  for (const session of all) {
+    const { sport, activityId } = session.record;
+    if (session.readOnly || sport === null || !(refreshFailed.has(session.file) || isOutdated(session.record))) continue;
+    const id = gestureActivityId(sport, activityId);
+    if (id !== null) waiting.add(id);
+  }
+  const next = settleGestures(gestures, (id) => waiting.has(id));
+  if (!sameJson(next, gestures)) jsonStore.write(GESTURES_KEY, next);
+};
 
 const LEGACY_NOTES_KEY = 'tracker.sailingNotes';
 
@@ -621,21 +695,104 @@ let editCount = 0;
 const lastEdit = new Map<string, number>();
 
 /**
- * Écrit la fiche telle qu'elle est en mémoire. Une fiche allégée est d'abord
- * relue en entier : on n'écrit jamais une fiche privée de son altitude, de
- * ses voies ou de ses sauts. Rend vrai si la fiche est écrite ; un échec est
- * dit en clair.
+ * Taille et date de chaque fiche à sa dernière lecture ou écriture, par GPX : une différence dit qu'elle a
+ * changé sous nos pieds (autre appareil sur le dossier, Syncthing, Drive, copie à chaud), et elle est relue
+ * avant d'être écrite (`reconcileWithDisk`). Toute différence compte, pas seulement une date plus récente :
+ * une copie pose la date de sa source. Vidé au changement de dossier.
  */
-const writeRecordNow = async (file: string): Promise<boolean> => {
-  recordTimers.delete(file);
-  const f = folder;
-  if (!f || removing.has(file)) return false;
-  if (!findSession(file)) {
-    // Plus de session à écrire : rien à retenter.
-    unwritten.delete(file);
-    return false;
+let diskStamps = new Map<string, FileStat>();
+
+/**
+ * Ce qui a changé ici dans chaque fiche depuis sa dernière écriture (`library/recordMerge.ts`) : c'est tout ce
+ * qu'on y garde contre le disque. Vidé à l'écriture réussie et au changement de dossier.
+ */
+const recordEdits = new Map<string, Map<string, unknown>>();
+const NO_EDITS: ReadonlyMap<string, unknown> = new Map();
+
+const noteRecordEdits = (file: string, before: SessionRecord, after: SessionRecord): void => {
+  const edits = recordEdits.get(file) ?? new Map<string, unknown>();
+  addRecordEdits(edits, before, after);
+  if (edits.size > 0) recordEdits.set(file, edits);
+};
+
+/**
+ * Écrit le texte d'une fiche et retient sa taille et sa date. Date illisible : plus de tampon, et la fiche
+ * sera relue avant sa prochaine écriture.
+ */
+const writeRecordFile = async (f: MemoryFolder, file: string, text: string): Promise<void> => {
+  const path = sessionPath(recordFileName(file));
+  await f.writeText(path, text);
+  const stamp = await f.stat(path).catch(() => null);
+  if (folder !== f) return;
+  if (stamp) diskStamps.set(file, stamp);
+  else diskStamps.delete(file);
+};
+
+/**
+ * Mêmes taille et date, connues : le fichier n'a pas changé. Une date nulle (téléphone : fournisseur qui
+ * ne la donne pas), un tampon ou une date absents ne prouvent rien : la fiche est relue. Reste un trou
+ * accepté : même taille et même date, ou changement entre cette vérification et l'écriture.
+ */
+const sameStamp = (a: FileStat | undefined, b: FileStat | null): boolean =>
+  a !== undefined && b !== null && a.mtimeMs > 0 && b.mtimeMs > 0 && a.size === b.size && a.mtimeMs === b.mtimeMs;
+
+/**
+ * Juste avant d'écrire une fiche : si son fichier a changé depuis qu'on l'a lu, il est relu et fondu avec
+ * ce qui a été changé ici (`mergeChangedRecord`), silencieusement, sauf si un même champ a changé des deux
+ * côtés. Rend `write` s'il reste à écrire la session en mémoire ; `same` si le disque a déjà tout ;
+ * `stop` si rien n'est à écrire : relu illisible ou d'une version plus récente, la session passe en lecture seule, dit
+ * par son avertissement. Une fiche disparue s'écrit, comme avant. Une lecture qui lève remonte : rien n'est écrit à l'aveugle.
+ */
+const reconcileWithDisk = async (f: MemoryFolder, file: string): Promise<'write' | 'same' | 'stop'> => {
+  const path = sessionPath(recordFileName(file));
+  let seen: FileStat | null = null;
+  let statFailed = false;
+  try {
+    seen = await f.stat(path);
+  } catch {
+    statFailed = true;
   }
-  writing.set(file, (writing.get(file) ?? 0) + 1);
+  if (!statFailed && seen === null) return 'write';
+  if (sameStamp(diskStamps.get(file), seen)) return 'write';
+  const text = await f.readText(path);
+  if (folder !== f || removing.has(file)) return 'stop';
+  if (text === null || isBlankRecordText(text)) return 'write';
+  const current = findSession(file);
+  if (!current || current.readOnly || current.partial) return 'stop';
+  const quiet = state.scanning !== null;
+  const parsed = parseRecordWithRaw(text);
+  if (!parsed || !isWritableRecord(parsed.parts)) {
+    const warning = parsed ? FUTURE_RECORD_WARNING : DAMAGED_RECORD_WARNING;
+    const record = parsed ? { ...parsed.parts, summary: parsed.parts.summary ?? current.record.summary, gpx: file } : current.record;
+    replaceSession({ ...current, record, readOnly: true, warning }, quiet);
+    if (recordEdits.delete(file)) reportError(`Changements de ${file} non enregistrés. ${warning}`);
+    return 'stop';
+  }
+  rememberUnreadable(f, file, parsed.unreadable);
+  if (seen) diskStamps.set(file, seen);
+  else diskStamps.delete(file);
+  const { record, conflicts } = mergeChangedRecord(parsed.parts, current.record, recordEdits.get(file) ?? NO_EDITS);
+  if (!sameJson(record, current.record)) replaceSession({ ...current, record }, quiet);
+  if (conflicts.length > 0) {
+    reportError(`${file} a aussi changé sur un autre appareil (${conflictLabels(conflicts).join(', ')}) : la saisie la plus récente est gardée`);
+  }
+  // Réglages changés sur le disque, ou résumé d'un calcul plus récent gardé : la session est peut-être à refaire. Dans le
+  // second cas, ce calcul-ci ne le remplacerait jamais : pas de nouvel essai avant la prochaine ouverture.
+  if (summaryOutdatedTest()(record)) {
+    const diskAhead = parsed.parts.summary !== null && parsed.parts.summary.calcVersion > current.record.summary.calcVersion;
+    if (diskAhead) refreshFailed.add(file);
+    else void queueOutdatedRefresh();
+  }
+  if (!sameJson(record, parsed.parts)) return 'write';
+  recordEdits.delete(file);
+  return 'same';
+};
+
+/**
+ * Une écriture de fiche : voir `writeRecordNow`. Ce qui a été changé ici n'est oublié qu'une fois écrit ;
+ * ce qui est changé pendant l'écriture reste à écrire.
+ */
+const writeRecordOnce = async (f: MemoryFolder, file: string): Promise<boolean> => {
   let session: LibrarySession | undefined;
   try {
     await hydrateSession(f, file);
@@ -647,7 +804,29 @@ const writeRecordNow = async (file: string): Promise<boolean> => {
       return false;
     }
     if (removing.has(file) || session.partial) return false;
-    await f.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record, unreadableOf(f, file)));
+    const disk = await reconcileWithDisk(f, file);
+    session = findSession(file);
+    if (folder !== f) return false;
+    if (!session || session.readOnly) {
+      unwritten.delete(file);
+      return false;
+    }
+    if (removing.has(file) || session.partial) return false;
+    if (disk === 'stop') return false;
+    if (disk === 'same') {
+      unwritten.delete(file);
+      return true;
+    }
+    const edits = recordEdits.get(file);
+    recordEdits.delete(file);
+    try {
+      await writeRecordFile(f, file, serializeRecord(session.record, unreadableOf(f, file)));
+    } catch (err) {
+      // Pas écrit : ce qui a été changé ici compte encore, avec ce qui a pu s'y ajouter entre-temps. Sur un même chemin, la
+      // valeur d'avant la plus ancienne reste (`edits` en dernier), comme dans `addRecordEdits` : sinon un faux conflit.
+      if (edits) recordEdits.set(file, new Map([...(recordEdits.get(file) ?? []), ...edits]));
+      throw err;
+    }
     if (folder === f) unwritten.delete(file);
     return true;
   } catch (err) {
@@ -661,12 +840,39 @@ const writeRecordNow = async (file: string): Promise<boolean> => {
     reportError(`Fiche de ${file} non enregistrée : ${errorMessage(err, 'erreur inconnue')}`);
     return false;
   } finally {
-    const left = (writing.get(file) ?? 1) - 1;
-    if (left > 0) writing.set(file, left);
-    else writing.delete(file);
     // Fichier récrit, ou fiche qui n'entre plus dans le cache : son entrée est à refaire.
     cacheDirty.add(file);
   }
+};
+
+/** Dernière écriture demandée pour chaque fiche : une à la fois, chacune relit ce que la précédente a écrit. */
+const writeQueue = new Map<string, Promise<boolean>>();
+
+/**
+ * Écrit la fiche telle qu'elle est en mémoire, fondue d'abord avec le disque si son fichier a changé
+ * (`reconcileWithDisk`). Une fiche allégée est d'abord relue en entier : on n'écrit jamais une fiche
+ * privée de son altitude, de ses voies ou de ses sauts. Rend vrai si la fiche est écrite (ou que le disque
+ * l'a déjà) ; un échec est dit en clair.
+ */
+const writeRecordNow = (file: string): Promise<boolean> => {
+  recordTimers.delete(file);
+  const f = folder;
+  if (!f || removing.has(file)) return Promise.resolve(false);
+  if (!findSession(file)) {
+    // Plus de session à écrire : rien à retenter.
+    unwritten.delete(file);
+    return Promise.resolve(false);
+  }
+  writing.set(file, (writing.get(file) ?? 0) + 1);
+  const once = () => writeRecordOnce(f, file);
+  const run: Promise<boolean> = (writeQueue.get(file) ?? Promise.resolve(true)).then(once, once).finally(() => {
+    const left = (writing.get(file) ?? 1) - 1;
+    if (left > 0) writing.set(file, left);
+    else writing.delete(file);
+    if (writeQueue.get(file) === run) writeQueue.delete(file);
+  });
+  writeQueue.set(file, run);
+  return run;
 };
 
 const scheduleRecordWrite = (file: string): void => {
@@ -853,6 +1059,8 @@ export const settingsUpgraded = async (): Promise<void> => {
   await opening;
   lastSignature = settingsSignature(localTravellingValues());
   await flushSettings();
+  // Pré-réglages changés par la mise à jour : un geste comme un autre, pris en compte après l'ouverture.
+  void queueOutdatedRefresh();
 };
 
 /** Fichiers de réglages déjà vus (`settingsEntryKey`) ; `null` avant le premier rapprochement qui les retient. */
@@ -1085,6 +1293,9 @@ interface SummaryJob {
   base?: RecordWithoutSummary;
 }
 
+/** Vrai si la mémoire a de quoi écrire que le disque n'a pas : fiche pas encore écrite, ou saisie pendant une relecture. */
+const memoryAhead = (file: string, editsBefore: number): boolean => unwritten.has(file) || (lastEdit.get(file) ?? 0) > editsBefore;
+
 /**
  * Version en mémoire d'une session relue, quand elle doit l'emporter sur celle
  * du disque ou du cache : saisie pendant la relecture (après `editsBefore`),
@@ -1096,7 +1307,7 @@ interface SummaryJob {
 const keptInMemory = (read: LibrarySession, editsBefore: number): LibrarySession | undefined => {
   const current = findSession(read.file);
   if (!current) return undefined;
-  if (unwritten.has(read.file) || (lastEdit.get(read.file) ?? 0) > editsBefore) return current;
+  if (memoryAhead(read.file, editsBefore)) return current;
   return read.partial && !current.partial ? current : undefined;
 };
 
@@ -1242,6 +1453,15 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   if (gen !== generation) return [];
 
   all = found.map((read) => keptInMemory(read, editsBefore) ?? read);
+  // Tampons de la fiche lue, sauf là où la mémoire a de l'avance : sa base reste l'ancien, relu à l'écriture si le fichier a bougé.
+  const listed = indexByRecordName(entries);
+  const stamps = new Map<string, FileStat>();
+  for (const { file } of found) {
+    const entry = listed.get(recordFileName(file));
+    const stamp = memoryAhead(file, editsBefore) ? diskStamps.get(file) : entry;
+    if (stamp) stamps.set(file, { size: stamp.size, mtimeMs: stamp.mtimeMs });
+  }
+  diskStamps = stamps;
   publish();
   return jobs;
 };
@@ -1268,7 +1488,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   // Résumé refait entre-temps, ou réglage remis comme avant : la trace n'est pas relue.
   if (job.kind === 'refresh') {
     const listed = findSession(job.file);
-    if (!listed || listed.readOnly || !isSummaryOutdated(listed.record, activitySummarySettings(listed.record.activityId))) return 'done';
+    if (!listed || listed.readOnly || !summaryOutdatedTest()(listed.record)) return 'done';
   }
   let text: string | null;
   try {
@@ -1297,7 +1517,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   const from = current?.record ?? job.base;
   let analyzed: AnalyzedGpx | null;
   try {
-    analyzed = text === null ? null : analyzeGpx(text, from ? from.sport : undefined, from?.analysis, activitySummarySettings(from?.activityId), from);
+    analyzed = text === null ? null : analyzeGpx(text, from ? from.sport : undefined, from?.analysis, sessionSummarySettings(from), from);
   } catch {
     return 'unreadable';
   }
@@ -1306,7 +1526,9 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   if (removing.has(job.file)) return 'done';
 
   if (current) {
-    replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) }, true);
+    const record = withSummary(current.record, analyzed.summary);
+    noteRecordEdits(job.file, current.record, record);
+    replaceSession({ ...current, record }, true);
     cancelRecordWrite(job.file);
     await writeRecordNow(job.file);
     return 'done';
@@ -1317,7 +1539,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   if (!readOnly) {
     try {
       if (!job.base) rememberUnreadable(f, job.file, undefined);
-      await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record, unreadableOf(f, job.file)));
+      await writeRecordFile(f, job.file, serializeRecord(record, unreadableOf(f, job.file)));
       knownNames.add(recordFileName(job.file));
       if (folder === f) unwritten.delete(job.file);
     } catch (err) {
@@ -1402,6 +1624,7 @@ const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[],
     }
     if (gen !== generation) return;
     setState({ scanning: null, toUpdate: 0, unreadable, ...(publishPending ? publishedFields() : {}) });
+    settleSettingsGestures(f);
   } finally {
     if (publishPending && gen === generation) publish();
   }
@@ -1631,6 +1854,8 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   publishPending = false;
   knownNames = new Set();
   refreshFailed.clear();
+  diskStamps = new Map();
+  recordEdits.clear();
   setState({
     status: 'opening',
     folderKind: f.kind,
@@ -1650,6 +1875,7 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
     reportError(`Marqueur du dossier non écrit : ${errorMessage(err, 'erreur inconnue')}`);
   }
   const settingsChanged = await syncSettingsSafely(f);
+  noteSettingsGestures(settingsChanged);
   const jobs = await scan(f, gen);
   if (gen !== generation) return settingsChanged;
   setState({ status: 'ready' });
@@ -1674,6 +1900,8 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
   settingsEntries = [];
   unreadableSettings = [];
   refreshFailed.clear();
+  diskStamps = new Map();
+  recordEdits.clear();
   setState({
     status,
     folderKind: null,
@@ -1732,6 +1960,9 @@ const reportStorageStartupFailure = (): void => {
  * réglages repris du dossier sont alors en place pour les pages.
  */
 export const openLibrary = (): Promise<void> => {
+  // Première comparaison de l'appareil posée tout de suite, sur ses réglages d'avant : une mise à jour des pré-réglages,
+  // faite au démarrage sans attendre une ouverture lente, y reste un geste au lieu de devenir la référence.
+  if (readGestures() === null) noteSettingsGestures();
   opening = (async () => {
     setState({ status: 'opening' });
     const access = await openMemoryFolder();
@@ -1770,9 +2001,9 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     if (settingsTimer !== null) clearTimeout(settingsTimer);
     settingsTimer = setTimeout(() => void flushSettings(), SETTINGS_WRITE_DELAY_MS);
   });
-  // Réglage d'activité changé (seuil, foil, activité supprimée…) : les résumés qu'il rend périmés sont
-  // refaits, une fois la saisie posée (elle écrit à chaque touche). Pas pour des réglages repris du
-  // dossier : la page se recharge, ou ils valent au prochain lancement, qui refait ce qu'il faut.
+  // Réglage d'activité changé (seuil, foil…) : un geste, et les résumés de l'activité sont refaits, une fois
+  // la saisie posée (elle écrit à chaque touche). Pas pour des réglages repris du dossier : la page se
+  // recharge, ou ils valent au prochain lancement, dont la comparaison voit le geste (`attach`).
   let settingsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   subscribeStoredSettings(() => {
     if (applyingSettings) return;
@@ -1932,7 +2163,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   try {
     const sport = options.sport !== undefined ? options.sport : from?.sport ?? undefined;
     const fields = options.test ? { ...from, test: options.test } : from;
-    analyzed = analyzeGpx(text, sport, from?.analysis, activitySummarySettings(options.activityId ?? from?.activityId), fields);
+    analyzed = analyzeGpx(text, sport, from?.analysis, sessionSummarySettings(from, options.activityId ?? from?.activityId), fields);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -1970,6 +2201,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     if (incoming && !existing.readOnly && !existing.partial) {
       const { record, resummarize: stale } = completeRecord(existing.record, incoming);
       if (record !== existing.record) {
+        noteRecordEdits(existing.file, existing.record, record);
         replaceSession({ ...existing, record });
         scheduleRecordWrite(existing.file);
         recordCompleted = true;
@@ -2025,7 +2257,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   const written = [sessionPath(gpx), sessionPath(recordFileName(gpx)), ...(motion ? [sessionPath(imuFileName(gpx))] : [])];
   try {
     await f.writeText(sessionPath(gpx), text);
-    await f.writeText(sessionPath(recordFileName(gpx)), kept ? kept.text : serializeRecord(record, options.record ? options.unreadable : undefined));
+    await writeRecordFile(f, gpx, kept ? kept.text : serializeRecord(record, options.record ? options.unreadable : undefined));
     if (motion) await f.writeBytes(sessionPath(imuFileName(gpx)), motion);
   } catch (err) {
     // Rangée à moitié, la session reparaîtrait sans sa fiche ou ses capteurs, et un nouvel essai ferait un doublon :
@@ -2295,6 +2527,7 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   if (record === session.record) return;
   editCount += 1;
   lastEdit.set(file, editCount);
+  noteRecordEdits(file, session.record, record);
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
   if (stale) void resummarize(file);
@@ -2314,9 +2547,11 @@ const resummarize = async (file: string): Promise<void> => {
     await hydrateSession(f, file);
     const session = findSession(file);
     if (text === null || !session || session.readOnly || session.partial || folder !== f) return;
-    const analyzed = analyzeGpx(text, session.record.sport, session.record.analysis, activitySummarySettings(session.record.activityId), session.record);
+    const analyzed = analyzeGpx(text, session.record.sport, session.record.analysis, sessionSummarySettings(session.record), session.record);
     if (!analyzed) return;
-    replaceSession({ ...session, record: withSummary(session.record, analyzed.summary) });
+    const record = withSummary(session.record, analyzed.summary);
+    noteRecordEdits(file, session.record, record);
+    replaceSession({ ...session, record });
     scheduleRecordWrite(file);
   } catch {
     // Trace ou fiche illisible : le résumé précédent reste affiché.
@@ -2353,6 +2588,8 @@ export const removeSession = async (file: string): Promise<void> => {
       await f.remove(sessionPath(recordFileName(name)));
       await f.remove(sessionPath(imuFileName(name)));
       rememberUnreadable(f, name, undefined);
+      diskStamps.delete(name);
+      recordEdits.delete(name);
       knownNames.delete(name);
       knownNames.delete(recordFileName(name));
       knownNames.delete(imuFileName(name));
@@ -2425,6 +2662,7 @@ const carryUnwritten = async (carried: readonly LibrarySession[]): Promise<void>
     if (record === target.record) continue;
     editCount += 1;
     lastEdit.set(target.file, editCount);
+    noteRecordEdits(target.file, target.record, record);
     replaceSession({ ...target, record });
     scheduleRecordWrite(target.file);
     if (stale) void resummarize(target.file);
@@ -2564,6 +2802,7 @@ export const refreshLibrary = (): Promise<void> => {
     // Relecture voulue : les résumés qu'on n'avait pas su refaire sont retentés.
     refreshFailed.clear();
     const settingsChanged = await syncSettingsSafely(f);
+    noteSettingsGestures(settingsChanged);
     const jobs = await scan(f, gen, editsBefore);
     if (gen !== generation) return null;
     setState({ revision: state.revision + 1 });
@@ -2605,8 +2844,8 @@ let outdatedRefresh: Promise<void> | null = null;
 let outdatedAgain = false;
 
 /**
- * Refait en tâche de fond les résumés que les réglages d'aujourd'hui rendent périmés (seuil d'une
- * activité changé dans Réglages, pré-réglage effacé, activité supprimée…), lot 37 : une trace à la
+ * Refait en tâche de fond les résumés périmés, dont ceux d'un geste dans Réglages (seuil ou foil d'une
+ * activité changés, pré-réglage effacé), comparé ici (`noteSettingsGestures`), lot 37 : une trace à la
  * fois, par le même passage que les fiches du lancement (`completeScan`), la plus récente d'abord.
  * Attend la fin de l'ouverture, d'une relecture ou d'un passage en cours ; s'arrête avec lui si la
  * mémoire change (`generation`). Appelé de nouveau pendant qu'il tourne, il réévalue une fois à la
@@ -2629,8 +2868,12 @@ export const queueOutdatedRefresh = (): Promise<void> => {
       }
       const f = folder;
       if (!f || state.status !== 'ready') return;
+      noteSettingsGestures();
       const files = outdatedRefreshFiles(all, summaryOutdatedTest(), refreshFailed);
-      if (files.length === 0) continue;
+      if (files.length === 0) {
+        settleSettingsGestures(f);
+        continue;
+      }
       await completeScan(f, generation, files.map((file): SummaryJob => ({ file, kind: 'refresh', readOnly: false, warning: null })), true);
     } while (outdatedAgain);
   })()

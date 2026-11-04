@@ -4,6 +4,7 @@ import type { SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
 import { useChangeSessionActivity, useSessionFromUrl } from './useLibraryNavigation';
 import { useSessionDraft } from './useSessionDraft';
+import { useLibrarySession } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
 export interface AnalysisSessionInput {
@@ -48,6 +49,7 @@ export const useAnalysisSession = ({ family, activity, setActivity, load, loaded
   const draftFile = draftFor === 'requested' ? (requested !== null && loadedFile === requested ? requested : null) : shownFile;
   // Brouillon de la session : écrit dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(draftFile);
+  const record = useLibrarySession(draftFile)?.record ?? null;
   /**
    * Changer d'activité l'écrit aussi dans la fiche de la session ; vers une
    * activité d'une autre famille, la session part dans le module de celle-ci.
@@ -65,6 +67,8 @@ export const useAnalysisSession = ({ family, activity, setActivity, load, loaded
     /** Session absente de la mémoire, ou GPX illisible. */
     error,
     draft,
+    /** Fiche de la session du brouillon, `null` hors de la mémoire : les réglages qu'elle porte (`sessionActivitySettings`). */
+    record,
     allActivities,
     changeActivity,
   };

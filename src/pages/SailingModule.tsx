@@ -9,6 +9,8 @@ import L from 'leaflet';
 import type { DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { carriedSettings } from '../library/record';
+import { carriedThresholdNote } from '../library/summaryOptions';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
@@ -186,7 +188,7 @@ function SailingModule() {
   // session de la mémoire, celles de la voile seules sinon ; vers une activité de course, la session part
   // dans le module course (`useChangeSessionActivity`).
   const {
-    requested: requestedFile, sessionFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+    requested: requestedFile, sessionFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family: 'voile', activity, setActivity, load, loadedFile: shownFile, draftFor: 'requested' });
   const { edits } = draft;
 
@@ -217,6 +219,7 @@ function SailingModule() {
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    deviceThresholdKn,
     thresholdPending,
     hasActiveThreshold,
     defaultActiveThresholdKn,
@@ -231,6 +234,7 @@ function SailingModule() {
     windDeg: edits.windDeg,
     activeThresholdKn: edits.activeThreshold,
     referenceSpeedMs: edits.referenceSpeedMs,
+    record: draftRecord,
   });
 
   // Affichage dans l'unité de l'activité ; les analyses voile restent en nœuds (règle 5).
@@ -1171,10 +1175,11 @@ function SailingModule() {
                     <div style={{ fontSize: 'var(--text-s)' }}>
                       <SessionThresholdField
                         label="Seuil d'activité"
-                        title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
+                        title="Seuil propre à cette session, enregistré avec elle. Sans lui, elle garde celui avec lequel elle a été calculée ; le changer dans Réglages recalcule les sessions de l'activité."
                         value={activeThresholdKn}
                         defaultValue={defaultActiveThresholdKn}
                         isOverridden={edits.activeThreshold !== null}
+                        note={draftRecord && carriedThresholdNote(carriedSettings(draftRecord).threshold, deviceThresholdKn, (kn) => `${showThreshold(kn)} ${speedSymbol}`)}
                         unit={speedUnit}
                         thresholdUnit="kn"
                         onChange={(next) => draft.update({ activeThreshold: next })} />

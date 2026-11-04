@@ -51,6 +51,8 @@ import {
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { carriedSettings } from '../library/record';
+import { carriedThresholdNote, sessionActivitySettings } from '../library/summaryOptions';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useSessionMarks } from '../hooks/useSessionMarks';
@@ -149,16 +151,19 @@ function SurfModule() {
 
   // Session de l'adresse et son brouillon : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
   const {
-    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family: 'surf', activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
 
+  /** Seuil et foil de l'activité : ceux que la fiche de la session porte, sinon ceux de cet appareil (Q57). */
+  const carried = sessionActivitySettings(draftRecord, { thresholdOverride: thresholdOverride ?? undefined, foil: activityFoil });
   /** Foil de la session (brouillon, puis fiche), sinon celui de l'activité. */
-  const foil = draft.edits.foil ?? activityFoil;
+  const foil = draft.edits.foil ?? carried.foil ?? false;
   /** Pumping foil de la session (brouillon, puis fiche), sinon celui de l'activité ; sur foil seulement. */
   const pumping = foil && (draft.edits.pumping ?? activityPumping);
   /** Seuil de la glisse : celui de la session, sinon de l'activité, sinon le défaut, de vague ou de vol selon le foil. */
   const defaultThreshold = defaultActiveThresholdOf(profile, foil);
-  const threshold = draft.edits.activeThreshold ?? thresholdOverride ?? defaultThreshold;
+  const sessionDefaultThreshold = carried.thresholdOverride ?? defaultThreshold;
+  const threshold = draft.edits.activeThreshold ?? sessionDefaultThreshold;
   const surfProfile = surfProfileOf(profile);
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
@@ -715,11 +720,13 @@ function SurfModule() {
                   <SessionThresholdField
                     label={foil ? 'Seuil de vol' : 'Seuil de vague'}
                     title={foil
-                      ? 'Au-dessus, la planche vole. Seuil propre à cette session, enregistré avec elle ; celui de l\'activité se règle dans Réglages.'
-                      : 'Au-dessus, la planche est sur la vague. Seuil propre à cette session, enregistré avec elle ; celui de l\'activité se règle dans Réglages.'}
+                      ? 'Au-dessus, la planche vole. Seuil propre à cette session, enregistré avec elle. Sans lui, elle garde celui avec lequel elle a été calculée ; le changer dans Réglages recalcule les sessions de l\'activité.'
+                      : 'Au-dessus, la planche est sur la vague. Seuil propre à cette session, enregistré avec elle. Sans lui, elle garde celui avec lequel elle a été calculée ; le changer dans Réglages recalcule les sessions de l\'activité.'}
                     value={threshold}
-                    defaultValue={thresholdOverride ?? defaultThreshold}
+                    defaultValue={sessionDefaultThreshold}
                     isOverridden={draft.edits.activeThreshold !== null}
+                    note={draftRecord && carriedThresholdNote(carriedSettings(draftRecord).threshold, thresholdOverride, (value) =>
+                      `${formatDecimal(toDisplaySpeed(fromDisplaySpeed(value, profile.thresholdUnit), speedUnit), 1)} ${SPEED_UNIT_LABEL[speedUnit]}`)}
                     unit={speedUnit}
                     thresholdUnit={profile.thresholdUnit}
                     onChange={(next) => draft.update({ activeThreshold: next })} />

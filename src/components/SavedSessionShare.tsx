@@ -7,6 +7,7 @@ import { coloredSegments } from '../core/trackColor';
 import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
 import { activitySpeedRanges, effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { shareLabels, summaryShareStats } from '../library/shareStats';
+import { sessionFoil } from '../library/summaryOptions';
 import { safeFileName } from '../platform/files';
 import { IconShare } from './icons';
 import { sessionColorTrack, sessionSpeedRange } from '../library/sessionTrack';
@@ -58,7 +59,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName);
       const units = { speed: effectiveSpeedUnit(activity), distance: effectiveDistanceUnit(activity) };
       // Foil de la session, sinon celui de l'activité : « Temps en vol » au lieu de « Temps actif ».
-      const foil = record?.analysis?.foil ?? effectiveFoil(activity) ?? false;
+      const foil = sessionFoil(record, effectiveFoil(activity));
       setPrepared({
         segments: track && range ? coloredSegments(track.points, range) : [],
         props: {

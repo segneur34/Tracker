@@ -58,7 +58,7 @@ import { computeElevationStats } from '../core/elevation';
 import { buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { nearestIndexAtTime } from '../core/search';
 import { timeSpanHeartRate } from '../core/heartRate';
-import { ELEVATION_PRESETS, getActiveThresholds, isTestSport, sportTreatment } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, defaultActiveThresholdOf, getActiveThresholds, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
 import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
@@ -71,6 +71,7 @@ import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { sessionActivitySettings } from '../library/summaryOptions';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
@@ -218,7 +219,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const panelId = (name: string) => `${page.storageId}.${name}`;
   const {
     activity, setActivity, sport,
-    profile, activeThreshold, terrainStepM,
+    profile, thresholdOverride, terrainStepM,
     speedUnit, distanceUnit,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, energyModel, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings(family);
@@ -238,8 +239,15 @@ function LandModule({ family }: { family: LandFamily }) {
   // par « Enregistrer la session ». Changer d'activité l'écrit aussi dans la fiche de la session (comme en
   // voile) ; vers une activité de voile, la session part dans le module voile.
   const {
-    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family, activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
+  /**
+   * Seuil d'activité : celui de la session, comme sa ligne dans la liste, sinon celui que sa fiche porte, sinon
+   * celui de cet appareil (Q57), sinon le défaut du calcul. Pas de champ à l'écran : il ne se règle que dans Réglages.
+   */
+  const activeThreshold = draft.edits.activeThreshold
+    ?? sessionActivitySettings(draftRecord, { thresholdOverride: thresholdOverride ?? undefined, foil: null }).thresholdOverride
+    ?? defaultActiveThresholdOf(profile, false);
   /**
    * Répétitions du compteur rangées dans la fiche de la session affichée, s'il y en a, suivies en direct :
    * une fiche complétée par un import (« Télécharger la session » du téléphone) s'applique sans rouvrir l'analyse.

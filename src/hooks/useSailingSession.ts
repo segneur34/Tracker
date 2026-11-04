@@ -17,6 +17,8 @@ import { buildWindTimeline, prepareWindPolar, speedPolar } from '../sailing/wind
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
 import { buildSailingSessionStats, computeSailingTops, sailingActivityMask, sailingFlights, sailingRatioMask } from '../sailing/sailingStats';
 import { trackToPointData } from '../sailing/pointData';
+import type { SessionRecord } from '../library/record';
+import { sessionActivitySettings } from '../library/summaryOptions';
 import { useGpxSession } from './useGpxSession';
 import type { useSportSettings } from './useSportSettings';
 
@@ -51,6 +53,8 @@ export interface SailingSessionInput {
   activeThresholdKn: number | null;
   /** Allure de la session imposée, en m/s ; `null` : déduite de la trace. */
   referenceSpeedMs: number | null;
+  /** Fiche de la session, `null` hors de la mémoire : le seuil de l'activité qu'elle porte (Q57). */
+  record: SessionRecord | null;
 }
 
 export const useSailingSession = ({
@@ -58,6 +62,7 @@ export const useSailingSession = ({
   windDeg,
   activeThresholdKn: sessionThresholdKn,
   referenceSpeedMs: sessionReferenceMs,
+  record,
 }: SailingSessionInput) => {
   const {
     sport,
@@ -85,10 +90,13 @@ export const useSailingSession = ({
 
   /**
    * Seuil d'activité effectif : celui de la session, sinon celui de l'activité
-   * (réglé ou pré-réglé), sinon la suggestion selon l'allure ; le bateau, sans
-   * seuil, garde son seuil fixe de réussite (`resolveSailingThresholds`).
+   * que sa fiche porte, sinon celui de l'appareil (réglé ou pré-réglé), sinon la
+   * suggestion selon l'allure ; le bateau, sans seuil, garde son seuil fixe de
+   * réussite (`resolveSailingThresholds`).
    */
-  const thresholds = resolveSailingThresholds(profile, isThresholdOverridden ? rawActiveThresholdKn : null, sessionThresholdKn, referenceSpeedKn);
+  const deviceThresholdKn = isThresholdOverridden ? rawActiveThresholdKn : null;
+  const activityThresholdKn = sessionActivitySettings(record, { thresholdOverride: deviceThresholdKn ?? undefined, foil: activityFoil }).thresholdOverride ?? null;
+  const thresholds = resolveSailingThresholds(profile, activityThresholdKn, sessionThresholdKn, referenceSpeedKn);
   const { withThreshold, defaultKn: defaultActiveThresholdKn, activeKn: activeThresholdKn } = thresholds;
   /**
    * Seuil des calculs : celui du champ, différé (Q40). Le champ et ses libellés
@@ -276,6 +284,8 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    /** Seuil de l'activité réglé sur cet appareil, `null` sans réglage : pour dire s'il diffère de celui que la session garde. */
+    deviceThresholdKn,
     /** Vrai tant que les chiffres n'ont pas rejoint le seuil du champ (Q40) : rien n'en est recopié dans la fiche entre-temps. */
     thresholdPending: computeThresholdKn !== activeThresholdKn,
     /** Seuil d'activité réglable : faux en bateau, où toute la session compte en navigation. */

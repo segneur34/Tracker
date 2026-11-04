@@ -16,6 +16,8 @@ interface SessionThresholdFieldProps {
   thresholdUnit: SpeedUnit;
   /** Mention en gris quand la valeur n'est pas imposée (« déduite de la trace »). */
   hint?: string;
+  /** Phrase discrète sous le champ, quand la valeur n'est pas imposée. */
+  note?: string | null;
   /** Nouvelle valeur, dans `thresholdUnit`, ou `null` pour revenir au défaut. */
   onChange: (next: number | null) => void;
 }
@@ -29,7 +31,7 @@ interface SessionThresholdFieldProps {
  * écrite à chaque frappe ; le texte est réaligné quand la valeur change
  * d'ailleurs (« Défaut », rechargement, changement d'unité).
  */
-function SessionThresholdField({ label, title, value, defaultValue, isOverridden, unit, thresholdUnit, hint, onChange }: SessionThresholdFieldProps) {
+function SessionThresholdField({ label, title, value, defaultValue, isOverridden, unit, thresholdUnit, hint, note, onChange }: SessionThresholdFieldProps) {
   const shown = (v: number): string => String(Number(toDisplaySpeed(fromDisplaySpeed(v, thresholdUnit), unit).toFixed(unit === 'ms' ? 2 : 1)));
   const [text, setText] = useState(() => shown(value));
   const key = `${value}|${unit}`;
@@ -58,6 +60,7 @@ function SessionThresholdField({ label, title, value, defaultValue, isOverridden
           Défaut
         </Button>
       )}
+      {!isOverridden && note && <span style={{ flexBasis: '100%', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{note}</span>}
     </label>
   );
 }

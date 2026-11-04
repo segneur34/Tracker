@@ -17,7 +17,9 @@
 //  8. « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une
 //     tablette rangé sous son nom, reprise refusée puis faite depuis la liste ; pas de bandeau ensuite ;
 //  9. bornes de couleur de Course (lot 150) : 12-30, on efface 30, on retape 35 : 12-35 ; une borne vidée puis quittée
-//     reprend son défaut et garde l'autre ; les deux vidées : plus de réglage, « défaut ».
+//     reprend son défaut et garde l'autre ; les deux vidées : plus de réglage, « défaut » ;
+// 10. le seuil suit la session (lot 148, Q57) : seuil de Course changé, sa fiche recalculée ; seconde ouverture, fiche
+//     intacte (lastModified) ; réglages d'un autre appareil (seuil différent, sans geste) : fiche intacte.
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -260,6 +262,38 @@ check('bornes : borne haute vidée puis quittée : son défaut, le 12 reste', (a
 await typeBound(0, '');
 await leaveBound(0);
 check('bornes : les deux vidées : plus de réglage, « défaut »', (await storedBounds()) === 'aucune' && (await evaluate(`${rangeRow}.innerText`)).includes('défaut'), await storedBounds());
+
+step('10. Le seuil suit la session');
+const COURSE_GPX = '2026-10-20_10-00-00_running.gpx';
+const COURSE_JSON = COURSE_GPX.replace(/\.gpx$/, '.json');
+const coursePoints = [];
+for (let k = 0; k <= 600; k++) coursePoints.push(`<trkpt lat="43.7700000" lon="${(3.8 + (k * 3) / 80500).toFixed(7)}"><time>${new Date(Date.UTC(2026, 9, 20, 8, 0, k)).toISOString()}</time></trkpt>`);
+const courseText = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course</name><type>running</type><trkseg>\n${coursePoints.join('\n')}\n</trkseg></trk></gpx>\n`;
+await opfs(`const d = await root.getDirectoryHandle('sessions', { create: true }); const w = await (await d.getFileHandle(${JSON.stringify(COURSE_GPX)}, { create: true })).createWritable(); await w.write(${JSON.stringify(courseText)}); await w.close(); return 'ok';`);
+/** Fiche de la course : ses réglages portés et la date de son fichier ; `null` tant qu'elle n'existe pas. */
+const courseRecord = () => opfs(`try { const d = await root.getDirectoryHandle('sessions'); const f = await (await d.getFileHandle(${JSON.stringify(COURSE_JSON)})).getFile(); const r = JSON.parse(await f.text()); return { porte: r.summary.activitySettings?.threshold, cle: r.summary.optionsKey, date: f.lastModified }; } catch { return null; }`);
+const setCourseThreshold = (value) => evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}'); s.thresholds = { ...s.thresholds, running: ${value} }; localStorage.setItem('tracker.sportSettings', JSON.stringify(s)); return 'ok'; })()`);
+await setCourseThreshold(1);
+await go('/course', 4000);
+await waitFor(async () => (await courseRecord()) !== null, { timeout: 5000, label: 'fiche de la course' });
+await settle({ max: 2000 });
+const created = await courseRecord();
+check('seuil : fiche créée au seuil de l\'activité', created.porte === 1, JSON.stringify(created));
+await setCourseThreshold(2);
+await go('/course', 4000);
+await waitFor(async () => (await courseRecord())?.porte === 2, { timeout: 5000, label: 'recalcul du geste' });
+await settle({ max: 2000 });
+const redone = await courseRecord();
+check('seuil : geste, fiche recalculée', redone.porte === 2 && redone.date > created.date, JSON.stringify(redone));
+await go('/course', 4000);
+await settle({ max: 2000 });
+check('seuil : seconde ouverture, fiche intacte', (await courseRecord()).date === redone.date, JSON.stringify(await courseRecord()));
+// Autre appareil : un autre seuil dans ses réglages, sans geste de sa part.
+await setCourseThreshold(3);
+await evaluate(`(() => { const g = JSON.parse(localStorage.getItem('tracker.summaryGestures')); g.baseline.running = { threshold: 3 }; localStorage.setItem('tracker.summaryGestures', JSON.stringify(g)); return 'ok'; })()`);
+await go('/course', 4000);
+await settle({ max: 2000 });
+check('seuil : autres réglages sans geste, fiche intacte', (await courseRecord()).date === redone.date && (await courseRecord()).porte === 2, JSON.stringify(await courseRecord()));
 
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/parametres', 3000);

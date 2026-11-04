@@ -3,7 +3,8 @@ import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, isSport
 import type { SportType } from '../core/types';
 import { guessSport } from './naming';
 import {
-  isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
+  carriedSettings, isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
+  type SummaryActivitySettings,
 } from './record';
 import { summarizeHeartRateSession, summarizeSession, type SummaryOptions } from './summary';
 
@@ -21,6 +22,35 @@ export interface ActivitySummarySettings {
   /** Foil de l'activité (voile, surf) ; `null` ailleurs. */
   foil: boolean | null;
 }
+
+/**
+ * Réglages de l'activité qui valent pour une session : celui d'un geste dans Réglages en attente de
+ * recalcul (`pending`, `library/summaryGestures.ts`), sinon ceux portés par sa fiche (Q57, lot 148), sinon
+ * ceux de l'appareil (`device`) ; sans fiche ni porté connu, ceux de l'appareil. La seule lecture : liste et
+ * analyses passent par elle. Le seuil propre de la session prime encore sur ce résultat (`summaryOptions`).
+ */
+export const sessionActivitySettings = (
+  record: Pick<RecordWithoutSummary, 'sport' | 'analysis' | 'summary'> | null | undefined,
+  device: ActivitySummarySettings,
+  pending?: SummaryActivitySettings
+): ActivitySummarySettings => {
+  const carried = record ? carriedSettings(record) : {};
+  const threshold = pending?.threshold !== undefined ? pending.threshold : carried.threshold;
+  const foil = pending?.foil !== undefined ? pending.foil : carried.foil;
+  return {
+    thresholdOverride: threshold === undefined ? device.thresholdOverride : threshold ?? undefined,
+    foil: foil === undefined ? device.foil : foil,
+  };
+};
+
+/**
+ * Foil d'une session pour ce qui ne le saisit pas (Statistiques, image de partage) : le sien, sinon celui de
+ * l'activité par `sessionActivitySettings`, sinon non. `deviceFoil` : celui de son activité sur cet appareil.
+ */
+export const sessionFoil = (
+  record: Pick<RecordWithoutSummary, 'sport' | 'analysis' | 'summary'> | null | undefined,
+  deviceFoil: boolean | null
+): boolean => record?.analysis?.foil ?? sessionActivitySettings(record, { thresholdOverride: undefined, foil: deviceFoil }).foil ?? false;
 
 /** Altitude de la fiche (celle du terrain, et la source choisie) et son test guidé. */
 export type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevationSource' | 'test'>;
@@ -68,19 +98,29 @@ export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): st
   ]);
 
 /**
- * Vrai si le résumé est à refaire : calculé par une version antérieure du calcul, ou avec d'autres
- * réglages que ceux d'aujourd'hui (seuil de l'activité changé dans Réglages, allure imposée de la
- * session changée…), ou d'avant l'empreinte. Ne lit que la fiche allégée et les réglages, jamais le
- * GPX. Sans calcul connu ou sans positions (muscu, résumé sans réglage), seule la version compte.
+ * Vrai si le résumé est à refaire : calculé par une version antérieure du calcul, ou d'avant
+ * l'empreinte, ou avec d'autres réglages que ceux de sa fiche (allure imposée de la session changée,
+ * fiche changée sur un autre appareil : le test est le même sur les deux, donc pas de renvoi), ou si
+ * un geste dans Réglages attend d'être appliqué à son activité (`pendingOf`). Des réglages différents
+ * sur cet appareil, seuls, ne rendent rien à refaire (Q57) : `activityOf` ne vaut que pour ce que la fiche
+ * ne porte pas. Ne lit que la fiche allégée et les réglages, jamais le GPX. Sans calcul connu ou sans
+ * positions (muscu, résumé sans réglage), seule la version compte.
  */
 export const isSummaryOutdated = (
   record: SessionRecord,
-  activityOf: (sport: SportType) => ActivitySummarySettings
+  activityOf: (sport: SportType) => ActivitySummarySettings,
+  pendingOf?: (sport: SportType) => SummaryActivitySettings | undefined
 ): boolean => {
   if (isSummaryStale(record)) return true;
   const { sport } = record;
   if (sport === null || !isSportType(sport) || !hasPositions(sport)) return false;
-  return record.summary.optionsKey !== summaryOptionsKey(sport, summaryOptions(sport, record.analysis, activityOf(sport)));
+  const expected = summaryOptionsKey(sport, summaryOptions(sport, record.analysis, sessionActivitySettings(record, activityOf(sport))));
+  if (record.summary.optionsKey !== expected) return true;
+  const pending = pendingOf?.(sport);
+  if (!pending) return false;
+  const carried = carriedSettings(record);
+  return (pending.threshold !== undefined && pending.threshold !== carried.threshold)
+    || (pending.foil !== undefined && pending.foil !== carried.foil);
 };
 
 /**
@@ -92,6 +132,28 @@ export const outdatedRefreshFiles = (
   isOutdated: (record: SessionRecord) => boolean,
   failed: ReadonlySet<string>
 ): string[] => sessions.filter((s) => !s.readOnly && !failed.has(s.file) && isOutdated(s.record)).map((s) => s.file);
+
+/** Réglages de l'activité à porter dans le résumé. Foil : en surf seulement, comme l'empreinte. */
+const portedSettings = (sport: SportType, activity: ActivitySummarySettings): SummaryActivitySettings => ({
+  threshold: activity.thresholdOverride ?? null,
+  ...(getSportProfile(sport).surf ? { foil: activity.foil ?? null } : {}),
+});
+
+/**
+ * Phrase discrète de l'onglet réglages quand la session garde un seuil que Réglages ne dit plus sur cet
+ * appareil, `null` sinon (porté inconnu, ou le même). `show` : le seuil avec son unité.
+ */
+export const carriedThresholdNote = (
+  carried: number | null | undefined,
+  device: number | null,
+  show: (threshold: number) => string
+): string | null => {
+  if (carried === undefined || carried === device) return null;
+  const computed = carried === null ? 'Calculée sans seuil réglé pour l\'activité.' : `Calculée avec ${show(carried)}, le réglage de l'activité à ce moment-là.`;
+  return device === null
+    ? `${computed} Réglages n'en règle aucun sur cet appareil : en régler un recalcule les sessions de l'activité.`
+    : `${computed} Réglages dit ${show(device)} sur cet appareil : le changer recalcule les sessions de l'activité.`;
+};
 
 export interface AnalyzedGpx {
   summary: SessionSummary;
@@ -121,12 +183,16 @@ export const analyzeGpx = (
     const summary = summarizeHeartRateSession(parsed.timedPoints, resolved);
     return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
   }
-  const options = resolved === null ? {} : summaryOptions(resolved, analysis, activityOf(resolved), elevation);
+  const activity = resolved === null ? null : activityOf(resolved);
+  const options = resolved === null || activity === null ? {} : summaryOptions(resolved, analysis, activity, elevation);
   const summary = summarizeSession(parsed.rawPoints, resolved, options);
   if (!summary) return null;
-  // Empreinte des réglages du calcul : un réglage changé plus tard rendra ce résumé à refaire.
+  // Empreinte des réglages du calcul : un réglage changé plus tard rendra ce résumé à refaire ;
+  // et ceux de l'activité, que la session garde (Q57).
   return {
-    summary: resolved === null ? summary : { ...summary, optionsKey: summaryOptionsKey(resolved, options) },
+    summary: resolved === null || activity === null
+      ? summary
+      : { ...summary, optionsKey: summaryOptionsKey(resolved, options), activitySettings: portedSettings(resolved, activity) },
     sport: resolved,
     title: parsed.trackName ?? null,
   };

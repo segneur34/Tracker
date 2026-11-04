@@ -4,7 +4,7 @@ import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { sportTreatment } from '../core/sportProfiles';
+import { getSportProfile, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
@@ -142,7 +142,34 @@ export interface SessionSummary {
    * refait une fois. Absente aussi sans calcul ou sans positions (muscu), où elle ne sert pas.
    */
   optionsKey?: string;
+  /**
+   * Réglages de l'activité avec lesquels ce résumé a été calculé (Q57, lot 148) : la session les
+   * garde, mêmes chiffres sur tous les appareils, tant qu'un geste dans Réglages ne les change pas.
+   * Absent d'une fiche d'avant : `carriedSettings` les lit alors dans `optionsKey`, sans réécriture.
+   */
+  activitySettings?: SummaryActivitySettings;
 }
+
+/**
+ * Réglages de l'activité portés par un résumé. `null` : aucun n'était réglé (défaut du calcul, ou
+ * suggestion selon l'allure, recalculée dans les hooks, jamais figée) ; composant absent : inconnu,
+ * c'est celui de l'appareil qui vaut.
+ */
+export interface SummaryActivitySettings {
+  /** Seuil, dans l'unité du profil. */
+  threshold?: number | null;
+  /** Foil de l'activité ; en surf seulement, comme l'empreinte : ailleurs il ne change pas le résumé. */
+  foil?: boolean | null;
+}
+
+const readActivitySettings = (raw: unknown): SummaryActivitySettings | null => {
+  if (!isObject(raw)) return null;
+  const { threshold, foil } = raw;
+  return {
+    ...(threshold === null || (isFiniteNumber(threshold) && threshold >= 0) ? { threshold } : {}),
+    ...(foil === null || typeof foil === 'boolean' ? { foil } : {}),
+  };
+};
 
 /** Cadence d'une session à pied dans son résumé, comme l'onglet « cadence » la mesure. */
 export interface SummaryCadence {
@@ -420,6 +447,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   if (test) summary.test = test;
   else delete summary.test;
   if (typeof raw.optionsKey !== 'string') delete summary.optionsKey;
+  const activitySettings = readActivitySettings(raw.activitySettings);
+  if (activitySettings) summary.activitySettings = activitySettings;
+  else delete summary.activitySettings;
   return summary;
 };
 
@@ -652,7 +682,7 @@ const sortedJson = (value: unknown): unknown =>
       : value;
 
 /** Vrai si les deux valeurs s'écrivent pareil en JSON, à l'ordre des champs près (`undefined` : absent). */
-const sameJson = (a: unknown, b: unknown): boolean => {
+export const sameJson = (a: unknown, b: unknown): boolean => {
   const textA = JSON.stringify(a);
   const textB = JSON.stringify(b);
   if (textA === undefined || textB === undefined) return textA === textB;
@@ -781,6 +811,47 @@ export const serializeRecord = (record: SessionRecord, unreadable?: RecordUnread
 /** Faux pour une fiche écrite par une version plus récente : on la lit sans jamais la réécrire. */
 export const isWritableRecord = (record: Pick<SessionRecord, 'version'>): boolean => record.version <= RECORD_VERSION;
 
+/** Éléments de l'empreinte `optionsKey` lue, `null` si elle n'en est pas une. */
+const readOptionsKey = (key: string | undefined): unknown[] | null => {
+  if (key === undefined) return null;
+  const parsed = parseJson(key);
+  return Array.isArray(parsed) ? parsed : null;
+};
+
+/**
+ * Réglages de l'activité avec lesquels le résumé d'une fiche a été calculé : son champ, sinon (fiche
+ * d'avant) son empreinte, sans réécriture. L'empreinte ne dit celui de l'activité que là où la session
+ * n'a pas le sien : sinon, inconnu. Le foil, en surf seulement.
+ */
+export const carriedSettings = (record: Pick<RecordWithoutSummary, 'sport' | 'analysis' | 'summary'>): SummaryActivitySettings => {
+  const { summary } = record;
+  if (!summary) return {};
+  if (summary.activitySettings) return summary.activitySettings;
+  const key = readOptionsKey(summary.optionsKey);
+  if (!key) return {};
+  const carried: SummaryActivitySettings = {};
+  const [threshold, , foil] = key;
+  if ((record.analysis?.activeThreshold ?? null) === null && (threshold === null || (isFiniteNumber(threshold) && threshold >= 0))) carried.threshold = threshold;
+  if (record.sport !== null && isSportType(record.sport) && getSportProfile(record.sport).surf
+    && (record.analysis?.foil ?? null) === null && (foil === null || typeof foil === 'boolean')) carried.foil = foil;
+  return carried;
+};
+
+/**
+ * Fiche dont le résumé porte ses réglages dans son champ, figés depuis l'empreinte : à faire avant de
+ * changer le seuil ou le foil propres d'une ancienne fiche, dont l'empreinte dirait ensuite autre chose
+ * (un seuil propre retiré se lirait comme celui de l'activité). Même fiche si le champ y est déjà.
+ */
+const withCarriedSettingsFixed = <T extends SessionRecord>(record: T): T =>
+  record.summary.activitySettings ? record : { ...record, summary: { ...record.summary, activitySettings: carriedSettings(record) } };
+
+/** Fiche sans empreinte ni réglages portés : activité ou calcul changé, le résumé est à refaire avec ceux de l'appareil. */
+const withoutCarriedSettings = <T extends SessionRecord>(record: T): T => {
+  if (record.summary.optionsKey === undefined && record.summary.activitySettings === undefined) return record;
+  const { optionsKey: _key, activitySettings: _settings, ...summary } = record.summary;
+  return { ...record, summary };
+};
+
 /**
  * Fiche de la mémoire complétée par celle d'une copie de la même session
  * (import d'un GPX complet, `library/sessionBundle.ts`, ou d'un GPX et de sa
@@ -811,7 +882,9 @@ export const completeRecord = (
   if (!existing.elevationSource && incoming.elevationSource) patch.elevationSource = incoming.elevationSource;
   if (Object.keys(patch).length === 0) return { record: existing, resummarize: false };
   const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource', 'test'].some((key) => key in patch);
-  return { record: { ...existing, ...patch }, resummarize };
+  // Support ou activité reçus : ce que portait le résumé était à une autre ; réglages reçus : il garde les siens.
+  const next = 'sport' in patch || 'activityId' in patch ? withoutCarriedSettings(existing) : 'analysis' in patch ? withCarriedSettingsFixed(existing) : existing;
+  return { record: { ...next, ...patch }, resummarize };
 };
 
 /**
@@ -839,7 +912,10 @@ export const carryRecordEdits = (target: SessionRecord, edited: SessionRecord): 
     else next[key] = edited[key];
   }
   const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks');
-  return { record: next as unknown as SessionRecord, resummarize };
+  const summary = changed.includes('sport') || changed.includes('activityId')
+    ? withoutCarriedSettings(target).summary
+    : changed.includes('analysis') ? withCarriedSettingsFixed(target).summary : target.summary;
+  return { record: { ...(next as unknown as SessionRecord), summary }, resummarize };
 };
 
 /** Vrai si le résumé a été calculé par une version antérieure du calcul. */
@@ -1043,7 +1119,11 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   // En surf, le foil et le seuil de vague changent les vagues du résumé.
   const foilBefore = next.analysis?.foil ?? null;
   const waveBefore = next.analysis?.waveThreshold ?? null;
-  if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };
+  if (patch.analysis !== undefined) {
+    // Seuil ou foil propres changés sur une ancienne fiche : ce qu'elle portait est figé d'abord (`carriedSettings`).
+    if ((patch.analysis?.activeThreshold ?? null) !== thresholdBefore || (patch.analysis?.foil ?? null) !== foilBefore) next = withCarriedSettingsFixed(next);
+    next = { ...next, analysis: patch.analysis };
+  }
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== next.summary.maneuverCount) {
     next = { ...next, summary: { ...next.summary, maneuverCount: patch.maneuverCount } };
   }
@@ -1074,6 +1154,8 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
     }
   }
   if (next === original) return { record: original, resummarize: false };
+  // Activité ou calcul changé : ce que le résumé portait était à l'ancienne ; la nouvelle prend ceux de l'appareil.
+  if (activityChanged || sportChanged) next = withoutCarriedSettings(next);
   const analysisChanged =
     (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
     (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore ||

@@ -55,3 +55,11 @@ Sondes de l'audit à reprendre : `C5-fiche.test.ts`, `C5-reglages.test.ts`, `C5-
 - Absence prouvée d'après la source du greffon (`OS-PLUG-FILE-0008`), pas essayée au téléphone : si le téléphone répondait autrement, une capture vraiment absente montrerait « Analyser sans les capteurs », gênant sans perte.
 - Tests et banc joués le poste chargé (jeu en cours) : dépassements de délai seulement. 2 586 tests verts sur deux passages sur trois, le troisième avec un seul échec, sur le délai de 20 s de `liveStats.test.ts:191` ; scripts `imports`, `miseajour`, `reglages` rejoués un à un, ok. `library`, `library2`, `library3`, `session-save-resume` non joués (manuels).
 - Java relu, non compilé : il le sera à la construction de l'APK.
+
+## Partie B, commit du 04/11
+
+- Écarts au plan, acceptés : `pending` ne porte que ce qui a changé (un geste sur le seuil ne touche pas le foil porté) ; `savedAt` ne départage que si le disque a changé ce champ-là, sinon deux notes se perdraient ; écritures d'une même fiche en file ; `summaryGestures` reçoit ses valeurs de `useSessionLibrary` (sens des dépendances).
+- Relecture : une perte de saisie rare corrigée (après une écriture refusée, la valeur d'avant la plus ancienne l'emporte, test à l'appui) ; pré-réglage changé pendant une ouverture lente : compté comme un geste.
+- Limite gardée : en voile, le foil n'est pas porté, comme dans l'empreinte ; le « % de vol » d'une session sans foil propre suit le foil de l'activité sur l'appareil. En surf, le foil porté. Après un geste, l'analyse garde l'ancien seuil le temps du recalcul (1,5 s puis la file).
+- Bateau : aucun chiffre ne bouge. Analyse en terre : le seuil propre d'une fiche s'applique désormais (Q5), aucun champ à l'écran : seules d'anciennes fiches ou des fiches retouchées à la main le portent.
+- Banc : un seul écart hors attendus, la ligne « Réglages » de `miseajour`, page lue trop tôt, retrouvée sur deux passages rejoués. Tests joués le poste chargé : un seul dépassement, `liveStats.test.ts:191` (délai de 20 s), 10 s seul pour ses deux cas à 1 Hz et 5 Hz, même sous charge.
