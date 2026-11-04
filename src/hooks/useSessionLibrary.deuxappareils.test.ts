@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, serializeRecord, type SessionRecord, type StoredSessionNotes } from '../library/record';
 import type { FileStat, MemoryFolder } from '../platform/memoryFolder';
+import { gpxAt, settle, tick, trackTestTimers, underFakeClock } from '../test/library.fixture';
 import { createFakeFolder } from '../test/memoryFolder.fixture';
 
 /**
@@ -13,10 +14,7 @@ const JSON_NAME = GPX.replace(/\.gpx$/, '.json');
 const JSON_PATH = `sessions/${JSON_NAME}`;
 const START_MS = Date.parse('2026-10-27T10:00:00Z');
 
-const gpxText = (): string =>
-  '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>'
-  + [0, 10, 20].map((s, i) => `<trkpt lat="${43.6 + i * 0.0003}" lon="3.8"><time>2026-10-27T10:00:${String(s).padStart(2, '0')}Z</time></trkpt>`).join('')
-  + '</trkseg></trk></gpx>';
+const gpxText = (): string => gpxAt(0);
 
 const files = new Map<string, string>();
 const dates = new Map<string, number>();
@@ -55,22 +53,24 @@ const fakeFolder: MemoryFolder = createFakeFolder(files, log, {
   },
 });
 
-vi.mock('../core/gpxParser', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../core/gpxParser')>()),
-  parseGpx: (text: string) => ({
-    rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
-      .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
-    timedPoints: [],
-    trackType: 'running',
-    hasDeviceSpeed: false,
-  }),
-}));
-
-vi.mock('../platform/memoryFolder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
-  openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
-  pendingFolder: () => null,
-}));
+/** Modules simulés, refaits après chaque `vi.resetModules()` : un `vi.mock` posé une fois survivrait à `resetModules`. */
+const mockPlatform = (): void => {
+  vi.doMock('../core/gpxParser', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../core/gpxParser')>()),
+    parseGpx: (text: string) => ({
+      rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
+        .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
+      timedPoints: [],
+      trackType: 'running',
+      hasDeviceSpeed: false,
+    }),
+  }));
+  vi.doMock('../platform/memoryFolder', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
+    openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
+    pendingFolder: () => null,
+  }));
+};
 
 const stored = new Map<string, string>();
 
@@ -100,17 +100,19 @@ const otherDeviceWrites = (patch: Partial<SessionRecord>): void => {
 
 type Library = typeof import('./useSessionLibrary');
 
+/** Aucune minuterie d'un test ne sonne pendant le suivant (`trackTestTimers`). */
+let stopTestTimers: () => void = () => undefined;
+beforeEach(() => {
+  stopTestTimers = trackTestTimers();
+});
+afterEach(() => stopTestTimers());
+
 const openFresh = async (): Promise<Library> => {
   vi.resetModules();
+  mockPlatform();
   const library = await import('./useSessionLibrary');
   await library.openLibrary();
   return library;
-};
-
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-const settle = async (library: Library): Promise<void> => {
-  for (let i = 0; i < 20_000 && library.readLibraryState().scanning !== null; i++) await tick();
-  await tick();
 };
 
 const disk = (): SessionRecord => JSON.parse(files.get(JSON_PATH)!);
@@ -170,6 +172,7 @@ describe('fiche changée sur le disque', () => {
     // Le recalcul de fond est lancé à l'ouverture : la fiche change entre la lecture du dossier et lui.
     const library = await (async () => {
       vi.resetModules();
+      mockPlatform();
       const lib = await import('./useSessionLibrary');
       const opened = lib.openLibrary();
       await tick();
@@ -226,9 +229,10 @@ describe('fiche changée sur le disque', () => {
     otherDeviceWrites({ version: RECORD_VERSION + 1 });
     const text = files.get(JSON_PATH);
     log.length = 0;
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await library.dismissLibraryMessage();
-    await writeNow(library);
+    await writeNow(async () => {
+      library.updateSessionRecord(GPX, { name: 'Ici' });
+      await library.dismissLibraryMessage();
+    });
     expect(files.get(JSON_PATH)).toBe(text);
     expect(writes()).toEqual([]);
     expect(library.librarySession(GPX)!.readOnly).toBe(true);
@@ -241,8 +245,7 @@ describe('fiche changée sur le disque', () => {
     await settle(library);
     touch(JSON_PATH, '{ abîmée');
     log.length = 0;
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { name: 'Ici' }));
     expect(files.get(JSON_PATH)).toBe('{ abîmée');
     expect(writes()).toEqual([]);
     expect(library.librarySession(GPX)!.readOnly).toBe(true);
@@ -253,8 +256,7 @@ describe('fiche changée sur le disque', () => {
     const library = await openFresh();
     await settle(library);
     files.delete(JSON_PATH);
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { name: 'Ici' }));
     expect(disk().name).toBe('Ici');
   });
 
@@ -265,8 +267,7 @@ describe('fiche changée sur le disque', () => {
     const text = serializeRecord({ ...disk(), notes: notes({ comment: 'copie', savedAt: 50 }) });
     files.set(JSON_PATH, text);
     dates.set(JSON_PATH, 10);
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { name: 'Ici' }));
     expect(disk().notes?.comment).toBe('copie');
     expect(disk().name).toBe('Ici');
   });
@@ -277,8 +278,7 @@ describe('fiche changée sur le disque', () => {
     await settle(library);
     otherDeviceWrites({ name: 'Ici' });
     log.length = 0;
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { name: 'Ici' }));
     expect(writes()).toEqual([]);
     expect(library.librarySession(GPX)!.record.name).toBe('Ici');
   });
@@ -295,8 +295,7 @@ describe('fiche changée sur le disque', () => {
       library.updateSessionRecord(GPX, { notes: notes({ comment: 'abc', savedAt: now + 1 }) });
       throw new Error('disque plein');
     };
-    library.updateSessionRecord(GPX, { notes: notes({ comment: 'ab', savedAt: now }) });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { notes: notes({ comment: 'ab', savedAt: now }) }));
     // L'autre appareil, plus récent, a changé un autre champ des notes.
     otherDeviceWrites({ notes: notes({ comment: '', conditions: 'là-bas', savedAt: now + 60_000 }) });
     await flush(library);
@@ -313,8 +312,7 @@ describe('fiche changée sur le disque', () => {
     fakeFolder.writeText = async () => {
       throw new Error('disque plein');
     };
-    library.updateSessionRecord(GPX, { name: 'Ici' });
-    await writeNow(library);
+    await writeNow(() => library.updateSessionRecord(GPX, { name: 'Ici' }));
     expect(library.readLibraryState().error).toContain('disque plein');
     fakeFolder.writeText = write;
     otherDeviceWrites({ notes: notes({ comment: 'là-bas', savedAt: 500 }) });
@@ -324,9 +322,8 @@ describe('fiche changée sur le disque', () => {
   });
 });
 
-/** Attend l'écriture différée d'une fiche : déclenchée par son délai. */
-async function writeNow(library: Library): Promise<void> {
-  void library;
-  await new Promise((r) => setTimeout(r, 900));
+/** Lance `action` (une saisie) et passe l'écriture différée de la fiche (800 ms), sous horloge simulée. */
+async function writeNow(action: () => unknown): Promise<void> {
+  await underFakeClock(900, action);
   await tick();
 }

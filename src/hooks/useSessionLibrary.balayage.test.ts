@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LibrarySession } from '../library/record';
 import type { FolderEntry, MemoryFolder } from '../platform/memoryFolder';
+import { settle, threePointGpx, tick, trackTestTimers, underFakeClock } from '../test/library.fixture';
 
 /**
  * Balayage de la bibliothèque sur un faux dossier de 300 sessions (lot 68) :
@@ -14,43 +15,10 @@ const SESSION_COUNT = 300;
 const START_MS = Date.parse('2026-10-27T06:00:00Z');
 
 /** Publications de la liste (appels de `dedupeSessions`) et notifications des abonnés de la bibliothèque. */
-const counters = vi.hoisted(() => ({ published: [] as LibrarySession[][], notifications: 0 }));
-
-vi.mock('../library/record', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../library/record')>();
-  return {
-    ...actual,
-    dedupeSessions: (sessions: LibrarySession[]) => {
-      const result = actual.dedupeSessions(sessions);
-      counters.published.push(result.kept);
-      return result;
-    },
-  };
-});
-
-vi.mock('./createStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./createStore')>();
-  return {
-    ...actual,
-    createListeners: () => {
-      const listeners = actual.createListeners();
-      return {
-        ...listeners,
-        notify: () => {
-          counters.notifications += 1;
-          listeners.notify();
-        },
-      };
-    },
-  };
-});
+const counters = { published: [] as LibrarySession[][], notifications: 0 };
 
 /** GPX de trois points, à 10 s d'écart, parti `index` minutes après `START_MS`. */
-const gpxAt = (index: number): string =>
-  '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>'
-  + [0, 10, 20].map((s, i) =>
-    `<trkpt lat="${43.6 + i * 0.0003}" lon="3.8"><time>${new Date(START_MS + index * 60_000 + s * 1000).toISOString()}</time></trkpt>`).join('')
-  + '</trkseg></trk></gpx>';
+const gpxAt = (index: number): string => threePointGpx((s) => new Date(START_MS + index * 60_000 + s * 1000).toISOString());
 
 const gpxName = (index: number): string => `s${String(index).padStart(3, '0')}.gpx`;
 
@@ -80,25 +48,57 @@ const fakeFolder: MemoryFolder = {
   },
 };
 
-// Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
-vi.mock('../core/gpxParser', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../core/gpxParser')>()),
-  parseGpx: (text: string) => {
-    if (!text.includes('<gpx')) throw new Error('GPX illisible');
+/**
+ * Modules simulés, refaits après chaque `vi.resetModules()` : un `vi.mock` posé une fois survit à `resetModules`,
+ * et `createStore` simulé garderait le stockage d'avant pendant que la bibliothèque en prend un neuf.
+ */
+const mockPlatform = (): void => {
+  vi.doMock('../library/record', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../library/record')>();
     return {
-      rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
-        .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
-      trackType: 'running',
-      hasDeviceSpeed: false,
+      ...actual,
+      dedupeSessions: (sessions: LibrarySession[]) => {
+        const result = actual.dedupeSessions(sessions);
+        counters.published.push(result.kept);
+        return result;
+      },
     };
-  },
-}));
-
-vi.mock('../platform/memoryFolder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
-  openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
-  pendingFolder: () => null,
-}));
+  });
+  vi.doMock('./createStore', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./createStore')>();
+    return {
+      ...actual,
+      createListeners: () => {
+        const listeners = actual.createListeners();
+        return {
+          ...listeners,
+          notify: () => {
+            counters.notifications += 1;
+            listeners.notify();
+          },
+        };
+      },
+    };
+  });
+  // Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
+  vi.doMock('../core/gpxParser', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../core/gpxParser')>()),
+    parseGpx: (text: string) => {
+      if (!text.includes('<gpx')) throw new Error('GPX illisible');
+      return {
+        rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
+          .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
+        trackType: 'running',
+        hasDeviceSpeed: false,
+      };
+    },
+  }));
+  vi.doMock('../platform/memoryFolder', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
+    openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
+    pendingFolder: () => null,
+  }));
+};
 
 /** Stockage de l'appareil, gardé d'une ouverture à l'autre : le cache des fiches y survit. */
 const stored = new Map<string, string>();
@@ -106,19 +106,19 @@ const CACHE_KEY = 'tracker.libraryCache';
 
 type Library = typeof import('./useSessionLibrary');
 
+/** Aucune minuterie d'un test ne sonne pendant le suivant (`trackTestTimers`). */
+let stopTestTimers: () => void = () => undefined;
+beforeEach(() => {
+  stopTestTimers = trackTestTimers();
+});
+afterEach(() => stopTestTimers());
+
 const openFresh = async (): Promise<Library> => {
   vi.resetModules();
+  mockPlatform();
   const library = await import('./useSessionLibrary');
   await library.openLibrary();
   return library;
-};
-
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-
-/** Attend la fin du balayage de fond, au plus 20 000 tours. */
-const settle = async (library: Library): Promise<void> => {
-  for (let i = 0; i < 20_000 && library.readLibraryState().scanning !== null; i++) await tick();
-  await tick();
 };
 
 const resetCounters = (): void => {
@@ -242,11 +242,12 @@ describe('résumés périmés de 300 fiches en cache (scénario B, « Mettre à 
     const waiting = all.find((s) => s.record.summary.calcVersion < SUMMARY_CALC_VERSION)!;
     expect(done).toBeDefined();
     expect(waiting).toBeDefined();
-    library.updateSessionRecord(done.file, { name: 'Traitée' });
-    library.updateSessionRecord(waiting.file, { name: 'En attente' });
-    await refresh;
-    // Écritures différées des fiches (800 ms).
-    await new Promise((r) => setTimeout(r, 1000));
+    // Écritures différées des fiches (800 ms), sous horloge simulée : le balayage finit, puis elles partent.
+    await underFakeClock(1000, async () => {
+      library.updateSessionRecord(done.file, { name: 'Traitée' });
+      library.updateSessionRecord(waiting.file, { name: 'En attente' });
+      await refresh;
+    });
     for (const [file, name] of [[done.file, 'Traitée'], [waiting.file, 'En attente']]) {
       expect(library.readLibraryState().sessions.find((s) => s.file === file)?.record.name).toBe(name);
       const disk = JSON.parse(files.get(`sessions/${file.replace(/\.gpx$/, '.json')}`)!);

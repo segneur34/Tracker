@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemoryFolder } from '../platform/memoryFolder';
+import { gpxAt, settle, trackTestTimers, underFakeClock } from '../test/library.fixture';
 import { createFakeFolder, fakeEntries } from '../test/memoryFolder.fixture';
 
 /**
@@ -7,12 +8,6 @@ import { createFakeFolder, fakeEntries } from '../test/memoryFolder.fixture';
  * dossier, import d'un dossier fichier par fichier, ordre de suppression,
  * fiche non écrite tenue hors du cache.
  */
-
-const gpxAt = (minute: number): string =>
-  '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>'
-  + [0, 10, 20].map((s, i) =>
-    `<trkpt lat="${43.6 + i * 0.0003}" lon="3.8"><time>2026-10-27T10:${String(minute).padStart(2, '0')}:${String(s).padStart(2, '0')}Z</time></trkpt>`).join('')
-  + '</trkseg></trk></gpx>';
 
 /** Fichiers du faux dossier, par chemin ; lectures, écritures et suppressions relevées dans l'ordre. */
 const files = new Map<string, string>();
@@ -59,45 +54,51 @@ const fakePending: MemoryFolder = {
   },
 };
 
-// Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
-vi.mock('../core/gpxParser', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../core/gpxParser')>()),
-  parseGpx: (text: string) => {
-    if (!text.includes('<gpx')) throw new Error('GPX illisible');
-    return {
-      rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
-        .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
-      trackType: 'running',
-      hasDeviceSpeed: false,
-    };
-  },
-}));
-
 /** Échec du chargement du stockage au démarrage, simulé (A3). */
 let storageFailed = false;
 
-vi.mock('../platform/storage', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/storage')>()),
-  storageStartupFailure: () => (storageFailed ? { all: true, keys: [] } : null),
-}));
+/**
+ * Modules simulés, refaits après chaque `vi.resetModules()` : un `vi.mock` posé une fois survit à `resetModules` et
+ * garderait d'un test à l'autre la même instance du stockage (valeurs refusées, cache de lecture) ; l'ordre compterait.
+ */
+const mockPlatform = (): void => {
+  // Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
+  vi.doMock('../core/gpxParser', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../core/gpxParser')>()),
+    parseGpx: (text: string) => {
+      if (!text.includes('<gpx')) throw new Error('GPX illisible');
+      return {
+        rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
+          .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
+        trackType: 'running',
+        hasDeviceSpeed: false,
+      };
+    },
+  }));
+  vi.doMock('../platform/storage', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/storage')>()),
+    storageStartupFailure: () => (storageFailed ? { all: true, keys: [] } : null),
+  }));
+  vi.doMock('../platform/memoryFolder', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
+    openMemoryFolder: async () => (access === 'ready' ? { state: 'ready', folder: fakeFolder } : { state: 'unavailable', reason: 'aucun dossier' }),
+    pendingFolder: () => fakePending,
+  }));
+};
 
-vi.mock('../platform/memoryFolder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
-  openMemoryFolder: async () => (access === 'ready' ? { state: 'ready', folder: fakeFolder } : { state: 'unavailable', reason: 'aucun dossier' }),
-  pendingFolder: () => fakePending,
-}));
+/** Aucune minuterie d'un test ne sonne pendant le suivant (`trackTestTimers`). */
+let stopTestTimers: () => void = () => undefined;
+beforeEach(() => {
+  stopTestTimers = trackTestTimers();
+});
+afterEach(() => stopTestTimers());
 
 const openFresh = async () => {
   vi.resetModules();
+  mockPlatform();
   const library = await import('./useSessionLibrary');
   await library.openLibrary();
   return library;
-};
-
-/** Attend la fin du balayage de fond lancé à l'ouverture. */
-const settle = async (library: typeof import('./useSessionLibrary')) => {
-  for (let i = 0; i < 50 && library.readLibraryState().scanning !== null; i++) await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => {
@@ -108,6 +109,16 @@ beforeEach(() => {
   pendingFiles.clear();
   access = 'ready';
   storageFailed = false;
+});
+
+describe('isolement des tests (lot 159)', () => {
+  it('chaque ouverture repart d’un stockage neuf, même simulé : l’ordre des tests ne compte pas', async () => {
+    await openFresh();
+    const first = (await import('../platform/storage')).jsonStore;
+    await openFresh();
+    const second = (await import('../platform/storage')).jsonStore;
+    expect(second).not.toBe(first);
+  });
 });
 
 describe('import sans dossier mémoire (E-B2, décision du 27/10 : refusé)', () => {
@@ -174,8 +185,7 @@ describe('fiche non écrite (E-B10)', () => {
     await vi.advanceTimersByTimeAsync(2000);
     vi.useRealTimers();
     // Un import vide met à jour le cache, une seconde après.
-    await library.importFiles([]);
-    await new Promise((r) => setTimeout(r, 1100));
+    await underFakeClock(1100, () => library.importFiles([]));
     const { jsonStore } = await import('../platform/storage');
     const cache = jsonStore.read<{ entries: Record<string, unknown> }>('tracker.libraryCache');
     expect(cache?.entries[file.replace(/\.gpx$/, '.json')]).toBeUndefined();

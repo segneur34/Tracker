@@ -27,9 +27,8 @@ import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
 import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling, prepareWindPolar, type TurnObservation } from './wind';
 import { angleDiff, circularMean, normalizeDeg, toRad } from '../core/angles';
-import { M_PER_DEG_LAT, at as geoAt, mPerDegLon } from '../test/geo.fixture';
-
-const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
+import { M_PER_DEG_LAT, at as geoAt } from '../test/geo.fixture';
+import { TRACK_START_MS, buildLegSession, polarSpeed, slowPolar, upwindDownwindLegs, type Leg } from '../test/sailing.fixture';
 
 /**
  * Trace synthétique décrite par une fonction cap(t) et une vitesse. Le cap est
@@ -58,144 +57,8 @@ const buildTrack = (
   return points;
 };
 
-/**
- * Polaire simplifiée d'un wingfoil pour un vent venant de `windDir` : perte du
- * vol dans le cône face au vent, moyen au près, rapide au largue, lent au
- * vent arrière mais toujours en vol.
- */
-const wingPolar = (twa: number): number => {
-  if (twa < 35) return 3;
-  if (twa < 60) return 12;
-  if (twa < 110) return 18;
-  if (twa < 150) return 15;
-  return 10;
-};
-
-/**
- * La même polaire à l'échelle d'un support lent : 1,2 nœud dans le cône,
- * 4,8 au près, 7,2 au largue, 6 au portant, 4 au vent arrière. Sous le seuil
- * de 5 nœuds du wingfoil, une telle session est presque invisible à la
- * polaire, et tous ses empannages passent pour ratés.
- */
-const slowPolar = (twa: number): number => wingPolar(twa) / 2.5;
-
-const polarSpeed = (windDir: number | ((t: number) => number)) => (t: number, bearing: number): number => {
-  const wind = typeof windDir === 'function' ? windDir(t) : windDir;
-  return wingPolar(Math.abs(angleDiff(bearing, wind)));
-};
-
 /** Session qui balaie tous les caps, lentement, en dix minutes. */
 const fullSweep = (t: number): number => (t * 0.6) % 360;
-
-/**
- * Session réaliste par bords : chaque bord a un angle au vent signé (positif à
- * tribord du vent, négatif à bâbord) et une durée. Les transitions durent
- * `transitionS` et le cap y passe par l'arc court, donc par le vent pour un
- * virement et par le vent arrière pour un empannage. La vitesse suit la
- * polaire, ce qui fait chuter le virement à 3 nœuds et non l'empannage.
- */
-interface Leg {
-  twa: number;
-  durationS: number;
-}
-
-const buildLegSession = (
-  legs: Leg[],
-  windAt: (t: number) => number,
-  options: {
-    transitionS?: number;
-    stepS?: number;
-    currentKn?: number;
-    currentDir?: number;
-    /** Polaire du support, pour fabriquer une session plus lente qu'un wingfoil. */
-    polar?: (twa: number) => number;
-    /**
-     * Intègre la position à partir du cap et de la vitesse, au lieu de la
-     * faire avancer le long d'une ligne arbitraire. Indispensable dès qu'un
-     * calcul lit les positions, comme la distance d'une manœuvre. Laissé
-     * optionnel pour ne pas déplacer les distances des tests écrits avant lui.
-     */
-    integratePosition?: boolean;
-  } = {}
-): PointData[] => {
-  const transitionS = options.transitionS ?? 6;
-  const stepS = options.stepS ?? 1;
-  const polar = options.polar ?? wingPolar;
-  let lat = 43.6;
-  let lon = 3.8;
-
-  // Angle au vent en fonction du temps, avec transitions linéaires.
-  const twaAt = (t: number): number => {
-    let elapsed = 0;
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
-      const legEnd = elapsed + leg.durationS;
-      if (t < legEnd - transitionS || i === legs.length - 1) return leg.twa;
-      if (t < legEnd) {
-        const next = legs[i + 1].twa;
-        const ratio = (t - (legEnd - transitionS)) / transitionS;
-        return leg.twa + angleDiff(next, leg.twa) * ratio;
-      }
-      elapsed = legEnd;
-    }
-    return legs[legs.length - 1].twa;
-  };
-
-  const totalS = legs.reduce((a, l) => a + l.durationS, 0);
-  const points: PointData[] = [];
-
-  for (let t = 0; t <= totalS; t += stepS) {
-    const wind = windAt(t);
-    const twa = twaAt(t);
-    const heading = ((wind + twa) % 360 + 360) % 360;
-    const boatSpeed = polar(Math.abs(angleDiff(heading, wind)));
-
-    // Le courant s'ajoute vectoriellement : cap et vitesse sur le fond.
-    let bearing = heading;
-    let speed = boatSpeed;
-    if (options.currentKn) {
-      const toRad = (d: number) => (d * Math.PI) / 180;
-      const vx = boatSpeed * Math.sin(toRad(heading)) + options.currentKn * Math.sin(toRad(options.currentDir ?? 90));
-      const vy = boatSpeed * Math.cos(toRad(heading)) + options.currentKn * Math.cos(toRad(options.currentDir ?? 90));
-      bearing = ((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360;
-      speed = Math.sqrt(vx * vx + vy * vy);
-    }
-
-    const timeMs = TRACK_START_MS + Math.round(t * 1000);
-    points.push({
-      lat: options.integratePosition ? lat : 43.6,
-      lon: options.integratePosition ? lon : 3.8 + t * 0.0001,
-      timeMs,
-      smoothedSpeed: speed,
-      bearing,
-    });
-
-    if (options.integratePosition) {
-      const meters = speed * 0.514444 * stepS;
-      const rad = (bearing * Math.PI) / 180;
-      lat += (meters * Math.cos(rad)) / M_PER_DEG_LAT;
-      lon += (meters * Math.sin(rad)) / mPerDegLon(lat);
-    }
-  }
-  return points;
-};
-
-/**
- * `count` bords de près alternés (count - 1 virements), puis une abattée sur
- * le même bord, un empannage, et une remontée sur le même bord. Aucun virage
- * de 180° : chaque transition a un sens sans ambiguïté.
- */
-const upwindDownwindLegs = (count: number, legDurationS = 180): Leg[] => {
-  const legs: Leg[] = [];
-  for (let i = 0; i < count; i++) {
-    legs.push({ twa: i % 2 === 0 ? 45 : -45, durationS: legDurationS });
-  }
-  const side = legs[legs.length - 1].twa > 0 ? 1 : -1;
-  legs.push({ twa: side * 135, durationS: legDurationS });
-  legs.push({ twa: -side * 135, durationS: legDurationS });
-  legs.push({ twa: -side * 45, durationS: legDurationS });
-  return legs;
-};
 
 const distanceTo = (angle: number, target: number) => Math.abs(angleDiff(angle, target));
 

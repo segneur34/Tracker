@@ -1,15 +1,19 @@
 // Vérification en une commande : lint, tests et build (ou typecheck) lancés ensemble, sortie courte.
 //
-//   node outils/verif.mjs                      complet : lint + vitest run + (tsc -b && vite build)
-//   node outils/verif.mjs --rapide             tsc -b + lint + vitest run --changed (sans build)
+//   node outils/verif.mjs                      complet : lint + vitest run mélangé + (tsc -b && vite build)
+//   node outils/verif.mjs --rapide             tsc -b + lint + vitest run --changed (sans build, ordre fixe)
 //   node outils/verif.mjs --noms <fichier>     écrit aussi la liste triée « fichier > describe > test »
 //   node outils/verif.mjs --tests <motifs…>    passe les motifs (fichiers ou noms) à vitest
+//
+// Mode complet : les tests passent dans un ordre mélangé, d'une graine tirée à chaque passage (`VERIF_GRAINE=<n>`
+// pour l'imposer) ; un test qui dépend de l'ordre échoue un jour, et la sortie dit alors la graine et la commande
+// qui rejoue le même ordre. `--rapide` et `npm test` gardent l'ordre fixe.
 //
 // Tout passe : 4 ou 5 lignes. Sinon : seulement les échecs. Code de sortie 1 si un outil échoue (les avertissements
 // de lint sont montrés mais ne font pas échouer, comme `npm run lint`). Sans dépendance.
 
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
@@ -19,11 +23,23 @@ import { fileURLToPath } from 'node:url'
 let RACINE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 RACINE = RACINE.replace(/^[a-z]:/, (l) => l.toUpperCase())
 
+/**
+ * Dossier `node_modules` qui porte les outils : celui de la racine, sinon le premier au-dessus. Une copie de travail
+ * d'un lot (`.claude/worktrees/<nom>/`) n'a pas le sien : elle prend celui du dépôt principal, comme le fait Node.
+ */
+const modulesDe = (depart) => {
+  for (let dossier = depart; ; dossier = dirname(dossier)) {
+    if (existsSync(join(dossier, 'node_modules', 'vitest', 'vitest.mjs'))) return join(dossier, 'node_modules')
+    if (dirname(dossier) === dossier) return join(depart, 'node_modules')
+  }
+}
+const MODULES = modulesDe(RACINE)
+
 const BIN = {
-  vitest: join(RACINE, 'node_modules', 'vitest', 'vitest.mjs'),
-  oxlint: join(RACINE, 'node_modules', 'oxlint', 'bin', 'oxlint'),
-  tsc: join(RACINE, 'node_modules', 'typescript', 'bin', 'tsc'),
-  vite: join(RACINE, 'node_modules', 'vite', 'bin', 'vite.js'),
+  vitest: join(MODULES, 'vitest', 'vitest.mjs'),
+  oxlint: join(MODULES, 'oxlint', 'bin', 'oxlint'),
+  tsc: join(MODULES, 'typescript', 'bin', 'tsc'),
+  vite: join(MODULES, 'vite', 'bin', 'vite.js'),
 }
 
 const MAX_TESTS_DETAILLES = 5
@@ -40,6 +56,10 @@ for (let i = 0; i < args.length; i++) {
     while (i + 1 < args.length && !args[i + 1].startsWith('--')) motifs.push(args[++i])
   }
 }
+
+/** Graine de l'ordre mélangé (mode complet seulement) : `VERIF_GRAINE` si elle est donnée, sinon tirée au hasard. */
+const graineImposee = Number.parseInt(String(process.env.VERIF_GRAINE ?? '').trim(), 10)
+const GRAINE = rapide ? null : Number.isInteger(graineImposee) && graineImposee > 0 ? graineImposee : 1 + Math.floor(Math.random() * 99_999)
 
 // ---------- outils ----------
 /** Lance `node <script> …` dans la racine ; renvoie sortie, code et durée (ms). Rien n'est affiché. */
@@ -140,7 +160,8 @@ async function briqueTypecheck() {
 
 async function briqueTests(ports) {
   const json = join(tmpdir(), `verif-vitest-${process.pid}.json`)
-  const argv = ['run', ...(rapide ? ['--changed'] : []), '--reporter=dot', '--reporter=json', `--outputFile.json=${json}`, ...motifs]
+  const ordre = GRAINE === null ? [] : ['--sequence.shuffle', `--sequence.seed=${GRAINE}`]
+  const argv = ['run', ...(rapide ? ['--changed'] : []), ...ordre, '--reporter=dot', '--reporter=json', `--outputFile.json=${json}`, ...motifs]
   const r = await lancer(BIN.vitest, argv)
   let j = null
   try {
@@ -157,6 +178,7 @@ async function briqueTests(ports) {
     }
     const details = bavardage.trim().split('\n').slice(-12).map((l) => '  ' + l)
     if (ports.length) details.unshift(`  un serveur du banc tourne sur ${ports.join(', ')} : vitest peut échouer`)
+    if (GRAINE !== null) details.push(`  ordre mélangé, graine ${GRAINE} (VERIF_GRAINE=${GRAINE} pour la reprendre)`)
     return { ok: false, ms: r.ms, resume: `tests : vitest n'a pas rendu de rapport (${secondes(r.ms)})`, details, noms: [] }
   }
 
@@ -205,6 +227,10 @@ async function briqueTests(ports) {
     details.push(...lignes.slice(-LIGNES_PAR_TEST).map((x) => '    ' + x.trim().slice(0, 160)))
   }
   const ok = nbEchecs === 0 && j.success !== false && r.code === 0
+  if (!ok && GRAINE !== null) {
+    details.push(`  ordre mélangé, graine ${GRAINE} : le même ordre se rejoue par « set VERIF_GRAINE=${GRAINE}&& npm run verif »,`)
+    details.push(`  ou par « npx vitest run --sequence.shuffle --sequence.seed=${GRAINE} --maxWorkers=1 » (un seul processus)`)
+  }
   const resume = ok
     ? `tests : ${milliers(passes)} passés (${nbFichiers} fichiers) en ${secondes(r.ms)}`
     : horsTest

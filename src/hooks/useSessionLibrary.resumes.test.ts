@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, serializeRecord, type SessionAnalysis, type SessionRecord } from '../library/record';
 import type { MemoryFolder } from '../platform/memoryFolder';
+import { gpxAtTime, settle, tick, trackTestTimers } from '../test/library.fixture';
 import { createFakeFolder } from '../test/memoryFolder.fixture';
 
 /**
@@ -12,11 +13,7 @@ import { createFakeFolder } from '../test/memoryFolder.fixture';
  */
 
 /** Course de trois points, à 10 s d'écart, partie à `hhmm` le 27/10/2026. */
-const gpxAt = (hhmm: string): string =>
-  '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>'
-  + [0, 10, 20].map((s, i) =>
-    `<trkpt lat="${43.6 + i * 0.0003}" lon="3.8"><time>2026-10-27T${hhmm}:${String(s).padStart(2, '0')}Z</time></trkpt>`).join('')
-  + '</trkseg></trk></gpx>';
+const gpxAt = gpxAtTime;
 
 /** Fichiers du faux dossier, par chemin ; lectures, écritures et suppressions relevées dans l'ordre. */
 const files = new Map<string, string>();
@@ -34,34 +31,38 @@ const fakeFolder: MemoryFolder = createFakeFolder(
   (path) => files.get(path)!.length,
 );
 
-// Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
-vi.mock('../core/gpxParser', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../core/gpxParser')>()),
-  parseGpx: (text: string) => {
-    if (!text.includes('<gpx')) throw new Error('GPX illisible');
-    return {
-      rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
-        .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
-      timedPoints: [],
-      trackType: 'running',
-      hasDeviceSpeed: false,
-    };
-  },
-}));
-
-vi.mock('../platform/memoryFolder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
-  openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
-  pendingFolder: () => null,
-}));
-
 /** Échec du chargement du stockage au démarrage, simulé. */
 let storageFailed = false;
 
-vi.mock('../platform/storage', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/storage')>()),
-  storageStartupFailure: () => (storageFailed ? { all: true, keys: [] } : null),
-}));
+/**
+ * Modules simulés, refaits après chaque `vi.resetModules()` : un `vi.mock` posé une fois survit à `resetModules` et
+ * garderait d'un test à l'autre la même instance du stockage (valeurs refusées, cache de lecture).
+ */
+const mockPlatform = (): void => {
+  // Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
+  vi.doMock('../core/gpxParser', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../core/gpxParser')>()),
+    parseGpx: (text: string) => {
+      if (!text.includes('<gpx')) throw new Error('GPX illisible');
+      return {
+        rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
+          .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
+        timedPoints: [],
+        trackType: 'running',
+        hasDeviceSpeed: false,
+      };
+    },
+  }));
+  vi.doMock('../platform/memoryFolder', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
+    openMemoryFolder: async () => ({ state: 'ready', folder: fakeFolder }),
+    pendingFolder: () => null,
+  }));
+  vi.doMock('../platform/storage', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/storage')>()),
+    storageStartupFailure: () => (storageFailed ? { all: true, keys: [] } : null),
+  }));
+};
 
 /** Stockage de l'appareil, gardé d'une ouverture à l'autre : réglages et cache des fiches y survivent. */
 const stored = new Map<string, string>();
@@ -104,23 +105,23 @@ const putSessions = (): void => {
 };
 
 type Library = typeof import('./useSessionLibrary');
+
+/** Aucune minuterie d'un test ne sonne pendant le suivant (`trackTestTimers`). */
+let stopTestTimers: () => void = () => undefined;
+beforeEach(() => {
+  stopTestTimers = trackTestTimers();
+});
+afterEach(() => stopTestTimers());
 type Settings = typeof import('./useSportSettings');
 
 /** Lancement de l'application : modules neufs, mémoire ouverte. */
 const openFresh = async (): Promise<{ library: Library; settings: Settings }> => {
   vi.resetModules();
+  mockPlatform();
   const library = await import('./useSessionLibrary');
   const settings = await import('./useSportSettings');
   await library.openLibrary();
   return { library, settings };
-};
-
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-
-/** Attend la fin du passage de fond. */
-const settle = async (library: Library): Promise<void> => {
-  for (let i = 0; i < 20_000 && library.readLibraryState().scanning !== null; i++) await tick();
-  await tick();
 };
 
 const gpxReads = (): string[] => log.filter((l) => /^read sessions\/.*\.gpx$/.test(l)).map((l) => l.slice('read sessions/'.length));
@@ -281,6 +282,7 @@ describe('la session garde ses réglages (Q57)', () => {
     // Réglages d'une version d'avant : le seuil de Course sera effacé par la mise à jour des pré-réglages.
     stored.set('tracker.sportSettings', JSON.stringify({ thresholds: { running: 7 }, presetsVersion: 0 }));
     vi.resetModules();
+    mockPlatform();
     const library = await import('./useSessionLibrary');
     const settings = await import('./useSportSettings');
     const opening = library.openLibrary();

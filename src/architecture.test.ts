@@ -158,3 +158,61 @@ describe("sens des dépendances entre dossiers de src/", () => {
     expect(bad.map(edgeName)).toEqual([]);
   });
 });
+
+/**
+ * Règle 12 de `CLAUDE.md` : stockage, fichiers, position, son, vibreur, capteurs, ceinture, notification, écran allumé
+ * et orientation passent par `src/platform/`. Hors de ce dossier, aucune de ces API du navigateur ni aucun paquet
+ * natif (`@capacitor/*`, `@capgo/*`, importé de façon statique ou dynamique, ou en type seul) : chacun a sa version
+ * navigateur et téléphone dans `platform/`, choisie par `isNativeApp()`. Les commentaires ne comptent pas.
+ */
+const PLATFORM_ONLY: readonly [string, RegExp][] = [
+  ['localStorage', /\blocalStorage\b/],
+  ['sessionStorage', /\bsessionStorage\b/],
+  ['navigator.geolocation, vibrate, wakeLock, bluetooth ou storage', /\bnavigator\s*\.\s*(?:geolocation|vibrate|wakeLock|bluetooth|storage)\b/],
+  ['screen.orientation', /\bscreen\s*\.\s*orientation\b/],
+  ['DeviceMotionEvent ou DeviceOrientationEvent', /\bDevice(?:Motion|Orientation)Event\b/],
+  ['AudioContext (Web Audio)', /\b(?:webkit)?AudioContext\b/],
+  ['showDirectoryPicker', /\bshowDirectoryPicker\b/],
+  ['new Notification', /\bnew\s+Notification\b/],
+  ['paquet @capacitor ou @capgo', /['"`]@(?:capacitor|capgo)\//],
+];
+
+/** Texte d'un fichier sans ses commentaires : lignes de commentaire et de bloc retirées, fin de ligne « // … » coupée. */
+const withoutComments = (text: string): string =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+    .split('\n')
+    .map((line) => (/^\s*\/\//.test(line) ? '' : line.replace(/\s\/\/\s.*$/, '')))
+    .join('\n');
+
+/** Usages d'une API réservée à `platform/` dans les fichiers de `files`, en « fichier:ligne  nom ». */
+const platformUses = (files: string[]): string[] =>
+  files.flatMap((file) => {
+    const lines = withoutComments(fs.readFileSync(new URL(file, SRC), 'utf8')).split('\n');
+    return lines.flatMap((line, i) => PLATFORM_ONLY.filter(([, re]) => re.test(line)).map(([name]) => `${file}:${i + 1}  ${name}`));
+  });
+
+describe('règle 12 : les API de l’appareil seulement dans platform/', () => {
+  const files = sourceFiles(SRC);
+  const inPlatform = files.filter((file) => file.startsWith('platform/'));
+  const outside = files.filter((file) => !file.startsWith('platform/'));
+
+  it('lit bien platform/ (garde-fou du test lui-même)', () => {
+    const uses = platformUses(inPlatform);
+    expect(uses.some((u) => u.startsWith('platform/location.ts:') && u.includes('navigator.geolocation'))).toBe(true);
+    expect(uses.some((u) => u.startsWith('platform/storage.ts:') && u.endsWith('localStorage'))).toBe(true);
+    expect(uses.some((u) => u.includes('@capacitor'))).toBe(true);
+    expect(outside.length).toBeGreaterThan(200);
+  });
+
+  it('les commentaires ne comptent pas, le code si', () => {
+    const probe = '/** localStorage */\n// navigator.vibrate(1)\nconst a = 1; // new Notification\nconst b = window.localStorage;';
+    const lines = withoutComments(probe).split('\n');
+    expect(lines.map((line) => PLATFORM_ONLY.some(([, re]) => re.test(line)))).toEqual([false, false, false, true]);
+    expect(PLATFORM_ONLY.some(([, re]) => re.test("await import('@capgo/background-geolocation')"))).toBe(true);
+  });
+
+  it('aucun usage hors de platform/', () => {
+    expect(platformUses(outside)).toEqual([]);
+  });
+});

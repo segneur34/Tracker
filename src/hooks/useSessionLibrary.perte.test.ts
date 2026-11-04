@@ -4,6 +4,7 @@ import { bundleSessionGpx } from '../library/sessionBundle';
 import type { MemoryFolder } from '../platform/memoryFolder';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
+import { gpxAt, settle, tick, trackTestTimers, underFakeClock } from '../test/library.fixture';
 import { createFakeFolder } from '../test/memoryFolder.fixture';
 
 /**
@@ -12,12 +13,6 @@ import { createFakeFolder } from '../test/memoryFolder.fixture';
  * fiche illisible sur le disque, cache d'une autre liste de champs, fiche d'une version plus
  * récente importée ou recopiée, relecture en échec dite au compte rendu.
  */
-
-const gpxAt = (minute: number): string =>
-  '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>'
-  + [0, 10, 20].map((s, i) =>
-    `<trkpt lat="${43.6 + i * 0.0003}" lon="3.8"><time>2026-10-27T10:${String(minute).padStart(2, '0')}:${String(s).padStart(2, '0')}Z</time></trkpt>`).join('')
-  + '</trkseg></trk></gpx>';
 
 const startOf = (minute: number): number => Date.parse(`2026-10-27T10:${String(minute).padStart(2, '0')}:00Z`);
 
@@ -107,53 +102,55 @@ let opened: 'folder' | 'browser' | 'none' | 'permission' = 'folder';
 let chosen: MemoryFolder | null = null;
 let reconnected: MemoryFolder | null = null;
 
-// Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
-vi.mock('../core/gpxParser', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../core/gpxParser')>()),
-  parseGpx: (text: string) => {
-    if (!text.includes('<gpx')) throw new Error('GPX illisible');
-    return {
-      rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
-        .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
-      trackType: 'running',
-      hasDeviceSpeed: false,
-    };
-  },
-}));
-
-vi.mock('../platform/memoryFolder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
-  openMemoryFolder: async () => (
-    opened === 'folder' ? { state: 'ready', folder: fakeFolder }
-      : opened === 'browser' ? { state: 'ready', folder: browserFolder }
-        : opened === 'permission' ? { state: 'needs-permission', label: 'Tracker' }
-          : { state: 'unavailable', reason: 'aucun dossier' }
-  ),
-  chooseMemoryFolder: async () => chosen,
-  reconnectMemoryFolder: async () => reconnected,
-  forgetChosenFolder: async () => undefined,
-  pendingFolder: () => fakePending,
-}));
+/** Modules simulés, refaits après chaque `vi.resetModules()` : un `vi.mock` posé une fois survivrait à `resetModules`. */
+const mockPlatform = (): void => {
+  // Pas de `DOMParser` dans l'environnement node : les points des GPX de ce test, lus par expression régulière.
+  vi.doMock('../core/gpxParser', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../core/gpxParser')>()),
+    parseGpx: (text: string) => {
+      if (!text.includes('<gpx')) throw new Error('GPX illisible');
+      return {
+        rawPoints: [...text.matchAll(/<trkpt lat="([\d.]+)" lon="([\d.]+)"><time>([^<]+)<\/time>/g)]
+          .map((m) => ({ lat: Number(m[1]), lon: Number(m[2]), time: m[3] })),
+        trackType: 'running',
+        hasDeviceSpeed: false,
+      };
+    },
+  }));
+  vi.doMock('../platform/memoryFolder', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../platform/memoryFolder')>()),
+    openMemoryFolder: async () => (
+      opened === 'folder' ? { state: 'ready', folder: fakeFolder }
+        : opened === 'browser' ? { state: 'ready', folder: browserFolder }
+          : opened === 'permission' ? { state: 'needs-permission', label: 'Tracker' }
+            : { state: 'unavailable', reason: 'aucun dossier' }
+    ),
+    chooseMemoryFolder: async () => chosen,
+    reconnectMemoryFolder: async () => reconnected,
+    forgetChosenFolder: async () => undefined,
+    pendingFolder: () => fakePending,
+  }));
+};
 
 type Library = typeof import('./useSessionLibrary');
 
+/** Aucune minuterie d'un test ne sonne pendant le suivant (`trackTestTimers`). */
+let stopTestTimers: () => void = () => undefined;
+beforeEach(() => {
+  stopTestTimers = trackTestTimers();
+});
+afterEach(() => stopTestTimers());
+
 const openFresh = async (): Promise<Library> => {
   vi.resetModules();
+  mockPlatform();
   const library = await import('./useSessionLibrary');
   await library.openLibrary();
   return library;
 };
 
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-
-/** Attend la fin du balayage de fond lancé à l'ouverture. */
-const settle = async (library: Library): Promise<void> => {
-  for (let i = 0; i < 200 && library.readLibraryState().scanning !== null; i++) await tick();
-  await tick();
-};
-
-/** Écritures différées des fiches (800 ms) passées. */
-const afterWrites = (): Promise<void> => new Promise((r) => setTimeout(r, 900));
+/** Lance `action` puis passe les écritures différées des fiches (800 ms), sous horloge simulée. */
+const afterWrites = (action?: () => unknown): Promise<void> => underFakeClock(900, action);
 
 const recordOf = (store: Map<string, string>, gpx: string): Record<string, unknown> =>
   JSON.parse(store.get(`sessions/${gpx.replace(/\.gpx$/, '.json')}`)!);
@@ -267,10 +264,12 @@ describe('application tuée entre le GPX et sa fiche (3)', () => {
     await settle(library);
     expect(library.librarySession('sortie.gpx')?.record.activityId).toBeNull();
 
-    const saved = await library.saveRecordedSession(gpxAt(0), 'running', 'a-marche', INTERVALS, null, MARKS, true, TEST);
-    expect(saved.location).toBe('déjà dans la mémoire');
-    expectRecordingFields(library.librarySession('sortie.gpx')?.record as unknown as Record<string, unknown>);
-    await afterWrites();
+    let location = '';
+    await afterWrites(async () => {
+      location = (await library.saveRecordedSession(gpxAt(0), 'running', 'a-marche', INTERVALS, null, MARKS, true, TEST)).location;
+      expectRecordingFields(library.librarySession('sortie.gpx')?.record as unknown as Record<string, unknown>);
+    });
+    expect(location).toBe('déjà dans la mémoire');
     expectRecordingFields(recordOf(files, 'sortie.gpx'));
     expect([...files.keys()].filter((path) => path.endsWith('.gpx'))).toEqual(['sessions/sortie.gpx']);
   });
@@ -383,8 +382,7 @@ describe('cache des fiches sous une autre liste de champs (5a)', () => {
     files.set('sessions/sortie.gpx', gpxAt(0));
     const first = await openFresh();
     await settle(first);
-    first.updateSessionRecord('sortie.gpx', { marks: [{ timeMs: startOf(0) + 10_000, lat: 43.6, lon: 3.8, label: 'Bouée' }] });
-    await afterWrites();
+    await afterWrites(() => first.updateSessionRecord('sortie.gpx', { marks: [{ timeMs: startOf(0) + 10_000, lat: 43.6, lon: 3.8, label: 'Bouée' }] }));
     await first.refreshLibrary();
     // Cache d'avant l'empreinte, d'une liste où les repères n'étaient pas légers : sa fiche n'a pas de repères.
     const cache = JSON.parse(stored.get(CACHE_KEY)!);
@@ -398,8 +396,7 @@ describe('cache des fiches sous une autre liste de champs (5a)', () => {
     const session = library.librarySession('sortie.gpx');
     expect(session?.partial).toBeFalsy();
     expect(session?.record.marks).toHaveLength(1);
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
     expect(recordOf(files, 'sortie.gpx').marks).toHaveLength(1);
     expect(JSON.parse(stored.get(CACHE_KEY)!).fields).toBeDefined();
   });
@@ -411,8 +408,7 @@ describe('fiche dont la lecture lève (4)', () => {
     files.set('sessions/b.gpx', gpxAt(10));
     const first = await openFresh();
     await settle(first);
-    first.updateSessionRecord('b.gpx', { name: 'Soir' });
-    await afterWrites();
+    await afterWrites(() => first.updateSessionRecord('b.gpx', { name: 'Soir' }));
     const bRecord = files.get('sessions/b.json');
     stored.clear();
     readRefused.add('sessions/b.json');
@@ -440,8 +436,7 @@ describe("fiche dont l'écriture a échoué (2)", () => {
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
     expect(library.readLibraryState().error).toContain('non enregistrée');
 
     await library.refreshLibrary();
@@ -462,8 +457,7 @@ describe("fiche dont l'écriture a échoué (2)", () => {
     const library = await openFresh();
     await settle(library);
     expect(files.has('sessions/sortie.json')).toBe(false);
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
 
     await library.refreshLibrary();
     expect(library.librarySession('sortie.gpx')?.record.name).toBe('Matin');
@@ -478,16 +472,14 @@ describe("fiche dont l'écriture a échoué (2)", () => {
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
     refused.clear();
     // L'application passe en arrière-plan.
     const listeners: (() => void)[] = [];
     vi.stubGlobal('document', { addEventListener: (_: string, listener: () => void) => listeners.push(listener), visibilityState: 'hidden' });
     vi.stubGlobal('window', { addEventListener: () => undefined });
     library.startLibraryUi(() => false);
-    listeners.forEach((listener) => listener());
-    await afterWrites();
+    await afterWrites(() => listeners.forEach((listener) => listener()));
     expect(recordOf(files, 'sortie.gpx').name).toBe('Matin');
   });
 });
@@ -499,12 +491,10 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin', activityId: 'a-marche' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin', activityId: 'a-marche' }));
 
     chosen = otherFolder;
-    await library.chooseFolder();
-    await afterWrites();
+    await afterWrites(() => library.chooseFolder());
     const copy = library.librarySession('copie.gpx');
     expect(copy?.record.name).toBe('Matin');
     expect(copy?.record.activityId).toBe('a-marche');
@@ -518,8 +508,7 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
 
     chosen = otherFolder;
     await library.chooseFolder();
@@ -531,8 +520,7 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
 
     // Accès retiré par Android : la mémoire passe à « needs-permission », la liste est vidée.
     opened = 'permission';
@@ -542,8 +530,7 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     // « Choisir à nouveau le dossier » : le même dossier, désigné de nouveau.
     refused.clear();
     reconnected = memoryFolder(files, 'Tracker');
-    await library.reconnectFolder();
-    await afterWrites();
+    await afterWrites(() => library.reconnectFolder());
     expect(library.librarySession('sortie.gpx')?.record.name).toBe('Matin');
     expect(recordOf(files, 'sortie.gpx').name).toBe('Matin');
   });
@@ -554,12 +541,10 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     const library = await openFresh();
     await settle(library);
     refused.add('sessions/sortie.json');
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
 
     opened = 'browser';
-    await library.switchToBrowserMemory();
-    await afterWrites();
+    await afterWrites(() => library.switchToBrowserMemory());
     expect(library.librarySession('copie.gpx')?.record.name).toBe('Matin');
     expect(recordOf(browserFiles, 'copie.gpx').name).toBe('Matin');
   });
@@ -572,15 +557,15 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
     refused.add('sessions/sortie.json');
     let release: () => void = () => undefined;
     writeGate = new Promise((resolve) => { release = resolve; });
-    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
     // L'écriture différée part, et attend le dossier.
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
 
     chosen = otherFolder;
-    await library.chooseFolder();
-    release();
-    writeGate = null;
-    await afterWrites();
+    await afterWrites(async () => {
+      await library.chooseFolder();
+      release();
+      writeGate = null;
+    });
     expect(library.readLibraryState().error).toBeNull();
     expect(library.librarySession('sortie.gpx')?.record.name).toBe('Matin');
     expect(recordOf(otherFiles, 'sortie.gpx').name).toBe('Matin');
@@ -715,8 +700,7 @@ describe('cache des fiches d\'une autre version du lecteur (lot 148, C5-7)', () 
     files.set('sessions/sortie.gpx', gpxAt(0));
     const first = await openFresh();
     await settle(first);
-    first.updateSessionRecord('sortie.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => first.updateSessionRecord('sortie.gpx', { name: 'Matin' }));
     await first.refreshLibrary();
     const cache = JSON.parse(stored.get(CACHE_KEY)!);
     expect(cache.reader).toBe(RECORD_READER_VERSION);
@@ -791,8 +775,7 @@ describe('marqueur d\'une version plus récente (lot 148, C5-9)', () => {
     const library = await openFresh();
     await settle(library);
 
-    library.updateSessionRecord('seul.gpx', { name: 'Matin' });
-    await afterWrites();
+    await afterWrites(() => library.updateSessionRecord('seul.gpx', { name: 'Matin' }));
     await library.removeSession('seul.gpx');
     expect(library.librarySession('seul.gpx')).toBeDefined();
     expect(library.readLibraryState().error).toContain('version plus récente');

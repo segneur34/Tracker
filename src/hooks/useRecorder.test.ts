@@ -344,6 +344,17 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     expect(recorder.getRecorderState().pending).not.toBeNull();
   });
 
+  it('« Arrêter » pendant le démarrage : attend la fin du démarrage, puis arrête ; la source est arrêtée une fois', async () => {
+    const source = fakeSource();
+    const start = recorder.startRecording(activity, source);
+    const stop = recorder.stopRecording();
+    await Promise.all([start, stop]);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(source.starts).toBe(1);
+    expect(source.stops).toBe(1);
+    expect(source.active).toBe(false);
+  });
+
   it("une pause demandée pendant l'arrêt est ignorée", async () => {
     const source = fakeSource();
     await recorder.startRecording(activity, source);
@@ -781,5 +792,39 @@ describe('capture à « Analyser » (lot 148, T2-1)', () => {
     expect(sensors.removed).toEqual([capture.path]);
     expect(recorder.getRecorderState().motionUnreadable).toBe(false);
     expect(recorder.getRecorderState().error).toBeNull();
+  });
+});
+
+describe('aller-retour du journal (audit du 03/11, C4)', () => {
+  it("le GPX refait depuis le journal est celui de l'arrêt, à l'octet : pauses automatique et manuelle, note, activité changée", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(baseActivity('wingfoil'), source);
+    for (let s = 0; s < 120; s++) source.emit(s, 7);
+    // Immobile plus longtemps que le délai de la pause automatique, puis reprise.
+    for (let s = 120; s < 200; s++) source.emit(s, 0);
+    for (let s = 200; s < 260; s++) source.emit(s, 6);
+    recorder.addRecordingMark();
+    // Pause manuelle : positions reçues pour la carte, jamais gardées.
+    await recorder.pauseRecording();
+    for (let s = 260; s < 290; s++) source.emit(s, 3);
+    await recorder.resumeRecording();
+    // D'une famille à l'autre : voile, puis surf.
+    recorder.changeRecordingActivity(baseActivity('surf'));
+    for (let s = 290; s < 340; s++) source.emit(s, 4);
+    await recorder.stopRecording();
+    const fromMemory = recorder.getRecorderState().pending!;
+    expect(fromMemory.content).toContain('<type>surf</type>');
+    expect((fromMemory.content.match(/<trkseg>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    const kept = journal.text;
+    expect(kept).not.toBeNull();
+
+    // Coupure : la session est jetée (journal effacé), le journal remis tel quel, puis repris au lancement.
+    await recorder.discardPendingSession();
+    journal.text = kept;
+    await recorder.recoverInterruptedRecording();
+    const fromJournal = recorder.getRecorderState().pending!;
+    expect(fromJournal.recovered).toBe(true);
+    expect(fromJournal.pointCount).toBe(fromMemory.pointCount);
+    expect(fromJournal.content).toBe(fromMemory.content);
   });
 });

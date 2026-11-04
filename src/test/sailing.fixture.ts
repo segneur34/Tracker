@@ -2,7 +2,7 @@ import { computeKinematics } from '../core/kinematics';
 import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '../core/sessionSpeed';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { getSportProfile } from '../core/sportProfiles';
-import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
+import type { CumulativeTrack, RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { knotsToMs, msToKnots } from '../core/units';
 import { angleDiff } from '../core/angles';
 import { trackToPointData, type PointData } from '../sailing/pointData';
@@ -19,6 +19,7 @@ import { resolveSailingThresholds, sessionManeuverThresholds } from '../sailing/
 import { buildSailingSessionStats, computeSailingTops } from '../sailing/sailingStats';
 import type { SessionStats } from '../sailing/types';
 import { M_PER_DEG_LAT, mPerDegLon } from './geo.fixture';
+import { GPX_EDITORS, corpusSegmentsOf, type CorpusMeta, type GpxEditor } from './gpx/corpus';
 
 /**
  * Sessions de voile synthétiques réalistes, passées par la chaîne réelle de
@@ -95,6 +96,137 @@ export const upDownLegs = (count: number, legS = 90): Leg[] => {
   for (let i = 0; i < count; i++) legs.push({ twa: (i % 2 === 0 ? side : -side) * 135, durationS: legS });
   return legs;
 };
+
+// ---------------------------------------------------------------------------
+// Sessions par bords en `PointData` (cap et vitesse imposés), de `maneuvers.test.ts`
+// ---------------------------------------------------------------------------
+
+/** Départ des traces de `buildLegSession` (et des `buildTrack` de `maneuvers.test.ts`). */
+export const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
+
+/**
+ * La même polaire à l'échelle d'un support lent : 1,2 nœud dans le cône,
+ * 4,8 au près, 7,2 au largue, 6 au portant, 4 au vent arrière. Sous le seuil
+ * de 5 nœuds du wingfoil, une telle session est presque invisible à la
+ * polaire, et tous ses empannages passent pour ratés.
+ */
+export const slowPolar = (twa: number): number => wingPolar(twa) / 2.5;
+
+/** Vitesse de la polaire du wingfoil selon le cap, pour un vent fixe ou variable dans le temps. */
+export const polarSpeed = (windDir: number | ((t: number) => number)) => (t: number, bearing: number): number => {
+  const wind = typeof windDir === 'function' ? windDir(t) : windDir;
+  return wingPolar(Math.abs(angleDiff(bearing, wind)));
+};
+
+/**
+ * Session réaliste par bords : chaque bord a un angle au vent signé (positif à
+ * tribord du vent, négatif à bâbord) et une durée. Les transitions durent
+ * `transitionS` et le cap y passe par l'arc court, donc par le vent pour un
+ * virement et par le vent arrière pour un empannage. La vitesse suit la
+ * polaire, ce qui fait chuter le virement à 3 nœuds et non l'empannage.
+ * Le cap et la vitesse sont imposés directement (pas de `computeKinematics`).
+ */
+export const buildLegSession = (
+  legs: Leg[],
+  windAt: (t: number) => number,
+  options: {
+    transitionS?: number;
+    stepS?: number;
+    currentKn?: number;
+    currentDir?: number;
+    /** Polaire du support, pour fabriquer une session plus lente qu'un wingfoil. */
+    polar?: (twa: number) => number;
+    /**
+     * Intègre la position à partir du cap et de la vitesse, au lieu de la
+     * faire avancer le long d'une ligne arbitraire. Indispensable dès qu'un
+     * calcul lit les positions, comme la distance d'une manœuvre. Laissé
+     * optionnel pour ne pas déplacer les distances des tests écrits avant lui.
+     */
+    integratePosition?: boolean;
+  } = {}
+): PointData[] => {
+  const transitionS = options.transitionS ?? 6;
+  const stepS = options.stepS ?? 1;
+  const polar = options.polar ?? wingPolar;
+  let lat = 43.6;
+  let lon = 3.8;
+
+  // Angle au vent en fonction du temps, avec transitions linéaires.
+  const twaAt = (t: number): number => {
+    let elapsed = 0;
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const legEnd = elapsed + leg.durationS;
+      if (t < legEnd - transitionS || i === legs.length - 1) return leg.twa;
+      if (t < legEnd) {
+        const next = legs[i + 1].twa;
+        const ratio = (t - (legEnd - transitionS)) / transitionS;
+        return leg.twa + angleDiff(next, leg.twa) * ratio;
+      }
+      elapsed = legEnd;
+    }
+    return legs[legs.length - 1].twa;
+  };
+
+  const totalS = legs.reduce((a, l) => a + l.durationS, 0);
+  const points: PointData[] = [];
+
+  for (let t = 0; t <= totalS; t += stepS) {
+    const wind = windAt(t);
+    const twa = twaAt(t);
+    const heading = ((wind + twa) % 360 + 360) % 360;
+    const boatSpeed = polar(Math.abs(angleDiff(heading, wind)));
+
+    // Le courant s'ajoute vectoriellement : cap et vitesse sur le fond.
+    let bearing = heading;
+    let speed = boatSpeed;
+    if (options.currentKn) {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const vx = boatSpeed * Math.sin(toRad(heading)) + options.currentKn * Math.sin(toRad(options.currentDir ?? 90));
+      const vy = boatSpeed * Math.cos(toRad(heading)) + options.currentKn * Math.cos(toRad(options.currentDir ?? 90));
+      bearing = ((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360;
+      speed = Math.sqrt(vx * vx + vy * vy);
+    }
+
+    const timeMs = TRACK_START_MS + Math.round(t * 1000);
+    points.push({
+      lat: options.integratePosition ? lat : 43.6,
+      lon: options.integratePosition ? lon : 3.8 + t * 0.0001,
+      timeMs,
+      smoothedSpeed: speed,
+      bearing,
+    });
+
+    if (options.integratePosition) {
+      const meters = speed * 0.514444 * stepS;
+      const rad = (bearing * Math.PI) / 180;
+      lat += (meters * Math.cos(rad)) / M_PER_DEG_LAT;
+      lon += (meters * Math.sin(rad)) / mPerDegLon(lat);
+    }
+  }
+  return points;
+};
+
+/**
+ * `count` bords de près alternés (count - 1 virements), puis une abattée sur
+ * le même bord, un empannage, et une remontée sur le même bord. Aucun virage
+ * de 180° : chaque transition a un sens sans ambiguïté.
+ */
+export const upwindDownwindLegs = (count: number, legDurationS = 180): Leg[] => {
+  const legs: Leg[] = [];
+  for (let i = 0; i < count; i++) {
+    legs.push({ twa: i % 2 === 0 ? 45 : -45, durationS: legDurationS });
+  }
+  const side = legs[legs.length - 1].twa > 0 ? 1 : -1;
+  legs.push({ twa: side * 135, durationS: legDurationS });
+  legs.push({ twa: -side * 135, durationS: legDurationS });
+  legs.push({ twa: -side * 45, durationS: legDurationS });
+  return legs;
+};
+
+// ---------------------------------------------------------------------------
+// Sessions intégrées à 50 Hz, passées par la chaîne réelle
+// ---------------------------------------------------------------------------
 
 /**
  * Session synthétique : le cap suit les bords (transition linéaire par l'arc
@@ -200,15 +332,35 @@ export const komootRaw = (windDeg: number, legs: Leg[], silenceS: number): RawTr
   return out;
 };
 
-/** Fichier GPX d'une trace brute (position, heure, vitesse Doppler), tel que `parseGpx` le lit. */
-export const rawToGpx = (raw: RawTrackPoint[]): string => {
-  const points = raw.map((p) => {
-    const time = typeof p.time === 'string' ? p.time : p.time.toISOString();
-    const speed = p.speedMs === undefined ? '' : `<extensions><speed>${p.speedMs}</speed></extensions>`;
-    return `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${time}</time>${speed}</trkpt>`;
-  });
-  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>${points.join('')}</trkseg></trk></gpx>`;
+/**
+ * Fichier GPX d'une trace brute au format d'un éditeur du corpus (`test/gpx/corpus.ts`) : `simple` (position, heure,
+ * vitesse Doppler), `garmin-connect`, `strava`, `waterspeed`… ; un `<trkseg>` par `segmentStart`. Ce que le format
+ * n'écrit pas (la vitesse chez Strava) est perdu, comme dans un vrai export.
+ */
+export const gpxOf = (raw: RawTrackPoint[], editor: GpxEditor = 'simple', meta?: CorpusMeta): string =>
+  GPX_EDITORS[editor](corpusSegmentsOf(raw), meta);
+
+/** Fichier GPX d'une trace brute (position, heure, vitesse Doppler), tel que `parseGpx` le lit : `gpxOf` au format simple. */
+export const rawToGpx = (raw: RawTrackPoint[]): string => gpxOf(raw);
+
+/** Trace d'une session synthétique passée par la cinématique de l'application, accordée à son allure comme dans les hooks. */
+export interface SailTrack {
+  track: TrackPoint[];
+  cumulative: CumulativeTrack;
+  /** Allure de la session (`core/sessionSpeed.ts`), en m/s. */
+  referenceSpeedMs: number;
+}
+
+/** Cinématique d'une trace brute de voile (`computeKinematics` accordé à l'allure, règle 4), et son cumul. */
+export const sailTrackOf = (raw: RawTrackPoint[], sport: SportType = 'wingfoil'): SailTrack => {
+  const profile = getSportProfile(sport);
+  const referenceMs = referenceSpeedMs(raw);
+  const track = computeKinematics(raw, kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs }));
+  return { track, cumulative: buildCumulativeTrack(track), referenceSpeedMs: referenceMs };
 };
+
+/** La même, pour une session décrite par ses bords (`sailRaw`). */
+export const sailTrack = (spec: SailSpec, sport: SportType = 'wingfoil'): SailTrack => sailTrackOf(sailRaw(spec), sport);
 
 // ---------------------------------------------------------------------------
 // Chaîne de `useSailingSession`, hors React
@@ -240,8 +392,7 @@ export interface AnalyzeOptions {
 export const analyzeSailing = (raw: RawTrackPoint[], options: AnalyzeOptions = {}): SailingAnalysis => {
   const sport = options.sport ?? 'wingfoil';
   const profile = getSportProfile(sport);
-  const referenceMs = referenceSpeedMs(raw);
-  const track = computeKinematics(raw, kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs }));
+  const { track, cumulative, referenceSpeedMs: referenceMs } = sailTrackOf(raw, sport);
   const points = trackToPointData(track);
   const referenceKn = msToKnots(referenceMs);
   const thresholds = resolveSailingThresholds(profile, null, options.thresholdKn ?? null, referenceKn);
@@ -273,7 +424,6 @@ export const analyzeSailing = (raw: RawTrackPoint[], options: AnalyzeOptions = {
     );
     maneuvers = classifyManeuvers(detection, timeline, classification);
   }
-  const cumulative = buildCumulativeTrack(track);
   const tops = computeSailingTops(track, cumulative);
   const stats = buildSailingSessionStats(track, { sport, activeThresholdKn: activeKn, cumulative, tops }) ?? ({ tops } as SessionStats);
   return { track, points, referenceKn, activeKn, flightKn, minEntrySpeedKn: mt.minEntrySpeedKn, polarMinSpeedKn: mt.polarMinSpeedKn, windEstimate, currentWind, maneuvers, stats };
