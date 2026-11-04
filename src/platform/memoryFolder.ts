@@ -578,6 +578,12 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
 // --- Téléphone : sessions en attente d'un dossier ---
 
 /**
+ * Au-delà, `readPrivateBytes` lève `TOO_LARGE` sans lire : le fichier passerait d'un bloc en base64
+ * par le pont, au risque de faire tomber l'application. Environ 10 h de capture (3 Mo par heure).
+ */
+export const MAX_PRIVATE_READ_BYTES = 30 * 1024 * 1024;
+
+/**
  * Fichier binaire du dossier privé de l'application (`Directory.Data`), par
  * son chemin dans ce dossier ; `null` s'il n'existe pas, et seulement sur une
  * preuve de son absence (`isMissingPrivateFile`, lecture ou `stat`). Sinon, fichier
@@ -587,6 +593,10 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
  */
 export const readPrivateBytes = async (path: string): Promise<Uint8Array | null> => {
   const { Filesystem, Directory } = await filesystem();
+  // Taille inconnue : la lecture tranche, comme sans ce contrôle. Hors du `try` : ce refus n'est pas une absence.
+  if (((await privateFileSize(path).catch(() => null)) ?? 0) > MAX_PRIVATE_READ_BYTES) {
+    throw Object.assign(new Error('Fichier trop gros pour être lu en une fois.'), { code: 'TOO_LARGE' });
+  }
   try {
     const { data } = await Filesystem.readFile({ path, directory: Directory.Data });
     return typeof data === 'string' ? base64ToBytes(data) : new Uint8Array(await data.arrayBuffer());

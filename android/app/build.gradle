@@ -14,7 +14,9 @@ def appVersionCode = versionParts[0] * 1000000 + versionParts[1] * 1000 + versio
 // Clé de signature, hors du dépôt : android/keystore.properties (ignoré par git)
 // désigne le fichier .jks et son mot de passe. Debug et release sont signés par
 // la même clé, pour qu'une version s'installe par-dessus l'autre sans perdre
-// les données. Sans ce fichier, Gradle retombe sur la clé de debug du PC.
+// les données. Sans ce fichier, le debug retombe sur la clé de debug du PC et
+// le release est refusé (`requireReleaseKey`, plus bas) : ni `assembleRelease`
+// (l'APK) ni `bundleRelease` (l'AAB qu'exige Google Play) ne sortent sans clé.
 def keystorePropertiesFile = rootProject.file('keystore.properties')
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
@@ -62,6 +64,18 @@ android {
         variant.outputs.all { outputFileName = "Tracker-${appVersion}${variant.buildType.name == 'release' ? '' : '-' + variant.buildType.name}.apk" }
     }
 }
+
+// Refus d'un release sans clé, à l'exécution seulement : assembleDebug et la
+// synchronisation d'Android Studio ne lancent pas preReleaseBuild, donc pas ceci.
+def requireReleaseKey = tasks.register('requireReleaseKey') {
+    doLast {
+        if (!keystorePropertiesFile.exists()) {
+            throw new GradleException("Release refusé : ${keystorePropertiesFile} est absent, sans clé de signature il ne serait pas installable (signature et version : docs/ETAT_DU_PROJET.md, §12). assembleDebug reste possible.")
+        }
+    }
+}
+// Le plugin Android de Gradle crée preReleaseBuild après la lecture de ce fichier : `matching`, pas `named`.
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach { task -> task.dependsOn requireReleaseKey }
 
 repositories {
     flatDir{

@@ -3,8 +3,8 @@ package io.github.segneur.tracker;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.os.PowerManager;
 import android.os.SystemClock;
+import android.util.Log;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -31,22 +31,24 @@ import org.json.JSONObject;
  * échoit, le son « GPS perdu » est joué, les bips d'approche se taisent, puis
  * l'événement `gpsLost` prévient la page, qui pose l'alerte et récrit la
  * notification. Le minuteur est sur un second Handler du même fil, que
- * `stop()` (fin du guidage des balises) ne vide pas, et un verrou de veille
- * partiel tient le processeur éveillé jusqu'à l'échéance, GPS muet compris.
+ * `stop()` (fin du guidage des balises) ne vide pas. Il n'a pas de verrou de
+ * veille à lui : armé après une première position, désarmé en pause manuelle et
+ * à l'arrêt, il ne court que service GPS lancé, et le verrou partiel de ce
+ * service, sans échéance et tenu GPS muet compris, garde le processeur éveillé
+ * (src/platform/nativeConstants.test.ts surveille ce point du greffon).
  */
 @CapacitorPlugin(name = "Beeper")
 public class BeeperPlugin extends Plugin {
 
+    private static final String TAG = "TrackerBeeper";
+
     /** Pause entre les trois bips de fin (comme beeper.ts), en millisecondes. */
     private static final int FINISH_GAP_MS = 250;
-    /** Marge du verrou de veille au-delà de l'échéance de la veille du GPS, en millisecondes : le temps de jouer le son. */
-    private static final long GPS_WAKE_MARGIN_MS = 10_000;
 
     private HandlerThread thread;
     private Handler handler;
     /** Second Handler du fil des bips, pour la veille du GPS : `stop()` ne vide que le premier. */
     private Handler gpsHandler;
-    private PowerManager.WakeLock gpsWakeLock;
     private TonePlayer tones;
 
     // État du rythme, lu et écrit sur le fil des bips seulement.
@@ -72,7 +74,6 @@ public class BeeperPlugin extends Plugin {
             silence();
             tones().playGpsLost();
             notifyListeners("gpsLost", new JSObject());
-            releaseGpsWakeLock();
         }
     };
 
@@ -88,20 +89,6 @@ public class BeeperPlugin extends Plugin {
     private synchronized Handler gpsHandler() {
         if (gpsHandler == null) gpsHandler = new Handler(handler().getLooper());
         return gpsHandler;
-    }
-
-    private synchronized void holdGpsWakeLock(long timeoutMs) {
-        if (gpsWakeLock == null) {
-            PowerManager power = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
-            if (power == null) return;
-            gpsWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Tracker:veille-gps");
-            gpsWakeLock.setReferenceCounted(false);
-        }
-        gpsWakeLock.acquire(timeoutMs);
-    }
-
-    private synchronized void releaseGpsWakeLock() {
-        if (gpsWakeLock != null && gpsWakeLock.isHeld()) gpsWakeLock.release();
     }
 
     private TonePlayer tones() {
@@ -187,7 +174,8 @@ public class BeeperPlugin extends Plugin {
             }
             call.resolve();
         } catch (JSONException e) {
-            call.reject("Motif illisible : " + e.getMessage());
+            Log.w(TAG, "Motif de sons illisible", e);
+            call.reject("Motif de sons illisible.");
         }
     }
 
@@ -221,7 +209,6 @@ public class BeeperPlugin extends Plugin {
         long delayMs = Math.max(1000, call.getInt("delayMs", 60_000));
         Handler g = gpsHandler();
         g.removeCallbacks(gpsLost);
-        holdGpsWakeLock(delayMs + GPS_WAKE_MARGIN_MS);
         g.postDelayed(gpsLost, delayMs);
         call.resolve();
     }
@@ -231,7 +218,6 @@ public class BeeperPlugin extends Plugin {
     public void unwatchGps(PluginCall call) {
         Handler g = gpsHandler;
         if (g != null) g.removeCallbacks(gpsLost);
-        releaseGpsWakeLock();
         call.resolve();
     }
 
@@ -286,7 +272,8 @@ public class BeeperPlugin extends Plugin {
             ContextCompat.startForegroundService(getContext(), intent);
             call.resolve();
         } catch (JSONException | RuntimeException e) {
-            call.reject("Compteur impossible à lancer : " + e.getMessage());
+            Log.w(TAG, "Compteur impossible à lancer", e);
+            call.reject("Compteur impossible à lancer.");
         }
     }
 
@@ -304,7 +291,6 @@ public class BeeperPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         if (gpsHandler != null) gpsHandler.removeCallbacksAndMessages(null);
-        releaseGpsWakeLock();
         Handler h = handler;
         if (h != null) {
             h.removeCallbacksAndMessages(null);

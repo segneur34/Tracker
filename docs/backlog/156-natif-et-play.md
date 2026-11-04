@@ -35,3 +35,16 @@ C'est la fonction première au téléphone, et ce que la revue Play et Android v
 - Reprise après chute du moteur : seule, sans rien demander, si le service GPS est encore vivant (même journal, segment neuf) ; appli tuée et rouverte moins de 10 min après la dernière ligne du journal : proposition « Continuer l'enregistrement » ; au-delà, comportement actuel.
 - Plafond de 30 Mo (orchestrateur) : GPX et fiches lus au lancement seulement, jamais les `.imu`, lus à la demande (plus gros fichiers réels : GPX 2,6 Mo, `.imu` 15,4 Mo).
 - Reporté en Plus tard : test JUnit de `.imu`, copie de la capture par flux.
+
+## Partie A, commit du 04/11
+
+- Retrait des verrous confirmé à la lecture de la source du greffon : son verrou est sans échéance et tenu tant que le service tourne, pause comprise, le minuteur « GPS perdu » n'est armé qu'après une position. Reste à prouver au téléphone en veille profonde (`dumpsys deviceidle force-idle`) et par l'essai 108. Limite : Play compte encore le verrou du greffon, le gain y reste partiel.
+- Cas mineur gardé : localisation coupée au départ, capture sans service ni verrou ; aucune position n'existe alors.
+- Java de tous les lots du paquet compilé par `assembleDebug` le 04/11.
+
+## Sonde du 04/11, sur le téléphone (0.4.62 plus l'écouteur seul, fausses positions injectées, retirées ensuite)
+
+- `bridge.reload()` depuis `onRenderProcessGone` remet bien la page, malgré ce qu'annonce la documentation d'Android : écran allumé en 0,2 s, écran éteint en moins d'une seconde, même processus.
+- Service GPS au premier plan et verrou survivent à la chute. 13 positions en 15 s reçues par `window.Capacitor.fromNative` dans la page rechargée, `save` et `success` vrais, même `callbackId` ; `stop` propre ensuite.
+- `onPageLoaded` peut arriver deux fois pour une seule recharge : à prendre en compte.
+- Un service lancé téléphone verrouillé reste « inactive » pour le GPS : à ne jamais relancer écran éteint, comme le plan le dit.

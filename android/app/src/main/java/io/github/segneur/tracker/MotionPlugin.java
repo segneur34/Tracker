@@ -8,8 +8,8 @@ import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.os.PowerManager;
 import android.os.SystemClock;
+import android.util.Log;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -29,13 +29,17 @@ import org.json.JSONObject;
  *
  * Tout se passe sur un fil à lui. Écran éteint, Android ne coupe ces capteurs
  * qu'aux applications sans service au premier plan : pendant l'enregistrement,
- * celui du GPS en tient lieu, comme pour les bips des balises. Un verrou
- * partiel garde en plus le processeur éveillé, pour que les mesures ne
- * débordent pas des tampons des capteurs. La capture suit la pause manuelle
- * (le GPS aussi s'arrête) ; un arrêt brutal ne perd que le dernier paquet.
+ * celui du GPS en tient lieu, comme pour les bips des balises, et son verrou
+ * partiel garde le processeur éveillé, pour que les mesures ne débordent pas
+ * des tampons des capteurs. La capture suit la pause manuelle (le GPS, lui,
+ * reste allumé) ; un arrêt brutal ne perd que le dernier paquet.
  */
 @CapacitorPlugin(name = "Motion")
 public class MotionPlugin extends Plugin implements SensorEventListener {
+
+    private static final String TAG = "TrackerMotion";
+    /** Ce que la page dit d'une écriture en échec ; la cause va au journal d'Android. */
+    private static final String WRITE_ERROR = "erreur du stockage du téléphone";
 
     /** Cadence demandée : 100 Hz. */
     private static final int SAMPLING_US = 10_000;
@@ -43,8 +47,6 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     private static final int MAX_LATENCY_US = 1_000_000;
     /** Écriture d'un paquet du fichier, en millisecondes. */
     private static final long FLUSH_MS = 1000;
-    /** Garde du verrou, au-delà de toute séance : il est rendu à l'arrêt. */
-    private static final long WAKE_TIMEOUT_MS = 8L * 3600 * 1000;
     static final String DIR = "capteurs";
 
     private static final int ACCEL = 0;
@@ -60,7 +62,6 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     private String relativePath;
     private long startNs;
     private boolean listening = false;
-    private PowerManager.WakeLock wakeLock;
     private long accelCount = 0;
     private long lastAccelNs = 0;
     private long firstNs = 0;
@@ -74,7 +75,7 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
             try {
                 writer.flushChunk();
             } catch (Exception e) {
-                writeError = e.getMessage();
+                noteWriteError(e);
             }
             handler.postDelayed(this, FLUSH_MS);
         }
@@ -157,12 +158,12 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
                 firstNs = 0;
                 longestGapNs = 0;
                 writeError = null;
-                acquireWakeLock();
                 listen();
                 handler.postDelayed(flush, FLUSH_MS);
             } catch (Exception e) {
+                Log.w(TAG, "Capture impossible à démarrer", e);
                 closeCapture();
-                call.reject("capture impossible : " + e.getMessage());
+                call.reject("fichier de mesures impossible à créer");
                 return;
             }
             JSObject ret = new JSObject();
@@ -179,9 +180,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
                 try {
                     writer.flushChunk();
                 } catch (Exception e) {
-                    writeError = e.getMessage();
+                    noteWriteError(e);
                 }
-                releaseWakeLock();
             }
             call.resolve();
         });
@@ -191,7 +191,6 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     public void resume(PluginCall call) {
         handler().post(() -> {
             if (writer != null && !listening) {
-                acquireWakeLock();
                 listen();
             }
             call.resolve();
@@ -288,25 +287,16 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
             try {
                 writer.close();
             } catch (Exception e) {
-                writeError = e.getMessage();
+                noteWriteError(e);
             }
             writer = null;
         }
-        releaseWakeLock();
     }
 
-    private void acquireWakeLock() {
-        if (wakeLock == null) {
-            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
-            if (pm == null) return;
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tracker:capteurs");
-            wakeLock.setReferenceCounted(false);
-        }
-        if (!wakeLock.isHeld()) wakeLock.acquire(WAKE_TIMEOUT_MS);
-    }
-
-    private void releaseWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+    /** Une écriture en échec : retenue pour la page ; au journal d'Android une fois seulement, un disque plein échouant à chaque paquet. */
+    private void noteWriteError(Exception e) {
+        if (writeError == null) Log.w(TAG, "Écriture du fichier des capteurs impossible", e);
+        writeError = WRITE_ERROR;
     }
 
     // --- En-tête ---
