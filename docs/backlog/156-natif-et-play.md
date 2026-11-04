@@ -87,9 +87,11 @@ C'est la fonction première au téléphone, et ce que la revue Play et Android v
 **Non joués :** scripts manuels `library`, `library2`, `library3`, `session-save-resume`, `planning`, faute de GPX fournis. Commentaire périmé vu : `RecordingNotificationPlugin.java:25-28` dit « service arrêté » en pause. `formatSpeed(null)` rend « - » et non « — » dans le direct.
 
 ## Passe `doc`, après validation seulement
-- DECISIONS §6 : moyenne active du direct, reprise seule, « Continuer » sous 10 min, verrous retirés, et le temps hors de l'appli non compté après « Continuer ». §8 : le seuil suit la session, fiche changée relue et fondue, plafond de 30 Mo, mémoire plus récente en lecture seule. §4 : vitesse max du surf partout celle des vagues.
-- `CLAUDE.md` règle 12 : `recovery.ts` (et `errorText.ts` s'il compte). INVENTAIRE : `resume.ts`, `recovery.ts`, `RecoveryPlugin.java`, `errorText.ts`, `loadedListStore.ts`, `useRetainedScroll.ts`, `recordMerge.ts`, `summaryGestures.ts`, `nativeConstants.test.ts`. ETAT §12 : `bundleRelease`, release refusée sans clé.
+- DECISIONS §6 : moyenne active du direct, reprise seule, « Continuer » sous 10 min, verrous retirés, et le temps hors de l'appli non compté après « Continuer ». §8 : plafond de 30 Mo.
+- `CLAUDE.md` règle 12 : `recovery.ts`. INVENTAIRE : `resume.ts`, `recovery.ts`, `RecoveryPlugin.java`, `nativeConstants.test.ts`. ETAT §12 : `bundleRelease`, release refusée sans clé.
 - LISEZMOI du banc, « Scripts à revoir » : `timer` (tuile « Muscu et timer » sous un ancien nom, deux échecs avant et après), `notification` et `chrono` (écarts de chronomètre), `partage` et `miseajour` (lecture trop tôt sous charge). Pièges : `passe.mjs --sans-cache -j 2` sous charge ; un agent en worktree part d'`origin/main` et n'écrit pas hors de lui (déjà dans `/chaine`).
 
 **Non joués, à savoir :** scripts manuels `library`, `library2`, `library3`, `session-save-resume`, `planning`, faute de GPX fournis. Commentaire périmé vu : `RecordingNotificationPlugin.java:25-28` dit « service arrêté » en pause. `formatSpeed(null)` rend « - » et non « — » dans le direct.
 - HISTORIQUE : le gel de la page cachée (minuteries, `MessageChannel`, `import()`), piège à retenir pour tout code qui doit vivre écran éteint ; CLAUDE.md règle 10 ou 12 si l'utilisateur le veut.
+
+**Sauvegarde du téléphone d'avant les essais (117 fichiers, 44 Mo) :** `~/.claude/plans/sauvegarde-telephone-0411`, à effacer une fois le paquet validé.
