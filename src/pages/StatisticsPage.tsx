@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import ChartFold from '../components/ChartFold';
 import { HelpText, HelpToggle } from '../components/Help';
@@ -532,6 +533,8 @@ function StatisticsPage() {
         </>)}
         {familyHidden && <p style={noteStyle}>Cette famille est cachée dans Réglages : elle n'apparaît ici que par son adresse.</p>}
       </div>
+
+      <MemoryStatus compact />
 
       {status === 'opening' ? (
         <p className="ui-hint">Lecture de la mémoire…</p>

@@ -287,7 +287,7 @@ if (curvePoint) {
   await curveMouse('mouseMoved');
   await wait(300);
   const curveRead = await evaluate(`document.getElementById('sailing-jump-curve')?.closest('.an-carte-panels > *')?.querySelector('[data-chart-readout]')?.textContent.trim()`);
-  check('courbe : lecture au-dessus, sans bulle', /^n° \d : [\d.—]+( m)? · n° \d : [\d.—]+( m)? · [\d.]+ s depuis le décollage$/.test(curveRead ?? '')
+  check('courbe : lecture au-dessus, sans bulle', /^n° \d : [\d,—]+( m)? · n° \d : [\d,—]+( m)? · [\d,]+ s depuis le décollage$/.test(curveRead ?? '')
     && await evaluate(`[...document.querySelectorAll('.recharts-tooltip-wrapper')].every((w) => w.textContent.trim() === '')`), curveRead);
   for (const n of [1, 2]) { await curveMouse('mousePressed', n); await curveMouse('mouseReleased', n); }
   await wait(600);

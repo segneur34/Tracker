@@ -1,3 +1,4 @@
+import { plural } from '../core/basics';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MemoryStatus from '../components/MemoryStatus';
@@ -30,7 +31,7 @@ const readSort = (): RouteSort => {
 };
 
 function RoutesPage() {
-  const { routes: allRoutes, error } = useRouteLibrary();
+  const { routes: allRoutes, loaded, error } = useRouteLibrary();
   const { activities, isShown } = useVisibility();
   const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   const [sort, setSortState] = useState<RouteSort>(readSort);
@@ -56,7 +57,7 @@ function RoutesPage() {
       <PageHeader
         title="Itinéraires planifiés"
         back={{ to: '/', label: 'Accueil' }}
-        subtitle={`${routes.length} itinéraire${routes.length > 1 ? 's' : ''}`} />
+        subtitle={loaded ? plural(routes.length, 'itinéraire') : undefined} />
 
       <MemoryStatus />
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}

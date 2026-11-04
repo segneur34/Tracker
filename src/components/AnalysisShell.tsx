@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import '../pages/analysisMobile.css';
 import type { ShareStat } from '../core/shareImage';
 import { shareableStats } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../core/parentPage';
+import { useScrollToTopOnMount } from '../hooks/useRetainedScroll';
 import type { useSessionDraft } from '../hooks/useSessionDraft';
 import AnalysisMap, { ANALYSIS_MAP_ANCHOR, type AnalysisMapProps } from './AnalysisMap';
 import CollapsibleSectionTabs from './CollapsibleSectionTabs';
@@ -71,7 +72,10 @@ const mapRow = ({ rowZIndex, ...props }: ShellMap) => (
 function AnalysisShell<K extends string>({
   title, family, backLabel, file, share, error, draft, loadError, alerts, empty, map, tabs,
 }: AnalysisShellProps<K>) {
-  const back = libraryPath(family);
+  // Le filtre d'activité de la bibliothèque d'où l'on vient (lot 158) est rendu au retour.
+  const [params] = useSearchParams();
+  const back = libraryPath(family, params.get('activite') ?? undefined);
+  useScrollToTopOnMount();
   return (
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">

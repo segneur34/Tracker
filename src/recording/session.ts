@@ -159,6 +159,12 @@ export interface RecordingStats {
   longestGapS: number;
   /** Précision de la dernière position, en mètres, si la source la donne. */
   lastAccuracyM: number | null;
+  /**
+   * Temps, en millisecondes de trace, passé en pause manuelle : rien n'y est
+   * compté (§6 des décisions). Absent comme nul ; la pause automatique n'y
+   * figure pas, elle reste comptée dans la durée.
+   */
+  manualPausedMs?: number;
 }
 
 export const EMPTY_RECORDING_STATS: RecordingStats = {
@@ -169,9 +175,13 @@ export const EMPTY_RECORDING_STATS: RecordingStats = {
   lastAccuracyM: null,
 };
 
-/** Durée couverte par les positions reçues, en millisecondes : le chrono de l'enregistrement. */
+/**
+ * Durée couverte par les positions reçues, en millisecondes : le chrono de
+ * l'enregistrement, pauses manuelles retranchées (durée figée pendant la
+ * pause, rien à rattraper à la reprise) et pauses automatiques comprises.
+ */
 export const recordingDurationMs = (stats: RecordingStats): number =>
-  stats.firstMs !== null && stats.lastMs !== null ? stats.lastMs - stats.firstMs : 0;
+  stats.firstMs !== null && stats.lastMs !== null ? Math.max(0, stats.lastMs - stats.firstMs - (stats.manualPausedMs ?? 0)) : 0;
 
 /**
  * Pause en cours, à l'horloge du téléphone : depuis quand, et l'instant où la
@@ -196,12 +206,29 @@ export const displayedDurationMs = (stats: RecordingStats, pause: PauseClock | n
 export const addFixToStats = (stats: RecordingStats, fix: Pick<LocationFix, 'timeMs' | 'accuracyM'>): RecordingStats => {
   const gapS = stats.lastMs === null ? 0 : (fix.timeMs - stats.lastMs) / 1000;
   return {
+    ...stats,
     pointCount: stats.pointCount + 1,
     firstMs: stats.firstMs ?? fix.timeMs,
     lastMs: fix.timeMs,
     longestGapS: Math.max(stats.longestGapS, gapS),
     lastAccuracyM: fix.accuracyM ?? null,
   };
+};
+
+/**
+ * Premier point gardé après une pause manuelle : comme `addFixToStats`, et
+ * l'écart avec le point d'avant n'est pas de la durée (`manualPausedMs`), de
+ * sorte que le chrono reprend là où il s'était figé. `autoPartMs` : la part de
+ * cet écart passée en pause automatique avant l'appui sur Pause (pause
+ * automatique devenue manuelle), qui reste comptée.
+ */
+export const addFixAfterManualPause = (
+  stats: RecordingStats,
+  fix: Pick<LocationFix, 'timeMs' | 'accuracyM'>,
+  autoPartMs = 0
+): RecordingStats => {
+  const gapMs = stats.lastMs === null ? 0 : fix.timeMs - stats.lastMs;
+  return { ...addFixToStats(stats, fix), manualPausedMs: (stats.manualPausedMs ?? 0) + Math.max(0, gapMs - Math.max(0, autoPartMs)) };
 };
 
 /**

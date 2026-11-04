@@ -1,4 +1,5 @@
-import { errorMessage, finiteOr } from '../core/basics';
+import { finiteOr } from '../core/basics';
+import { LOCATION_DENIED_TEXT, plainError } from './errorText';
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type { Location as PluginLocation } from '@capgo/background-geolocation';
 import { isNativeApp } from './runtime';
@@ -76,6 +77,17 @@ const LOCATION_RETRY_MS = 2_000;
 
 /** Refus du plugin quand la localisation du téléphone est coupée, l'autorisation étant donnée (« Location services disabled. »). */
 const isLocationDisabled = (error: { message?: string }): boolean => /disabled/i.test(error.message ?? '');
+
+/**
+ * Refus du plugin rendu en clair (lot 158) : `NOT_AUTHORIZED` (« User denied
+ * location permission ») dit où réactiver la localisation ; toute autre
+ * erreur passe par le traducteur, son texte brut n'allant qu'en console.
+ */
+export const locationErrorText = (error: { message?: string; code?: string }): string => {
+  if (error.code === 'NOT_AUTHORIZED' || /denied/i.test(error.message ?? '')) return LOCATION_DENIED_TEXT;
+  const err = Object.assign(new Error(error.message ?? ''), error.code ? { code: error.code } : {});
+  return plainError(err, 'Localisation indisponible.');
+};
 
 /** Rôle de qui tient le service GPS du téléphone. */
 type NativeRole = 'ponctuelle' | 'enregistrement';
@@ -158,7 +170,7 @@ const startNative = async (
             toldDisabled = true;
             retry = setTimeout(() => {
               retry = null;
-              if (!stopped) launch().catch((err: unknown) => onError(errorMessage(err, 'Localisation indisponible.')));
+              if (!stopped) launch().catch((err: unknown) => onError(plainError(err, 'Localisation indisponible.')));
             }, LOCATION_RETRY_MS);
             return;
           }
@@ -170,10 +182,10 @@ const startNative = async (
             relaunched = true;
             BackgroundGeolocation.stop()
               .then(launch)
-              .catch((err: unknown) => onError(errorMessage(err, 'Localisation indisponible.')));
+              .catch((err: unknown) => onError(plainError(err, 'Localisation indisponible.')));
             return;
           }
-          onError(error.message || error.code || 'Localisation indisponible.');
+          onError(locationErrorText(error));
           return;
         }
         if (location) onFix(fromPlugin(location));
@@ -211,7 +223,7 @@ const browserSource: LocationSource = {
           speedMs: finiteOr(p.coords.speed, undefined),
           bearingDeg: finiteOr(p.coords.heading, undefined),
         }),
-      (e) => onError(e.message || 'Localisation refusée ou indisponible.'),
+      (e) => onError(e.code === e.PERMISSION_DENIED ? LOCATION_DENIED_TEXT : 'Localisation indisponible.'),
       { enableHighAccuracy: true, maximumAge: 0 }
     );
     return async () => navigator.geolocation.clearWatch(id);

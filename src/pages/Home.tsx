@@ -46,7 +46,7 @@ const FAMILY_PHOTO: Record<SportFamily, string> = {
 function Home() {
   const { status, error } = useLibraryFields('status', 'error');
   const backdrop = useFavoriteBackdrop();
-  const { routes: allRoutes } = useRouteLibrary();
+  const { routes: allRoutes, loaded: routesLoaded } = useRouteLibrary();
   const { activities, families, isShown, shownActivities } = useVisibility();
   const { profile } = useRunnerProfile();
   const name = runnerName(profile);
@@ -95,7 +95,7 @@ function Home() {
           <IconRoute size={18} /> <span>Créer un parcours</span>
         </Link>
         <Link to="/itineraires/liste" className="home-action">
-          <IconFlag size={18} /> <span>Itinéraires planifiés{status === 'ready' ? ` (${routes.length})` : ''}</span>
+          <IconFlag size={18} /> <span>Itinéraires planifiés{routesLoaded ? ` (${routes.length})` : ''}</span>
         </Link>
       </div>
     </div>

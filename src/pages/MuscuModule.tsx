@@ -1,5 +1,5 @@
 import { FAMILY_ACCENT } from '../core/activities';
-import { errorMessage } from '../core/basics';
+import { plainError } from '../platform/errorText';
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ReferenceArea } from 'recharts';
@@ -84,7 +84,7 @@ function MuscuModule() {
       setLoadError(null);
     } catch (err) {
       setLoaded(null);
-      setLoadError(errorMessage(err, 'Lecture du GPX impossible.'));
+      setLoadError(plainError(err, 'Lecture du GPX impossible.'));
     }
   }, []);
   // Session de l'adresse : son activité devient celle du module ; son brouillon, écrit dans sa fiche par « Enregistrer la session ».

@@ -51,7 +51,8 @@ const apply = (force = false): void => {
   if (next.eco) root.dataset.eco = '';
   else delete root.dataset.eco;
   updateThemeColor();
-  setSystemBarsDark(next.theme === 'dark');
+  // Les barres montrent le fond du téléphone, pas celui de l'appli : leurs icônes suivent le mode du téléphone (lot 158).
+  setSystemBarsDark(systemPrefersDark());
   listeners.notify();
 };
 

@@ -1065,7 +1065,7 @@ function RecordingScreen() {
         <div className="ui-alert ui-alert--warning">
           {liveHeartOnly
             ? 'En pause : les mesures de la ceinture ne sont pas gardées.'
-            : `En pause : le GPS est coupé pour économiser la batterie${measuringMotion ? ', et la mesure des capteurs aussi' : ''}.`}
+            : `En pause : rien n'est compté ; le GPS reste allumé pour la carte${measuringMotion ? ', la mesure des capteurs est suspendue' : ''}.`}
         </div>
       )}
       {busy && measuringMotion && status !== 'paused' && (

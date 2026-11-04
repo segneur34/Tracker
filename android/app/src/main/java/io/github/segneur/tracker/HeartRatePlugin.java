@@ -277,7 +277,8 @@ public class HeartRatePlugin extends Plugin {
         try {
             scanner.startScan(callback);
         } catch (Exception e) {
-            call.reject("recherche impossible : " + e.getMessage());
+            Log.w(TAG, "recherche impossible : " + e.getMessage());
+            call.reject("recherche impossible");
             return;
         }
         main.postDelayed(() -> {
@@ -403,7 +404,8 @@ public class HeartRatePlugin extends Plugin {
             ContextCompat.startForegroundService(getContext(), intent);
             call.resolve();
         } catch (RuntimeException e) {
-            call.reject("service impossible à lancer : " + e.getMessage());
+            Log.w(TAG, "service impossible à lancer : " + e.getMessage());
+            call.reject("service impossible à lancer");
         }
     }
 

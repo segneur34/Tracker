@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
 import type { LocationFix, LocationSource } from '../platform/location';
 import type { MotionCapture } from '../platform/motion';
+import { recordingDurationMs } from '../recording/session';
 import { journalFixLine, parseJournal } from '../recording/journal';
 
 /**
@@ -264,6 +265,8 @@ describe('enregistreur', () => {
     expect(recorder.getLiveHeadingFixes()).toHaveLength(11);
     for (let s = 141; s < 150; s++) source.emit(s);
     expect(recorder.getLiveSegmentCount()).toBe(2);
+    // Durée (lot 158) : 9 s avant la pause, 9 s après ; les 131 s de pause manuelle ne sont pas rattrapées à la reprise.
+    expect(recordingDurationMs(recorder.getRecorderState().stats)).toBe(18_000);
     await recorder.stopRecording();
     const content = recorder.getRecorderState().pending!.content;
     expect(content.match(/<trkseg>/g)).toHaveLength(2);

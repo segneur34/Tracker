@@ -36,6 +36,7 @@ import { formatDuration, formatShortDuration, formatLandSpeed, formatSpeed, form
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useElementSize } from '../hooks/useElementSize';
 import { useNearViewport } from '../hooks/useNearViewport';
+import { useRetainedScroll } from '../hooks/useRetainedScroll';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
 import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
@@ -101,7 +102,7 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   if (activity === null) return stats;
   if (sportTreatment(activity.base) === 'voile') {
     stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);
-    if (summary.maneuverCount !== undefined) stats.push(`${summary.maneuverCount} manœuvres`);
+    if (summary.maneuverCount !== undefined) stats.push(plural(summary.maneuverCount, 'manœuvre'));
   } else if (sportTreatment(activity.base) === 'surf') {
     // Vagues, plus longue vague ; sur foil, le plus long vol.
     if (summary.waveCount !== undefined) stats.push(`${summary.waveCount} vague${summary.waveCount > 1 ? 's' : ''}`);
@@ -420,13 +421,15 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
  * bibliothèque ne redessine que les lignes dont la fiche change (E-O1).
  */
 const SessionRow = memo(function SessionRow({
-  session, activity, activities, family, folderLabel, confirming, onAskDelete, onCancelDelete,
+  session, activity, activities, family, fromActivityId, folderLabel, confirming, onAskDelete, onCancelDelete,
 }: {
   session: LibrarySession;
   activity: Activity | null;
   /** Toutes les activités, pour classer une session. */
   activities: Activity[];
   family: SportFamily;
+  /** Filtre d'activité de la liste, rendu au retour de l'analyse. */
+  fromActivityId: string | null;
   folderLabel: string | null;
   confirming: boolean;
   onAskDelete: (file: string) => void;
@@ -450,7 +453,7 @@ const SessionRow = memo(function SessionRow({
    */
   const open = () => {
     if (unclassified && !session.readOnly) setAsking(true);
-    else openSession(session.file, family);
+    else openSession(session.file, family, fromActivityId);
   };
   const classifyAndOpen = (chosen: Activity) => {
     setAsking(false);
@@ -565,7 +568,14 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   /** Famille cachée, ouverte par son adresse : tout y est montré. */
   const familyHidden = !families.includes(family);
   const [params, setParams] = useSearchParams();
-  const [filter, setFilter] = useState<string>(() => params.get('activite') ?? 'all');
+  // Le filtre d'activité vit dans l'adresse (lot 158) : il survit à une analyse ouverte puis fermée.
+  const filter = params.get('activite') ?? 'all';
+  const setFilter = (next: string) => setParams((current) => {
+    const updated = new URLSearchParams(current);
+    if (next === 'all') updated.delete('activite');
+    else updated.set('activite', next);
+    return updated;
+  }, { replace: true });
   const plans = PLANNING_FAMILIES.includes(family);
   const planned = plans && params.get('vue') === 'planifiees';
   const setPlanned = (next: boolean) => setParams((current) => {
@@ -634,6 +644,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     [activities, family, listed]
   );
   const FamilyIcon = FAMILY_ICON[family];
+  // La liste se rouvre là où on l'a laissée en revenant d'une analyse (lot 158).
+  useRetainedScroll(`bibliotheque:${family}`, library.status !== 'opening');
 
   const row = (session: LibrarySession) => (
     <SessionRow
@@ -642,6 +654,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       activity={activityByFile.get(session.file) ?? null}
       activities={activities}
       family={family}
+      fromActivityId={activeFilter === 'all' ? null : activeFilter}
       folderLabel={library.folderLabel}
       confirming={confirmFile === session.file}
       onAskDelete={setConfirmFile}
@@ -674,7 +687,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           <div>
             <h1>{title}</h1>
             {bannerActivities && <p className="lib-banner__activities">{bannerActivities}</p>}
-            <p className="lib-banner__count">{familySessions.length} session{familySessions.length > 1 ? 's' : ''}</p>
+            <p className="lib-banner__count">{plural(familySessions.length, 'session')}</p>
           </div>
         </div>
       </header>

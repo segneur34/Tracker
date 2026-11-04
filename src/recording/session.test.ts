@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LocationFix } from '../platform/location';
 import {
   EMPTY_RECORDING_STATS,
+  addFixAfterManualPause,
   addFixToStats,
   displayedDurationMs,
   evaluateAutoPause,
@@ -181,6 +182,38 @@ describe('recordingDurationMs', () => {
     expect(recordingDurationMs(addFixToStats(EMPTY_RECORDING_STATS, fixAt(0)))).toBe(0);
     const stats = [fixAt(0), fixAt(1), fixAt(3725)].reduce(addFixToStats, EMPTY_RECORDING_STATS);
     expect(recordingDurationMs(stats)).toBe(3_725_000);
+  });
+});
+
+describe('pause manuelle et durée (lot 158)', () => {
+  const before = [fixAt(0), fixAt(60)].reduce(addFixToStats, EMPTY_RECORDING_STATS);
+  const wall = 9_000_000;
+
+  it('la durée se fige pendant la pause et ne rattrape rien à la reprise', () => {
+    // Pause à 60 s, reprise 300 s plus tard : le premier point gardé arrive à 360 s.
+    const frozen = { sinceMs: wall, frozenAtMs: wall };
+    expect(displayedDurationMs(before, frozen, wall + 300_000)).toBe(60_000);
+    const resumed = addFixAfterManualPause(before, fixAt(360));
+    expect(displayedDurationMs(resumed, null, wall + 300_000)).toBe(60_000);
+    const later = addFixToStats(resumed, fixAt(361));
+    expect(recordingDurationMs(later)).toBe(61_000);
+  });
+
+  it('plusieurs pauses s’additionnent, aucune durée négative', () => {
+    const once = addFixAfterManualPause(before, fixAt(360));
+    const twice = addFixAfterManualPause(addFixToStats(once, fixAt(400)), fixAt(1000));
+    expect(recordingDurationMs(twice)).toBe(100_000);
+    expect(recordingDurationMs({ ...before, manualPausedMs: 10_000_000 })).toBe(0);
+  });
+
+  it('une pause automatique devenue manuelle garde sa part comptée', () => {
+    // Automatique de 60 s à 160 s (100 s comptées), manuelle de 160 s à 360 s.
+    const resumed = addFixAfterManualPause(before, fixAt(360), 100_000);
+    expect(recordingDurationMs(resumed)).toBe(60_000 + 100_000);
+  });
+
+  it('une pause automatique seule reste comptée : addFixToStats ne retranche rien', () => {
+    expect(recordingDurationMs(addFixToStats(before, fixAt(360)))).toBe(360_000);
   });
 });
 

@@ -74,10 +74,11 @@ describe('readableFolderError (lot 143, idée 122)', () => {
 
   it('un code explicite du greffon prime sur le texte (lot 148)', () => {
     const refused = Object.assign(new Error('Lecture impossible : java.io.FileNotFoundException: open failed: EACCES (Permission denied)'), { code: 'PERMISSION' });
-    expect(readableFolderError(refused)).toBe(refused);
+    expect((readableFolderError(refused) as Error).message).toBe('Autorisation refusée : Réglages › Autorisations.');
     expect(fileErrorCode(readableFolderError(refused))).toBe('PERMISSION');
     const full = Object.assign(new Error('Écriture impossible : Missing file for x'), { code: 'NO_SPACE' });
-    expect(readableFolderError(full)).toBe(full);
+    expect(fileErrorCode(readableFolderError(full))).toBe('NO_SPACE');
+    expect((readableFolderError(full) as Error).message).toMatch(/place/);
   });
 
   it('un NOT_FOUND du greffon, à ce texte, reste le dossier introuvable', () => {

@@ -18,7 +18,9 @@ export const parentPage = (pathname: string, search: string): string | null => {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return null;
   const parts = path.split('/').filter(Boolean);
-  if (parts.length === 2 && parts[1] === 'analyse' && isFamily(parts[0])) return `/${parts[0]}`;
+  if (parts.length === 2 && parts[1] === 'analyse' && isFamily(parts[0])) {
+    return libraryPath(parts[0], new URLSearchParams(search).get('activite') ?? undefined);
+  }
   // Un test : « Fractionné et tests », où sont ses tuiles.
   if (parts[0] === 'fractionne' && parts[1] === 'tests' && parts.length > 2) return '/fractionne/seances';
   // Pages de l'Entraînement (séances du fractionné, Timer) : un cran plus haut, jusqu'à sa bibliothèque.
@@ -42,9 +44,16 @@ export const parentPage = (pathname: string, search: string): string | null => {
 export const libraryPath = (family: SportFamily, activityId?: string): string =>
   `/${family}${activityId ? `?activite=${encodeURIComponent(activityId)}` : ''}`;
 
-/** Module d'analyse d'une famille, ouvert sur une session de la mémoire si `file` est donné. */
-export const analysisPath = (family: SportFamily, file?: string | null): string =>
-  `/${family}/analyse${file ? `?session=${encodeURIComponent(file)}` : ''}`;
+/**
+ * Module d'analyse d'une famille, ouvert sur une session de la mémoire si `file`
+ * est donné. `fromActivityId` : le filtre d'activité de la bibliothèque d'où l'on
+ * vient (`?activite=`), que le retour rend.
+ */
+export const analysisPath = (family: SportFamily, file?: string | null, fromActivityId?: string | null): string => {
+  if (!file) return `/${family}/analyse`;
+  const from = fromActivityId ? `&activite=${encodeURIComponent(fromActivityId)}` : '';
+  return `/${family}/analyse?session=${encodeURIComponent(file)}${from}`;
+};
 
 /** Famille d'une session : celle de son support, sinon `fallback` pour une session à classer. */
 export const sessionFamily = (session: { record: { sport: SportType | null } } | undefined, fallback: SportFamily): SportFamily =>

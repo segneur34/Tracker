@@ -34,6 +34,7 @@ import {
 import {
   isAutoPause, isManualPause, receivedFixRole,
   EMPTY_RECORDING_STATS,
+  addFixAfterManualPause,
   addFixToStats,
   displayedDurationMs,
   evaluateAutoPause,
@@ -257,6 +258,18 @@ let lastReceivedAtMs: number | null = null;
 let belowSinceMs: number | null = null;
 /** Une pause vient de se terminer : le prochain point gardé ouvre un nouveau segment. */
 let pendingBreak = false;
+/**
+ * Le saut vient d'une pause manuelle (lot 158) : la part de l'écart passée en pause automatique avant
+ * l'appui sur Pause (qui reste comptée), `null` sinon. Le premier point gardé retranche le reste de la durée.
+ */
+let manualBreakAutoPartMs: number | null = null;
+
+/** Reprise d'une pause manuelle : le prochain point gardé ouvre un segment et ne compte pas la pause dans la durée. */
+const markManualResume = (): void => {
+  pendingBreak = true;
+  const clock = state.pauseClock;
+  manualBreakAutoPartMs = clock?.frozenAtMs != null ? Math.max(0, clock.frozenAtMs - clock.sinceMs) : 0;
+};
 /** Positions reçues pendant la pause manuelle en cours, pour la carte seule : jamais gardées. */
 let pauseFixes: LocationFix[] = [];
 /** Abonnés aux positions de la pause manuelle (la carte du direct, `useLivePosition`). */
@@ -386,7 +399,9 @@ const keepPoint = <P extends HeartRateFix>(fix: P, kept: P[], breaks: number[], 
   }
   kept.push(fix);
   pendingLines += line;
-  setState({ stats: addFixToStats(state.stats, fix) });
+  const afterManualPause = manualBreakAutoPartMs !== null;
+  setState({ stats: afterManualPause ? addFixAfterManualPause(state.stats, fix, manualBreakAutoPartMs ?? 0) : addFixToStats(state.stats, fix) });
+  manualBreakAutoPartMs = null;
   if (shouldFlushJournal(lastFlushMs, fix.timeMs, journalFlushS)) {
     lastFlushMs = fix.timeMs;
     void flushJournal();
@@ -819,6 +834,7 @@ export const startRecording = exclusive(async (
   lastReceivedAtMs = null;
   belowSinceMs = null;
   pendingBreak = false;
+  manualBreakAutoPartMs = null;
   pauseFixes = [];
   startedAtMs = Date.now();
   intervalRuns = new Map();
@@ -894,7 +910,7 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
 export const resumeRecording = exclusive(async (): Promise<void> => {
   // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment.
   if (heartOnly && isManualPause(state)) {
-    pendingBreak = true;
+    markManualResume();
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
     return;
   }
@@ -905,7 +921,7 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
   if (stopSource !== null) {
     // Le GPS est resté allumé pendant la pause : la position suivante ouvre le segment. Jusque-là, la carte reste sur
     // la dernière position reçue en pause (`pauseFixes`, vidé au premier point gardé), pas sur le point de la pause.
-    pendingBreak = true;
+    markManualResume();
     const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
     setState({ status: 'recording', pausedReason: null, pauseClock: null, ...(sensorsFailed ? { error: SENSORS_RESUME_ERROR } : {}) });
     if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), currentProfile));
@@ -917,7 +933,7 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
   const source = currentSource;
   const profile = currentProfile;
   try {
-    pendingBreak = true;
+    markManualResume();
     sourceError = null;
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
     const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);

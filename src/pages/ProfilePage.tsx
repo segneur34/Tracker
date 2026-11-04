@@ -2,14 +2,16 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import ActivityArt from '../components/activityArt';
+import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import { AvatarPicker, ProfileAvatar } from '../components/ProfileAvatar';
 import ProfileRoot, { RootSlot } from '../components/ProfileRoot';
 import { IconChevronRight } from '../components/icons';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { activityFamily, type Activity } from '../core/activities';
+import { plural } from '../core/basics';
 import { activityIcon } from '../core/activityIcons';
-import { formatDuration, toDisplayDistance } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
 import { libraryPath } from '../core/parentPage';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -20,7 +22,7 @@ import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
 import { useThemedShade } from '../hooks/useTheme';
 import { useNow } from '../hooks/useNow';
-import { useVisibility } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings';
 import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { CHART_PERIODS, type ChartRange } from '../library/activityChart';
 import { activityShares, favoriteActivity } from '../library/profile';
@@ -167,7 +169,11 @@ function ProfilePage() {
     setActive(active === key ? null : key);
   };
 
-  const km = toDisplayDistance(totals.distanceM, 'km');
+  // Distance dans l'unité de l'activité la plus pratiquée de la période (sinon de toutes), le kilomètre à défaut.
+  const practised = favorite ?? overallFavorite;
+  const distanceUnit = practised ? effectiveDistanceUnit(practised) : 'km';
+  const km = toDisplayDistance(totals.distanceM, distanceUnit);
+  const hasElevation = totals.elevationSessions > 0;
   const activeSlice = slices.find((s) => s.key === active) ?? null;
 
   // Anneau : chaque part est un arc du même cercle, en trait épais, à partir du haut, dans le sens des aiguilles.
@@ -196,13 +202,15 @@ function ProfilePage() {
       <SegmentedControl fit className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
         value={period} onChange={(key) => rememberView({ periode: key })} />
 
+      <MemoryStatus compact />
+
       {status === 'opening' ? (
         <p className="ui-hint">Lecture de la mémoire…</p>
       ) : (
         <>
           {scanning && <p className="ui-hint">Fiches en cours de calcul ({scanning.done} / {scanning.total}) : chiffres provisoires.</p>}
 
-          <section className="profile-figures" aria-label="Totaux de la période">
+          <section className={`profile-figures${hasElevation ? '' : ' profile-figures--three'}`} aria-label="Totaux de la période">
             <div className="profile-figure">
               <span className="ui-eyebrow">Activités</span>
               <span className="profile-figure__value num">{totals.sessions.toLocaleString('fr-FR')}</span>
@@ -211,19 +219,21 @@ function ProfilePage() {
             <div className="profile-figure">
               <span className="ui-eyebrow">Distance</span>
               <span className="profile-figure__value num">
-                {km.toLocaleString('fr-FR', { maximumFractionDigits: km < 100 ? 1 : 0 })}<small>km</small>
+                {km.toLocaleString('fr-FR', { maximumFractionDigits: km < 100 ? 1 : 0 })}<small>{DISTANCE_UNIT_SYMBOL[distanceUnit]}</small>
               </span>
               <span className="profile-figure__caption">parcourus</span>
             </div>
-            <div className="profile-figure">
-              <span className="ui-eyebrow">Dénivelé</span>
-              <span className="profile-figure__value num">
-                {totals.elevationSessions > 0 ? <>{Math.round(totals.elevationGainM).toLocaleString('fr-FR')}<small>m</small></> : '—'}
-              </span>
-              <span className="profile-figure__caption">
-                D+{totals.elevationSessions > 0 && totals.elevationSessions < totals.sessions ? `, sur ${totals.elevationSessions} sessions` : ''}
-              </span>
-            </div>
+            {hasElevation && (
+              <div className="profile-figure">
+                <span className="ui-eyebrow">Dénivelé</span>
+                <span className="profile-figure__value num">
+                  {Math.round(totals.elevationGainM).toLocaleString('fr-FR')}<small>m</small>
+                </span>
+                <span className="profile-figure__caption">
+                  D+{totals.elevationSessions < totals.sessions ? `, sur ${plural(totals.elevationSessions, 'session')}` : ''}
+                </span>
+              </div>
+            )}
             {favorite ? (
               <button type="button" className="profile-figure profile-figure--link" onClick={() => openLibrary(favorite)}
                 title={`${favorite.name} : voir ses sessions`}>

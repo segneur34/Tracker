@@ -1,4 +1,4 @@
-import { errorMessage } from '../core/basics';
+import { plainError } from '../platform/errorText';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sessionActivity } from '../core/activities';
@@ -102,7 +102,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
       onPicked?.(trace);
       onClose();
     } catch (err) {
-      setError(errorMessage(err, 'Lecture de la session impossible.'));
+      setError(plainError(err, 'Lecture de la session impossible.'));
     } finally {
       setLoading(null);
     }
@@ -112,7 +112,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
     <Card heading="Suivre une trace">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: 'var(--text-m)' }}>
         <SegmentedControl<PickerTab> fit label="Trace à suivre" value={tab} onChange={setTab}
-          items={[{ key: 'route', label: `Itinéraires (${routes.length})` }, { key: 'session', label: `Sessions (${sortedSessions.length})` }]} />
+          items={[{ key: 'route', label: library.loaded ? `Itinéraires (${routes.length})` : 'Itinéraires' }, { key: 'session', label: `Sessions (${sortedSessions.length})` }]} />
 
         {status !== 'ready' && (
           <div className="ui-alert ui-alert--warning">
@@ -121,7 +121,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
         )}
         {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
-        {tab === 'route' && status === 'ready' && (routes.length === 0 ? (
+        {tab === 'route' && status === 'ready' && library.loaded && (routes.length === 0 ? (
           <p style={{ margin: 0, color: 'var(--muted)' }}>
             Aucun itinéraire enregistré : planifiez-en un depuis l'accueil.
           </p>

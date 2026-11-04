@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { errorMessage } from '../core/basics';
+import { plainError } from '../platform/errorText';
 import type { RecordPatch, SessionRecord } from '../library/record';
 import { librarySession, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
@@ -112,7 +112,7 @@ export const useSessionAsset = <F extends SessionAssetField>({
   useEffect(() => {
     if (!active || value !== undefined || failed !== null || key === null || partial) return;
     cache.run(key, compute, (result) => store(file, field, result)).catch(
-      (err: unknown) => setError({ key, message: errorMessage(err, errorText) })
+      (err: unknown) => setError({ key, message: plainError(err, errorText) })
     );
     // `compute` est neuf à chaque rendu : la clé dit seule quelle recherche lancer.
     // eslint-disable-next-line react-hooks/exhaustive-deps

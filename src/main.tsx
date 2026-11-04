@@ -1,4 +1,4 @@
-import { errorMessage } from './core/basics';
+import { plainError } from './platform/errorText';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -65,7 +65,7 @@ void initStorage()
     );
     startLibraryUi(isRecordingActive);
     if (upgradeError !== null) {
-      const detail = errorMessage(upgradeError);
+      const detail = plainError(upgradeError, 'erreur inconnue');
       reportStartupError(`Réglages de l'appareil non mis à jour pour cette version : ${detail}`);
     }
     installLeaveGuard();

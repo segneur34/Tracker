@@ -122,9 +122,9 @@ function JumpCurveChart({ first, second, numbers, trackIndexAt }: {
     ? {
       values: jumps.map((_, k) => {
         const h = k === 0 ? hovered.premier : hovered.second;
-        return { text: `n° ${numbers[k]} : ${h === null ? '—' : `${roundTo(h, 2)} m`}`, color: CURVE_COLORS[k] };
+        return { text: `n° ${numbers[k]} : ${h === null ? '—' : `${commaDecimal(roundTo(h, 2))} m`}`, color: CURVE_COLORS[k] };
       }),
-      at: `${hovered.t} s depuis le décollage`,
+      at: `${commaDecimal(toFixedNumber(hovered.t, 2))} s depuis le décollage`,
     }
     : null);
   return (

@@ -1,5 +1,7 @@
 import { roundBearingDeg } from '../core/angles';
-import { errorMessage, toFixedNumber } from '../core/basics';
+import { toFixedNumber } from '../core/basics';
+import { pushBackLayer } from '../platform/backButton';
+import { plainError } from '../platform/errorText';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
@@ -412,6 +414,11 @@ function PlanningPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [candidate, setCandidate] = useState<Place | null>(null);
+  // Le retour d'Android ferme la fiche du point ou le lieu proposé avant de quitter la page (lot 158).
+  const selectedOpen = selected !== null;
+  const candidateOpen = candidate !== null;
+  useEffect(() => (selectedOpen ? pushBackLayer(() => setSelected(null)) : undefined), [selectedOpen]);
+  useEffect(() => (candidateOpen ? pushBackLayer(() => setCandidate(null)) : undefined), [candidateOpen]);
 
   // Ma position : celle de l'enregistrement s'il tourne (il tient le GPS), sinon une lecture unique.
   const recording = useRecorderStatus() !== 'idle';
@@ -623,7 +630,7 @@ function PlanningPage() {
     } catch (err) {
       if (controller.signal.aborted || isAbortError(err)) return;
       setResults(null);
-      setSearchError(errorMessage(err, 'Recherche impossible.'));
+      setSearchError(plainError(err, 'Recherche impossible.'));
     } finally {
       if (searchControl.current === controller) setSearching(false);
     }
@@ -649,7 +656,7 @@ function PlanningPage() {
       setCandidate({ label: 'Votre position', detail: '', lat: fix.lat, lon: fix.lon });
       map?.setView([fix.lat, fix.lon], Math.max(map.getZoom(), 15));
     } catch (err) {
-      setLocateError(errorMessage(err, 'Position introuvable.'));
+      setLocateError(plainError(err, 'Position introuvable.'));
     } finally {
       setLocating(false);
     }
@@ -681,7 +688,7 @@ function PlanningPage() {
       setName(finalName);
       setMessage(`Enregistré dans ${ROUTES_DIR}/${saved.base}.json, avec son GPX.`);
     } catch (err) {
-      setMessage(errorMessage(err, 'Enregistrement impossible.'));
+      setMessage(plainError(err, 'Enregistrement impossible.'));
     } finally {
       setSaving(false);
     }
@@ -762,7 +769,7 @@ function PlanningPage() {
       zoom.reset();
       fitTo(loaded);
     } catch (err) {
-      setLoadError(errorMessage(err, 'Lecture du fichier impossible.'));
+      setLoadError(plainError(err, 'Lecture du fichier impossible.'));
     }
   };
 
@@ -782,7 +789,7 @@ function PlanningPage() {
         setMessage('Itinéraire supprimé.');
       }
     } catch (err) {
-      setMessage(errorMessage(err, 'Suppression impossible.'));
+      setMessage(plainError(err, 'Suppression impossible.'));
     }
   };
 

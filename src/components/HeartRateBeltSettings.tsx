@@ -1,4 +1,4 @@
-import { errorMessage } from '../core/basics';
+import { plainError } from '../platform/errorText';
 import { useEffect, useRef, useState } from 'react';
 import { useBeltLive } from '../hooks/useBeltLive';
 import {
@@ -62,7 +62,7 @@ function HeartRateBeltSettings() {
         setBluetoothOff(false);
       }
     } catch (err) {
-      if (alive.current) setError(`Recherche impossible : ${errorMessage(err)}.`);
+      if (alive.current) setError(`Recherche impossible : ${plainError(err, 'erreur inconnue')}.`);
     } finally {
       if (alive.current) setScanning(false);
     }
@@ -89,7 +89,7 @@ function HeartRateBeltSettings() {
       setTesting(true);
       setBluetoothOff(false);
     } catch (err) {
-      if (alive.current) setError(`Connexion impossible : ${errorMessage(err)}.`);
+      if (alive.current) setError(`Connexion impossible : ${plainError(err, 'erreur inconnue')}.`);
     }
   };
 

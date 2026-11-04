@@ -1,6 +1,7 @@
 import { errorMessage } from '../core/basics';
 import { registerPlugin } from '@capacitor/core';
 import { base64ToBytes, bytesToBase64 } from '../core/base64';
+import { fileErrorCode, plainError } from './errorText';
 import { filesystem, isMissingPrivateFile } from './files';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';
@@ -346,40 +347,24 @@ export const MISSING_FOLDER_MESSAGE = 'Le dossier mémoire est introuvable. Dés
  * Erreur du sélecteur d'Android rendue en clair : un dossier désigné qui
  * n'existe plus donne « … Missing file for primary:Documents/Tracker at
  * /storage/… » (lot 143, idée 122), remplacé par `MISSING_FOLDER_MESSAGE` ;
- * le détail technique ne va qu'en console. Toute autre erreur est rendue telle quelle ;
- * un code explicite du greffon prime sur le texte : un accès refusé arrive
- * souvent enveloppé dans une `FileNotFoundException` (« EACCES »).
+ * le détail technique ne va qu'en console. Un code explicite du greffon prime
+ * sur le texte (un accès refusé arrive souvent enveloppé dans une
+ * `FileNotFoundException`, « EACCES ») : l'erreur est alors rendue avec la
+ * phrase du traducteur (`plainError`, lot 158), le code conservé, sans le
+ * détail d'Android. Une phrase française sans code est rendue telle quelle.
  */
 export const readableFolderError = (err: unknown): unknown => {
   const code = fileErrorCode(err);
-  if (code !== 'NOT_FOUND' && code !== 'UNKNOWN') return err;
   const detail = errorMessage(err, '');
-  if (!/missing file for|filenotfoundexception/i.test(detail)) return err;
-  console.warn(`Dossier mémoire introuvable : ${detail}`);
-  return Object.assign(new Error(MISSING_FOLDER_MESSAGE), { code: 'NOT_FOUND' });
+  if (code === 'NOT_FOUND' || (code === 'UNKNOWN' && /missing file for|filenotfoundexception/i.test(detail))) {
+    console.warn(`Dossier mémoire introuvable : ${detail}`);
+    return Object.assign(new Error(MISSING_FOLDER_MESSAGE), { code: 'NOT_FOUND' });
+  }
+  const plain = plainError(err, 'Le dossier mémoire ne répond pas.');
+  return plain === detail ? err : Object.assign(new Error(plain), { code });
 };
 
-/** Ce que dit une erreur de fichier, sans la traduire : le code du greffon, ou celle du navigateur. */
-export type FileErrorCode = 'NOT_FOUND' | 'PERMISSION' | 'NO_SPACE' | 'TOO_LARGE' | 'UNKNOWN';
-
-const FILE_ERROR_CODES: readonly string[] = ['NOT_FOUND', 'PERMISSION', 'NO_SPACE', 'TOO_LARGE', 'UNKNOWN'];
-
-/** Erreurs du navigateur (poignées de dossier), par leur nom. */
-const BROWSER_ERROR_CODES: Readonly<Record<string, FileErrorCode>> = {
-  NotFoundError: 'NOT_FOUND',
-  TypeMismatchError: 'NOT_FOUND',
-  NotAllowedError: 'PERMISSION',
-  SecurityError: 'PERMISSION',
-  QuotaExceededError: 'NO_SPACE',
-};
-
-/** Code d'une erreur levée par un dossier mémoire : `code` posé par le greffon (`rejectCoded`), sinon le nom de l'erreur du navigateur. */
-export const fileErrorCode = (err: unknown): FileErrorCode => {
-  if (typeof err !== 'object' || err === null) return 'UNKNOWN';
-  const { code, name } = err as { code?: unknown; name?: unknown };
-  if (typeof code === 'string' && FILE_ERROR_CODES.includes(code)) return code as FileErrorCode;
-  return (typeof name === 'string' && Object.hasOwn(BROWSER_ERROR_CODES, name) ? BROWSER_ERROR_CODES[name] : undefined) ?? 'UNKNOWN';
-};
+export { fileErrorCode, type FileErrorCode } from './errorText';
 
 /** Appel du plugin dont l'échec est rendu en clair (`readableFolderError`). */
 const inPlainWords = async <T,>(call: Promise<T>): Promise<T> => {
@@ -585,7 +570,7 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
   } catch (err) {
     return {
       state: 'unavailable',
-      reason: errorMessage(err, 'Ce navigateur ne permet pas de garder les sessions.'),
+      reason: plainError(err, 'Ce navigateur ne permet pas de garder les sessions.'),
     };
   }
 };

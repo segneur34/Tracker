@@ -44,9 +44,12 @@ export function useCloseOnOutsideOrEscape(
     };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
+    // Le retour d'Android ferme le menu avant de quitter la page (lot 158).
+    const removeLayer = pushBackLayer(() => closeRef.current());
     return () => {
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
+      removeLayer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `root` est recréé à chaque rendu ; seule l'ouverture compte
   }, [open]);

@@ -1,7 +1,7 @@
-import { errorMessage } from '../core/basics';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { activityFamily, findActivity } from '../core/activities';
 import { usesMarkCourse } from '../core/sportProfiles';
+import { plainError } from '../platform/errorText';
 import { ROUTES_DIR, routePath } from '../library/folderLayout';
 import type { PlannedRoute } from '../planning/route';
 import type { MarkGuideSettings } from '../recording/markGuide';
@@ -10,6 +10,7 @@ import {
   isWritableRouteRecord, parseRouteRecord, routeFileBase, routeToRecord, serializeRouteRecord,
   type RouteRecord,
 } from '../planning/routeRecord';
+import { createLoadedListStore } from './loadedListStore';
 import { currentMemoryFolder, useLibraryFields } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
@@ -60,32 +61,18 @@ const listRoutes = async (): Promise<SavedRoute[]> => {
   return routes.sort((a, b) => (a.record.updatedAt < b.record.updatedAt ? 1 : a.record.updatedAt > b.record.updatedAt ? -1 : 0));
 };
 
+/** Itinéraires de la mémoire ouverte, lus une fois pour toutes les pages (lot 158) et relus après chaque rangement ou suppression. */
+const routeStore = createLoadedListStore(listRoutes, (err) => plainError(err, 'Lecture des itinéraires impossible.'));
+
 export const useRouteLibrary = () => {
   const { status, folderLabel, revision } = useLibraryFields('status', 'folderLabel', 'revision');
-  const [routes, setRoutes] = useState<SavedRoute[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  /** Incrémenté après chaque écriture : la liste est relue. */
-  const [version, setVersion] = useState(0);
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  const { items, loaded, error } = useSyncExternalStore(routeStore.store.subscribe, routeStore.store.get);
+  const reload = routeStore.reload;
 
-  // Relu quand la mémoire s'ouvre, change de dossier ou est relue (« Mettre à jour »), ou après une écriture.
+  // Lu quand la mémoire s'ouvre, change de dossier ou est relue (« Mettre à jour ») : une seule lecture pour toutes les pages.
   useEffect(() => {
-    if (status !== 'ready') return;
-    let cancelled = false;
-    listRoutes().then(
-      (list) => {
-        if (cancelled) return;
-        setRoutes(list);
-        setError(null);
-      },
-      (err) => {
-        if (!cancelled) setError(errorMessage(err, 'Lecture des itinéraires impossible.'));
-      }
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [status, folderLabel, revision, version]);
+    if (status === 'ready') routeStore.ensure(`${folderLabel ?? ''}|${revision}`);
+  }, [status, folderLabel, revision]);
 
   /**
    * Range un itinéraire : sous ses fichiers s'il en a (`existing`), sinon sous
@@ -128,7 +115,9 @@ export const useRouteLibrary = () => {
     /** Faux tant qu'aucun dossier mémoire n'est accessible : l'itinéraire se planifie, mais ne se range pas. */
     canSave: status === 'ready',
     /** Vide tant que la mémoire n'est pas ouverte. */
-    routes: status === 'ready' ? routes : NO_ROUTES,
+    routes: status === 'ready' ? items : NO_ROUTES,
+    /** Faux tant que la liste n'est pas lue : le nombre d'itinéraires n'est pas encore connu. */
+    loaded: status === 'ready' && loaded,
     error,
     save,
     remove,

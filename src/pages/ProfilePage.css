@@ -50,6 +50,11 @@
   overflow: hidden;
 }
 
+/* Sans dénivelé (aucune session n'a d'altitude) : trois cases, de même largeur. */
+.profile-figures--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* Libellé, valeur et légende sur trois rangées communes aux cases d'une ligne : un libellé sur deux lignes
    n'en décale pas la valeur. */
 .profile-figure {
@@ -295,6 +300,11 @@ button.profile-legend__row {
 
   .profile-figure:nth-child(n + 3) {
     border-top: 1px solid var(--line-soft);
+  }
+
+  /* Sans dénivelé : la troisième case prend toute la largeur de sa rangée. */
+  .profile-figures--three .profile-figure:last-child {
+    grid-column: 1 / -1;
   }
 
   .profile-figure .ui-eyebrow,

@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.util.Log;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -71,7 +72,9 @@ public class DownloadsPlugin extends Plugin {
                     // Déjà absent.
                 }
             }
-            call.reject(e.getMessage() != null ? e.getMessage() : "Écriture impossible.");
+            // Le détail technique va au journal (`adb logcat -s TrackerDownloads`), jamais à l'écran.
+            Log.w("TrackerDownloads", "écriture impossible : " + e.getMessage());
+            call.reject("Écriture impossible.");
         }
     }
 }

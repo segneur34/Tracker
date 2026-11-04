@@ -1,5 +1,5 @@
 import { normalizeDeg } from '../core/angles';
-import { roundTo } from '../core/basics';
+import { plural, roundTo } from '../core/basics';
 import { useCallback, useEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
@@ -1119,7 +1119,7 @@ function SailingModule() {
                       label="Variations du Vent"
                       open={open.vent}
                       onToggle={toggleOf('vent')}
-                      extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>}
+                      extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {plural(windStats.count, 'manœuvre')})</span>}
                       helpKey="voile:vent" />
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>

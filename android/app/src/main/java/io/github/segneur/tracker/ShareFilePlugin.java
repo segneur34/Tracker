@@ -4,6 +4,7 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 import android.util.Base64;
+import android.util.Log;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -67,7 +68,9 @@ public class ShareFilePlugin extends Plugin {
             getActivity().startActivity(chooser);
             call.resolve();
         } catch (Exception e) {
-            call.reject(e.getMessage() != null ? e.getMessage() : "Partage impossible.");
+            // Le détail technique va au journal (`adb logcat -s TrackerShare`), jamais à l'écran.
+            Log.w("TrackerShare", "partage impossible : " + e.getMessage());
+            call.reject("Partage impossible.");
         }
     }
 }

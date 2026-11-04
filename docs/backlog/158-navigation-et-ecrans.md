@@ -44,3 +44,11 @@ Ce sont les écrans que l'acheteur et ses clients voient en premier : vignettes,
 - Pause manuelle : la durée reste figée partout (DECISIONS §6, 27/10) ; on corrige le rattrapage d'un coup à la reprise, l'option « tourne comme en pause auto » est écartée.
 - Tuile « Dénivelé » du Profil retirée quand aucune session n'a d'altitude, sans chiffre nouveau (pas de maquette).
 - Partage du paquet : `MemoryFolderPlugin.java` n'est pas de ce lot (148 et 156) ; `BeeperPlugin` et `MotionPlugin` non plus (156). Ici : `HeartRatePlugin`, `DownloadsPlugin`, `ShareFilePlugin`.
+
+## Commit du 04/11
+
+- Barres d'Android : icônes réglées sur le mode du téléphone, puisque le fond le suit ; `viewport-fit=cover` écarté (il déplacerait toute la mise en page). Essai 103.
+- `errorText.ts` est l'unique lecteur de code d'erreur ; le greffon du dossier garde « phrase : détail » dans son rejet, le détail n'arrive plus à l'écran.
+- Profil au téléphone sans tuile Dénivelé : la troisième case prend toute la largeur. Bouton « Autorisations » du refus GPS non fait : le texte dit où aller.
+- Reste : `RecordingPage.tsx:753` (rejeu) et les ≈ 60 `errorMessage` de `useRecorder` et `useSessionLibrary`, dont le texte est traduit à la source par la plateforme.
+- Banc : `planning` non joué (manuel) ; `sauts` : virgules voulues, script accordé. Java relu, compilé à l'APK.

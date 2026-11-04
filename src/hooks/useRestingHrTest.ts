@@ -1,4 +1,4 @@
-import { errorMessage } from '../core/basics';
+import { plainError } from '../platform/errorText';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { playPattern } from '../platform/beeper';
 import {
@@ -107,7 +107,7 @@ export const useRestingHrTest = (
     });
     holdBelt(HOLDER, belt).then(
       (rel) => (alive ? (release = rel) : rel()),
-      (err) => alive && setError(`Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}.`)
+      (err) => alive && setError(`Ceinture cardio injoignable : ${plainError(err, 'erreur inconnue')}.`)
     );
     return () => {
       alive = false;

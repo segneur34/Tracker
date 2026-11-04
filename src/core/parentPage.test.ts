@@ -14,6 +14,13 @@ describe('parentPage', () => {
     expect(parentPage('/surf/analyse', '?session=d.gpx')).toBe('/surf');
   });
 
+  it("l'analyse rend le filtre d'activité de la bibliothèque d'où l'on vient (lot 158)", () => {
+    expect(parentPage('/course/analyse', '?session=b.gpx&activite=a-marche')).toBe('/course?activite=a-marche');
+    expect(analysisPath('course', 'b.gpx', 'a-marche')).toBe('/course/analyse?session=b.gpx&activite=a-marche');
+    expect(analysisPath('course', 'b.gpx', null)).toBe('/course/analyse?session=b.gpx');
+    expect(analysisPath('course', null, 'a-marche')).toBe('/course/analyse');
+  });
+
   it("une page de l'Entraînement remonte d'un cran, jusqu'à sa bibliothèque", () => {
     expect(parentPage('/fractionne/seances', '')).toBe('/fractionne');
     expect(parentPage('/fractionne/seances/editer', '?id=a')).toBe('/fractionne/seances');
