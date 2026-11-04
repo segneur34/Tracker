@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RECORD_FORMAT, SUMMARY_CALC_VERSION } from '../library/record';
+import { RECORD_FORMAT, RECORD_READER_VERSION, SUMMARY_CALC_VERSION, serializeRecord, type SessionRecord } from '../library/record';
+import { bundleSessionGpx } from '../library/sessionBundle';
 import type { MemoryFolder } from '../platform/memoryFolder';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
@@ -29,6 +30,9 @@ const refused = new Set<string>();
 const readRefused = new Set<string>();
 /** Écritures du dossier mémoire retenues jusqu'à ce que la promesse se résolve (écriture en vol). */
 let writeGate: Promise<void> | null = null;
+/** Lecture du marqueur du dossier retenue jusqu'à ce que la promesse se résolve ; `markerAsked` : elle a commencé. */
+let markerGate: Promise<void> | null = null;
+let markerAsked = false;
 
 const memoryFolder = (store: Map<string, string>, label: string, kind: MemoryFolder['kind'] = 'picked'): MemoryFolder => createFakeFolder(
   store,
@@ -38,6 +42,10 @@ const memoryFolder = (store: Map<string, string>, label: string, kind: MemoryFol
     label,
     readText: async (path) => {
       if (store === files && readRefused.has(path)) throw new Error('accès refusé');
+      if (store === files && path === 'tracker.json' && markerGate) {
+        markerAsked = true;
+        await markerGate;
+      }
       return store.get(path) ?? null;
     },
     writeText: async (path, text) => {
@@ -67,6 +75,8 @@ const browserFolder = memoryFolder(browserFiles, 'mémoire du navigateur', 'brow
 /** Dossier privé des sessions en attente : textes et octets, écritures relevées « pending write … ». */
 const pendingFiles = new Map<string, string>();
 const pendingBytes = new Map<string, Uint8Array>();
+/** Noms du dossier en attente dont la lecture des octets lève (capteurs là mais illisibles). */
+const pendingReadRefused = new Set<string>();
 
 const fakePending: MemoryFolder = createFakeFolder(pendingFiles, log, {
   kind: 'device',
@@ -80,7 +90,10 @@ const fakePending: MemoryFolder = createFakeFolder(pendingFiles, log, {
     pendingFiles.set(path, 'imu');
     pendingBytes.set(path, bytes);
   },
-  readBytes: async (path) => pendingBytes.get(path) ?? null,
+  readBytes: async (path) => {
+    if (pendingReadRefused.has(path)) throw new Error('trop gros');
+    return pendingBytes.get(path) ?? null;
+  },
   remove: async (path) => {
     log.push(`pending remove ${path}`);
     pendingFiles.delete(path);
@@ -152,6 +165,7 @@ const CACHE_KEY = 'tracker.libraryCache';
 beforeEach(() => {
   for (const map of [files, otherFiles, browserFiles, pendingFiles, stored]) map.clear();
   pendingBytes.clear();
+  pendingReadRefused.clear();
   log.length = 0;
   refused.clear();
   readRefused.clear();
@@ -159,6 +173,8 @@ beforeEach(() => {
   chosen = null;
   reconnected = null;
   writeGate = null;
+  markerGate = null;
+  markerAsked = false;
   vi.stubGlobal('localStorage', { getItem: (k: string) => stored.get(k) ?? null, setItem: (k: string, v: string) => stored.set(k, v) });
 });
 
@@ -591,5 +607,284 @@ describe('session en attente déjà rangée, en lecture seule (1, relecture)', (
     await library.refreshLibrary();
     expectRecordingFields(library.librarySession('sortie.gpx')?.record as unknown as Record<string, unknown>);
     expect([...pendingFiles.keys()]).toEqual([]);
+  });
+});
+
+describe('capteurs là mais illisibles (lot 148, C5-6)', () => {
+  it('en attente : les trois fichiers restent, c’est dit, puis la session se range quand ils se lisent', async () => {
+    const name = await saveOffline();
+    const imu = name.replace(/\.gpx$/, '.imu');
+    expect(pendingBytes.has(imu)).toBe(true);
+    pendingReadRefused.add(imu);
+
+    opened = 'folder';
+    const library = await openFresh();
+    await settle(library);
+    expect(library.readLibraryState().sessions).toHaveLength(0);
+    expect([...pendingFiles.keys()].sort()).toEqual([name, name.replace(/\.gpx$/, '.json'), imu].sort());
+    expect(library.readLibraryState().error).toContain('capteurs illisibles');
+    expect(library.readLibraryState().pendingCount).toBe(1);
+
+    pendingReadRefused.clear();
+    await library.refreshLibrary();
+    const file = library.readLibraryState().sessions[0].file;
+    expect(library.hasSessionMotion(file)).toBe(true);
+    expect([...pendingFiles.keys()]).toEqual([]);
+  });
+
+  const imuEntry = (read: () => Promise<Uint8Array | null>) => ({ name: 'a.imu', key: 'a', readText: async () => null, readBytes: read });
+
+  it('à l’import : GPX et fiche rangés, capteurs comptés à part, et un nouvel import les ajoute', async () => {
+    const library = await openFresh();
+    await settle(library);
+    const sidecar = JSON.stringify({ ...JSON.parse(FUTURE_RECORD), version: 1, name: 'Matin' });
+    const report = await library.importEntries([
+      entry('a.gpx', gpxAt(0)), entry('a.json', sidecar), imuEntry(async () => {
+        throw new Error('trop gros');
+      }),
+    ]);
+    expect(report.added).toHaveLength(1);
+    expect(report.failed).toEqual([]);
+    expect(report.motionFailed).toEqual(['a.gpx']);
+    expect(library.readLibraryState().message).toContain('capteurs illisibles');
+    const file = report.added[0];
+    expect(library.librarySession(file)?.record.name).toBe('Matin');
+    expect(library.hasSessionMotion(file)).toBe(false);
+
+    const again = await library.importEntries([entry('a.gpx', gpxAt(0)), imuEntry(async () => new Uint8Array([1, 2]))]);
+    expect(again.motionAdded).toBe(1);
+    expect(again.motionFailed).toEqual([]);
+    expect(library.hasSessionMotion(file)).toBe(true);
+  });
+
+  it('à l’import d’une session qui a déjà ses capteurs : rien n’est compté', async () => {
+    const library = await openFresh();
+    await settle(library);
+    await library.importEntries([entry('a.gpx', gpxAt(0)), imuEntry(async () => new Uint8Array([1]))]);
+    const report = await library.importEntries([entry('a.gpx', gpxAt(0)), imuEntry(async () => {
+      throw new Error('trop gros');
+    })]);
+    expect(report.duplicates).toBe(1);
+    expect(report.motionFailed).toEqual([]);
+  });
+});
+
+describe('fiche qu\'on ne sait pas réécrire, portée par un GPX complet (lot 148, C5-4)', () => {
+  const future = JSON.parse(FUTURE_RECORD) as SessionRecord;
+
+  it('version plus récente : rangée au caractère près, GPX rendu, capteurs gardés, session en lecture seule', async () => {
+    const library = await openFresh();
+    await settle(library);
+    const report = await library.importEntries([entry('a.gpx', bundleSessionGpx(gpxAt(0), future, new Uint8Array([7])))]);
+    expect(report.added).toHaveLength(1);
+    const file = report.added[0];
+    expect(files.get(`sessions/${file}`)).toBe(gpxAt(0));
+    expect(files.get(`sessions/${file.replace(/\.gpx$/, '.json')}`)).toBe(serializeRecord(future));
+    expect(library.hasSessionMotion(file)).toBe(true);
+    const session = library.librarySession(file)!;
+    expect(session.readOnly).toBe(true);
+    expect(session.warning).toContain('version plus récente');
+    expect(session.record.name).toBe('Futur');
+  });
+
+  it('illisible : de même, au caractère près', async () => {
+    const library = await openFresh();
+    await settle(library);
+    const broken = bundleSessionGpx(gpxAt(0), { ...future, version: 1 }, null).replace(/<tracker:record>[\s\S]*<\/tracker:record>/, '<tracker:record>{ cassé</tracker:record>');
+    const report = await library.importEntries([entry('a.gpx', broken)]);
+    const file = report.added[0];
+    expect(files.get(`sessions/${file.replace(/\.gpx$/, '.json')}`)).toBe('{ cassé');
+    expect(library.librarySession(file)?.readOnly).toBe(true);
+    expect(library.librarySession(file)?.warning).toContain('illisible');
+  });
+
+  it('une fiche posée à côté, lisible, passe avant celle du paquet', async () => {
+    const library = await openFresh();
+    await settle(library);
+    const sidecar = JSON.stringify({ ...future, version: 1, name: 'À côté' });
+    const report = await library.importEntries([entry('a.gpx', bundleSessionGpx(gpxAt(0), future, null)), entry('a.json', sidecar)]);
+    const session = library.librarySession(report.added[0])!;
+    expect(session.readOnly).toBe(false);
+    expect(session.record.name).toBe('À côté');
+  });
+});
+
+describe('cache des fiches d\'une autre version du lecteur (lot 148, C5-7)', () => {
+  /** Ouvre le dossier une fois, pour que le cache soit écrit, et rend ce cache à retoucher. */
+  const cacheMade = async () => {
+    files.set('sessions/sortie.gpx', gpxAt(0));
+    const first = await openFresh();
+    await settle(first);
+    first.updateSessionRecord('sortie.gpx', { name: 'Matin' });
+    await afterWrites();
+    await first.refreshLibrary();
+    const cache = JSON.parse(stored.get(CACHE_KEY)!);
+    expect(cache.reader).toBe(RECORD_READER_VERSION);
+    return cache;
+  };
+
+  it('est ignoré : la fiche est relue, puis le cache refait', async () => {
+    const cache = await cacheMade();
+    cache.reader = RECORD_READER_VERSION + 1;
+    cache.entries['sortie.json'].record.name = 'Du cache';
+    stored.set(CACHE_KEY, JSON.stringify(cache));
+    const library = await openFresh();
+    await settle(library);
+    expect(library.librarySession('sortie.gpx')?.record.name).toBe('Matin');
+    expect(library.librarySession('sortie.gpx')?.partial).toBeFalsy();
+    expect(JSON.parse(stored.get(CACHE_KEY)!).reader).toBe(RECORD_READER_VERSION);
+  });
+
+  it('un cache sans numéro vaut la version 1 : pas de relecture complète au premier lancement', async () => {
+    expect(RECORD_READER_VERSION).toBe(1);
+    const cache = await cacheMade();
+    delete cache.reader;
+    cache.entries['sortie.json'].record.name = 'Du cache';
+    stored.set(CACHE_KEY, JSON.stringify(cache));
+    const library = await openFresh();
+    await settle(library);
+    expect(library.librarySession('sortie.gpx')?.record.name).toBe('Du cache');
+    expect(library.librarySession('sortie.gpx')?.partial).toBe(true);
+  });
+});
+
+describe('marqueur d\'une version plus récente (lot 148, C5-9)', () => {
+  const MARKER_V2 = JSON.stringify({ format: 'tracker-memoire', version: 2 });
+
+  /** Un dossier où une ouverture ordinaire écrirait partout : GPX à la racine, sans fiche, fiche à refaire, extension à ranger, ancien fichier de réglages. */
+  const folderToWrite = (): void => {
+    files.set('tracker.json', MARKER_V2);
+    files.set('racine.gpx', gpxAt(40));
+    files.set('reglages.json', JSON.stringify({ format: 'tracker-reglages', version: 1, savedAt: 1, values: {} }));
+    files.set('sessions/seul.gpx', gpxAt(0));
+    files.set('sessions/majuscules.gpx', gpxAt(10));
+    files.set('sessions/majuscules.JSON', FUTURE_RECORD.replace('"version": 99', '"version": 1'));
+    files.set('sessions/vieille.gpx', gpxAt(20));
+    files.set('sessions/vieille.json', JSON.stringify({ ...JSON.parse(FUTURE_RECORD), version: 1, gpx: 'vieille.gpx', name: 'Vieille', summary: { ...JSON.parse(FUTURE_RECORD).summary, calcVersion: 1, startMs: startOf(20) } }));
+  };
+
+  it('aucune écriture ni suppression, rien d\'échoué, sessions en lecture seule et mémoire dite telle', async () => {
+    folderToWrite();
+    const before = new Map(files);
+    const library = await openFresh();
+    await settle(library);
+    expect(log).toEqual([]);
+    expect(files).toEqual(before);
+    const state = library.readLibraryState();
+    expect(state.error).toBeNull();
+    expect(state.memoryReadOnly).toBe(true);
+    expect(state.status).toBe('ready');
+    expect(library.canImportSessions(state)).toBe(false);
+    expect(state.sessions.length).toBeGreaterThan(0);
+    expect(state.sessions.every((s) => s.readOnly)).toBe(true);
+    expect(library.librarySession('seul.gpx')?.warning).toContain('version plus récente');
+
+    await library.refreshLibrary();
+    expect(log).toEqual([]);
+    expect(files).toEqual(before);
+    expect(library.readLibraryState().error).toBeNull();
+  });
+
+  it('saisie, suppression et import n\'écrivent rien ; un enregistrement attend un dossier où ranger', async () => {
+    folderToWrite();
+    const before = new Map(files);
+    const library = await openFresh();
+    await settle(library);
+
+    library.updateSessionRecord('seul.gpx', { name: 'Matin' });
+    await afterWrites();
+    await library.removeSession('seul.gpx');
+    expect(library.librarySession('seul.gpx')).toBeDefined();
+    expect(library.readLibraryState().error).toContain('version plus récente');
+
+    library.dismissLibraryMessage();
+    const report = await library.importEntries([entry('n.gpx', gpxAt(50))]);
+    expect(report.added).toEqual([]);
+    expect(report.unsaved).toBe(1);
+
+    const saved = await library.saveRecordedSession(gpxAt(55), 'running', 'a-marche');
+    expect(saved.file).toBeNull();
+    const name = sessionFileName(startOf(55), 'running');
+    expect(pendingFiles.has(name)).toBe(true);
+    expect(library.readLibraryState().pendingCount).toBe(1);
+    expect(files).toEqual(before);
+
+    // Une nouvelle relecture ne range pas la session en attente dans ce dossier.
+    await library.refreshLibrary();
+    expect(pendingFiles.has(name)).toBe(true);
+    expect(files).toEqual(before);
+  });
+
+  it('marqueur illisible ou de la version connue : dossier ordinaire, marqueur illisible non réécrit', async () => {
+    files.set('tracker.json', '{ cassé');
+    files.set('sessions/seul.gpx', gpxAt(0));
+    const library = await openFresh();
+    await settle(library);
+    expect(library.readLibraryState().memoryReadOnly).toBe(false);
+    expect(library.librarySession('seul.gpx')?.readOnly).toBe(false);
+    expect(files.get('tracker.json')).toBe('{ cassé');
+    expect(log).toContain('write sessions/seul.json');
+  });
+});
+
+describe('dossier fermé ou remplacé pendant la lecture de son marqueur (lot 148)', () => {
+  /** « Choisir un dossier » sur le dossier suivi, retenu à la lecture de son marqueur ; rend la fin du choix et de quoi libérer la lecture. */
+  const choosingHeld = async (library: Library): Promise<{ choosing: Promise<void>; release: () => void }> => {
+    let open!: () => void;
+    markerGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    chosen = fakeFolder;
+    const choosing = library.chooseFolder();
+    for (let i = 0; i < 200 && !markerAsked; i++) await tick();
+    expect(markerAsked).toBe(true);
+    return {
+      choosing,
+      release: () => {
+        markerGate = null;
+        open();
+      },
+    };
+  };
+
+  it('fermé (accès perdu) : le dossier n\'est pas rouvert, rien n\'y est écrit', async () => {
+    opened = 'none';
+    const library = await openFresh();
+    files.set('sessions/seul.gpx', gpxAt(0));
+    const { choosing, release } = await choosingHeld(library);
+
+    opened = 'permission';
+    await library.openLibrary();
+    expect(library.readLibraryState().status).toBe('needs-permission');
+
+    release();
+    await choosing;
+    await settle(library);
+    expect(library.readLibraryState().status).toBe('needs-permission');
+    expect(library.readLibraryState().sessions).toEqual([]);
+    expect(await library.currentMemoryFolder()).toBeNull();
+    expect(log).toEqual([]);
+    expect(files.has('tracker.json')).toBe(false);
+  });
+
+  it('remplacé par un autre dossier : celui-ci reste en service, le premier n\'est pas touché', async () => {
+    opened = 'none';
+    const library = await openFresh();
+    files.set('sessions/seul.gpx', gpxAt(0));
+    otherFiles.set('sessions/autre.gpx', gpxAt(10));
+    const { choosing, release } = await choosingHeld(library);
+
+    chosen = otherFolder;
+    await library.chooseFolder();
+    await settle(library);
+
+    release();
+    await choosing;
+    await settle(library);
+    expect(library.readLibraryState().folderLabel).toBe('Autre');
+    expect((await library.currentMemoryFolder())?.label).toBe('Autre');
+    expect(library.readLibraryState().sessions.map((s) => s.file)).toEqual(['autre.gpx']);
+    expect(files.has('tracker.json')).toBe(false);
+    expect(otherFiles.has('tracker.json')).toBe(true);
   });
 });

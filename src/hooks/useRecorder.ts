@@ -171,6 +171,8 @@ export interface RecorderState {
   stats: RecordingStats;
   /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
   pending: PendingSession | null;
+  /** La capture de cette session existe mais n'a pas pu être lue à « Analyser » : `analyzePendingSession(true)` la laisse de côté. */
+  motionUnreadable: boolean;
   saved: SavedSession | null;
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
@@ -190,6 +192,7 @@ const INITIAL_STATE: RecorderState = {
   marks: [],
   stats: EMPTY_RECORDING_STATS,
   pending: null,
+  motionUnreadable: false,
   saved: null,
   error: null,
   gpsLost: false,
@@ -530,25 +533,44 @@ const buildPendingSession = async (
 };
 
 /**
- * « Analyser » : range la session en attente dans la bibliothèque, puis
- * efface le journal. Rend la session rangée, ou `null` si l'écriture échoue :
- * la session reste alors en attente, journal compris.
+ * Capture là mais illisible : rien n'est effacé, la session reste en attente, et ceci le dit. Une capture
+ * qui ne se lirait jamais bloquerait la session : d'où « Analyser sans les capteurs ».
  */
-export const analyzePendingSession = async (): Promise<SavedSession | null> => {
+const MOTION_UNREADABLE_MESSAGE = 'Les mesures des capteurs de cette session n\'ont pas pu être lues. La session reste en attente et rien n\'est effacé : '
+  + 'réessayez « Analyser », ou « Analyser sans les capteurs » pour la ranger sans sauts ni pumping, le fichier des mesures restant sur l\'appareil.';
+
+/**
+ * « Analyser » : range la session en attente dans la bibliothèque, puis
+ * efface le journal et la capture. Rend la session rangée, ou `null` si
+ * l'écriture échoue : la session reste alors en attente, journal compris.
+ * Une capture absente : la session est rangée sans elle. Une capture qui
+ * existe mais ne se lit pas : la session reste en attente, rien n'est effacé
+ * (`motionUnreadable`). `withoutMotion` (« Analyser sans les capteurs », après
+ * cet échec) : la session est rangée sans la capture, qui reste sur l'appareil.
+ */
+export const analyzePendingSession = async (withoutMotion = false): Promise<SavedSession | null> => {
   const pending = state.pending;
   if (!pending) return null;
+  let motion: Uint8Array | null = null;
+  if (pending.motion && !withoutMotion) {
+    try {
+      motion = pending.motionBytes ?? await readMotionCapture(pending.motion.path);
+    } catch (err) {
+      console.warn(`Capture illisible : ${errorMessage(err, 'erreur inconnue')}`);
+      setState({ motionUnreadable: true, error: MOTION_UNREADABLE_MESSAGE });
+      return null;
+    }
+  }
   try {
-    // Capteurs illisibles ou absents : la session est rangée sans eux.
-    const motion = pending.motion ? pending.motionBytes ?? await readMotionCapture(pending.motion.path).catch(() => null) : null;
     // Le foil de l'activité au moment de l'enregistrement : le matériel du jour, pas une supposition.
     const foil = pending.activity ? effectiveFoil(pending.activity) : null;
     const { file, location } = await saveRecordedSession(
       pending.content, pending.sport, pending.activity?.id ?? null, pending.intervals, motion, pending.marks, foil, pending.test
     );
     await recordingJournal.remove();
-    if (pending.motion) await removeMotionCapture(pending.motion.path);
+    if (pending.motion && !withoutMotion) await removeMotionCapture(pending.motion.path);
     const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
-    setState({ pending: null, saved, error: null });
+    setState({ pending: null, motionUnreadable: false, saved, error: null });
     return saved;
   } catch (err) {
     setState({ error: `Enregistrement du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. La session reste en attente.` });
@@ -561,7 +583,7 @@ export const discardPendingSession = async (): Promise<void> => {
   if (!state.pending) return;
   await recordingJournal.remove();
   if (state.pending.motion) await removeMotionCapture(state.pending.motion.path);
-  setState({ pending: null, error: null });
+  setState({ pending: null, motionUnreadable: false, error: null });
 };
 
 /** Options de démarrage d'une source, communes au premier démarrage et à une reprise manuelle. */

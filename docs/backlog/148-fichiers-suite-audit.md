@@ -46,3 +46,12 @@ Sondes de l'audit à reprendre : `C5-fiche.test.ts`, `C5-reglages.test.ts`, `C5-
 - Seuil porté dans un champ `summary.activitySettings`, pas dans `optionsKey` seul, qui ne distingue pas un seuil propre retiré ; une ancienne fiche le lit dans `optionsKey`, sans réécriture.
 - Une capture qui ne se lit jamais bloquerait « Analyser » : bouton « Analyser sans les capteurs », visible seulement après l'échec, le fichier restant sur l'appareil.
 - Un pré-réglage changé par une mise à jour compte comme un geste ; activité supprimée : ses sessions gardent leur seuil porté ; un geste réécrit aussi une session à seuil propre (chiffres identiques) ; le seuil propre d'une fiche s'applique désormais aussi à l'analyse en terre, comme à la liste ; message seulement si le même champ a changé des deux côtés, fonte silencieuse sinon.
+
+## Partie A, commit du 04/11
+
+- Limites gardées : après « Analyser sans les capteurs », le fichier reste dans `capteurs/` sans que rien ne le reprenne ; une session en attente dont le `.imu` ne se lit jamais reste en attente, sans bouton pour la ranger sans lui. Rien n'est perdu ; la lecture native du 156 en réduit la cause.
+- Grosse capture du dossier privé : le greffon Filesystem n'attrape que `Exception` ; un vrai `OutOfMemoryError` pourrait faire tomber l'appli au lieu de montrer le bouton (journal et capture restent). Au 156.
+- Ajouts sans demande, acceptés : mémoire en lecture seule, un enregistrement part en attente ou reste à télécharger, `removeSession` refuse avec un message, import grisé ; `flushPending` ne lit plus un `.imu` absent de la liste du dossier ; le journal aussi n'est plus pris pour absent sans preuve (`privateFileExists`, même défaut que `readPrivateBytes`).
+- Absence prouvée d'après la source du greffon (`OS-PLUG-FILE-0008`), pas essayée au téléphone : si le téléphone répondait autrement, une capture vraiment absente montrerait « Analyser sans les capteurs », gênant sans perte.
+- Tests et banc joués le poste chargé (jeu en cours) : dépassements de délai seulement. 2 586 tests verts sur deux passages sur trois, le troisième avec un seul échec, sur le délai de 20 s de `liveStats.test.ts:191` ; scripts `imports`, `miseajour`, `reglages` rejoués un à un, ok. `library`, `library2`, `library3`, `session-save-resume` non joués (manuels).
+- Java relu, non compilé : il le sera à la construction de l'APK.

@@ -28,6 +28,7 @@ export const createFakeFolder = (
     files.set(path, text);
   },
   readBytes: async () => null,
+  stat: async (path) => (files.has(path) ? { size: sizeOf ? sizeOf(path) : 1, mtimeMs: 1 } : null),
   writeBytes: async () => undefined,
   remove: async (path) => {
     log.push(`remove ${path}`);

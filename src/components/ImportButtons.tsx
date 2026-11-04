@@ -9,11 +9,11 @@ import Button from './ui/Button';
  * « Ajouter les sessions d'un dossier » (un dossier Tracker copié d'un autre
  * appareil, fiches comprises). Dans le menu « … » des bibliothèques, et dans
  * Réglages › Mémoire pour le dossier seul (`gpx` à faux). Grisés pendant un
- * import, d'où qu'il parte, et sans dossier mémoire : un import n'est jamais
- * mis en attente (décision du 27/10).
+ * import, d'où qu'il parte, sans dossier mémoire (un import n'est jamais
+ * mis en attente, décision du 27/10) et en mémoire en lecture seule.
  */
 function ImportButtons({ gpx = true }: { gpx?: boolean }) {
-  const library = useLibraryFields('status', 'importing');
+  const library = useLibraryFields('status', 'memoryReadOnly', 'importing');
   const off = !canImportSessions(library) || library.importing;
   /** Aucune mémoire accessible : on dit pourquoi les boutons sont grisés. */
   const noFolder = library.status === 'unavailable' || library.status === 'needs-permission';

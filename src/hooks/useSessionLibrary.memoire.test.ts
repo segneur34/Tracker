@@ -244,9 +244,9 @@ describe('temporaires laissés en attente par un plantage (lot 84, A)', () => {
   });
 });
 
-describe('capteurs en attente illisibles (lot 84, A)', () => {
-  it('ne les efface pas quand leur lecture échoue, la session étant rangée sans eux', async () => {
-    // Le faux dossier en attente rend `null` à toute lecture d'octets : échec de lecture des capteurs.
+describe('capteurs en attente listés mais introuvables (lot 84, A)', () => {
+  it('ne les efface pas quand leur lecture ne rend rien, la session étant rangée sans eux', async () => {
+    // Le faux dossier en attente rend `null` à toute lecture d'octets : absents ; une lecture qui lève : `useSessionLibrary.perte.test.ts`.
     pendingFiles.set('x.gpx.tmp', gpxAt(0));
     pendingFiles.set('x.imu', 'capteurs');
     pendingFiles.set('y.gpx', gpxAt(10));

@@ -130,9 +130,13 @@ const storedActivities = (stored: StoredSettings): Activity[] => {
   return activitiesCache.value;
 };
 
-/** Toute écriture porte la version des pré-réglages : ce qu'elle contient est choisi avec eux. */
+/**
+ * Toute écriture porte la version des pré-réglages : ce qu'elle contient est choisi avec eux. Jamais
+ * rabaissée : réglages repris d'une version plus récente de l'application, un numéro plus bas ferait
+ * effacer de nouveau, chez elle, des réglages saisis depuis (`resetStoredPresets`).
+ */
 const writeStored = (settings: StoredSettings): void =>
-  jsonStore.write(STORAGE_KEY, { ...settings, presetsVersion: PRESETS_VERSION });
+  jsonStore.write(STORAGE_KEY, { ...settings, presetsVersion: Math.max(settings.presetsVersion ?? 0, PRESETS_VERSION) });
 
 /**
  * Réécrit les réglages à partir de ceux du moment, relus à l'instant et non
@@ -456,7 +460,7 @@ export const useAllSportSettings = () => {
         const activities = storedActivities(stored);
         id = newActivityId(trimmed, activities);
         const activity: Activity = { id, name: trimmed, base, color, ...(icon ? { icon } : {}) };
-        return { ...stored, activities: insertActivity(activities, activity), activitiesVersion: ACTIVITIES_VERSION };
+        return { ...stored, activities: insertActivity(activities, activity), activitiesVersion: Math.max(stored.activitiesVersion ?? 0, ACTIVITIES_VERSION) };
       });
       return id;
     },
@@ -469,7 +473,7 @@ export const useAllSportSettings = () => {
       const name = patch.name?.trim();
       updateStoredSettings((stored) => ({
         ...stored,
-        activitiesVersion: ACTIVITIES_VERSION,
+        activitiesVersion: Math.max(stored.activitiesVersion ?? 0, ACTIVITIES_VERSION),
         activities: storedActivities(stored).map((a) =>
           a.id === id
             ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}), ...(patch.icon ? { icon: patch.icon } : {}) }
@@ -489,7 +493,7 @@ export const useAllSportSettings = () => {
       updateStoredSettings((stored) => ({
         ...withoutOverrides(stored, id),
         activities: storedActivities(stored).filter((a) => a.id !== id),
-        activitiesVersion: ACTIVITIES_VERSION,
+        activitiesVersion: Math.max(stored.activitiesVersion ?? 0, ACTIVITIES_VERSION),
       })),
     []
   );

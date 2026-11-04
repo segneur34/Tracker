@@ -71,6 +71,7 @@ const fakeFolder: MemoryFolder = {
     files.set(path, text);
   },
   readBytes: async () => null,
+  stat: async (path) => (files.has(path) ? { size: files.get(path)!.length, mtimeMs: 1 } : null),
   writeBytes: async (path) => {
     files.set(path, 'imu');
   },

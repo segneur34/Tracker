@@ -6,7 +6,9 @@
 //  2. pose ce GPX et sa fiche (renommée, activité Gravel) à la racine du dossier, et un second GPX sans
 //     fiche dans sessions/ : « Mettre à jour » fait apparaître les deux, range la fiche avec son GPX,
 //     garde son nom et son activité, et crée la fiche du second ;
-//  3. relit une fois de plus : « rien de nouveau » ; enfin, le bouton est là dans Réglages › Mémoire, carte repliée comprise.
+//  3. relit une fois de plus : « rien de nouveau » ; enfin, le bouton est là dans Réglages › Mémoire, carte repliée comprise ;
+//  4. marqueur d'une version plus récente (lot 148) : à l'ouverture et à « Mettre à jour », aucun fichier ne change (noms, tailles,
+//     dates), un GPX à la racine et un GPX sans fiche restent tels quels, l'import est grisé et la carte de la mémoire le dit.
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
 
@@ -106,6 +108,37 @@ console.log('après :', await memory());
 await go('/parametres');
 console.log('Réglages :', await memory(), '| import d\'un dossier :',
   await evaluate(`[...document.querySelectorAll('label, button')].some((x) => x.textContent.trim() === "Ajouter les sessions d'un dossier")`));
+
+// 4. Marqueur d'une version plus récente : le dossier se lit, rien n'y est écrit.
+/** Tous les fichiers du dossier, avec taille et date : la moindre écriture s'y voit, même d'un contenu identique. */
+const snapshot = () => evaluate(`(async () => {
+  const out = [];
+  const walk = async (dir, prefix) => {
+    for await (const [name, h] of dir.entries()) {
+      if (h.kind === 'directory') await walk(h, prefix + name + '/');
+      else { const file = await h.getFile(); out.push(prefix + name + ' ' + file.size + ' ' + file.lastModified); }
+    }
+  };
+  await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'), '');
+  return JSON.stringify(out.sort());
+})()`);
+const importGreyed = () => evaluate(`(() => { const i = document.querySelector('input[type=file][accept=".gpx"]'); return i ? i.disabled : '(absent)'; })()`);
+await writeOpfs('', 'tracker.json', JSON.stringify({ format: 'tracker-memoire', version: 2 }));
+await writeOpfs('', '2026-10-07_10-00-00_cycling.gpx', rideGpx('Racine', Date.UTC(2026, 9, 7, 8, 0, 0)));
+await writeOpfs('sessions', '2026-10-08_10-00-00_cycling.gpx', rideGpx('Sans fiche', Date.UTC(2026, 9, 8, 8, 0, 0)));
+const beforeOpening = await snapshot();
+await go('/velo');
+await settle({ max: 3000, label: 'ouverture en lecture seule' });
+console.log('marqueur v2, à l\'ouverture :', await memory());
+console.log('carte de la mémoire :', await evaluate(`document.body.innerText.match(/[^\\n]*version plus récente de Tracker[^\\n]*/)?.[0] ?? '(absente)'`));
+console.log('marqueur v2, aucun fichier changé :', (await snapshot()) === beforeOpening, '| import grisé :', await importGreyed());
+console.log('Mettre à jour :', await refresh());
+console.log('après :', await memory());
+console.log('marqueur v2, relu, aucun fichier changé :', (await snapshot()) === beforeOpening);
+await go(`/velo/analyse?session=${encodeURIComponent(gpx)}`);
+await settle({ max: 3000, label: 'analyse en lecture seule' });
+console.log('analyse : modifiable (« Renommer ») :', await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Renommer')`));
+console.log('marqueur v2, après l\'analyse, aucun fichier changé :', (await snapshot()) === beforeOpening);
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
 await close();

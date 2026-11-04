@@ -352,7 +352,7 @@ export const readHiddenFamilies = (stored: StoredSettings): SportFamily[] =>
 export const withVisibility = (stored: StoredSettings, activities: Activity[], hiddenFamilies: SportFamily[]): StoredSettings | null =>
   visibleFamilies(activities, hiddenFamilies).length === 0
     ? null
-    : { ...stored, activities, activitiesVersion: ACTIVITIES_VERSION, hiddenFamilies };
+    : { ...stored, activities, activitiesVersion: Math.max(stored.activitiesVersion ?? 0, ACTIVITIES_VERSION), hiddenFamilies };
 
 /**
  * Version des pré-réglages. 1 (21/10) : bateau (couleurs de 1 à 15 nœuds,

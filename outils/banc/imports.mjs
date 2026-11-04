@@ -8,7 +8,8 @@
 //     nom gardé, résumé refait, pas de lecture seule ;
 //  4. importe une course seule, puis la même avec sa fiche (nom, voies) : la fiche est complétée ;
 //  5. une sortie à vélo : énergie non calculée sans poids ;
-//  6. une session de surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, pas de débordement.
+//  6. une session de surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, pas de débordement ;
+//  7. un GPX complet portant une fiche d'une version plus récente : fiche rangée au caractère près, GPX sans le paquet, lecture seule (lot 148).
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -169,6 +170,33 @@ console.log('puissance :', await figure('Puissance moyenne en mouvement'), '| p�
 console.log('avertissement :', await textWith('/Poids non renseigné[^\\n]*/'));
 console.log('graphe :', await evaluate(`document.querySelectorAll('.recharts-surface').length`), 'surface(s) Recharts sur la page');
 await shoot('imports-velo');
+
+// --- 7. GPX complet portant une fiche d'une version plus récente (lot 148), avant le surf pour rester sur grand écran ---
+const t10 = at(19);
+const futureText = `${JSON.stringify({ ...JSON.parse(fiche('f1.gpx', t10, { name: 'Du futur', notes: notesWith({ comment: 'venu <du> futur', savedAt: t10 }) })), version: 99, nouveau: { forme: [1, 2] } }, null, 1)}\n`;
+const xmlText = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const futureBare = trackGpx('wingfoil', 8, t10);
+const futureBundle = futureBare.replace('</gpx>', `<extensions><tracker:session xmlns:tracker="https://github.com/segneur34/Tracker/session" version="1"><tracker:record>${xmlText(futureText)}</tracker:record></tracker:session></extensions></gpx>`);
+await go('/voile', 3000);
+console.log('\nGPX complet à fiche v99 :', await importFiles([['f1.gpx', futureBundle]]));
+await waitFor(() => recordOf(t10), { timeout: 3000, label: 'f1' });
+await settle({ max: 3000, label: 'f1' });
+/** Nom du GPX rangé à côté de la fiche au texte exact, relu dans le dossier. */
+const futureFile = await evaluate(`(async () => {
+  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
+  for await (const [name, h] of dir.entries()) {
+    if (name.endsWith('.json') && (await (await h.getFile()).text()) === ${JSON.stringify(futureText)}) return name.replace(/\\.json$/, '.gpx');
+  }
+  return null;
+})()`);
+console.log('fiche au caractère près :', futureFile !== null);
+console.log('GPX rangé sans le paquet :', futureFile !== null && await evaluate(`(async () => {
+  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
+  return (await (await (await dir.getFileHandle(${JSON.stringify(futureFile)})).getFile()).text()) === ${JSON.stringify(futureBare)};
+})()`));
+await go(analysisPath('voile', { gpx: futureFile }), 5000);
+await tabsReady();
+console.log('analyse : nom', await textWith('/Du futur/'), '| avertissements :', await warnings(), '| modifiable (« Renommer ») :', await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Renommer')`));
 
 // --- 6. Surf, foil supposé ---
 const t9 = at(18);

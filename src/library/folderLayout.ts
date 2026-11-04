@@ -1,10 +1,11 @@
-import { stringifyJson } from '../core/basics';
+import { isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basics';
 
 /**
  * Disposition du dossier mémoire (`docs/ETAT_DU_PROJET.md` §6) :
  *
  *     Tracker/
- *       tracker.json     marqueur, pour reconnaître le dossier
+ *       tracker.json     marqueur, pour reconnaître le dossier et dire sa version
+ *                        (`readMarkerVersion` : au-delà de `MEMORY_VERSION`, lecture seule)
  *       reglages/        un fichier de réglages par appareil, `<appareil>.json`
  *                        (`settingsFile.ts`) ; avant le point 90, un seul
  *                        reglages.json à la racine
@@ -33,6 +34,16 @@ export const settingsPath = (fileName: string): string => `${SETTINGS_DIR}/${fil
 
 export const markerText = (): string =>
   `${stringifyJson({ format: MEMORY_FORMAT, version: MEMORY_VERSION })}\n`;
+
+/**
+ * Version de la disposition dite par le texte du marqueur. Absent, illisible ou d'un autre
+ * format : 1, le dossier reste une mémoire ordinaire, et le marqueur n'est pas réécrit pour autant.
+ * Au-delà de `MEMORY_VERSION`, le dossier est ouvert en lecture seule.
+ */
+export const readMarkerVersion = (text: string | null): number => {
+  const marker = text === null ? null : parseJson(text);
+  return isObject(marker) && marker.format === MEMORY_FORMAT && isFiniteNumber(marker.version) ? marker.version : 1;
+};
 
 /** Texte du `LISEZMOI.txt`, en fins de ligne Windows : il sera surtout ouvert sur un PC. */
 export const readmeText = (): string =>

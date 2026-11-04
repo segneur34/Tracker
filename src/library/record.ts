@@ -637,7 +637,9 @@ export interface UnreadableField {
 export type RecordUnreadable = Readonly<Record<string, UnreadableField>>;
 
 /** Champs de premier niveau dont la lecture peut perdre quelque chose. */
-const GUARDED_FIELDS = ['sport', 'surfaces', 'terrainElevation', 'elevationSource', 'intervals', 'jumps', 'marks', 'test'] as const;
+const GUARDED_FIELDS = [
+  'sport', 'activityId', 'source', 'addedAt', 'title', 'name', 'surfaces', 'terrainElevation', 'elevationSource', 'intervals', 'jumps', 'marks', 'test',
+] as const;
 /** Objets relus champ par champ : un champ illisible y est gardé seul ; l'objet entier s'il est illisible (sauf le résumé, refait depuis le GPX). */
 const GUARDED_OBJECTS = ['summary', 'analysis', 'notes'] as const;
 
@@ -894,6 +896,15 @@ export const RECORD_LIGHT_FIELDS = [
  * aux fiches allégées du cache, et `mergeLightRecord` l'effacerait à l'écriture suivante.
  */
 export const RECORD_LIGHT_FIELDS_KEY = RECORD_LIGHT_FIELDS.join(',');
+
+/**
+ * Version du lecteur des fiches (`readRecordParts` et ce qu'il appelle), rangée avec le cache : les
+ * fiches du cache sont ce qu'a rendu le lecteur de la version qui l'a fait, et n'y repassent pas. À
+ * augmenter dès qu'une fiche ne se lit plus pareil (nouveau défaut, champ normalisé autrement, borne) :
+ * le cache d'avant est alors ignoré, toutes les fiches sont relues, puis il est refait. Un cache sans
+ * ce numéro est de la version 1.
+ */
+export const RECORD_READER_VERSION = 1;
 
 const LIGHT_FIELDS: ReadonlySet<string> = new Set(RECORD_LIGHT_FIELDS);
 

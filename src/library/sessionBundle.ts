@@ -36,6 +36,11 @@ export interface UnbundledGpx {
    * réécrire tels quels avec elle ; vide sans fiche.
    */
   unreadable: RecordUnreadable;
+  /**
+   * Texte de la fiche du paquet, telle qu'empaquetée, `null` s'il n'en porte pas : à ranger au caractère
+   * près si on ne sait pas la réécrire (`record` nul, `recordToKeep` de la bibliothèque).
+   */
+  recordText: string | null;
   /** Capteurs du paquet, `null` s'il n'en porte pas. */
   motion: Uint8Array | null;
 }
@@ -158,12 +163,14 @@ const undoEdits = (gpx: string, body: string, record: Pick<RecordWithoutSummary,
 export const unbundleSessionGpx = (text: string): UnbundledGpx => {
   const start = text.lastIndexOf(OPEN);
   const end = start < 0 ? -1 : text.indexOf(CLOSE, start);
-  if (end < 0) return { gpx: text, record: null, unreadable: {}, motion: null };
+  if (end < 0) return { gpx: text, record: null, unreadable: {}, recordText: null, motion: null };
   const body = text.slice(start + OPEN.length, end);
-  const recordText = /<tracker:record>([\s\S]*?)<\/tracker:record>/.exec(body)?.[1];
-  const read = recordText === undefined ? null : parseRecordWithRaw(unescapeXml(recordText));
+  const escapedRecord = /<tracker:record>([\s\S]*?)<\/tracker:record>/.exec(body)?.[1];
+  const recordText = escapedRecord === undefined ? null : unescapeXml(escapedRecord);
+  const read = recordText === null ? null : parseRecordWithRaw(recordText);
   const parsed = read && isWritableRecord(read.parts) ? read : null;
-  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body, parsed?.parts ?? null);
+  // Une fiche d'une version plus récente dit aussi le nom et les repères écrits dans le GPX.
+  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body, read?.parts ?? null);
   const imuText = /<tracker:imu>([A-Za-z0-9+/=\s]*)<\/tracker:imu>/.exec(body)?.[1];
   let motion: Uint8Array | null = null;
   try {
@@ -171,5 +178,5 @@ export const unbundleSessionGpx = (text: string): UnbundledGpx => {
   } catch {
     motion = null;
   }
-  return { gpx, record: parsed?.parts ?? null, unreadable: parsed?.unreadable ?? {}, motion };
+  return { gpx, record: parsed?.parts ?? null, unreadable: parsed?.unreadable ?? {}, recordText, motion };
 };

@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
+import { errorMessage } from '../core/basics';
 import { isNativeApp } from './runtime';
 
 /**
@@ -66,6 +67,17 @@ export const createMemoryFile = (name = 'fichier.txt'): TextFile => {
 /** Greffon de fichiers de Capacitor, chargé au premier besoin : le seul chargement, pour `files.ts`, `memoryFolder.ts` et `tileCache.ts`. */
 export const filesystem = () => import('@capacitor/filesystem');
 
+/** Code du greffon Filesystem pour un fichier qui n'existe pas (`FilesystemErrors.doesNotExist`). */
+const FILESYSTEM_DOES_NOT_EXIST = 'OS-PLUG-FILE-0008';
+
+/**
+ * L'erreur du greffon Filesystem prouve-t-elle que le fichier n'existe pas ? Son code, ou le texte
+ * d'une erreur du système rendue telle quelle. Toute autre erreur ne dit rien de sa présence.
+ */
+export const isMissingPrivateFile = (err: unknown): boolean =>
+  (err as { code?: unknown } | null)?.code === FILESYSTEM_DOES_NOT_EXIST
+  || /does not exist|enoent|no such file/i.test(errorMessage(err, ''));
+
 /** Fichier du dossier privé de l'application, sur le téléphone. */
 const createPrivateFile = (path: string): TextFile => ({
   read: async () => {
@@ -76,7 +88,7 @@ const createPrivateFile = (path: string): TextFile => ({
       return data;
     } catch (err) {
       // Fichier absent : c'est le cas normal quand aucun enregistrement n'est en cours.
-      if (!(await privateFileExists(path))) return null;
+      if (isMissingPrivateFile(err) || !(await privateFileExists(path))) return null;
       // Présent mais illisible (trop gros pour le pont, erreur passagère du stockage) : jamais pris pour absent.
       throw err;
     }
@@ -105,14 +117,17 @@ const createPrivateFile = (path: string): TextFile => ({
   },
 });
 
-/** Vrai si le fichier existe dans le dossier privé de l'application. */
+/**
+ * Faux seulement sur une preuve que le fichier n'existe pas dans le dossier privé de l'application :
+ * une erreur passagère du stockage le laisse présent, pour qu'un journal illisible ne soit jamais écrasé.
+ */
 const privateFileExists = async (path: string): Promise<boolean> => {
   const { Filesystem, Directory } = await filesystem();
   try {
     await Filesystem.stat({ path, directory: Directory.Data });
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return !isMissingPrivateFile(err);
   }
 };
 

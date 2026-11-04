@@ -1,7 +1,7 @@
 import { errorMessage } from '../core/basics';
 import { registerPlugin } from '@capacitor/core';
 import { base64ToBytes, bytesToBase64 } from '../core/base64';
-import { filesystem } from './files';
+import { filesystem, isMissingPrivateFile } from './files';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';
 
@@ -44,6 +44,9 @@ export interface FolderEntry {
   mtimeMs: number;
 }
 
+/** Taille et date d'un fichier. `mtimeMs` peut valoir 0 (fournisseur du téléphone qui ne la donne pas). */
+export type FileStat = Pick<FolderEntry, 'size' | 'mtimeMs'>;
+
 /** `browser` : mémoire privée du navigateur ; `picked` : dossier choisi sur le PC ; `device` : dossier du téléphone. */
 export type MemoryKind = 'browser' | 'picked' | 'device';
 
@@ -51,14 +54,18 @@ export interface MemoryFolder {
   kind: MemoryKind;
   /** Où se trouve le dossier, en clair. */
   label: string;
+  /** Vrai si le dossier refuse toute écriture (`readOnlyFolder`) : ne rien y tenter. */
+  readOnly?: true;
   /** Contenu d'un sous-dossier (`''` pour la racine) ; vide s'il n'existe pas. */
   list(dir: string): Promise<FolderEntry[]>;
   /** Contenu d'un fichier texte, `null` s'il n'existe pas. */
   readText(path: string): Promise<string | null>;
   /** Écrit un fichier texte, en créant les dossiers qui manquent. */
   writeText(path: string, text: string): Promise<void>;
-  /** Contenu d'un fichier binaire, `null` s'il n'existe pas. */
+  /** Contenu d'un fichier binaire, `null` s'il n'existe pas ; lève s'il existe mais ne se lit pas. */
   readBytes(path: string): Promise<Uint8Array | null>;
+  /** Taille et date d'un fichier, sans le lire ; `null` s'il n'existe pas. */
+  stat(path: string): Promise<FileStat | null>;
   /** Écrit un fichier binaire, en créant les dossiers qui manquent. */
   writeBytes(path: string, bytes: Uint8Array): Promise<void>;
   /** Efface un fichier ; sans effet s'il n'existe pas. */
@@ -151,6 +158,10 @@ const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, l
     readBytes: async (path) => {
       const file = await fileAt(path);
       return file ? new Uint8Array(await file.arrayBuffer()) : null;
+    },
+    stat: async (path) => {
+      const file = await fileAt(path);
+      return file ? { size: file.size, mtimeMs: file.lastModified } : null;
     },
     writeBytes: (path, bytes) => write(path, bytes),
     remove: async (path) => {
@@ -309,6 +320,8 @@ interface MemoryFolderPlugin {
   readText(options: { uri: string; path: string }): Promise<{ text: string | null }>;
   writeText(options: { uri: string; path: string; text: string }): Promise<void>;
   readBase64(options: { uri: string; path: string }): Promise<{ data: string | null }>;
+  /** `size` et `mtimeMs` seulement si `exists`. */
+  stat(options: { uri: string; path: string }): Promise<{ exists: boolean; size?: number; mtimeMs?: number }>;
   writeBase64(options: { uri: string; path: string; data: string }): Promise<void>;
   remove(options: { uri: string; path: string }): Promise<void>;
 }
@@ -333,13 +346,39 @@ export const MISSING_FOLDER_MESSAGE = 'Le dossier mémoire est introuvable. Dés
  * Erreur du sélecteur d'Android rendue en clair : un dossier désigné qui
  * n'existe plus donne « … Missing file for primary:Documents/Tracker at
  * /storage/… » (lot 143, idée 122), remplacé par `MISSING_FOLDER_MESSAGE` ;
- * le détail technique ne va qu'en console. Toute autre erreur est rendue telle quelle.
+ * le détail technique ne va qu'en console. Toute autre erreur est rendue telle quelle ;
+ * un code explicite du greffon prime sur le texte : un accès refusé arrive
+ * souvent enveloppé dans une `FileNotFoundException` (« EACCES »).
  */
 export const readableFolderError = (err: unknown): unknown => {
+  const code = fileErrorCode(err);
+  if (code !== 'NOT_FOUND' && code !== 'UNKNOWN') return err;
   const detail = errorMessage(err, '');
   if (!/missing file for|filenotfoundexception/i.test(detail)) return err;
   console.warn(`Dossier mémoire introuvable : ${detail}`);
-  return new Error(MISSING_FOLDER_MESSAGE);
+  return Object.assign(new Error(MISSING_FOLDER_MESSAGE), { code: 'NOT_FOUND' });
+};
+
+/** Ce que dit une erreur de fichier, sans la traduire : le code du greffon, ou celle du navigateur. */
+export type FileErrorCode = 'NOT_FOUND' | 'PERMISSION' | 'NO_SPACE' | 'TOO_LARGE' | 'UNKNOWN';
+
+const FILE_ERROR_CODES: readonly string[] = ['NOT_FOUND', 'PERMISSION', 'NO_SPACE', 'TOO_LARGE', 'UNKNOWN'];
+
+/** Erreurs du navigateur (poignées de dossier), par leur nom. */
+const BROWSER_ERROR_CODES: Readonly<Record<string, FileErrorCode>> = {
+  NotFoundError: 'NOT_FOUND',
+  TypeMismatchError: 'NOT_FOUND',
+  NotAllowedError: 'PERMISSION',
+  SecurityError: 'PERMISSION',
+  QuotaExceededError: 'NO_SPACE',
+};
+
+/** Code d'une erreur levée par un dossier mémoire : `code` posé par le greffon (`rejectCoded`), sinon le nom de l'erreur du navigateur. */
+export const fileErrorCode = (err: unknown): FileErrorCode => {
+  if (typeof err !== 'object' || err === null) return 'UNKNOWN';
+  const { code, name } = err as { code?: unknown; name?: unknown };
+  if (typeof code === 'string' && FILE_ERROR_CODES.includes(code)) return code as FileErrorCode;
+  return (typeof name === 'string' && Object.hasOwn(BROWSER_ERROR_CODES, name) ? BROWSER_ERROR_CODES[name] : undefined) ?? 'UNKNOWN';
 };
 
 /** Appel du plugin dont l'échec est rendu en clair (`readableFolderError`). */
@@ -364,6 +403,10 @@ const createDeviceFolder = ({ uri, base, label }: DeviceFolderChoice): MemoryFol
     readBytes: async (path) => {
       const { data } = await inPlainWords(nativeFolder.readBase64({ uri, path: full(path) }));
       return data === null ? null : base64ToBytes(data);
+    },
+    stat: async (path) => {
+      const found = await inPlainWords(nativeFolder.stat({ uri, path: full(path) }));
+      return found.exists ? { size: found.size ?? 0, mtimeMs: found.mtimeMs ?? 0 } : null;
     },
     writeBytes: async (path, bytes) => {
       await inPlainWords(nativeFolder.writeBase64({ uri, path: full(path), data: bytesToBase64(bytes) }));
@@ -551,25 +594,36 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
 
 /**
  * Fichier binaire du dossier privé de l'application (`Directory.Data`), par
- * son chemin dans ce dossier ; `null` s'il n'existe pas.
+ * son chemin dans ce dossier ; `null` s'il n'existe pas, et seulement sur une
+ * preuve de son absence (`isMissingPrivateFile`, lecture ou `stat`). Sinon, fichier
+ * illisible (trop gros pour le pont, erreur passagère du stockage) ou présence
+ * inconnue, l'erreur de lecture est levée : il ne doit jamais être pris pour
+ * absent, puis effacé.
  */
 export const readPrivateBytes = async (path: string): Promise<Uint8Array | null> => {
   const { Filesystem, Directory } = await filesystem();
   try {
     const { data } = await Filesystem.readFile({ path, directory: Directory.Data });
     return typeof data === 'string' ? base64ToBytes(data) : new Uint8Array(await data.arrayBuffer());
-  } catch {
-    return null;
+  } catch (err) {
+    if (isMissingPrivateFile(err)) return null;
+    // `stat` en échec : aucune preuve, comme un fichier présent.
+    if ((await privateFileSize(path).catch(() => 0)) === null) return null;
+    throw err;
   }
 };
 
-/** Taille d'un fichier du dossier privé de l'application, en octets ; `null` s'il n'existe pas. */
+/**
+ * Taille d'un fichier du dossier privé de l'application, en octets ; `null` s'il
+ * n'existe pas. Lève si on ne peut pas le savoir (`isMissingPrivateFile`).
+ */
 export const privateFileSize = async (path: string): Promise<number | null> => {
   const { Filesystem, Directory } = await filesystem();
   try {
     return (await Filesystem.stat({ path, directory: Directory.Data })).size;
-  } catch {
-    return null;
+  } catch (err) {
+    if (isMissingPrivateFile(err)) return null;
+    throw err;
   }
 };
 
@@ -636,6 +690,16 @@ const createPrivateFolder = (base: string): MemoryFolder => {
     },
     writeText: (path, text) => writeAtomically(path, text, true),
     readBytes: (path) => readPrivateBytes(full(path)),
+    stat: async (path) => {
+      const { Filesystem, Directory } = await filesystem();
+      try {
+        const found = await Filesystem.stat({ path: full(path), directory: Directory.Data });
+        return found.type === 'directory' ? null : { size: found.size, mtimeMs: found.mtime };
+      } catch (err) {
+        if (isMissingPrivateFile(err)) return null;
+        throw err;
+      }
+    },
     // Sans encodage, `data` est du base64.
     writeBytes: (path, bytes) => writeAtomically(path, bytesToBase64(bytes), false),
     remove: async (path) => {
@@ -647,6 +711,21 @@ const createPrivateFolder = (base: string): MemoryFolder => {
       }
     },
   };
+};
+
+/** Dit à qui veut écrire dans un dossier d'une version plus récente, et dans la carte de la mémoire. */
+export const READ_ONLY_MEMORY_MESSAGE = "Ce dossier vient d'une version plus récente de Tracker : il est lu sans rien y changer. Mettez l'application à jour pour y ranger vos sessions.";
+
+/**
+ * Le même dossier, qui lit et refuse toute écriture : à l'ouverture d'une mémoire
+ * d'une disposition plus récente (`readMarkerVersion`). Son identité (`kind`,
+ * `label`) reste celle du dossier.
+ */
+export const readOnlyFolder = (f: MemoryFolder): MemoryFolder => {
+  const refuse = async (): Promise<void> => {
+    throw new Error(READ_ONLY_MEMORY_MESSAGE);
+  };
+  return { ...f, readOnly: true, writeText: refuse, writeBytes: refuse, remove: refuse };
 };
 
 /**

@@ -48,7 +48,7 @@ describe('GPX complet', () => {
   });
 
   it('laisse tel quel un GPX sans paquet', () => {
-    expect(unbundleSessionGpx(GPX)).toEqual({ gpx: GPX, record: null, unreadable: {}, motion: null });
+    expect(unbundleSessionGpx(GPX)).toEqual({ gpx: GPX, record: null, unreadable: {}, recordText: null, motion: null });
   });
 
   it('retire puis ignore un paquet abîmé', () => {
@@ -75,8 +75,23 @@ describe('GPX complet', () => {
     expect(rewritten.name).toBe('Carnon');
   });
 
-  it('ignore une fiche écrite par une version plus récente', () => {
-    expect(unbundleSessionGpx(bundleSessionGpx(GPX, record({ version: RECORD_VERSION + 1 }), null)).record).toBeNull();
+  it('ne lit pas une fiche écrite par une version plus récente, mais en rend le texte au caractère près (lot 148, C5-4)', () => {
+    const future = record({ version: RECORD_VERSION + 1, name: 'Carnon & <co>', marks: [{ timeMs: START_MS + 1000, lat: 43.6, lon: 3.8, label: 'Bouée' }] });
+    const back = unbundleSessionGpx(bundleSessionGpx(GPX, future, new Uint8Array([1])));
+    expect(back.record).toBeNull();
+    expect(back.recordText).toBe(serializeRecord(future));
+    expect(back.gpx).toBe(GPX);
+    expect([...back.motion!]).toEqual([1]);
+  });
+
+  it('rend aussi le texte d\'une fiche illisible du paquet, et celui d\'une fiche lisible', () => {
+    const fine = record({ name: 'Carnon' });
+    const bundled = bundleSessionGpx(GPX, fine, null);
+    expect(unbundleSessionGpx(bundled).recordText).toBe(serializeRecord(fine));
+    const broken = bundled.replace(/<tracker:record>[\s\S]*<\/tracker:record>/, '<tracker:record>{ cassé</tracker:record>');
+    const back = unbundleSessionGpx(broken);
+    expect(back.record).toBeNull();
+    expect(back.recordText).toBe('{ cassé');
   });
 });
 

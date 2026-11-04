@@ -123,12 +123,14 @@ export const stopMotionCapture = async (): Promise<MotionCapture | null> => {
 /**
  * Capture laissée par un enregistrement interrompu (application fermée de
  * force), retrouvée par l'instant de l'en-tête de son journal ; `null` s'il
- * n'y en a pas. Sa durée n'est pas connue sans la relire.
+ * n'y en a pas. Sa durée n'est pas connue sans la relire. Présence inconnue
+ * (`privateFileSize` en échec) : la capture est retenue, sa lecture à « Analyser »
+ * tranchera ; la session reprise ne doit ni la perdre, ni échouer pour si peu.
  */
 export const findMotionCapture = async (startedAtMs: number): Promise<MotionCapture | null> => {
   if (!isNativeApp()) return null;
   const path = motionCapturePath(startedAtMs);
-  const bytes = await privateFileSize(path);
+  const bytes = await privateFileSize(path).catch(() => 0);
   return bytes === null ? null : { path, bytes, durationS: 0, samples: 0, longestGapS: 0, error: null };
 };
 

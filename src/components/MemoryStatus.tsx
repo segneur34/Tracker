@@ -8,7 +8,7 @@ import {
   switchToBrowserMemory,
   useLibraryFields,
 } from '../hooks/useSessionLibrary';
-import { browserMemoryIsGuaranteed } from '../platform/memoryFolder';
+import { READ_ONLY_MEMORY_MESSAGE, browserMemoryIsGuaranteed } from '../platform/memoryFolder';
 import { isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
@@ -51,7 +51,7 @@ function MemoryStatus({
   collapse?: { open: boolean; onToggle: () => void };
 }) {
   const library = useLibraryFields(
-    'status', 'folderKind', 'folderLabel', 'reason', 'sessions', 'scanning', 'pendingCount', 'duplicates', 'unreadable', 'message', 'error'
+    'status', 'folderKind', 'folderLabel', 'memoryReadOnly', 'reason', 'sessions', 'scanning', 'pendingCount', 'duplicates', 'unreadable', 'message', 'error'
   );
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
@@ -86,7 +86,8 @@ function MemoryStatus({
   const statusLine = (
     <>
       <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
-      {detailed && canImportSessions(library) && (
+      {status === 'ready' && library.memoryReadOnly && <p style={mutedStyle}>{READ_ONLY_MEMORY_MESSAGE}</p>}
+      {detailed && (canImportSessions(library) || (status === 'ready' && library.memoryReadOnly)) && (
         <div style={rowStyle}>
           <RefreshLibraryButton />
           <ImportButtons gpx={false} />
@@ -105,7 +106,7 @@ function MemoryStatus({
   // Seule la lecture des GPX sans fiche demande attention ; les résumés refaits ont leur ligne dans la liste.
   const creating = library.scanning && library.scanning.creating.done < library.scanning.creating.total
     ? library.scanning.creating : null;
-  const attention = status !== 'ready' || creating !== null || library.pendingCount > 0
+  const attention = status !== 'ready' || library.memoryReadOnly || creating !== null || library.pendingCount > 0
     || library.duplicates.length > 0 || library.unreadable.length > 0;
   if (compact && !attention) {
     return (

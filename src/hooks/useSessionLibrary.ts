@@ -11,11 +11,13 @@ import { getSportProfile, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
+  MEMORY_VERSION,
   README_FILE,
   SESSIONS_DIR,
   SETTINGS_DIR,
   SETTINGS_FILE,
   markerText,
+  readMarkerVersion,
   readmeText,
   sessionPath,
   settingsPath,
@@ -25,6 +27,7 @@ import { describeImport, type ImportReport } from '../library/importReport';
 import {
   RECORD_FORMAT,
   RECORD_LIGHT_FIELDS_KEY,
+  RECORD_READER_VERSION,
   RECORD_VERSION,
   applyRecordPatch,
   carryRecordEdits,
@@ -88,6 +91,8 @@ import {
   openMemoryFolder,
   pendingFolder,
   pickFolderToImport,
+  READ_ONLY_MEMORY_MESSAGE,
+  readOnlyFolder,
   reconnectMemoryFolder,
   type FolderEntry,
   type ImportEntry,
@@ -151,6 +156,8 @@ export interface LibraryState {
   folderKind: MemoryKind | null;
   /** Où se trouve la mémoire, en clair. */
   folderLabel: string | null;
+  /** Dossier d'une disposition plus récente (marqueur) : lu, et rien n'y est écrit (`readOnlyFolder`). */
+  memoryReadOnly: boolean;
   /** Pourquoi aucune mémoire n'est accessible, en clair. */
   reason: string | null;
   /** Sessions, une par identité, de la plus récente à la plus ancienne. */
@@ -189,6 +196,7 @@ const INITIAL_STATE: LibraryState = {
   status: 'opening',
   folderKind: null,
   folderLabel: null,
+  memoryReadOnly: false,
   reason: null,
   sessions: [],
   scanning: null,
@@ -240,6 +248,8 @@ const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 
 /** Dossier mémoire en service, `null` s'il n'y en a aucun d'accessible. */
 let folder: MemoryFolder | null = null;
+/** Dossier où l'on peut ranger : aucun tant que la mémoire est en lecture seule, comme sans dossier. */
+const writableFolder = (): MemoryFolder | null => (folder?.readOnly ? null : folder);
 /** Toutes les sessions lues, doublons compris. */
 let all: LibrarySession[] = [];
 /** Noms des fichiers de `sessions/` : un nouveau nom ne doit en écraser aucun, même illisible. */
@@ -395,6 +405,8 @@ interface StoredCache {
    * liste, ou d'avant cette empreinte, est ignoré : toutes les fiches sont relues, puis il est refait.
    */
   fields?: string;
+  /** Version du lecteur qui a rendu ces fiches (`RECORD_READER_VERSION`), 1 si absente : une autre est ignorée de même. */
+  reader?: number;
   entries: LibraryCache;
 }
 
@@ -402,7 +414,7 @@ const folderId = (f: MemoryFolder): string => `${f.kind}:${f.label}`;
 
 const readCache = (f: MemoryFolder): { entries: LibraryCache; light: boolean } => {
   const cache = jsonStore.read<StoredCache>(CACHE_KEY);
-  return cache && cache.folder === folderId(f) && cache.entries && cache.fields === RECORD_LIGHT_FIELDS_KEY
+  return cache && cache.folder === folderId(f) && cache.entries && cache.fields === RECORD_LIGHT_FIELDS_KEY && (cache.reader ?? 1) === RECORD_READER_VERSION
     ? { entries: cache.entries, light: cache.light === true }
     : { entries: {}, light: false };
 };
@@ -449,7 +461,7 @@ const updateCache = async (f: MemoryFolder, gen: number, whole: boolean): Promis
     }
     if (entry) next[entry.name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(item.record) };
   }
-  jsonStore.write(CACHE_KEY, { folder: folderId(f), light: true, fields: RECORD_LIGHT_FIELDS_KEY, entries: next } satisfies StoredCache);
+  jsonStore.write(CACHE_KEY, { folder: folderId(f), light: true, fields: RECORD_LIGHT_FIELDS_KEY, reader: RECORD_READER_VERSION, entries: next } satisfies StoredCache);
 };
 
 /** Cache refait en entier, d'après tout `all` (fin de balayage). */
@@ -483,6 +495,7 @@ const FUTURE_RECORD_WARNING = 'Fiche écrite par une version plus récente de Tr
 const UNREADABLE_RECORD_WARNING = 'Fiche illisible, laissée telle quelle : le résumé affiché est recalculé.';
 const DAMAGED_RECORD_WARNING = 'Fiche devenue illisible, laissée telle quelle : les changements ne sont plus enregistrés.';
 const NOT_READ_RECORD_WARNING = 'Fiche non lue (accès refusé) : laissée telle quelle, relue à « Mettre à jour ».';
+const READ_ONLY_MEMORY_WARNING = 'Dossier écrit par une version plus récente de Tracker : session lue sans être modifiée.';
 
 /** Relectures en cours, une seule par session. */
 const hydrating = new Map<string, Promise<void>>();
@@ -788,7 +801,8 @@ const publishSettingsFiles = (): void => {
  */
 const writeOwnSettings = async (f: MemoryFolder, savedAt: number): Promise<void> => {
   // Stockage illisible au démarrage : les réglages en mémoire ne sont pas ceux de l'appareil, son fichier reste tel quel.
-  if (storageStartupFailure()) {
+  // Mémoire en lecture seule : rien n'y est écrit.
+  if (storageStartupFailure() || f.readOnly) {
     publishSettingsFiles();
     return;
   }
@@ -929,7 +943,7 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
     && settingsSignature(own.file.values) === lastSignature;
   if (upToDate) publishSettingsFiles();
   else await writeOwnSettings(f, savedAt);
-  if (legacy && !startupFailed) await f.remove(SETTINGS_FILE);
+  if (legacy && !startupFailed && !f.readOnly) await f.remove(SETTINGS_FILE);
   offerNewSettings(autoAdopted);
   return changed;
 };
@@ -1041,8 +1055,18 @@ export const importSettingsFile = async (picked: File): Promise<{ file: Settings
 
 // --- Ouverture d'un dossier ---
 
-/** Marqueur écrit s'il manque ; mode d'emploi récrit s'il manque ou a changé. */
+/**
+ * Le dossier désigné, en lecture seule si son marqueur dit une disposition plus récente : il pourrait
+ * ne plus se ranger comme on le croit (`MEMORY_VERSION`). Marqueur illisible ou non lu : dossier ordinaire.
+ */
+const guardedFolder = async (f: MemoryFolder): Promise<MemoryFolder> => {
+  const marker = await f.readText(MARKER_FILE).catch(() => null);
+  return readMarkerVersion(marker) > MEMORY_VERSION ? readOnlyFolder(f) : f;
+};
+
+/** Marqueur écrit s'il manque ; mode d'emploi récrit s'il manque ou a changé. Rien en lecture seule. */
 const ensureLayout = async (f: MemoryFolder): Promise<void> => {
+  if (f.readOnly) return;
   if ((await f.readText(MARKER_FILE)) === null) await f.writeText(MARKER_FILE, markerText());
   if ((await f.readText(README_FILE)) !== readmeText()) await f.writeText(README_FILE, readmeText());
 };
@@ -1083,6 +1107,7 @@ const keptInMemory = (read: LibrarySession, editsBefore: number): LibrarySession
  * supprime l'ancien nom que s'il figure encore, à côté du nouveau, dans la liste relue.
  */
 const normalizeRecordExtensions = async (f: MemoryFolder, entries: FolderEntry[]): Promise<FolderEntry[]> => {
+  if (f.readOnly) return entries;
   const names = new Set(entries.map((e) => e.name));
   const gpxRecordNames = new Set(entries.filter((e) => e.kind === 'file' && isGpxFileName(e.name)).map((e) => recordFileName(e.name)));
   const odd = entries.filter(
@@ -1116,8 +1141,8 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   const cache = readCache(f);
   let plan = planReconcile(entries, rootEntries, cache.entries);
 
-  // Un GPX posé à la racine du dossier est rangé dans `sessions/`, avec la fiche posée à côté de lui.
-  if (plan.rootGpx.length > 0) {
+  // Un GPX posé à la racine du dossier est rangé dans `sessions/`, avec la fiche posée à côté de lui (pas en lecture seule).
+  if (plan.rootGpx.length > 0 && !f.readOnly) {
     const taken = new Set(entries.map((e) => e.name));
     for (const name of plan.rootGpx) {
       try {
@@ -1154,12 +1179,13 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   // Résumé à refaire : version du calcul dépassée, ou réglages changés depuis (empreinte, lot 37).
   const isOutdated = summaryOutdatedTest();
   const keep = (file: string, record: SessionRecord, partial: boolean) => {
-    const readOnly = !isWritableRecord(record);
+    const future = !isWritableRecord(record);
+    const readOnly = future || f.readOnly === true;
     found.push({
       file,
       record: { ...record, gpx: file },
       readOnly,
-      warning: readOnly ? FUTURE_RECORD_WARNING : null,
+      warning: future ? FUTURE_RECORD_WARNING : readOnly ? READ_ONLY_MEMORY_WARNING : null,
       ...(partial ? { partial: true } : {}),
     });
     if (!readOnly && isOutdated(record)) jobs.push({ file, kind: 'refresh', readOnly: false, warning: null });
@@ -1286,7 +1312,9 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     return 'done';
   }
   const record = job.base ? withSummary({ ...job.base, gpx: job.file }, analyzed.summary) : newRecord(job.file, analyzed, 'import');
-  if (!job.readOnly) {
+  // Mémoire en lecture seule : la fiche se calcule pour l'affichage, sans s'écrire.
+  const readOnly = job.readOnly || f.readOnly === true;
+  if (!readOnly) {
     try {
       if (!job.base) rememberUnreadable(f, job.file, undefined);
       await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record, unreadableOf(f, job.file)));
@@ -1301,7 +1329,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     }
   }
   if (gen !== generation) return 'stopped';
-  replaceSession({ file: job.file, record, readOnly: job.readOnly, warning: job.warning }, true);
+  replaceSession({ file: job.file, record, readOnly, warning: job.warning ?? (readOnly ? READ_ONLY_MEMORY_WARNING : null) }, true);
   return 'done';
 };
 
@@ -1386,10 +1414,22 @@ const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[],
  */
 const pendingWriting = new Set<string>();
 
+/**
+ * Capteurs d'une session en attente, `null` s'ils n'y sont pas. Là mais illisibles : lève, et la session
+ * reste en attente avec eux, comme pour sa fiche, plutôt que d'être rangée sans (`flushPending`).
+ */
+const readPendingImu = async (pending: MemoryFolder, name: string): Promise<Uint8Array | null> => {
+  try {
+    return await pending.readBytes(name);
+  } catch (err) {
+    throw new Error(`capteurs illisibles, session laissée en attente (${errorMessage(err, 'erreur inconnue')})`);
+  }
+};
+
 /** Capteurs temporaires lus, s'ils commencent par un en-tête lisible ; `null` sinon. */
 const readPendingImuTemp = async (pending: MemoryFolder, name: string | null): Promise<Uint8Array | null> => {
   if (!name) return null;
-  const bytes = await pending.readBytes(name);
+  const bytes = await readPendingImu(pending, name);
   return bytes && decodeImuHeader(bytes) ? bytes : null;
 };
 
@@ -1438,7 +1478,9 @@ const notCompleted = (result: AddResult): boolean => result.recordNotRead === tr
  * y en a un, avec la fiche écrite à côté de chacune (activité, foil, séances,
  * repères, test). Une session qu'on ne peut ranger reste en attente, sans
  * retenir les autres, et l'échec est dit ; une fiche illisible ne la retient
- * pas : elle est rangée sans, et c'est dit. Les temporaires d'une écriture
+ * pas : elle est rangée sans, et c'est dit ; des capteurs là mais illisibles la
+ * retiennent (`readPendingImu`). Mémoire en lecture seule : tout reste en
+ * attente d'un dossier où ranger. Les temporaires d'une écriture
  * interrompue par un plantage (`planPendingTemps`) : un GPX complet est rangé
  * comme les autres, puis effacé ; un temporaire tronqué ou illisible est
  * effacé, et dit ; celui dont la cible est là, effacé sans rien dire, comme
@@ -1447,6 +1489,10 @@ const notCompleted = (result: AddResult): boolean => result.recordNotRead === tr
 const flushPending = async (): Promise<void> => {
   const pending = pendingFolder();
   if (!pending) return;
+  if (folder?.readOnly) {
+    await countPending();
+    return;
+  }
   let names: string[];
   try {
     names = (await pending.list('')).filter((e) => e.kind === 'file').map((e) => e.name);
@@ -1473,7 +1519,8 @@ const flushPending = async (): Promise<void> => {
         continue;
       }
       const imuTemp = temps.imuTemps[name] ?? null;
-      const imu = await pending.readBytes(imuFileName(name));
+      // Sans capteurs à côté, rien à lire : leur absence n'a pas à se prouver par une erreur de lecture.
+      const imu = listed.has(imuFileName(name)) ? await readPendingImu(pending, imuFileName(name)) : null;
       const fromTemp = imu ? null : await readPendingImuTemp(pending, imuTemp);
       const motion = imu ?? fromTemp;
       const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined, ...record.options });
@@ -1521,7 +1568,7 @@ const flushPending = async (): Promise<void> => {
         reportError(`Session en attente ${session.gpx} laissée en attente : sa fiche n'a pas pu être lue`);
         continue;
       }
-      const imu = session.imu ? await pending.readBytes(session.imu) : null;
+      const imu = session.imu ? await readPendingImu(pending, session.imu) : null;
       const fromTemp = imu ? null : await readPendingImuTemp(pending, session.imuTemp);
       const motion = imu ?? fromTemp;
       const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined, ...record.options });
@@ -1567,12 +1614,16 @@ const countPending = async (): Promise<void> => {
  * remplacé ceux de l'appareil. Seule la lecture de `sessions/` est
  * indispensable : marqueur, réglages et sessions en attente, s'ils échouent,
  * sont dits, et l'ouverture continue ; une fiche qu'on ne peut lire laisse
- * sa session en lecture seule (`NOT_READ_RECORD_WARNING`).
+ * sa session en lecture seule (`NOT_READ_RECORD_WARNING`). Un dossier d'une
+ * disposition plus récente est ouvert en lecture seule (`guardedFolder`). Dossier
+ * fermé ou remplacé pendant la lecture de son marqueur : il n'est pas ouvert.
  */
-const attach = async (f: MemoryFolder): Promise<boolean> => {
+const attach = async (opened: MemoryFolder): Promise<boolean> => {
   generation += 1;
   cancelCacheUpdate();
   const gen = generation;
+  const f = await guardedFolder(opened);
+  if (gen !== generation) return false;
   // Fiches pas écrites de l'ancien dossier : mises de côté, pour le report dans un dossier désigné (`carryUnwritten`).
   holdUnwritten();
   folder = f;
@@ -1584,6 +1635,7 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
     status: 'opening',
     folderKind: f.kind,
     folderLabel: f.label,
+    memoryReadOnly: f.readOnly === true,
     reason: null,
     sessions: [],
     duplicates: [],
@@ -1626,6 +1678,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
     status,
     folderKind: null,
     folderLabel: label,
+    memoryReadOnly: false,
     reason,
     sessions: [],
     duplicates: [],
@@ -1926,7 +1979,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     const duplicate: AddResult = {
       status: 'duplicate', file: existing.file, recordCompleted, ...(recordNotRead ? { recordNotRead } : {}), ...(recordReadOnly ? { recordReadOnly } : {}),
     };
-    const f = folder;
+    const f = writableFolder();
     if (!options.motion || !f || hasSessionMotion(existing.file)) return duplicate;
     const motion = source === 'enregistrement'
       ? await prunedMotion(options.motion, analyzed.sport, text, existing.record.analysis, existing.record.activityId)
@@ -1940,7 +1993,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     return { ...duplicate, motionAdded: true };
   }
 
-  const f = folder;
+  const f = writableFolder();
   const name = sessionFileName(startMs, analyzed.sport);
   if (!f) {
     // Seul un enregistrement attend un dossier ; un import sans dossier est refusé (décision du 27/10).
@@ -2046,13 +2099,15 @@ const pickedEntry = (file: File): ImportEntry => ({
  * dossier entier n'est jamais chargé d'un coup (E-B1). Une session déjà
  * présente n'est pas dupliquée ; si elle n'avait pas ses capteurs, elle reçoit
  * ceux du dossier (`.imu`). Un fichier qu'on ne peut lire ou ranger n'arrête
- * pas les autres : il est nommé, avec la raison, dans une erreur. Sans
+ * pas les autres : il est nommé, avec la raison, dans une erreur. Des capteurs
+ * illisibles ne retiennent ni le GPX ni la fiche : comptés à part
+ * (`motionFailed`), un nouvel import les ajoute (`motionAdded`). Sans
  * dossier mémoire, rien n'est rangé ni mis en attente (décision du 27/10).
  */
 export const importEntries = async (entries: ImportEntry[]): Promise<ImportReport> => {
   setState({ importing: true });
   const report: ImportReport = {
-    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0, recordNotRead: 0,
+    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0,
   };
   try {
     await opening;
@@ -2082,11 +2137,21 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         const recordText = await records.get(entry.key)?.readText();
         const hasSidecar = typeof recordText === 'string' && !isBlankRecordText(recordText);
         const sidecar = hasSidecar ? parseRecordWithRaw(recordText) : null;
-        // Fiche posée à côté qu'on ne sait pas réécrire (version plus récente, illisible) : rangée telle quelle.
-        const keepRecordText = hasSidecar ? recordToKeep(recordText, sidecar) : undefined;
+        // Fiche posée à côté, ou à défaut portée par le GPX complet, qu'on ne sait pas réécrire (version plus récente, illisible) : rangée telle quelle.
+        const keepRecordText = hasSidecar
+          ? recordToKeep(recordText, sidecar)
+          : bundle.record === null && bundle.recordText !== null && !isBlankRecordText(bundle.recordText)
+            ? recordToKeep(bundle.recordText, parseRecordWithRaw(bundle.recordText))
+            : undefined;
         const fromSidecar = sidecar !== null && isWritableRecord(sidecar.parts);
         const record = fromSidecar ? sidecar.parts : keepRecordText ? null : bundle.record;
-        const motion = (await motions.get(entry.key)?.readBytes()) ?? bundle.motion ?? undefined;
+        // Capteurs illisibles : la session est rangée sans eux, et comptée à part ; ceux du paquet les remplacent s'il en porte.
+        let motionFailed = false;
+        const sideMotion = await motions.get(entry.key)?.readBytes().catch(() => {
+          motionFailed = true;
+          return null;
+        });
+        const motion = sideMotion ?? bundle.motion ?? undefined;
         const result = await addGpx(bundle.gpx, 'import', {
           record, motion, unreadable: fromSidecar ? sidecar.unreadable : keepRecordText ? undefined : bundle.unreadable, keepRecordText,
         });
@@ -2100,6 +2165,8 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         }
         else if (result.status === 'invalid') report.invalid.push(entry.name);
         else report.unsaved += 1;
+        // Une session qui a déjà ses capteurs n'a rien perdu.
+        if (motionFailed && !motion && result.file && !hasSessionMotion(result.file)) report.motionFailed.push(entry.name);
       } catch (err) {
         report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
       }
@@ -2146,11 +2213,11 @@ export const importFromFolder = async (): Promise<ImportReport | null> => {
 };
 
 /**
- * Peut-on importer : seulement dans une mémoire ouverte. Sans dossier, un
- * import est refusé plutôt que mis en attente (décision du 27/10) : seuls les
- * enregistrements attendent un dossier.
+ * Peut-on importer : seulement dans une mémoire ouverte, où l'on peut écrire.
+ * Sans dossier, un import est refusé plutôt que mis en attente (décision du
+ * 27/10) : seuls les enregistrements attendent un dossier.
  */
-export const canImportSessions = (s: Pick<LibraryState, 'status'>): boolean => s.status === 'ready';
+export const canImportSessions = (s: Pick<LibraryState, 'status' | 'memoryReadOnly'>): boolean => s.status === 'ready' && !s.memoryReadOnly;
 
 /** Contenu du GPX d'une session, `null` s'il n'est pas lisible. */
 export const readSessionGpx = async (file: string): Promise<string | null> => {
@@ -2266,6 +2333,10 @@ export const removeSession = async (file: string): Promise<void> => {
   const f = folder;
   const session = findSession(file);
   if (!f || !session) return;
+  if (f.readOnly) {
+    setState({ error: READ_ONLY_MEMORY_MESSAGE });
+    return;
+  }
   const files = all.filter((s) => s.record.summary.startMs === session.record.summary.startMs).map((s) => s.file);
   for (const name of files) {
     removing.add(name);
@@ -2394,7 +2465,9 @@ export const chooseFolder = async (): Promise<void> => {
     return;
   }
 
-  if (previous && previousSessions.length > 0) {
+  // Dossier en lecture seule, ou remplacé pendant son ouverture : rien n'y entre, les sessions restent dans la mémoire du navigateur.
+  const target = writableFolder();
+  if (previous && previousSessions.length > 0 && target && folderId(target) === folderId(picked)) {
     let copied = 0;
     for (const session of previousSessions) {
       try {

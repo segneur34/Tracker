@@ -10,6 +10,7 @@ import android.os.Build;
 import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
 import android.util.Base64;
+import android.util.Log;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -19,6 +20,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -48,6 +50,10 @@ import org.json.JSONObject;
  * (`list`) : une fiche n'est jamais laissée à moitié écrite. Un fichier neuf
  * est écrit de même sous « nom.tracker-new », puis renommé (`createNew`) ; un
  * « .tracker-new » resté seul, création interrompue, est effacé par `list`.
+ *
+ * Un fichier absent n'est pas une erreur (`text` ou `data` nul, `exists` faux).
+ * Une erreur est rejetée avec un code (`rejectCoded`), qui dit à la couche web
+ * ce qui s'est passé sans lire la phrase d'Android.
  */
 @CapacitorPlugin(name = "MemoryFolder")
 public class MemoryFolderPlugin extends Plugin {
@@ -64,6 +70,7 @@ public class MemoryFolderPlugin extends Plugin {
     private static final String NEW_SUFFIX = ".tracker-new";
     /** Fournisseur du stockage du téléphone, dont l'identifiant d'un document est son chemin. */
     private static final String EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents";
+    private static final String LOG_TAG = "MemoryFolder";
 
     private static final String[] CHILD_COLUMNS = {
         Document.COLUMN_DOCUMENT_ID,
@@ -112,7 +119,7 @@ public class MemoryFolderPlugin extends Plugin {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 );
             } catch (SecurityException e) {
-                call.reject("Android a refusé de garder l'accès au dossier : " + e.getMessage());
+                rejectCoded(call, "Android a refusé de garder l'accès au dossier", e);
                 return;
             }
         }
@@ -185,7 +192,7 @@ public class MemoryFolderPlugin extends Plugin {
                 }
             }
         } catch (Exception e) {
-            call.reject("Lecture du dossier impossible : " + e.getMessage());
+            rejectCoded(call, "Lecture du dossier impossible", e);
             return;
         }
         JSObject ret = new JSObject();
@@ -193,12 +200,16 @@ public class MemoryFolderPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Contenu d'un fichier texte ; `text` nul s'il n'existe pas. La réponse part
+     * dans le `try` : sa mise en texte peut, elle aussi, manquer de mémoire.
+     */
     @PluginMethod
     public void readText(PluginCall call) {
         Uri tree = treeOf(call);
         if (tree == null) return;
-        JSObject ret = new JSObject();
         try {
+            JSObject ret = new JSObject();
             String id = resolve(tree, call.getString("path", ""), false);
             if (id == null) {
                 ret.put("text", JSONObject.NULL);
@@ -211,20 +222,25 @@ public class MemoryFolderPlugin extends Plugin {
                     ret.put("text", new String(out.toByteArray(), StandardCharsets.UTF_8));
                 }
             }
-        } catch (Exception e) {
-            call.reject("Lecture impossible : " + e.getMessage());
-            return;
+            call.resolve(ret);
+        } catch (Exception | OutOfMemoryError e) {
+            rejectCoded(call, "Lecture impossible", e);
         }
-        call.resolve(ret);
     }
 
-    /** Contenu d'un fichier quelconque (capteurs), en base64 ; `data` nul s'il n'existe pas. */
+    /**
+     * Contenu d'un fichier quelconque (capteurs), en base64 ; `data` nul s'il
+     * n'existe pas. Le fichier tient en entier en mémoire : trop gros, c'est
+     * `OutOfMemoryError`, qui n'est pas une `Exception`, et qui ne doit pas passer
+     * pour un fichier absent ni faire tomber l'application. La réponse part dans le
+     * `try` : sa mise en texte peut, elle aussi, manquer de mémoire.
+     */
     @PluginMethod
     public void readBase64(PluginCall call) {
         Uri tree = treeOf(call);
         if (tree == null) return;
-        JSObject ret = new JSObject();
         try {
+            JSObject ret = new JSObject();
             String id = resolve(tree, call.getString("path", ""), false);
             if (id == null) {
                 ret.put("data", JSONObject.NULL);
@@ -237,10 +253,39 @@ public class MemoryFolderPlugin extends Plugin {
                     ret.put("data", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
                 }
             }
+            call.resolve(ret);
+        } catch (Exception | OutOfMemoryError e) {
+            rejectCoded(call, "Lecture impossible", e);
+        }
+    }
+
+    /**
+     * Taille et date d'un fichier, sans le lire ; `exists` faux s'il n'existe pas
+     * ou si c'est un dossier. `mtimeMs` vaut 0 si le fournisseur ne la donne pas.
+     */
+    @PluginMethod
+    public void stat(PluginCall call) {
+        Uri tree = treeOf(call);
+        if (tree == null) return;
+        JSObject ret = new JSObject();
+        boolean exists = false;
+        try {
+            String id = resolve(tree, call.getString("path", ""), false);
+            if (id != null) {
+                String[] columns = { Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED };
+                try (Cursor c = resolver().query(DocumentsContract.buildDocumentUriUsingTree(tree, id), columns, null, null, null)) {
+                    if (c != null && c.moveToFirst() && !Document.MIME_TYPE_DIR.equals(c.getString(0))) {
+                        exists = true;
+                        ret.put("size", c.isNull(1) ? 0 : c.getLong(1));
+                        ret.put("mtimeMs", c.isNull(2) ? 0 : c.getLong(2));
+                    }
+                }
+            }
         } catch (Exception e) {
-            call.reject("Lecture impossible : " + e.getMessage());
+            rejectCoded(call, "Lecture du fichier impossible", e);
             return;
         }
+        ret.put("exists", exists);
         call.resolve(ret);
     }
 
@@ -257,7 +302,7 @@ public class MemoryFolderPlugin extends Plugin {
         try {
             data = Base64.decode(call.getString("data", ""), Base64.DEFAULT);
         } catch (IllegalArgumentException e) {
-            call.reject("Données illisibles : " + e.getMessage());
+            rejectCoded(call, "Données illisibles", e);
             return;
         }
         writeBytes(call, data);
@@ -279,7 +324,7 @@ public class MemoryFolderPlugin extends Plugin {
                 createNew(tree, parentId, name, data, path);
             }
         } catch (Exception e) {
-            call.reject("Écriture impossible : " + e.getMessage());
+            rejectCoded(call, "Écriture impossible", e);
             return;
         }
         call.resolve();
@@ -447,10 +492,40 @@ public class MemoryFolderPlugin extends Plugin {
             String id = resolve(tree, call.getString("path", ""), false);
             if (id != null) DocumentsContract.deleteDocument(resolver(), DocumentsContract.buildDocumentUriUsingTree(tree, id));
         } catch (Exception e) {
-            call.reject("Suppression impossible : " + e.getMessage());
+            rejectCoded(call, "Suppression impossible", e);
             return;
         }
         call.resolve();
+    }
+
+    // --- Erreurs ---
+
+    /**
+     * Rejette l'appel avec un code (`errorCode`) ; le message reste « phrase :
+     * détail d'Android », et le détail complet va au journal d'Android.
+     */
+    private void rejectCoded(PluginCall call, String phrase, Throwable e) {
+        Log.w(LOG_TAG, phrase, e);
+        call.reject(phrase + " : " + e.getMessage(), errorCode(e));
+    }
+
+    /**
+     * Ce qui s'est passé, d'après l'erreur et ses causes : `TOO_LARGE` (mémoire
+     * manquante), `PERMISSION`, `NO_SPACE`, `NOT_FOUND`, sinon `UNKNOWN`. Un accès
+     * refusé arrive souvent en `FileNotFoundException` (« EACCES ») : il passe donc
+     * avant `NOT_FOUND`, retenu seulement si aucune cause n'en dit plus.
+     */
+    private static String errorCode(Throwable e) {
+        boolean notFound = false;
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof OutOfMemoryError) return "TOO_LARGE";
+            if (t instanceof SecurityException) return "PERMISSION";
+            String message = String.valueOf(t.getMessage());
+            if (message.contains("EACCES") || message.contains("EPERM")) return "PERMISSION";
+            if (message.contains("ENOSPC") || message.contains("No space left")) return "NO_SPACE";
+            if (t instanceof FileNotFoundException || message.contains("Missing file") || message.contains("FileNotFoundException")) notFound = true;
+        }
+        return notFound ? "NOT_FOUND" : "UNKNOWN";
     }
 
     // --- Chemins ---

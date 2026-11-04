@@ -19,6 +19,8 @@ export interface ImportReport {
   failed: string[];
   /** Sessions déjà présentes qui ont reçu leurs capteurs (`.imu`). */
   motionAdded: number;
+  /** GPX rangés ou déjà présents dont les capteurs (`.imu`) ne se sont pas lus : gardés sans eux, un nouvel import les ajoute. */
+  motionFailed: string[];
   /** Sessions déjà présentes dont la fiche a été complétée. */
   recordCompleted: number;
   /** Sessions déjà présentes à compléter dont la fiche n'a pas pu être relue : rien n'y a été ajouté. */
@@ -32,6 +34,10 @@ export const describeImport = (report: ImportReport): string => {
   if (report.duplicates > 0) parts.push(`${report.duplicates} déjà présente${report.duplicates > 1 ? 's' : ''}`);
   if (report.motionAdded > 0) {
     parts.push(`capteurs ajoutés à ${report.motionAdded} session${report.motionAdded > 1 ? 's' : ''} déjà présente${report.motionAdded > 1 ? 's' : ''}`);
+  }
+  if (report.motionFailed.length > 0) {
+    const s = report.motionFailed.length > 1 ? 's' : '';
+    parts.push(`capteurs illisibles pour ${report.motionFailed.length} session${s} (${report.motionFailed.join(', ')}), gardée${s} sans eux : un nouvel import les ajoutera`);
   }
   if (report.recordCompleted > 0) {
     parts.push(`fiche complétée pour ${report.recordCompleted} session${report.recordCompleted > 1 ? 's' : ''} déjà présente${report.recordCompleted > 1 ? 's' : ''}`);

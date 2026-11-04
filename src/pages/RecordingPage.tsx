@@ -592,6 +592,7 @@ function RecordingScreen() {
   const measuringMotion = useRecorderSelector((s) => s.measuringMotion);
   const motionSetup = useRecorderSelector((s) => s.motionSetup);
   const pending = useRecorderSelector((s) => s.pending);
+  const motionUnreadable = useRecorderSelector((s) => s.motionUnreadable);
   const saved = useRecorderSelector((s) => s.saved);
   const error = useRecorderSelector((s) => s.error);
   const manualPause = isManualPause({ status, pausedReason });
@@ -759,8 +760,9 @@ function RecordingScreen() {
    * « Analyser » : range la session, puis l'ouvre si elle est entrée dans la mémoire. Une sortie à pied
    * ou à vélo faite avec le compteur d'intervalles : on demande d'abord si elle passe en Fractionné, seule
    * famille à avoir l'onglet « fractionné » (19/10) ; sinon elle reste dans la sienne, sans cet onglet.
+   * `withoutMotion` : « Analyser sans les capteurs », proposé après une capture illisible.
    */
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (withoutMotion = false) => {
     const intervalActivity = pending?.activity && pending.intervals.length > 0
       ? intervalActivityFor(pending.activity, activitiesOfFamily(shownActivities, 'fractionne'))
       : null;
@@ -770,7 +772,7 @@ function RecordingScreen() {
     );
     const gear = endGear;
     setAnalyzing(true);
-    const result = await analyzePendingSession();
+    const result = await analyzePendingSession(withoutMotion);
     setAnalyzing(false);
     // Le matériel choisi va dans la fiche, comme le reste ; s'il n'y entre pas, il se refait dans l'onglet de l'analyse.
     const gearWritten = result && gear ? writeEndGear(result.libraryFile, gear) : true;
@@ -1117,6 +1119,11 @@ function RecordingScreen() {
             <Button variant="primary" onClick={() => void handleAnalyze()} disabled={analyzing}>
               {analyzing ? 'Rangement…' : 'Analyser'}
             </Button>
+            {motionUnreadable && (
+              <Button onClick={() => void handleAnalyze(true)} disabled={analyzing}>
+                Analyser sans les capteurs
+              </Button>
+            )}
             {canDownloadFiles() && (
               <Button onClick={() => downloadTextFile(pending.fileName, pending.content)}>
                 Télécharger le GPX

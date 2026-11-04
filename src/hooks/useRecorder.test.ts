@@ -39,10 +39,16 @@ const journal = vi.hoisted(() => {
   };
   return file;
 });
-vi.mock('../platform/files', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/files')>()),
-  recordingJournal: journal,
-}));
+/** Greffon Filesystem simulé, pour la vraie lecture du dossier privé ; `null` : celui de la plateforme. */
+const privateFs = vi.hoisted(() => ({ fake: null as object | null }));
+vi.mock('../platform/files', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../platform/files')>();
+  return {
+    ...original,
+    recordingJournal: journal,
+    filesystem: () => (privateFs.fake ? Promise.resolve(privateFs.fake) : original.filesystem()),
+  };
+});
 
 /** Ceinture simulée : prise et rendue sans Bluetooth, mesures émises à la demande ; le service au premier plan relevé. */
 const belt = vi.hoisted(() => {
@@ -94,6 +100,9 @@ const sensors = vi.hoisted(() => ({
   resumeFails: false,
   findFails: false,
   stop: null as (() => Promise<MotionCapture | null>) | null,
+  /** Lecture de la capture ; `null` : celle de la plateforme. */
+  read: null as ((path: string) => Promise<Uint8Array | null>) | null,
+  removed: [] as string[],
 }));
 vi.mock('../platform/motion', async (importOriginal) => {
   const original = await importOriginal<typeof import('../platform/motion')>();
@@ -109,8 +118,22 @@ vi.mock('../platform/motion', async (importOriginal) => {
       if (sensors.findFails) throw new Error('stockage muet');
       return original.findMotionCapture(startedAtMs);
     },
+    readMotionCapture: (path: string) => (sensors.read ? sensors.read(path) : original.readMotionCapture(path)),
+    removeMotionCapture: async (path: string) => {
+      sensors.removed.push(path);
+    },
   };
 });
+
+/** Rangement simulé : les capteurs reçus par la bibliothèque, dans l'ordre. */
+const library = vi.hoisted(() => ({ motions: [] as (Uint8Array | null)[] }));
+vi.mock('./useSessionLibrary', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./useSessionLibrary')>()),
+  saveRecordedSession: async (_text: string, _sport: unknown, _activityId: unknown, _intervals: unknown, motion: Uint8Array | null) => {
+    library.motions.push(motion);
+    return { file: 'rangee.gpx', location: 'ici' };
+  },
+}));
 
 /** Autorisations simulées : sans objet (navigateur), sauf notifications refusées à la demande. */
 const permissions = vi.hoisted(() => ({ notificationsDenied: false }));
@@ -178,6 +201,10 @@ beforeEach(() => {
   journal.setAsideFails = false;
   sensors.findFails = false;
   sensors.stop = null;
+  sensors.read = null;
+  sensors.removed = [];
+  library.motions = [];
+  privateFs.fake = null;
 });
 afterEach(async () => {
   vi.useRealTimers();
@@ -643,5 +670,113 @@ describe('capteurs à l’arrêt (lot 143, 123c)', () => {
     })).toMatch(/arrêt impossible \(greffon muet\)/);
     await reset();
     expect(await stopWith(async () => null)).toMatch(/s'était arrêtée/);
+  });
+});
+
+describe('capture à « Analyser » (lot 148, T2-1)', () => {
+  const capture: MotionCapture = { path: `capteurs/${T0}.imu`, bytes: 4096, durationS: 2, samples: 200, longestGapS: 0.01, error: null };
+  const setup = { placement: 'poitrine' as const, foil: true, jumps: true, cadence: false };
+
+  /** Session de voile arrêtée, en attente : la capture n'a pas été lue à l'arrêt (chemin normal). */
+  const stopped = async (): Promise<void> => {
+    sensors.stop = async () => capture;
+    const source = fakeSource();
+    await recorder.startRecording(baseActivity('wingfoil'), source, { motion: setup });
+    source.emit(0);
+    source.emit(1);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending?.motion?.path).toBe(capture.path);
+    expect(recorder.getRecorderState().pending?.motionBytes).toBeNull();
+  };
+  const unreadable = async (): Promise<Uint8Array | null> => {
+    throw new Error('mémoire du pont');
+  };
+
+  it('qui lève : rien d\'effacé, ni rangé, session en attente et c\'est dit ; un nouvel essai réussi la range et l\'efface', async () => {
+    await stopped();
+    sensors.read = unreadable;
+    expect(await recorder.analyzePendingSession()).toBeNull();
+    const state = recorder.getRecorderState();
+    expect(state.pending).not.toBeNull();
+    expect(state.motionUnreadable).toBe(true);
+    expect(state.error).toMatch(/capteurs/);
+    expect(sensors.removed).toEqual([]);
+    expect(library.motions).toEqual([]);
+    expect(journal.text).not.toBeNull();
+
+    const bytes = new Uint8Array([1, 2]);
+    sensors.read = async () => bytes;
+    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toEqual([bytes]);
+    expect(sensors.removed).toEqual([capture.path]);
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+    expect(journal.text).toBeNull();
+  });
+
+  it('absente : la session est rangée sans elle', async () => {
+    await stopped();
+    sensors.read = async () => null;
+    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toEqual([null]);
+    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
+  });
+
+  it('« Analyser sans les capteurs » : rangée sans elle, le fichier reste sur l\'appareil', async () => {
+    await stopped();
+    sensors.read = unreadable;
+    await recorder.analyzePendingSession();
+    expect((await recorder.analyzePendingSession(true))?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toEqual([null]);
+    expect(sensors.removed).toEqual([]);
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+    expect(journal.text).toBeNull();
+  });
+
+  /** Greffon dont la lecture et le `stat` échouent avec ces erreurs, derrière la vraie `readPrivateBytes`. */
+  const readingThrough = async (readError: Error, statError: Error): Promise<void> => {
+    privateFs.fake = {
+      Directory: { Data: 'DATA' },
+      Filesystem: {
+        readFile: async () => {
+          throw readError;
+        },
+        stat: async () => {
+          throw statError;
+        },
+      },
+    };
+    sensors.read = (await import('../platform/memoryFolder')).readPrivateBytes;
+  };
+
+  it('lecture et `stat` qui échouent sans dire « introuvable » : pas d\'absence conclue, rien d\'effacé', async () => {
+    await stopped();
+    await readingThrough(new Error('mémoire du pont'), new Error('stockage muet'));
+    expect(await recorder.analyzePendingSession()).toBeNull();
+    expect(recorder.getRecorderState().motionUnreadable).toBe(true);
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+    expect(sensors.removed).toEqual([]);
+    expect(library.motions).toEqual([]);
+  });
+
+  it('absence prouvée par le greffon : rangée sans elle', async () => {
+    await stopped();
+    const missing = Object.assign(new Error("'readFile' failed because file does not exist."), { code: 'OS-PLUG-FILE-0008' });
+    await readingThrough(missing, missing);
+    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toEqual([null]);
+  });
+
+  it('« Jeter » après l\'échec : la capture est effacée, l\'avertissement retombe', async () => {
+    await stopped();
+    sensors.read = unreadable;
+    await recorder.analyzePendingSession();
+    await recorder.discardPendingSession();
+    expect(sensors.removed).toEqual([capture.path]);
+    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
   });
 });
