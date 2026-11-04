@@ -360,7 +360,8 @@ Plus de fichier mort, d'export ou de champ inutilisé, ni de `any` dans `src/` (
 - **Écriture en place de repli** : un fournisseur Android qui refuse le renommage d'un document fait écrire la fiche en place, comme avant le point 92 ; une coupure à ce moment la laisserait illisible. Le dossier `Documents` du téléphone renomme : jamais constaté.
 - **Brouillon de session** : le retour arrière du navigateur demande confirmation par une entrée d'historique « garde » (`createHistoryGuard`, `leaveGuard.ts`), hors application Android où le retour passe par `installBackButton`. Une garde restée sous la page quittée par un lien est traversée sans bruit au retour : un appui de plus sur « précédent », sans effet visible.
 - **Recharts** type `Payload.payload` en `any` : les `formatter` d'infobulle (voile, course, itinéraires) annotent la ligne du type attendu. C'est une confiance accordée à Recharts, pas une vérification.
-- **Détection des virages écrite deux fois** (`analyzeManeuvers` et `observeTurns`, qui ne partagent que `scanTurnWindow`) → reste à faire n° 112.
+- **Détection des virages encore un peu écrite deux fois** (`analyzeManeuvers` et `observeTurns`) : la prolongation du virage et le point le plus lent sont écrits une fois (lot 112, neutre à l'octet sur 31 traces, test `TURNS_AGREEMENT`). Restent deux écarts voulus mais non résorbés, parce que les aligner changerait des chiffres : la vitesse d'entrée (le vent exige la vitesse plancher de la polaire, 5 nd en wing, au lieu du seuil des manœuvres, 4 nd) et la cohérence (0,6 pour le vent, 0,5 pour les manœuvres). Soumis à l'utilisateur, question Q53, sans réponse à ce jour.
+- **Alertes des outils de développement** : 4 alertes moyennes (`glob` et `minimatch`, tirés par `@capacitor/cli` › `rimraf`), rien dans l'appli ; à lever à la prochaine mise à jour de Capacitor.
 
 ## 10. Historique des décisions et pièges rencontrés
 
