@@ -73,6 +73,7 @@ export const SCRIPTS = [
     manuel: 'il faut course.gpx dans le dossier de --gpx' },
   { nom: 'marche', args: ['{port}', '{captures?}'], pages: ['reglages', 'enregistrer'] },
   { nom: 'materiel', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'surf', 'reglages'] },
+  { nom: 'materiel-fin', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
   { nom: 'miseajour', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'reglages'] },
   { nom: 'muscu', args: ['{port}', '{captures?}'], pages: ['fractionne'] },
   { nom: 'notes', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'course', 'voile', 'surf'], solo: true, accelerable: true, masques: [heure] },

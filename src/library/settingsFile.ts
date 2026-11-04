@@ -1,6 +1,7 @@
 import { readActivities } from '../core/activities';
 import { isObject, parseJson, stringifyJson } from '../core/basics';
 import { sanitizeRunnerProfile } from '../running/runnerProfile';
+import { ROOT_GOAL } from './rootGrowth';
 
 /**
  * Fichiers de réglages du dossier mémoire (§10, point 90) : un par appareil,
@@ -216,7 +217,7 @@ export const checkedValues = (values: Record<string, unknown>): Record<string, u
   if (!(key in values)) return values;
   const { [key]: profiles, ...rest } = values;
   if (!isObject(profiles)) return rest;
-  return { ...rest, [key]: Object.fromEntries(Object.entries(profiles).map(([k, v]) => [k, sanitizeRunnerProfile(v)])) };
+  return { ...rest, [key]: Object.fromEntries(Object.entries(profiles).map(([k, v]) => [k, sanitizeRunnerProfile(v, ROOT_GOAL)])) };
 };
 
 /**

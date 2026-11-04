@@ -220,6 +220,11 @@ export const startIntervalTimer = (): void => {
     }
     // La séance confiée à la session s'arrête avec elle (Q12, 28/10), l'arrêt écrit encore dans la session.
     if (stopping && !wasStopping && active && run && activity && handsOverToRecording(run, hasPositions(activity.base))) stopIntervals();
+    // Enregistrement retombé au repos sans arrêter la séance (« Démarrer » en échec) : elle n'est plus confiée.
+    if (!recording && wasRecording && confided) {
+      confided = false;
+      persist();
+    }
     wasRecording = recording;
     wasStopping = stopping;
   });

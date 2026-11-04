@@ -14,17 +14,35 @@ import { isNativeApp } from './runtime';
  *   dans Téléchargements, téléphone compris (`saveToDownloads`).
  */
 
-/** Fichier texte asynchrone. La lecture d'un fichier absent rend `null`. */
+/**
+ * Fichier texte asynchrone. La lecture d'un fichier absent rend `null` ; celle
+ * d'un fichier présent mais illisible lève une erreur : il ne doit pas être
+ * pris pour absent, puis écrasé.
+ */
 export interface TextFile {
   read(): Promise<string | null>;
   write(text: string): Promise<void>;
   append(text: string): Promise<void>;
   remove(): Promise<void>;
+  /**
+   * Met le fichier de côté sous un autre nom, horodaté, à côté de lui, et
+   * rend ce nom : le nom d'origine est libre, rien n'est perdu. Lève une
+   * erreur si le fichier n'a pas pu être déplacé.
+   */
+  setAside(): Promise<string>;
 }
 
-/** Fichier en mémoire : perdu au rechargement de la page. */
-export const createMemoryFile = (): TextFile => {
+/** Nom d'un fichier mis de côté : `journal.jsonl` devient `journal-2026-11-03T14-25-01-123Z.jsonl`. */
+export const setAsideName = (path: string, nowMs: number): string => {
+  const stamp = new Date(nowMs).toISOString().replace(/[:.]/g, '-');
+  const dot = path.lastIndexOf('.');
+  return dot > path.lastIndexOf('/') ? `${path.slice(0, dot)}-${stamp}${path.slice(dot)}` : `${path}-${stamp}`;
+};
+
+/** Fichier en mémoire : perdu au rechargement de la page. Un fichier mis de côté y est gardé jusque-là. */
+export const createMemoryFile = (name = 'fichier.txt'): TextFile => {
   let content: string | null = null;
+  const aside = new Map<string, string>();
   return {
     read: async () => content,
     write: async (text) => {
@@ -35,6 +53,12 @@ export const createMemoryFile = (): TextFile => {
     },
     remove: async () => {
       content = null;
+    },
+    setAside: async () => {
+      const to = setAsideName(name, Date.now());
+      if (content !== null) aside.set(to, content);
+      content = null;
+      return to;
     },
   };
 };
@@ -48,10 +72,13 @@ const createPrivateFile = (path: string): TextFile => ({
     const { Filesystem, Directory, Encoding } = await filesystem();
     try {
       const { data } = await Filesystem.readFile({ path, directory: Directory.Data, encoding: Encoding.UTF8 });
-      return typeof data === 'string' ? data : null;
-    } catch {
+      if (typeof data !== 'string') throw new Error('contenu inattendu');
+      return data;
+    } catch (err) {
       // Fichier absent : c'est le cas normal quand aucun enregistrement n'est en cours.
-      return null;
+      if (!(await privateFileExists(path))) return null;
+      // Présent mais illisible (trop gros pour le pont, erreur passagère du stockage) : jamais pris pour absent.
+      throw err;
     }
   },
   write: async (text) => {
@@ -70,12 +97,32 @@ const createPrivateFile = (path: string): TextFile => ({
       // Déjà absent.
     }
   },
+  setAside: async () => {
+    const { Filesystem, Directory } = await filesystem();
+    const to = setAsideName(path, Date.now());
+    await Filesystem.rename({ from: path, to, directory: Directory.Data, toDirectory: Directory.Data });
+    return to;
+  },
 });
+
+/** Vrai si le fichier existe dans le dossier privé de l'application. */
+const privateFileExists = async (path: string): Promise<boolean> => {
+  const { Filesystem, Directory } = await filesystem();
+  try {
+    await Filesystem.stat({ path, directory: Directory.Data });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Nom du journal de l'enregistrement en cours ; un journal illisible est mis de côté à côté (`recording-journal-<horodatage>.jsonl`). */
+const RECORDING_JOURNAL = 'recording-journal.jsonl';
 
 /** Journal de l'enregistrement en cours. */
 export const recordingJournal: TextFile = isNativeApp()
-  ? createPrivateFile('recording-journal.jsonl')
-  : createMemoryFile();
+  ? createPrivateFile(RECORDING_JOURNAL)
+  : createMemoryFile(RECORDING_JOURNAL);
 
 /** Faux sur le téléphone, où les sessions sont dans le dossier mémoire. */
 export const canDownloadFiles = (): boolean => !isNativeApp();

@@ -58,12 +58,14 @@ describe('runnerHrSource', () => {
 });
 
 describe('sanitizeRunnerProfile (fichier de réglages repris, lot 143)', () => {
+  const GOAL = { min: 15, max: 600 };
+
   it('garde les champs valides et vide ceux hors plage ou de travers', () => {
     const p = sanitizeRunnerProfile({
       name: '  Léa ', weightKg: 62, heightCm: 1000, birthYear: '1990', sex: 'f', hrMax: 188,
       hrMaxSource: { kind: 'test', atMs: 5 }, hrRest: 10, hrRestSource: { kind: 'test', atMs: 5 },
       hrThresholds: [150, 140], hrZones: [100, 120, 140, 160, 180], economyMlKgKm: 200, rootWeeklyGoalMin: 5, autre: true,
-    });
+    }, GOAL);
     expect(p).toEqual({
       name: 'Léa', avatar: null, weightKg: 62, heightCm: null, birthYear: null, sex: 'f',
       hrMax: 188, hrMaxSource: { kind: 'test', atMs: 5 }, hrRest: null, hrRestSource: null,
@@ -72,13 +74,13 @@ describe('sanitizeRunnerProfile (fichier de réglages repris, lot 143)', () => {
   });
 
   it('rend un profil vide pour ce qui n’est pas un objet', () => {
-    expect(sanitizeRunnerProfile('profil')).toEqual(EMPTY_RUNNER_PROFILE);
-    expect(sanitizeRunnerProfile(null)).toEqual(EMPTY_RUNNER_PROFILE);
-    expect(sanitizeRunnerProfile([1])).toEqual(EMPTY_RUNNER_PROFILE);
+    expect(sanitizeRunnerProfile('profil', GOAL)).toEqual(EMPTY_RUNNER_PROFILE);
+    expect(sanitizeRunnerProfile(null, GOAL)).toEqual(EMPTY_RUNNER_PROFILE);
+    expect(sanitizeRunnerProfile([1], GOAL)).toEqual(EMPTY_RUNNER_PROFILE);
   });
 
   it('garde des seuils valides et un objectif dans sa plage', () => {
-    const p = sanitizeRunnerProfile({ hrThresholds: [140, 165], rootWeeklyGoalMin: 120 });
+    const p = sanitizeRunnerProfile({ hrThresholds: [140, 165], rootWeeklyGoalMin: 120 }, GOAL);
     expect(p.hrThresholds).toEqual([140, 165]);
     expect(p.rootWeeklyGoalMin).toBe(120);
   });

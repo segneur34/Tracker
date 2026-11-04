@@ -37,6 +37,8 @@ export const SCREEN_BREAKPOINTS = {
   planningWide: '(min-width: 1200px)',
   /** Mouvement réduit demandé au système (case du bouton glissant, `ui.css` ; animation de la racine du Profil). */
   reducedMotion: '(prefers-reduced-motion: reduce)',
+  /** Survol réservé aux pointeurs qui survolent : au toucher, un `:hover` reste collé au bouton (lot 143). */
+  hover: '(hover: hover)',
 } as const;
 
 /** Vrai tant que la requête répond, suivi en direct quand l'écran change de taille ou tourne. */

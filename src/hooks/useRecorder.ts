@@ -615,15 +615,51 @@ const afterCurrent = <A extends unknown[]>(command: (...args: A) => Promise<void
 export const isRecordingActive = (): boolean => isBusy();
 
 /**
+ * Ce qu'est devenu le journal laissé par une session interrompue :
+ * `free` : rien à reprendre, ou session remise en attente ; `setAside` :
+ * journal illisible (ou session impossible à reconstruire) mis de côté, et
+ * dit ; `blocked` : journal illisible resté en place, qu'aucun départ ne doit
+ * écraser.
+ */
+export type JournalRecovery = 'free' | 'setAside' | 'blocked';
+
+/**
+ * Met de côté le journal d'une session interrompue qui ne se reprend pas,
+ * sous un autre nom dans le dossier privé de l'application, et le dit : un
+ * nouvel enregistrement peut démarrer sans l'écraser. `why` : ce qui n'a pas
+ * marché, en clair.
+ */
+const setJournalAside = async (why: string): Promise<JournalRecovery> => {
+  try {
+    const name = await recordingJournal.setAside();
+    setState({ error: `${why} : son journal est gardé de côté sur le téléphone (${name}), un nouvel enregistrement peut démarrer.` });
+    return 'setAside';
+  } catch (err) {
+    setState({
+      error: `${why}, et son journal n'a pas pu être mis de côté (${errorMessage(err, 'erreur inconnue')}) : `
+        + "aucun enregistrement ne démarre, pour ne pas l'écraser. Relancez l'application.",
+    });
+    return 'blocked';
+  }
+};
+
+/**
  * Reprend un enregistrement que l'application n'a pas vu se conclure (arrêt
  * brutal, ou session arrêtée puis application fermée sans décision) : relit
  * le journal et remet la session en attente. À appeler au démarrage de
- * l'application.
+ * l'application. Un journal présent mais illisible, ou dont la session ne se
+ * reconstruit pas, n'est jamais pris pour absent : il est mis de côté
+ * (`setJournalAside`), jamais écrasé par le départ suivant.
  */
-export const recoverInterruptedRecording = async (): Promise<void> => {
-  if (isBusy() || state.pending) return;
-  const text = await recordingJournal.read();
-  if (text === null) return;
+export const recoverInterruptedRecording = async (): Promise<JournalRecovery> => {
+  if (isBusy() || state.pending) return 'free';
+  let text: string | null;
+  try {
+    text = await recordingJournal.read();
+  } catch (err) {
+    return setJournalAside(`Session interrompue illisible (${errorMessage(err, 'erreur inconnue')})`);
+  }
+  if (text === null) return 'free';
   await stopOrphanedDeviceLocation();
   await releaseOrphanedBelt();
   await stopBeltKeepAlive();
@@ -655,8 +691,9 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
       true, intervals, recoveredMarks, motion, test
     );
     if (pending) setState({ pending, saved: null, error: null });
+    return 'free';
   } catch (err) {
-    setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
+    return setJournalAside(`Session interrompue non récupérée (${errorMessage(err, 'erreur inconnue')})`);
   }
 };
 
@@ -737,9 +774,13 @@ export const startRecording = exclusive(async (
     return;
   }
   if (withPositions && source === null) return;
-  await recoverInterruptedRecording();
+  const recovery = await recoverInterruptedRecording();
   // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
   if (state.pending) return;
+  // Journal illisible resté en place : pas de départ, qui l'écraserait ; le message est déjà posé.
+  if (recovery === 'blocked') return;
+  // Journal mis de côté à l'instant : son message reste affiché au départ.
+  const recoveryNotice = recovery === 'setAside' ? state.error : null;
 
   const profile = effectiveRecordingProfile(activity);
   fixes = [];
@@ -768,7 +809,7 @@ export const startRecording = exclusive(async (
   setState({
     status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
-    saved: null, error: null, gpsLost: false,
+    saved: null, error: recoveryNotice, gpsLost: false,
   });
 
   if (!withPositions) {
@@ -951,6 +992,26 @@ export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
 export const togglePauseRecording = (): Promise<void> =>
   isManualPause(state) ? resumeRecording() : pauseRecording();
 
+/**
+ * Ce qu'il faut dire à l'arrêt d'une capture des capteurs qui n'a pas tout
+ * gardé, en une phrase ; `null` si elle s'est bien passée. `failure` : l'arrêt
+ * même a échoué ; `capture` à `null` sans échec : plus rien ne tournait.
+ */
+export const motionCaptureWarning = (capture: MotionCapture | null, failure: string | null): string | null => {
+  const lost = 'la session sera rangée sans les mesures des capteurs (sauts, pumping ou cadence).';
+  if (failure !== null) return `Capteurs : arrêt impossible (${failure}), ${lost}`;
+  if (capture === null) return `Capteurs : la mesure s'était arrêtée, ${lost}`;
+  if (capture.error !== null) {
+    return `Capteurs : écriture interrompue (${capture.error}), leurs mesures sont incomplètes : sauts, pumping ou cadence peuvent manquer.`;
+  }
+  if (capture.samples === 0) return `Capteurs : aucune mesure reçue, ${lost}`;
+  return null;
+};
+
+/** Deux messages à la suite, l'un ou l'autre absent. */
+const joinMessages = (first: string | null, second: string | null): string | null =>
+  first && second ? `${first} ${second}` : first ?? second;
+
 /** Arrête l'enregistrement, après la pause ou la reprise en cours s'il y en a une (`afterCurrent`). */
 export const stopRecording = afterCurrent(async (): Promise<void> => {
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
@@ -976,7 +1037,15 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
     heart = ended;
   }
   await flushJournal();
-  const motion = state.measuringMotion ? await stopMotionCapture().catch(() => null) : null;
+  const measuringMotion = state.measuringMotion;
+  let motionFailure: string | null = null;
+  const motion = measuringMotion
+    ? await stopMotionCapture().catch((err: unknown) => {
+      motionFailure = errorMessage(err, 'erreur inconnue');
+      return null;
+    })
+    : null;
+  const motionWarning = measuringMotion ? motionCaptureWarning(motion, motionFailure) : null;
   releaseRecordingBelt();
   if (heartOnly) await stopBeltKeepAlive();
 
@@ -994,7 +1063,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
       heartRate: null,
       marks: [],
       pending,
-      error: pending ? state.error : nothingToKeep(activity.base),
+      error: pending ? joinMessages(state.error, motionWarning) : nothingToKeep(activity.base),
     });
   } catch (err) {
     setState({

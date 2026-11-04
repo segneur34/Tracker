@@ -181,4 +181,15 @@ describe('séance reprise au lancement de l’application (lot 143, 124)', () =>
     await recorder.startRecording(activity, source);
     expect(JSON.parse(memory.get('tracker.intervalRun')!).confided).toBe(true);
   });
+
+  it('un « Démarrer » en échec rend la séance libre : elle reprend seule après un arrêt brutal', async () => {
+    const failing = { ...fakeSource(), start: async () => { throw new Error('GPS refusé'); } };
+    timer.startIntervals(FIRST);
+    await recorder.startRecording(activity, failing);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(JSON.parse(memory.get('tracker.intervalRun')!).confided).toBeUndefined();
+    const fresh = await relaunch();
+    expect(fresh.getIntervalRun()?.workout).toEqual(FIRST);
+    fresh.stopAndCloseIntervals();
+  });
 });

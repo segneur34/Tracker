@@ -14,6 +14,7 @@ import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import SavedSessionShare from '../components/SavedSessionShare';
+import SessionEndGear from '../components/SessionEndGear';
 import { IconFlag, IconLock, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import {
@@ -49,7 +50,8 @@ import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../pl
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { updateSessionRecord } from '../hooks/useSessionLibrary';
+import { librarySession, updateSessionRecord } from '../hooks/useSessionLibrary';
+import { EMPTY_NOTES, type GearChoice } from '../library/notes';
 import {
   addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
   getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
@@ -565,6 +567,22 @@ function RecordingGpsCard({ busy, liveHeartOnly, deviceGps }: {
   );
 }
 
+/** Ce qui est dit quand le matériel choisi à la fin n'a pas pu entrer dans la fiche de la session rangée. */
+const GEAR_NOT_WRITTEN = "Le matériel choisi n'a pas pu être écrit dans la fiche : choisissez-le de nouveau dans l'onglet « matériel et notes » de l'analyse.";
+
+/**
+ * Écrit le matériel choisi à la fin dans la fiche de la session rangée, sans
+ * toucher au reste de ses notes (session déjà dans la mémoire comprise). Rend
+ * faux s'il n'y est pas entré : session hors de la mémoire (en attente d'un
+ * dossier, non rangée) ou fiche en lecture seule.
+ */
+const writeEndGear = (file: string | null, gear: GearChoice[]): boolean => {
+  if (!file) return false;
+  const notes = librarySession(file)?.record.notes ?? null;
+  updateSessionRecord(file, { notes: { ...EMPTY_NOTES, ...notes, gear, savedAt: Date.now() } });
+  return librarySession(file)?.record.notes?.gear === gear;
+};
+
 function RecordingScreen() {
   const status = useRecorderSelector((s) => s.status);
   const pausedReason = useRecorderSelector((s) => s.pausedReason);
@@ -674,6 +692,15 @@ function RecordingScreen() {
   const beltLive = useBeltLive();
   const missingPermissions = useMissingPermissions();
   const [analyzing, setAnalyzing] = useState(false);
+  // Matériel choisi à la fin de la session, vide d'office : remis à zéro pour chaque session en attente (lot 143, 131).
+  const [endGear, setEndGear] = useState<GearChoice[] | null>(null);
+  const [endGearOf, setEndGearOf] = useState(pending);
+  if (endGearOf !== pending) {
+    setEndGearOf(pending);
+    setEndGear(null);
+  }
+  // Matériel choisi qui n'a pas pu être écrit dans la fiche de la session rangée.
+  const [gearNotWritten, setGearNotWritten] = useState(false);
   // Muscu : pas de départ sans la ceinture connectée (décision du 25/10).
   const beltMissing = heartOnly && (belt === null || beltLive.state !== 'connected');
   const canStart = !busy && pending === null && chosen !== null && !restingChosen
@@ -740,9 +767,14 @@ function RecordingScreen() {
       `Le compteur d'intervalles a servi pendant cette session. La ranger en « ${intervalActivity.name} » ? `
       + `Elle aura l'onglet fractionné ; sinon elle reste en « ${pending.activity.name} », sans cet onglet.`
     );
+    const gear = endGear;
     setAnalyzing(true);
     const result = await analyzePendingSession();
     setAnalyzing(false);
+    // Le matériel choisi va dans la fiche, comme le reste ; s'il n'y entre pas, il se refait dans l'onglet de l'analyse.
+    const gearWritten = result && gear ? writeEndGear(result.libraryFile, gear) : true;
+    setGearNotWritten(!gearWritten);
+    if (!gearWritten && result?.libraryFile) window.alert(GEAR_NOT_WRITTEN);
     if (result?.libraryFile) {
       dismissRecorderResult();
       if (toIntervals && intervalActivity) {
@@ -1079,6 +1111,7 @@ function RecordingScreen() {
               Aucun nouvel enregistrement avant ce choix.
             </span>
           </p>
+          <SessionEndGear activity={pending.activity} gear={endGear} onChange={setEndGear} />
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <Button variant="primary" onClick={() => void handleAnalyze()} disabled={analyzing}>
               {analyzing ? 'Rangement…' : 'Analyser'}
@@ -1107,6 +1140,12 @@ function RecordingScreen() {
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {saved.activity?.name ?? 'À classer'}, {saved.pointCount} {saved.sport === null || hasPositions(saved.sport) ? 'points' : 'mesures de la ceinture'}.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
+            {gearNotWritten && (
+              <>
+                <br />
+                <span style={{ fontSize: 'var(--text-s)' }}>{GEAR_NOT_WRITTEN}</span>
+              </>
+            )}
             {!saved.libraryFile && native && (
               <>
                 <br />

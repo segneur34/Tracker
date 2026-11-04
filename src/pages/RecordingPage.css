@@ -117,3 +117,13 @@
   font-size: var(--text-s);
   text-align: right;
 }
+
+/* Matériel choisi à la fin de la session, avant « Analyser » (lot 143, 131). */
+.rec-end-gear {
+  margin-bottom: var(--space-3);
+}
+
+.rec-end-gear__title {
+  display: block;
+  margin-bottom: var(--space-2);
+}

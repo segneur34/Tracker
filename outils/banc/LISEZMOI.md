@@ -139,6 +139,7 @@ Un passage se lance par `passe.mjs` (section suivante) : serveurs, Chrome, profi
   - en surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, aucun débordement.
 
   Il dure environ 1 min 30.
+- `materiel-fin.mjs <port> <dossier de travail> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; matériel choisi à la fin de la session, avant « Analyser » (lot 143), sur un profil neuf, sans réseau : rangée vide d'office, choix écrit dans la fiche et retrouvé dans l'onglet « matériel et notes », rien de repris à la session suivante, pas de rangée sans liste de matériel.
 - `materiel.mjs <port> [<dossier des captures>]` : onglet « matériel et notes » hors voile (lot 2 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et les importe par la page. Il vérifie :
   - dans Réglages, partie Matériel : la ligne « Matériel » sur Course, Route et Surf, pas sur Voile ; « Chaussures » et « Sac » rangés pour Course ;
   - une course, une sortie à vélo et une session de surf : l'onglet juste avant « réglages », les intitulés de l'activité (ceux par défaut à vélo et en surf), ni vent ni plan d'eau, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre, « Enregistrer la session », fiche relue, rechargement ;

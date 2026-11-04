@@ -1,14 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
 import type { LocationFix, LocationSource } from '../platform/location';
+import type { MotionCapture } from '../platform/motion';
 import { journalFixLine, parseJournal } from '../recording/journal';
 
-/** Journal en mémoire ; chaque écriture complète (l'en-tête) est relevée. */
+/**
+ * Journal en mémoire ; chaque écriture complète (l'en-tête) est relevée. `unreadable` : présent mais
+ * illisible ; `aside` : contenus mis de côté ; `setAsideFails` : la mise de côté échoue.
+ */
 const journal = vi.hoisted(() => {
   const file = {
     text: null as string | null,
     headers: 0,
-    read: async () => file.text,
+    unreadable: false,
+    aside: [] as (string | null)[],
+    setAsideFails: false,
+    read: async () => {
+      if (file.unreadable) throw new Error('lecture impossible');
+      return file.text;
+    },
+    setAside: async () => {
+      if (file.setAsideFails) throw new Error('renommage refusé');
+      file.aside.push(file.text);
+      file.text = null;
+      file.unreadable = false;
+      return `recording-journal-${file.aside.length}.jsonl`;
+    },
     write: async (text: string) => {
       file.headers += 1;
       file.text = text;
@@ -68,16 +85,32 @@ vi.mock('../platform/beeper', async (importOriginal) => ({
   },
 }));
 
-/** Capteurs simulés : la capture démarre et se met en pause ; sa reprise échoue à la demande. */
-const sensors = vi.hoisted(() => ({ resumeFails: false }));
-vi.mock('../platform/motion', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/motion')>()),
-  startMotionCapture: async () => undefined,
-  pauseMotionCapture: async () => undefined,
-  resumeMotionCapture: async () => {
-    if (sensors.resumeFails) throw new Error('capteurs muets');
-  },
+/**
+ * Capteurs simulés : la capture démarre et se met en pause ; sa reprise échoue à la demande. `stop` : ce
+ * que rend l'arrêt (rien sinon, comme dans le navigateur) ; `findFails` : la capture d'un journal repris
+ * ne se cherche pas.
+ */
+const sensors = vi.hoisted(() => ({
+  resumeFails: false,
+  findFails: false,
+  stop: null as (() => Promise<MotionCapture | null>) | null,
 }));
+vi.mock('../platform/motion', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../platform/motion')>();
+  return {
+    ...original,
+    startMotionCapture: async () => undefined,
+    pauseMotionCapture: async () => undefined,
+    resumeMotionCapture: async () => {
+      if (sensors.resumeFails) throw new Error('capteurs muets');
+    },
+    stopMotionCapture: () => (sensors.stop ? sensors.stop() : original.stopMotionCapture()),
+    findMotionCapture: async (startedAtMs: number) => {
+      if (sensors.findFails) throw new Error('stockage muet');
+      return original.findMotionCapture(startedAtMs);
+    },
+  };
+});
 
 /** Autorisations simulées : sans objet (navigateur), sauf notifications refusées à la demande. */
 const permissions = vi.hoisted(() => ({ notificationsDenied: false }));
@@ -140,6 +173,11 @@ const reset = async () => {
 beforeEach(() => {
   journal.text = null;
   journal.headers = 0;
+  journal.unreadable = false;
+  journal.aside = [];
+  journal.setAsideFails = false;
+  sensors.findFails = false;
+  sensors.stop = null;
 });
 afterEach(async () => {
   vi.useRealTimers();
@@ -515,5 +553,95 @@ describe('prévenir quand ça rate (lot 115)', () => {
     } finally {
       sensors.resumeFails = false;
     }
+  });
+});
+
+describe('journal illisible (lot 143, 123a)', () => {
+  const header = JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, activity: { id: 'running', name: 'Course' } });
+
+  it('au lancement : mis de côté et dit, jamais pris pour absent ; le départ suivant écrit un journal neuf', async () => {
+    journal.text = 'session perdue';
+    journal.unreadable = true;
+    expect(await recorder.recoverInterruptedRecording()).toBe('setAside');
+    expect(journal.aside).toEqual(['session perdue']);
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().error).toMatch(/illisible .*gardé de côté/);
+    await recorder.startRecording(activity, fakeSource());
+    expect(recorder.getRecorderState().status).toBe('recording');
+    expect(journal.headers).toBe(1);
+    expect(journal.aside).toEqual(['session perdue']);
+  });
+
+  it("au « Démarrer » : mis de côté avant l'en-tête, le message reste affiché pendant l'enregistrement", async () => {
+    journal.text = 'session perdue';
+    journal.unreadable = true;
+    await recorder.startRecording(activity, fakeSource());
+    expect(recorder.getRecorderState().status).toBe('recording');
+    expect(journal.aside).toEqual(['session perdue']);
+    expect(journal.headers).toBe(1);
+    expect(recorder.getRecorderState().error).toMatch(/gardé de côté/);
+  });
+
+  it('mise de côté impossible : aucun départ, le journal reste intact', async () => {
+    journal.text = 'session perdue';
+    journal.unreadable = true;
+    journal.setAsideFails = true;
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(source.starts).toBe(0);
+    expect(journal.headers).toBe(0);
+    expect(journal.text).toBe('session perdue');
+    expect(recorder.getRecorderState().error).toMatch(/pas pu être mis de côté/);
+  });
+
+  it('session impossible à reconstruire : le journal est mis de côté, pas écrasé', async () => {
+    const fix = journalFixLine({ timeMs: T0, lat: 43, lon: 3, speedMs: 3, accuracyM: 4 });
+    journal.text = `${header}\n${fix}`;
+    sensors.findFails = true;
+    expect(await recorder.recoverInterruptedRecording()).toBe('setAside');
+    expect(journal.aside).toEqual([`${header}\n${fix}`]);
+    expect(recorder.getRecorderState().error).toMatch(/non récupérée \(stockage muet\).*gardé de côté/);
+  });
+
+  it('journal absent : rien à faire, rien de dit', async () => {
+    expect(await recorder.recoverInterruptedRecording()).toBe('free');
+    expect(journal.aside).toEqual([]);
+    expect(recorder.getRecorderState().error).toBeNull();
+  });
+});
+
+describe('capteurs à l’arrêt (lot 143, 123c)', () => {
+  const capture: MotionCapture = { path: `capteurs/${T0}.imu`, bytes: 4096, durationS: 2, samples: 200, longestGapS: 0.01, error: null };
+  const setup = { placement: 'poitrine' as const, foil: false, jumps: true, cadence: true };
+
+  /** Enregistre deux positions avec les capteurs, puis arrête : l'alerte de l'arrêt. */
+  const stopWith = async (stop: () => Promise<MotionCapture | null>): Promise<string | null> => {
+    sensors.stop = stop;
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { motion: setup });
+    source.emit(0);
+    source.emit(1);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+    return recorder.getRecorderState().error;
+  };
+
+  it('capture complète : rien de dit', async () => {
+    expect(await stopWith(async () => capture)).toBeNull();
+  });
+
+  it("échec d'écriture : dit en une phrase à l'arrêt", async () => {
+    expect(await stopWith(async () => ({ ...capture, error: 'mémoire pleine' }))).toMatch(/écriture interrompue \(mémoire pleine\)/);
+  });
+
+  it('aucune mesure reçue, arrêt impossible, plus rien ne tournait : dit aussi', async () => {
+    expect(await stopWith(async () => ({ ...capture, samples: 0 }))).toMatch(/aucune mesure reçue/);
+    await reset();
+    expect(await stopWith(async () => {
+      throw new Error('greffon muet');
+    })).toMatch(/arrêt impossible \(greffon muet\)/);
+    await reset();
+    expect(await stopWith(async () => null)).toMatch(/s'était arrêtée/);
   });
 });

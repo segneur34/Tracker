@@ -1,7 +1,6 @@
 import { finiteOr, inRange } from '../core/basics';
 import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
 import { heartRateZones, isValidThresholds, isValidZoneBounds, type HeartRateZones } from '../core/heartRate';
-import { ROOT_GOAL } from '../library/rootGrowth';
 import type { HeartRateProfile } from '../core/sportProfiles';
 
 /**
@@ -150,10 +149,11 @@ export const runnerHeartRateZones = (profile: RunnerProfile, heartRate: HeartRat
 /**
  * Profil relu champ par champ (fichier de réglages d'un autre appareil, lot
  * 143) : un champ d'une forme inattendue ou hors de sa plage (`RUNNER_BOUNDS`,
- * `ROOT_GOAL` pour l'objectif de la racine) est remis à vide, jamais repris
- * tel quel ; un champ inconnu est écarté.
+ * `rootGoal` pour l'objectif de la racine, `ROOT_GOAL` de `library/rootGrowth.ts`
+ * passé par l'appelant) est remis à vide, jamais repris tel quel ; un champ
+ * inconnu est écarté.
  */
-export const sanitizeRunnerProfile = (raw: unknown): RunnerProfile => {
+export const sanitizeRunnerProfile = (raw: unknown, rootGoal: { min: number; max: number }): RunnerProfile => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ...EMPTY_RUNNER_PROFILE };
   const p = raw as Partial<Record<keyof RunnerProfile, unknown>>;
   const bounded = (field: Exclude<RunnerNumberField, 'rootWeeklyGoalMin'>): number | null => {
@@ -180,6 +180,6 @@ export const sanitizeRunnerProfile = (raw: unknown): RunnerProfile => {
     hrThresholds: isValidThresholds(thresholds) ? thresholds : null,
     hrZones: isValidZoneBounds(zones) ? zones : null,
     economyMlKgKm: bounded('economyMlKgKm'),
-    rootWeeklyGoalMin: inRange(p.rootWeeklyGoalMin, ROOT_GOAL.min, ROOT_GOAL.max) ? p.rootWeeklyGoalMin : null,
+    rootWeeklyGoalMin: inRange(p.rootWeeklyGoalMin, rootGoal.min, rootGoal.max) ? p.rootWeeklyGoalMin : null,
   };
 };
