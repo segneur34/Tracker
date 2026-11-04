@@ -3,20 +3,12 @@ import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '.
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { getSportProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, RawTrackPoint, SportType, TrackPoint } from '../core/types';
-import { knotsToMs, msToKnots } from '../core/units';
+import { knotsToMs } from '../core/units';
 import { angleDiff } from '../core/angles';
-import { trackToPointData, type PointData } from '../sailing/pointData';
-import {
-  WIND_LOCAL_MAX_GAP_MIN,
-  classifyManeuvers,
-  estimateWind,
-  prepareManeuverDetection,
-  windSamplesFrom,
-  type ManeuverStats,
-} from '../sailing/maneuvers';
-import { buildWindTimeline, prepareWindPolar, type WindEstimate } from '../sailing/wind';
-import { resolveSailingThresholds, sessionManeuverThresholds } from '../sailing/sailingConfig';
-import { buildSailingSessionStats, computeSailingTops } from '../sailing/sailingStats';
+import type { PointData } from '../sailing/pointData';
+import type { ManeuverStats } from '../sailing/maneuvers';
+import type { WindEstimate } from '../sailing/wind';
+import { analyzeSailingSession } from '../sailing/sailingSession';
 import type { SessionStats } from '../sailing/types';
 import { M_PER_DEG_LAT, mPerDegLon } from './geo.fixture';
 import { GPX_EDITORS, corpusSegmentsOf, type CorpusMeta, type GpxEditor } from './gpx/corpus';
@@ -24,10 +16,10 @@ import { GPX_EDITORS, corpusSegmentsOf, type CorpusMeta, type GpxEditor } from '
 /**
  * Sessions de voile synthétiques réalistes, passées par la chaîne réelle de
  * l'application (positions intégrées depuis le cap et la vitesse, bruit GPS
- * et Doppler, `computeKinematics` accordé à l'allure, estimation du vent et
- * deux passes de détection comme `useSailingSession`). Reprise des sondes de
- * l'audit du 03/11 (`C1-lib`). Fichier de test seulement : rien de
- * l'application ne l'importe.
+ * et Doppler, `computeKinematics` accordé à l'allure, puis
+ * `analyzeSailingSession`, la chaîne de `useSailingSession` : estimation du
+ * vent et deux passes de détection). Reprise des sondes de l'audit du 03/11
+ * (`C1-lib`). Fichier de test seulement : rien de l'application ne l'importe.
  */
 
 export const SAIL_ORIGIN = { lat: 43.5, lon: 3.8 };
@@ -363,7 +355,7 @@ export const sailTrackOf = (raw: RawTrackPoint[], sport: SportType = 'wingfoil')
 export const sailTrack = (spec: SailSpec, sport: SportType = 'wingfoil'): SailTrack => sailTrackOf(sailRaw(spec), sport);
 
 // ---------------------------------------------------------------------------
-// Chaîne de `useSailingSession`, hors React
+// Chaîne de `useSailingSession`, hors React : `analyzeSailingSession`
 // ---------------------------------------------------------------------------
 
 export interface SailingAnalysis {
@@ -391,42 +383,29 @@ export interface AnalyzeOptions {
 
 export const analyzeSailing = (raw: RawTrackPoint[], options: AnalyzeOptions = {}): SailingAnalysis => {
   const sport = options.sport ?? 'wingfoil';
-  const profile = getSportProfile(sport);
   const { track, cumulative, referenceSpeedMs: referenceMs } = sailTrackOf(raw, sport);
-  const points = trackToPointData(track);
-  const referenceKn = msToKnots(referenceMs);
-  const thresholds = resolveSailingThresholds(profile, null, options.thresholdKn ?? null, referenceKn);
-  const activeKn = thresholds.activeKn;
-  const flightKn = thresholds.flightKn;
-  const mt = sessionManeuverThresholds(sport, referenceKn);
-  const stillSpeedKn = profile.stillThreshold;
-  const detection = prepareManeuverDetection(points, { minEntrySpeedKn: mt.minEntrySpeedKn, stillSpeedKn });
-  const polarStage = prepareWindPolar(points, mt.polarMinSpeedKn, mt.minEntrySpeedKn);
-  const windEstimate = estimateWind(points, {
-    minSpeedKn: mt.polarMinSpeedKn,
-    successThresholdKn: activeKn,
-    minEntrySpeedKn: mt.minEntrySpeedKn,
-    flightThresholdKn: flightKn,
-    stillSpeedKn,
-    detection,
-    polarStage,
+  const a = analyzeSailingSession(track, {
+    sport,
+    referenceSpeedMs: referenceMs,
+    cumulative,
+    activityThresholdKn: null,
+    sessionThresholdKn: options.thresholdKn ?? null,
+    windDeg: options.windDeg ?? null,
   });
-  const currentWind = options.windDeg !== undefined ? ((options.windDeg % 360) + 360) % 360 : windEstimate.reliable ? windEstimate.direction : null;
-
-  let maneuvers: ManeuverStats | null = null;
-  if (currentWind !== null && points.length > 0) {
-    const classification = { successThresholdKn: activeKn, flightThresholdKn: flightKn };
-    const first = classifyManeuvers(detection, currentWind, classification);
-    const timeline = buildWindTimeline(
-      windSamplesFrom(first).map((m) => ({ timeMs: m.timeMs, direction: m.localWind })),
-      currentWind,
-      WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
-    );
-    maneuvers = classifyManeuvers(detection, timeline, classification);
-  }
-  const tops = computeSailingTops(track, cumulative);
-  const stats = buildSailingSessionStats(track, { sport, activeThresholdKn: activeKn, cumulative, tops }) ?? ({ tops } as SessionStats);
-  return { track, points, referenceKn, activeKn, flightKn, minEntrySpeedKn: mt.minEntrySpeedKn, polarMinSpeedKn: mt.polarMinSpeedKn, windEstimate, currentWind, maneuvers, stats };
+  if (!a.windEstimate) throw new Error('analyzeSailing : trace vide');
+  return {
+    track,
+    points: a.trackData,
+    referenceKn: a.referenceSpeedKn,
+    activeKn: a.thresholds.activeKn,
+    flightKn: a.thresholds.flightKn,
+    minEntrySpeedKn: a.maneuverThresholds.minEntrySpeedKn,
+    polarMinSpeedKn: a.maneuverThresholds.polarMinSpeedKn,
+    windEstimate: a.windEstimate,
+    currentWind: a.currentWindValue,
+    maneuvers: a.maneuverStats,
+    stats: a.stats ?? ({ tops: a.tops } as SessionStats),
+  };
 };
 
 /** Comptes d'une analyse, pour les comparer d'une transformation à l'autre. */
