@@ -38,3 +38,9 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Pourquoi
 
 Ce sont les écrans que l'acheteur et ses clients voient en premier : vignettes, premier refus du GPS, changement de thème, retour d'une analyse.
+
+## Tranché le 04/11 (orchestrateur, d'après DECISIONS)
+
+- Pause manuelle : la durée reste figée partout (DECISIONS §6, 27/10) ; on corrige le rattrapage d'un coup à la reprise, l'option « tourne comme en pause auto » est écartée.
+- Tuile « Dénivelé » du Profil retirée quand aucune session n'a d'altitude, sans chiffre nouveau (pas de maquette).
+- Partage du paquet : `MemoryFolderPlugin.java` n'est pas de ce lot (148 et 156) ; `BeeperPlugin` et `MotionPlugin` non plus (156). Ici : `HeartRatePlugin`, `DownloadsPlugin`, `ShareFilePlugin`.

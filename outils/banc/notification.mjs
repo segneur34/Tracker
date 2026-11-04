@@ -8,7 +8,8 @@
 //     envois sans changement d'état ;
 //  3. pause manuelle : envoi immédiat, « en pause », durée figée, posé seul ; reprise : envoi immédiat sans « en pause » ;
 //  4. arrêt : notification effacée ;
-//  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte ; « Étape » d'office (26/10).
+//  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte ; « Étape » d'office (26/10) ;
+//  6. la moyenne en voile (lot 150) : « Moyenne active » dans les menus de Réglages, « Moy. act. » dans un rejeu.
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
 
@@ -105,6 +106,8 @@ const before = await notifRow();
 // Deux chiffres au plus depuis le 15/10 (Android coupe la ligne au-delà) : vitesse et distance par défaut.
 check('deux menus, défaut vitesse, distance', before?.menus === 2 && before.values.join(',') === 'Vitesse,Distance' && before.text.includes('défaut'),
   JSON.stringify(before?.values));
+const menuChoices = await evaluate(`[...[...document.querySelectorAll('.settings-part__sub')].find((p) => p.querySelector('.settings-part__subtitle')?.textContent.trim() === 'Notification').querySelector('select').options].map((o) => o.textContent)`);
+check('Voile : le menu propose « Moyenne active », plus « Moyenne »', menuChoices.includes('Moyenne active') && !menuChoices.includes('Moyenne'), menuChoices.join(', '));
 // Depuis le 27/10, « Par défaut » est une entrée du menu « … » de la carte : grisée, non absente, quand rien n'est modifié.
 const parDefaut = (card) => `(${card})?.querySelector('.settings-activity__head > .ui-more .ui-more__panel')?.querySelectorAll('button')`;
 const parDefautState = (card) => evaluate(`(() => { const b = [...(${parDefaut(card)} ?? [])].find((x) => x.textContent.trim() === 'Par défaut'); return b ? (b.disabled ? 'grisé' : 'actif') : 'absent'; })()`);
@@ -168,6 +171,25 @@ mark = sent.length;
 console.log('Arrêter :', await holdStop());
 await wait(1500);
 check('arrêt : notification effacée', sent.slice(mark).some((s) => s.text === 'effacée'), sent.slice(mark).map((s) => s.text).join(' // '));
+console.log('Jeter :', await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`), await clickText('Jeter'));
+await wait(800);
+
+// 6, joué ici : la moyenne active dans un rejeu de voile, avant le compteur.
+const fieldsWith = (from, to) => evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings'));
+  for (const id of Object.keys(s.notificationFields ?? {})) s.notificationFields[id] = s.notificationFields[id].map((f) => (f === ${JSON.stringify(from)} ? ${JSON.stringify(to)} : f));
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return JSON.stringify(s.notificationFields);
+})()`);
+console.log('chiffres :', await fieldsWith('max', 'average'));
+const sAverage = sent.length;
+console.log('Démarrer (voile, moyenne) :', await startReplay('Voile', sailPath, 10));
+await wait(9000);
+const averages = sent.slice(sAverage).filter((s) => s.text !== 'effacée').map((s) => s.text);
+check('voile : « Moy. act. » dans la notification, jamais « Moy. » seul', averages.some((t) => t.includes(' · Moy. act. ')) && !averages.some((t) => /· Moy\. (?!act\.)/.test(t)),
+  averages.slice(-3).join(' // '));
+console.log('Arrêter :', await holdStop());
+await wait(1500);
 console.log('Jeter :', await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`), await clickText('Jeter'));
 await wait(800);
 

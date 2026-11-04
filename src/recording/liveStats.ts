@@ -1,8 +1,11 @@
 import { accumulateElevation, computeElevationStats, type ElevationStats } from '../core/elevation';
 import { heartRateStats, smoothHeartRate } from '../core/heartRate';
 import { resumeKinematics, type KinematicsRun } from '../core/kinematics';
-import { MIN_ELEVATION_COVERAGE, buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
-import { SAILING_SPORTS, type HeartRateProfile, type SportProfile } from '../core/sportProfiles';
+import { referenceSpeedMs } from '../core/sessionSpeed';
+import {
+  MIN_ELEVATION_COVERAGE, buildCumulativeTrack, computeActiveDistanceM, computeActiveTimeMs, segmentDistanceM, thresholdActivityMask,
+} from '../core/sessionStats';
+import { SAILING_SPORTS, hasActiveThreshold, sportTreatment, type HeartRateProfile, type SportProfile } from '../core/sportProfiles';
 import { bestWindowSpeedMs } from '../core/topSegments';
 import type { CumulativeTrack, RawTrackPoint, TrackPoint } from '../core/types';
 import { computeCyclingEnergy, type CyclingEnergyParams } from '../cycling/energy';
@@ -52,6 +55,14 @@ export interface LiveStatsOptions {
   minClimbWindowS: number;
   /** Modèle d'énergie (course, vélo) ; absent : ni puissance ni énergie. */
   energy?: LiveEnergySetup;
+  /** Le chiffre « moyenne » du direct est la moyenne active (`usesActiveAverage`) : libellés et valeur la disent. */
+  activeAverage?: boolean;
+  /**
+   * Seuil d'activité de la moyenne active, dans l'unité du profil, passé par
+   * l'appelant (règle 4 : aucune mise à l'échelle par défaut dans le calcul) ;
+   * absent : elle n'est pas calculée.
+   */
+  activeThreshold?: number;
 }
 
 export const LIVE_STATS_DEFAULTS: LiveStatsOptions = {
@@ -70,8 +81,14 @@ export interface LiveStats {
   movingTimeMs: number;
   /** Vitesse filtrée du dernier point, en m/s. */
   currentSpeedMs: number | null;
-  /** Vitesse moyenne hors pauses, en m/s. */
+  /** Vitesse moyenne hors pauses, en m/s ; sert aussi au temps restant, en voile et en surf comme ailleurs. */
   averageSpeedMs: number | null;
+  /**
+   * Moyenne active, en m/s, comme l'analyse : distance et temps en action au
+   * seuil de `activeThreshold` (`thresholdActivityMask`) ; `null` sans seuil
+   * passé, ou avant le premier point en action.
+   */
+  activeAverageSpeedMs: number | null;
   /** Vitesse sur les `lastDistanceM` derniers mètres, en m/s ; `null` tant qu'ils ne sont pas parcourus. */
   lastDistanceSpeedMs: number | null;
   /** Vitesse sur les `recentDistanceM` derniers mètres, en m/s ; `null` tant qu'ils ne sont pas parcourus. */
@@ -111,6 +128,7 @@ export const EMPTY_LIVE_STATS: LiveStats = {
   movingTimeMs: 0,
   currentSpeedMs: null,
   averageSpeedMs: null,
+  activeAverageSpeedMs: null,
   lastDistanceSpeedMs: null,
   recentDistanceSpeedMs: null,
   recentTopsMs: [],
@@ -142,6 +160,23 @@ const heartPart = (
   const stats = heartRateStats(points, smoothHeartRate(points, params.smoothS, params.gapS), params.gapS);
   return stats === null ? null : { sum: stats.avgBpm * stats.coveredS, coveredS: stats.coveredS };
 };
+
+/** Le direct donne la moyenne active en voile et en surf (04/11) ; pas en bateau, sans seuil, ni dans les autres familles. */
+export const usesActiveAverage = (profile: SportProfile): boolean => {
+  const treatment = sportTreatment(profile.id);
+  return (treatment === 'voile' || treatment === 'surf') && hasActiveThreshold(profile);
+};
+
+/**
+ * Allure de la session en cours (`referenceSpeedMs`, celle de l'analyse), sur
+ * ses segments mis bout à bout : le pas de reprise d'une pause n'y compte pas.
+ */
+export const liveReferenceSpeedMs = (segments: ReadonlyArray<ReadonlyArray<LocationFix>>, maxGapS: number): number =>
+  referenceSpeedMs(
+    segments.flatMap((segment, k) => segment.map((fix, i) => ({ ...toRawPoint(fix), ...(k > 0 && i === 0 ? { segmentStart: true } : {}) }))),
+    undefined,
+    maxGapS
+  );
 
 /**
  * Direct d'une session sans position (muscu, lot I du 25/10) : la FC moyenne
@@ -283,6 +318,8 @@ interface SegmentParts {
   withEle: number;
   distanceM: number;
   movingTimeMs: number;
+  /** Distance et temps en action, avec un seuil passé (`activeThreshold`). */
+  active: { distanceM: number; timeMs: number } | null;
   heart: { sum: number; coveredS: number } | null;
   /** Meilleure vitesse tenue `maxDurationS` ; `null` si la trace est trop courte. */
   maxSpeedMs: number | null;
@@ -357,6 +394,7 @@ export const computeLiveStats = (
     const cum = buildCumulativeTrack(track);
     let distanceM = 0;
     for (let i = 1; i < track.length; i++) distanceM += segmentDistanceM(track, i);
+    const mask = options.activeThreshold === undefined ? null : thresholdActivityMask(track, profile, options.activeThreshold);
     entry.parts = {
       track,
       cum,
@@ -364,6 +402,7 @@ export const computeLiveStats = (
       withEle: entry.fixes.filter((f) => f.altitudeM !== undefined && isFinite(f.altitudeM)).length,
       distanceM,
       movingTimeMs: track.length >= 2 ? track[track.length - 1].timeMs - track[0].timeMs : 0,
+      active: mask === null ? null : { distanceM: computeActiveDistanceM(track, mask), timeMs: computeActiveTimeMs(track, mask) },
       heart: heartPart(entry.fixes, profile.heartRate),
       maxSpeedMs: bestWindowSpeedMs(track, cum, options.maxDurationS),
       legs: sailing && track.length >= 2 ? splitLiveLegs(track) : null,
@@ -383,9 +422,13 @@ export const computeLiveStats = (
 
   let distanceM = 0;
   let movingTimeMs = 0;
+  let activeDistanceM = 0;
+  let activeTimeMs = 0;
   for (const p of active) {
     distanceM += p.distanceM;
     movingTimeMs += p.movingTimeMs;
+    activeDistanceM += p.active?.distanceM ?? 0;
+    activeTimeMs += p.active?.timeMs ?? 0;
   }
 
   const lastTrack = tracks[tracks.length - 1];
@@ -457,6 +500,7 @@ export const computeLiveStats = (
     movingTimeMs,
     currentSpeedMs: lastTrack[lastTrack.length - 1].smoothedSpeedMs,
     averageSpeedMs: movingTimeMs > 0 ? distanceM / (movingTimeMs / 1000) : null,
+    activeAverageSpeedMs: activeTimeMs > 0 ? activeDistanceM / (activeTimeMs / 1000) : null,
     lastDistanceSpeedMs: lastDistanceSpeed(tracks, options.lastDistanceM),
     recentDistanceSpeedMs: lastDistanceSpeed(tracks, options.recentDistanceM),
     recentTopsMs: options.topDurationsS.map((d) => bestRecentTop(tracks, d, sinceMs)),

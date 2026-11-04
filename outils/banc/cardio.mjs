@@ -7,6 +7,7 @@
 //     « La retenir » qui range la FC max de la sortie ; la course sans FC n'a pas l'onglet ;
 //  3. FC max et FC de repos saisies : le tableau des zones calées sur S1 et S2 (réserve cardiaque), « Voir » qui trace les passages
 //     d'une zone sur la carte, effacés à la fermeture de l'onglet ; dérive et nuage FC / vitesse en course ;
+//     un profil repris d'ailleurs, FC de repos écrite en texte (lot 150) : écartée, des zones plausibles ;
 //  4. la courbe de FC dans l'onglet des graphes des trois modules ;
 //  5. Réglages : « Seuils cardio » (S1 et S2, zones, Personnaliser, Revenir au calcul), la ligne « Seuils cardio »
 //     de la carte d'une activité (−8 en voile), la case « Ceinture cardio » en voile et en surf, les chiffres
@@ -232,6 +233,18 @@ await clickTab('graphiques');
 await settle({ max: 1500 });
 check('voile : « Fréquence cardiaque » dans graphiques', (await panel('Graphiques')).toLowerCase().includes('fréquence cardiaque'));
 await shoot('cardio-voile');
+
+// --- Profil repris d'un autre appareil, FC de repos écrite en texte : écartée, jamais concaténée (lot 150) ---
+const cleanRunner = await runner();
+await setRunner({ ...cleanRunner, hrRest: '50' });
+await go(paths.course, 6000);
+await clickTab('cardio');
+await settle({ max: 1500 });
+const textRest = await panel('Cardio');
+const [, textS1, textS2] = textRest.match(/S1 (\d+) et S2 (\d+) bpm/) ?? [];
+check(`FC de repos en texte : zones plausibles (S1 ${textS1}, S2 ${textS2})`, Number(textS1) > 60 && Number(textS2) <= 190 && Number(textS1) < Number(textS2), textRest.slice(0, 300));
+check('FC de repos en texte : écartée de la phrase des zones', !textRest.includes('FC repos 50'), textRest.slice(0, 300));
+await setRunner(cleanRunner);
 
 // --- 5. Réglages ---
 const openSettings = async () => {

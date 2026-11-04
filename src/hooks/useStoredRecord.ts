@@ -6,6 +6,9 @@ import { jsonStore } from '../platform/storage';
  * clé : sections ouvertes d'un module, profil du coureur.
  *
  * Sans clé, rien n'est lu ni écrit.
+ *
+ * `read` : relecture contrôlée de la valeur rangée (`raw`, de n'importe quelle
+ * forme : elle peut venir d'un fichier), à la place de la fusion aux défauts.
  */
 
 const readAll = <T,>(namespace: string): Record<string, T> =>
@@ -14,15 +17,16 @@ const readAll = <T,>(namespace: string): Record<string, T> =>
 const writeAll = <T,>(namespace: string, all: Record<string, T>): void => jsonStore.write(namespace, all);
 
 /** Valeur rangée sous `key`, complétée par `defaults` : la même que le hook, hors composant. */
-export const readStoredRecord = <T extends object>(namespace: string, key: string, defaults: T): T => {
+export const readStoredRecord = <T extends object>(namespace: string, key: string, defaults: T, read?: (raw: unknown) => T): T => {
   const stored = readAll<T>(namespace)[key];
-  return stored ? { ...defaults, ...stored } : defaults;
+  return !stored ? defaults : read ? read(stored) : { ...defaults, ...stored };
 };
 
 export const useStoredRecord = <T extends object>(
   namespace: string,
   key: string | null,
-  defaults: T
+  defaults: T,
+  read?: (raw: unknown) => T
 ) => {
   /**
    * Dernière valeur rendue, et l'objet rangé dont elle vient : tant que celui-ci
@@ -34,7 +38,7 @@ export const useStoredRecord = <T extends object>(
     const stored = key === null ? undefined : readAll<T>(namespace)[key];
     const last = snapshot.current;
     if (last && last.namespace === namespace && last.key === key && last.stored === stored) return last.value;
-    const value = stored ? { ...defaults, ...stored } : defaults;
+    const value = !stored ? defaults : read ? read(stored) : { ...defaults, ...stored };
     snapshot.current = { namespace, key, stored, value };
     return value;
   };
@@ -46,12 +50,12 @@ export const useStoredRecord = <T extends object>(
     (patch: Partial<T> | ((current: T) => Partial<T>)) => {
       if (key === null) return;
       // Relue au moment d'écrire : deux `update` qui s'enchaînent sans rendu se cumulent.
-      const current = readStoredRecord(namespace, key, defaults);
+      const current = readStoredRecord(namespace, key, defaults, read);
       const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
       // Copie : l'objet lu est celui du cache du stockage, partagé.
       writeAll(namespace, { ...readAll<T>(namespace), [key]: next });
     },
-    // `defaults` est une constante de module chez tous les appelants.
+    // `defaults` et `read` sont des constantes de module chez tous les appelants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [namespace, key]
   );

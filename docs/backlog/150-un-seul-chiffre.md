@@ -30,3 +30,23 @@ Un même nom pour deux chiffres différents, ou un réglage perdu sans message, 
 ## Tests
 
 Sondes de l'audit : `C3-vagues.test.ts` (cas « vitesse max de la page et du résumé »), `C4-direct-gpx.test.ts` (direct contre analyse), `T2-profil-voyage.test.ts` (inversée).
+
+## Réponses de l'utilisateur (04/11)
+
+- Moyenne du direct, en voile et en surf : calculée comme l'analyse (seuil de l'activité), nommée « Moyenne active ». Pas de renommage seul. Les autres familles ne changent pas.
+- Vitesse max du surf : celle d'une vague (Q34, DECISIONS §4), rangée dans le résumé.
+- `SUMMARY_CALC_VERSION` augmenté par ce lot seul dans le paquet (14 → 15).
+
+## Tranché par l'orchestrateur (04/11), d'après le plan
+
+- Surf : pas de nouveau champ ; le résumé range la vitesse max des vagues dans `maxSpeedMs`, 0 sans vague (déjà « absent » pour les lecteurs). Un seul champ, cinq lecteurs justes sans y toucher.
+- Direct en surf, `RecordingPage.tsx:229` : « Vitesse max » sur toute la trace devient « Max (2 s) », comme `liveFields` ; pas de détection de vagues en direct.
+- Bateau : sans seuil, garde « Moyenne » et son chiffre. Surf : aucun chiffre « Moyenne active » ajouté à la page d'analyse (ne rien déplacer ni dupliquer). Foil : « général » garde « Moyenne en vol », le direct dit « Moyenne active ».
+- `remainingTime` garde la moyenne hors pauses : la moyenne active rendrait l'heure d'arrivée trop optimiste.
+- `nextSpeedRange` prend un quatrième paramètre, le défaut de la borne vidée ; `readRunnerProfile()` garde son nom sans argument, `storedRunnerProfile(raw, rootGoal)` s'ajoute pour ne pas couper les espaces de fin à la frappe.
+
+## Commit du 04/11
+
+- Une paire de bornes ne revient à « défaut » que si un champ est vidé ; retaper le défaut à la main la garde comme réglage (sinon le champ sauterait pendant la frappe en voile).
+- Banc : `partage` a échoué au premier passage (import absent, sous charge), identique à froid. `library` non joué (il lui faut de vrais GPX) ; il ne montre pas la vitesse max en surf.
+- Vu sans y toucher : `formatSpeed(null)` rend « - » et non « — » dans le direct.

@@ -9,6 +9,7 @@ import {
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
 import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
+import { isValidGradeRange } from '../core/grade';
 import type { SportType } from '../core/types';
 import {
   DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, speedUnitSymbol, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
@@ -31,7 +32,7 @@ import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import { DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, sanitizeGearLabels } from '../settings/gear';
 import {
-  HR_OFFSET_RANGE, TREATMENT_UNITS, defaultBikeKg, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, isActivityOverridden, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily, rangeFollowsPace, thresholdFollowsPace, type SportSettingsView,
+  HR_OFFSET_RANGE, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily, rangeFollowsPace, thresholdFollowsPace, type SportSettingsView,
 } from '../settings/activitySettings';
 import { useAllSportSettings } from '../hooks/useSportSettings';
 import { sameJson } from '../hooks/createStore';
@@ -44,6 +45,7 @@ import {
   MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
   type LiveFieldKey, type LiveFieldTarget, type LiveFieldUnits,
 } from '../recording/liveFields';
+import { LIVE_STATS_DEFAULTS, usesActiveAverage } from '../recording/liveStats';
 import { simulatedApproachMs } from '../recording/markGuide';
 import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
@@ -424,27 +426,27 @@ const ActivityCard = memo(function ActivityCard({
   const rangeEmpty = followsPace && s.speedRange === null;
   const displayBound = (ms: number) => parseDecimal(formatSpeedValue(toDisplaySpeed(ms, rangeUnit), rangeUnit));
   const setRangeBound = (bound: 'minMs' | 'maxMs', next: number | null) => {
-    if (next === null) { setFor(id, 'speedRange', null); return; }
-    const candidate = { ...shownRange, [bound]: fromDisplaySpeed(next, rangeUnit) };
-    if (candidate.maxMs > candidate.minMs) setFor(id, 'speedRange', candidate);
+    const range = nextSpeedRange(s.speedRange, bound, next === null ? null : fromDisplaySpeed(next, rangeUnit), fallbackRange);
+    if (range !== s.speedRange) setFor(id, 'speedRange', range);
   };
   // Couleur de pente de la courbe d'altitude (course, vélo), saisie en %, rangée en fraction.
   const fallbackGrades = defaultGradeRange(activity);
   const shownGrades = s.gradeRange ?? fallbackGrades;
   const percent = (fraction: number) => parseFloat((fraction * 100).toFixed(1));
   const setGradeBound = (bound: 'min' | 'max', next: number | null) => {
-    if (next === null) { setFor(id, 'gradeRange', null); return; }
-    const candidate = { ...shownGrades, [bound]: next / 100 };
-    if (candidate.max > candidate.min) setFor(id, 'gradeRange', candidate);
+    const grades = nextBoundPair(s.gradeRange, bound, next === null ? null : next / 100, fallbackGrades, isValidGradeRange);
+    if (grades !== s.gradeRange) setFor(id, 'gradeRange', grades);
   };
   const setAutoPauseField = (field: 'speedKmh' | 'delayS', next: number | null) => {
-    if (next === null) { setFor(id, 'autoPause', null); return; }
-    setFor(id, 'autoPause', {
-      speedMs: field === 'speedKmh' ? kmhToMs(next) : s.autoPause.speedMs,
-      delayS: field === 'delayS' ? next : s.autoPause.delayS,
-    });
+    const current = s.isAutoPauseOverridden ? s.autoPause : null;
+    const pause = field === 'speedKmh'
+      ? nextBoundPair(current, 'speedMs', next === null ? null : kmhToMs(next), defaultAutoPauseOf(activity), isValidAutoPause)
+      : nextBoundPair(current, 'delayS', next, defaultAutoPauseOf(activity), isValidAutoPause);
+    if (pause !== current) setFor(id, 'autoPause', pause);
   };
   const pauseKmh = parseFloat(msToKmh(s.autoPause.speedMs).toFixed(1));
+  // Les menus des chiffres du direct les nomment comme le direct : « Moyenne active » en voile et en surf.
+  const fieldUnits: LiveFieldUnits = { ...s, options: { ...LIVE_STATS_DEFAULTS, activeAverage: usesActiveAverage(p) } };
   const summary = !positions ? 'sans GPS, ceinture cardio' : [
     speedUnitLabel(s.speedUnit, s.distanceUnit),
     DISTANCE_UNIT_SYMBOL[s.distanceUnit],
@@ -673,7 +675,7 @@ const ActivityCard = memo(function ActivityCard({
             </SettingRow>}
             {positions && <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
               help="Les chiffres en grand quand la carte est réduite, de haut en bas."
-              treatment={treatment} family={family} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
+              treatment={treatment} family={family} units={fieldUnits} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
               defaults={defaultLiveFieldsFor(activity)} max={MAX_LIVE_FIELDS}
               onChange={(fields) => setFor(id, 'liveFields', fields)} />}
             {s.jumps !== null && (
@@ -706,7 +708,7 @@ const ActivityCard = memo(function ActivityCard({
               <h4 className="settings-part__subtitle">Notification</h4>
               <FieldsSetting label="Chiffres de la notification" helpKey={`${id}:notification`}
                 help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. « Étape » : la répétition du compteur en cours sur toutes celles de la séance (5/20), ou le palier d'un test. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
-                target="notification" treatment={treatment} family={family} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
+                target="notification" treatment={treatment} family={family} units={fieldUnits} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
                 defaults={defaultNotificationFieldsFor(activity)} max={MAX_NOTIFICATION_FIELDS}
                 onChange={(fields) => setFor(id, 'notificationFields', fields)} />
             </div>

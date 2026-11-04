@@ -83,6 +83,32 @@ describe('sanitizeLiveFields', () => {
   });
 });
 
+describe('moyenne du direct : « Moyenne active » en voile et en surf (04/11)', () => {
+  const stats = { ...EMPTY_LIVE_STATS, averageSpeedMs: 3, activeAverageSpeedMs: 5 };
+  const active = { ...LIVE_STATS_DEFAULTS, activeAverage: true };
+
+  it('nomme et donne la moyenne active quand le calcul la porte', () => {
+    expect(liveFieldLabel('average', { speedUnit: 'kn', distanceUnit: 'km', options: active })).toBe('Moyenne active');
+    expect(liveFieldShortLabel('average', { speedUnit: 'kn', distanceUnit: 'km', options: active })).toBe('Moy. act.');
+    expect(liveFieldValue('average', context({ stats, speedUnit: 'kmh', options: active }))).toBe('18,0 km/h');
+  });
+
+  it("pas de chiffre tant que rien n'est en action, jamais la moyenne hors pauses", () => {
+    expect(liveFieldValue('average', context({ stats: { ...stats, activeAverageSpeedMs: null }, options: active }))).toBe(liveFieldValue('average', context()));
+  });
+
+  it('course, vélo, fractionné et bateau gardent leur chiffre et leur nom', () => {
+    expect(liveFieldLabel('average', { speedUnit: 'kmh', distanceUnit: 'km' })).toBe('Moyenne');
+    expect(liveFieldLabel('average', { speedUnit: 'minkm', distanceUnit: 'km' })).toBe('Allure moyenne');
+    expect(liveFieldShortLabel('average', { speedUnit: 'kmh', distanceUnit: 'km' })).toBe('Moy.');
+    expect(liveFieldValue('average', context({ stats, speedUnit: 'kmh' }))).toBe('10,8 km/h');
+  });
+
+  it('le temps restant garde la moyenne hors pauses', () => {
+    expect(liveFieldValue('remainingTime', context({ stats, remainingM: 5400, options: active }))).toBe('0:30:00');
+  });
+});
+
 describe('liveFieldLabel', () => {
   it("parle d'allure en min/km et de mille en milles nautiques", () => {
     expect(liveFieldLabel('average', { speedUnit: 'minkm', distanceUnit: 'km' })).toBe('Allure moyenne');

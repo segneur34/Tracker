@@ -226,7 +226,8 @@ const liveStatItems = (
   if (sportTreatment(activity.base) === 'surf') {
     return [
       { label: 'Vitesse', value: formatSpeed(live.currentSpeedMs, unit, distanceUnit) },
-      { label: 'Vitesse max', value: formatSpeed(live.maxSpeedMs, unit, distanceUnit) },
+      // Sur toute la trace : pas la « Vitesse max » de l'analyse, celle d'une vague, que le direct ne détecte pas.
+      { label: liveFieldLabel('max', { speedUnit: unit, distanceUnit, options }), value: formatSpeed(live.maxSpeedMs, unit, distanceUnit) },
       { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }

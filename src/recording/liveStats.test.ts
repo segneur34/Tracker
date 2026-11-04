@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { SPORT_PROFILES } from '../core/sportProfiles';
+import { computeKinematics } from '../core/kinematics';
+import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '../core/sessionSpeed';
+import { buildCumulativeTrack, computeActiveDistanceM, computeActiveTimeMs, thresholdActivityMask } from '../core/sessionStats';
+import { SPORT_PROFILES, type SportProfile } from '../core/sportProfiles';
+import { knotsToMs } from '../core/units';
 import { cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { DEFAULT_ENERGY_PARAMS, runningCostJkgM } from '../running/energy';
 import { sameData } from '../test/sameData';
-import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup } from './liveStats';
+import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
+import {
+  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, liveReferenceSpeedMs, usesActiveAverage, type LiveEnergySetup,
+} from './liveStats';
 import { M_PER_DEG_LAT } from '../test/geo.fixture';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -315,6 +322,141 @@ describe('computeLiveStats : puissance et énergie', () => {
     const stats = computeLiveStats([trace(0, 600, 1, () => 4)], running);
     expect(stats.recentPowerW).toBeNull();
     expect(stats.effortJ).toBeNull();
+  });
+});
+
+describe("computeLiveStats : moyenne active, comme l'analyse (voile, surf)", () => {
+  const LON_M = 111_320 * Math.cos((43.4 * Math.PI) / 180);
+  /** Bord vers l'est, `dt` secondes par pas, positions intégrées ; `skip` : pas sans point (trous). */
+  const leg = (fromS: number, n: number, speed: (i: number) => number, startM: number, skip: (i: number) => boolean = () => false, dt = 1) => {
+    const fixes: LocationFix[] = [];
+    let x = startM;
+    for (let i = 0; i < n; i++) {
+      x += speed(i) * dt;
+      if (!skip(i)) fixes.push({ timeMs: T0 + (fromS + i * dt) * 1000, lat: 43.4, lon: 3.6 + x / LON_M, speedMs: speed(i) });
+    }
+    return { fixes, endM: x };
+  };
+  /** La chaîne de l'analyse : les segments relus d'un seul tenant, filtres accordés à l'allure, masque au même seuil. */
+  const analysisTrackOf = (segments: LocationFix[][], profile: SportProfile) => {
+    const raw = segments.flatMap((segment, k) => segment.map((f, i) => {
+      const time = new Date(f.timeMs);
+      return { lat: f.lat, lon: f.lon, time, rawTimeMs: time.getTime(), speedMs: f.speedMs, ...(k > 0 && i === 0 ? { segmentStart: true as const } : {}) };
+    }));
+    return computeKinematics(raw, kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs: referenceSpeedMs(raw) }));
+  };
+  const analysisAverage = (segments: LocationFix[][], profile: SportProfile, threshold: number): number => {
+    const track = analysisTrackOf(segments, profile);
+    const mask = thresholdActivityMask(track, profile, threshold);
+    return computeActiveDistanceM(track, mask) / (computeActiveTimeMs(track, mask) / 1000);
+  };
+  const withThreshold = (activeThreshold: number) => ({ ...LIVE_STATS_DEFAULTS, activeAverage: true, activeThreshold });
+  /** En dessous du seuil la moitié du temps, autour de lui le reste : dérives lentes et reprises dans la bande du seuil. */
+  const drifting = (i: number) => (Math.floor(i / 300) % 2 === 0 ? 6.5 + Math.sin(i / 7) : 1.2 + 0.5 * Math.sin(i / 9));
+  /** Quatre segments qui reprennent chacun dans la bande de l'hystérésis, le pire cas pour un masque refait par segment. */
+  const driftingSegments = (): LocationFix[][] => {
+    const segments: LocationFix[][] = [];
+    let x = 0;
+    for (let s = 0; s < 4; s++) {
+      const part = leg(s * 1500, 1200, (i) => (i < 30 ? knotsToMs(8) : drifting(i + s * 137)), x);
+      segments.push(part.fixes);
+      x = part.endM + 20;
+    }
+    return segments;
+  };
+
+  it("est celle de l'analyse à 0,1 % près : wing, trous, pointe GPS, pause", () => {
+    const a = leg(0, 2400, (i) => (i >= 1200 && i < 1203 ? 16 : 7 + Math.sin(i / 40)), 0, (i) => i % 300 > 290);
+    const b = leg(3600, 1200, (i) => 6 + Math.sin(i / 50), a.endM + 30);
+    const segments = [a.fixes, b.fixes];
+    const live = computeLiveStats(segments, wing, withThreshold(8)).activeAverageSpeedMs!;
+    expect(Math.abs(live / analysisAverage(segments, wing, 8) - 1)).toBeLessThan(0.001);
+  });
+
+  it("reste à 1,5 % de l'analyse sur des dérives et des reprises dans la bande du seuil, là où la moyenne hors pauses en est loin", () => {
+    const segments = driftingSegments();
+    const stats = computeLiveStats(segments, wing, withThreshold(8));
+    const analysis = analysisAverage(segments, wing, 8);
+    expect(Math.abs(stats.activeAverageSpeedMs! / analysis - 1)).toBeLessThan(0.015);
+    expect(stats.averageSpeedMs! / analysis).toBeLessThan(0.7);
+  });
+
+  it('en surf, au seuil de vague : celle de la glisse de la page', () => {
+    const wave = (i: number) => { const c = i % 200; return c < 12 ? 5 : c < 90 ? 1 : 0.1; };
+    const a = leg(0, 1800, wave, 0);
+    const b = leg(2000, 1800, wave, a.endM + 10);
+    const surf = SPORT_PROFILES.surf;
+    const segments = [a.fixes, b.fixes];
+    const live = computeLiveStats(segments, surf, withThreshold(9)).activeAverageSpeedMs!;
+    expect(Math.abs(live / analysisAverage(segments, surf, 9) - 1)).toBeLessThan(0.001);
+    const track = analysisTrackOf(segments, surf);
+    const { summary } = runSurfSession(track, buildCumulativeTrack(track), surfProfileOf(surf)!, { threshold: 9, foil: false, waveThreshold: null });
+    expect(summary.waveCount).toBeGreaterThan(0);
+    expect(Math.abs(live / (summary.glisseDistanceM / summary.glisseS) - 1)).toBeLessThan(0.01);
+  });
+
+  it('donne le même chiffre à 1 Hz et à 5 Hz', () => {
+    const at1 = computeLiveStats([leg(0, 3600, drifting, 0).fixes], wing, withThreshold(8)).activeAverageSpeedMs!;
+    const at5 = computeLiveStats([leg(0, 3600 * 5, (i) => drifting(i / 5), 0, undefined, 0.2).fixes], wing, withThreshold(8)).activeAverageSpeedMs!;
+    expect(Math.abs(at5 / at1 - 1)).toBeLessThan(0.001);
+  });
+
+  it('avec la mémoire du direct comme sans elle', () => {
+    const segments = driftingSegments();
+    const memory = createLiveStatsMemory();
+    const options = withThreshold(8);
+    for (let n = 1; n <= segments.length; n++) {
+      for (const share of [0.3, 0.6, 1]) {
+        const seen = [...segments.slice(0, n - 1), segments[n - 1].slice(0, Math.round(segments[n - 1].length * share))];
+        expect(computeLiveStats(seen, wing, options, memory).activeAverageSpeedMs).toBe(computeLiveStats(seen, wing, options).activeAverageSpeedMs);
+      }
+    }
+  });
+
+  it("relue après un arrêt brutal : les segments du journal redonnent le chiffre, mémoire vide", () => {
+    const segments = driftingSegments();
+    const memory = createLiveStatsMemory();
+    const options = withThreshold(8);
+    const running = computeLiveStats(segments, wing, options, memory).activeAverageSpeedMs;
+    const reread = segments.map((segment) => segment.map((f) => ({ ...f })));
+    expect(computeLiveStats(reread, wing, options, createLiveStatsMemory()).activeAverageSpeedMs).toBe(running);
+  });
+
+  it('un seuil qui change refait le chiffre', () => {
+    const segments = driftingSegments();
+    const memory = createLiveStatsMemory();
+    computeLiveStats(segments, wing, withThreshold(8), memory);
+    expect(computeLiveStats(segments, wing, withThreshold(3), memory).activeAverageSpeedMs).toBe(computeLiveStats(segments, wing, withThreshold(3)).activeAverageSpeedMs);
+  });
+
+  it("sans seuil passé, rien n'est calculé ; sous le seuil, pas de chiffre", () => {
+    const segments = driftingSegments();
+    expect(computeLiveStats(segments, wing).activeAverageSpeedMs).toBeNull();
+    expect(computeLiveStats(segments, running).activeAverageSpeedMs).toBeNull();
+    expect(EMPTY_LIVE_STATS.activeAverageSpeedMs).toBeNull();
+    expect(computeLiveStats([leg(0, 600, () => 1, 0).fixes], wing, withThreshold(20)).activeAverageSpeedMs).toBeNull();
+    // Seuil à 0 : aucun seuil réglé, les arrêts complets seuls sont ôtés, comme dans l'analyse.
+    expect(computeLiveStats([leg(0, 600, () => 3, 0).fixes], wing, withThreshold(0)).activeAverageSpeedMs).toBeCloseTo(3, 1);
+  });
+
+  it('la moyenne hors pauses du temps restant ne bouge pas', () => {
+    const segments = driftingSegments();
+    expect(computeLiveStats(segments, wing, withThreshold(8)).averageSpeedMs).toBe(computeLiveStats(segments, wing).averageSpeedMs);
+  });
+
+  it('voile et surf seulement, et pas le bateau, sans seuil', () => {
+    expect(usesActiveAverage(wing)).toBe(true);
+    expect(usesActiveAverage(SPORT_PROFILES.surf)).toBe(true);
+    expect(usesActiveAverage(SPORT_PROFILES.bateau)).toBe(false);
+    expect(usesActiveAverage(running)).toBe(false);
+    expect(usesActiveAverage(SPORT_PROFILES.cycling)).toBe(false);
+  });
+
+  it("allure de la session : le pas de reprise d'une pause n'y compte pas", () => {
+    const a = leg(0, 600, () => 5, 0).fixes;
+    const b = leg(1200, 600, () => 5, 3000 + 50_000).fixes;
+    expect(liveReferenceSpeedMs([a, b], wing.maxGapS)).toBeCloseTo(liveReferenceSpeedMs([a], wing.maxGapS), 1);
+    expect(liveReferenceSpeedMs([], wing.maxGapS)).toBe(0);
   });
 });
 

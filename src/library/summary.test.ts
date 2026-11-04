@@ -4,11 +4,12 @@ import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '.
 import { buildCumulativeTrack, computeActiveDistanceM, computeActiveTimeMs, thresholdActivityMask } from '../core/sessionStats';
 import { bestWindowSpeedMs } from '../core/topSegments';
 import { FAMILY_BASE } from '../core/activities';
-import { getSportProfile } from '../core/sportProfiles';
+import { defaultActiveThresholdOf, getSportProfile } from '../core/sportProfiles';
 import type { RawTrackPoint } from '../core/types';
 import { msToKnots } from '../core/units';
 import type { SessionTest } from '../recording/fitnessTest';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
+import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import { SUMMARY_CALC_VERSION } from './record';
 import { ORIGIN, at, mPerDegLon } from '../test/geo.fixture';
 import { phasesTrack } from '../test/track.fixture';
@@ -272,6 +273,60 @@ describe('summarizeSession', () => {
   it('rend `null` pour une trace de moins de deux points', () => {
     expect(summarizeSession([], 'running')).toBeNull();
     expect(summarizeSession(buildTrack([]), 'running')).toBeNull();
+  });
+});
+
+describe('vitesse max du surf : celle de la page, une vague (Q34)', () => {
+  /** Vitesse max que la page d'analyse montre : `maxWaveSpeedMs`, de la même trace et du même seuil. */
+  const pageMax = (raw: RawTrackPoint[], foil = false): number | null => {
+    const profile = getSportProfile('surf');
+    const track = analysisTrack(raw, 'surf');
+    return runSurfSession(track, buildCumulativeTrack(track), surfProfileOf(profile)!, {
+      threshold: defaultActiveThresholdOf(profile, foil), foil, waveThreshold: null,
+    }).summary.maxWaveSpeedMs;
+  };
+  const session: [number, number][] = [[60, 0.2], [6, 1.6], [12, 5], [80, 1], [60, 0.2], [6, 1.6], [12, 4], [80, 1], [60, 0.2]];
+
+  for (const hz of [1, 5]) {
+    it(`à ${hz} Hz : le résumé et la page donnent la même, ni la rame ni le retour ne comptent`, () => {
+      const raw = buildTrack(session, hz);
+      const summary = summarizeSession(raw, 'surf')!;
+      expect(summary.waveCount).toBe(2);
+      expect(pageMax(raw)).not.toBeNull();
+      expect(summary.maxSpeedMs).toBe(pageMax(raw));
+      expect(summary.maxSpeedMs).toBeCloseTo(5, 0);
+    });
+
+    it(`à ${hz} Hz : une rame sans vague n'a pas de vitesse max (0, lu « absent » partout)`, () => {
+      const raw = buildTrack([[1800, 2.2], [20, 2.4]], hz);
+      const summary = summarizeSession(raw, 'surf')!;
+      expect(pageMax(raw)).toBeNull();
+      expect(summary.waveCount).toBe(0);
+      expect(summary.maxSpeedMs).toBe(0);
+    });
+
+    it(`à ${hz} Hz : une pointe hors vague (trop courte pour en être une) ne compte pas`, () => {
+      const raw = buildTrack([[60, 0.2], [6, 1.6], [12, 4], [80, 1], [2, 7], [60, 1], [60, 0.2]], hz);
+      const summary = summarizeSession(raw, 'surf')!;
+      expect(summary.maxSpeedMs).toBe(pageMax(raw));
+      expect(summary.maxSpeedMs).toBeLessThan(5);
+    });
+
+    it(`à ${hz} Hz : sur foil, la même que la page`, () => {
+      const raw = buildTrack([[60, 0.2], [6, 1.6], [10, 6], [20, 3.8], [10, 6], [60, 1], [60, 0.1]], hz);
+      const summary = summarizeSession(raw, 'surf', { foil: true })!;
+      expect(summary.maxSpeedMs).toBe(pageMax(raw, true));
+      expect(summary.maxSpeedMs).toBeGreaterThan(0);
+    });
+  }
+
+  it('voile et course gardent la meilleure moyenne de 2 s de toute la trace', () => {
+    const raw = buildTrack([[300, 3], [20, 6], [300, 3]]);
+    for (const sport of ['wingfoil', 'running', 'cycling'] as const) {
+      const summary = summarizeSession(raw, sport)!;
+      const track = analysisTrack(raw, sport);
+      expect(summary.maxSpeedMs).toBe(bestWindowSpeedMs(track, buildCumulativeTrack(track), getSportProfile(sport).maxSpeedWindowS));
+    }
   });
 });
 

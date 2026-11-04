@@ -183,3 +183,14 @@ export const sanitizeRunnerProfile = (raw: unknown, rootGoal: { min: number; max
     rootWeeklyGoalMin: inRange(p.rootWeeklyGoalMin, rootGoal.min, rootGoal.max) ? p.rootWeeklyGoalMin : null,
   };
 };
+
+/**
+ * Profil tel que rangé sur l'appareil, relu avec le contrôle de `sanitizeRunnerProfile`
+ * (il peut venir du fichier de réglages d'un autre appareil) : seul le nom reste
+ * tel que tapé, espaces de fin compris, pour la frappe en cours dans son champ.
+ */
+export const storedRunnerProfile = (raw: unknown, rootGoal: { min: number; max: number }): RunnerProfile => {
+  const profile = sanitizeRunnerProfile(raw, rootGoal);
+  const name = (raw as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && profile.name !== null ? { ...profile, name: name.slice(0, RUNNER_NAME_MAX) } : profile;
+};

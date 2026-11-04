@@ -173,7 +173,7 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit, opt
   const [topShortS, topLongS] = options.topDurationsS;
   switch (key) {
     case 'speed': return pace ? 'Allure' : 'Vitesse';
-    case 'average': return pace ? 'Allure moyenne' : 'Moyenne';
+    case 'average': return options.activeAverage ? 'Moyenne active' : pace ? 'Allure moyenne' : 'Moyenne';
     case 'max': return `${pace ? 'Meilleure' : 'Max'} (${options.maxDurationS} s)`;
     case 'recentDistanceSpeed': return `${options.recentDistanceM} derniers m`;
     case 'lastDistance': return distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km';
@@ -208,7 +208,7 @@ export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit
   const [topShortS, topLongS] = options.topDurationsS;
   switch (key) {
     case 'speed': return pace ? 'Allure' : 'Vit.';
-    case 'average': return 'Moy.';
+    case 'average': return options.activeAverage ? 'Moy. act.' : 'Moy.';
     case 'max': return pace ? 'Meill.' : 'Max';
     case 'recentDistanceSpeed': return `${options.recentDistanceM} m`;
     case 'lastDistance': return distanceUnit === 'nm' ? 'Dern. mille' : 'Dern. km';
@@ -278,7 +278,7 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
   const { stats, speedUnit, distanceUnit } = ctx;
   switch (key) {
     case 'speed': return formatSpeed(stats.currentSpeedMs, speedUnit, distanceUnit);
-    case 'average': return formatSpeed(stats.averageSpeedMs, speedUnit, distanceUnit);
+    case 'average': return formatSpeed(ctx.options?.activeAverage ? stats.activeAverageSpeedMs : stats.averageSpeedMs, speedUnit, distanceUnit);
     case 'max': return formatSpeed(stats.maxSpeedMs, speedUnit, distanceUnit);
     case 'recentDistanceSpeed': return formatSpeed(stats.recentDistanceSpeedMs, speedUnit, distanceUnit);
     case 'lastDistance': return formatSpeed(stats.lastDistanceSpeedMs, speedUnit, distanceUnit);
@@ -287,6 +287,7 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
     case 'clock': return ctx.nowMs === null ? NONE : formatTimeOfDay(ctx.nowMs).slice(0, 5);
     case 'remaining': return ctx.remainingM === null ? NONE : formatDistance(ctx.remainingM, distanceUnit);
     case 'remainingTime': {
+      // Hors pauses, jamais la moyenne active : elle rendrait l'heure d'arrivée trop optimiste.
       const speed = stats.averageSpeedMs;
       return ctx.remainingM === null || speed === null || speed <= 0 ? NONE : formatClock((ctx.remainingM / speed) * 1000);
     }

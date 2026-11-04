@@ -3,8 +3,9 @@ import type { Activity } from '../core/activities';
 import { isValidThresholds } from '../core/heartRate';
 import { getSportProfile } from '../core/sportProfiles';
 import { validProfileNumber } from '../library/profilePrompt';
+import { ROOT_GOAL } from '../library/rootGrowth';
 import {
-  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHeartRateZones,
+  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHeartRateZones, storedRunnerProfile,
   type HrSource, type RunnerAvatar, type RunnerNumberField, type RunnerProfile,
 } from '../running/runnerProfile';
 import { effectiveHrOffset } from './useSportSettings';
@@ -21,15 +22,18 @@ type NumberField = RunnerNumberField;
 const NAMESPACE = 'tracker.runnerProfile';
 const KEY = 'me';
 
+/** Relecture contrôlée du profil rangé : il voyage par le fichier de réglages, d'où il peut revenir abîmé. */
+const readStored = (raw: unknown): RunnerProfile => storedRunnerProfile(raw, ROOT_GOAL);
+
 /** Profil du pratiquant, hors composant (statistiques du direct). */
-export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
+export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE, readStored);
 
 /** Bornes des zones cardiaques du pratiquant pour une activité, hors composant (chiffres du direct). */
 export const readHeartRateZoneBounds = (activity: Activity): number[] | null =>
   runnerHeartRateZones(readRunnerProfile(), getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))?.bounds ?? null;
 
 export const useRunnerProfile = () => {
-  const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
+  const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE, readStored);
 
   /** Écrit un champ numérique, `null` pour l'effacer ; les valeurs hors plage sont ignorées. Une FC tapée est dite saisie. */
   const setNumber = useCallback(

@@ -81,8 +81,12 @@ export const RECORD_VERSION = 1;
  * de reprise d'une pause ni les trous de plus de `maxGapS` ; en voile, elle
  * accorde les filtres et le seuil suggéré, donc distance, vitesses, temps en
  * mouvement et vignette (les autres familles ne bougent pas).
+ *
+ * 15 (4 novembre 2026) : en surf, la vitesse max est celle d'une vague, comme sa
+ * page (Q34), 0 sans vague ; plus celle de toute la trace (les autres familles
+ * ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 14;
+export const SUMMARY_CALC_VERSION = 15;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -108,7 +112,8 @@ export interface SessionSummary {
   elevationGainM: number | null;
   /**
    * Vitesse max : la meilleure moyenne sur 2 s (`maxSpeedWindowS`, depuis la version 13) ; si aucune fenêtre ne
-   * tient (trace clairsemée, pas plus longs que `maxGapS`), la plus haute vitesse lissée, comme avant.
+   * tient (trace clairsemée, pas plus longs que `maxGapS`), la plus haute vitesse lissée, comme avant. En surf,
+   * celle d'une vague (`maxWaveSpeedMs`, depuis la version 15). 0 : aucune, à ne pas montrer (surf sans vague, muscu).
    */
   maxSpeedMs: number;
   pointCount: number;

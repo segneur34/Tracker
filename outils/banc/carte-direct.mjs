@@ -12,6 +12,7 @@
 //     comme un écran éteint : au réveil, le rejeu rend d'un coup ce qui est échu ; `Page.setWebLifecycleState`
 //     ne convient pas, le Chrome sans fenêtre jette la page gelée et en recharge une autre), et une immobilité de
 //     150 à 195 s (pause automatique du pré-réglage de la course, 0,5 km/h sur 20 s).
+// La course n'a pas de « Moyenne active » (lot 150 : voile et surf seulement).
 // Toutes les 2 s de page, un relevé : « Points » de la partie GPS (les positions arrivent), distance de la carte « En
 // cours », déplacement de la carte (`.leaflet-map-pane`), place de la flèche dans la carte, longueur des tracés de la
 // trace (leur `d` : Leaflet réduit une ligne droite à ses deux bouts), « Recentrer », bandeau de pause automatique. Une phase dit « figée » sur trois relevés de suite où les points
@@ -230,6 +231,7 @@ const endReplay = async (pass) => {
 {
   const pass = '1. pause manuelle';
   check(`${pass} : rejeu lancé`, await startReplay(pauseTrack));
+  check(`${pass} : course, pas de « Moyenne active »`, !(await evaluate(`document.body.innerText.includes('Moyenne active')`)));
   await sampleUntil('avant pause', PAUSE[0]);
   check(`${pass} : « Pause »`, (await clickText('Pause')) === 'ok');
   // Le dernier calcul du direct, différé, peut suivre la pause de 2 s.

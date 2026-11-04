@@ -55,7 +55,8 @@ export const summaryShareStats = (
       { key: 'totalTime', label: 'Durée de la session', value: formatDuration(totalS * 1000) },
       { key: 'waves', label: 'Vagues', value: summary.waveCount === undefined ? '—' : String(summary.waveCount) },
       { key: 'longestWave', label: 'Plus longue vague', value: summary.longestWaveM == null ? '—' : `${Math.round(summary.longestWaveM)} m` },
-      { key: 'maxSpeed', label: 'Vitesse max', value: speed(summary.maxSpeedMs) },
+      // Sans vague, pas de vitesse max (Q34) : « — », comme sa page.
+      { key: 'maxSpeed', label: 'Vitesse max', value: summary.maxSpeedMs > 0 ? speed(summary.maxSpeedMs) : '—' },
       { key: 'longestFlight', label: 'Plus long vol', value: summary.longestFlightS == null ? '—' : formatShortDuration(summary.longestFlightS) },
       { key: 'distance', label: 'Distance totale', value: distance },
     ];

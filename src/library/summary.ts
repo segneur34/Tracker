@@ -40,7 +40,8 @@ import { analyzeCadence, sessionCadence, type CadenceDetection } from '../runnin
  *   (`useSailingSession`, règle 4), sauf surcharge de l'utilisateur ;
  * - en course, filtres et seuil du profil, sauf surcharge ;
  * - en surf, les vagues de la page d'analyse (`runSurfSession`) : le temps et
- *   la distance en action sont ceux de la glisse, et le résumé compte les vagues.
+ *   la distance en action sont ceux de la glisse, le résumé compte les vagues,
+ *   et sa vitesse max est celle d'une vague (Q34), 0 sans vague.
  *
  * Sans support connu, ni filtre de support ni seuil d'activité : distance et
  * durée restent justes, le temps en action attend que la session soit classée.
@@ -117,7 +118,7 @@ const analyze = (
   mask?: boolean[];
   /** Voile à seuil : temps en mouvement, dénominateur du ratio (`SessionSummary.inMotionS`). */
   inMotionS?: number;
-  surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS'>;
+  surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS' | 'maxSpeedMs'>;
 } => {
   if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null, movingDistanceM: null };
 
@@ -142,6 +143,7 @@ const analyze = (
       surf: {
         waveCount: summary.waveCount, longestWaveM: summary.longestWaveM,
         longestFlightS: foil ? summary.longestFlightS : null, flightS: foil ? summary.flightS : null,
+        maxSpeedMs: summary.maxWaveSpeedMs ?? 0,
       },
     };
   }
@@ -183,9 +185,12 @@ export const summarizeSession = (
   const track = options.terrainElevation ? applyTerrainElevation(analyzed.track, cumDist, options.terrainElevation).track : analyzed.track;
   const elevationProfile = options.elevation ?? getSportProfile(sport ?? 'running').elevation;
   const elevation = computeElevationStats(track, elevationProfile);
-  // Vitesse max : la meilleure moyenne sur 2 s, comme partout (Q34). Aucune fenêtre ne tient (trace
-  // clairsemée, chaque pas plus long que `maxGapS` est un trou, règle 10) : la plus haute vitesse lissée.
-  const maxSpeedMs = bestWindowSpeedMs(analyzed.track, cum, getSportProfile(sport ?? 'running').maxSpeedWindowS) ?? maxSmoothedSpeedMs(track);
+  // Vitesse max : la meilleure moyenne sur 2 s, comme partout (Q34) ; en surf, celle d'une vague, la même que sa
+  // page. Aucune fenêtre ne tient (trace clairsemée, chaque pas plus long que `maxGapS` est un trou, règle 10) :
+  // la plus haute vitesse lissée.
+  const maxSpeedMs = analyzed.surf?.maxSpeedMs
+    ?? bestWindowSpeedMs(analyzed.track, cum, getSportProfile(sport ?? 'running').maxSpeedWindowS)
+    ?? maxSmoothedSpeedMs(track);
   const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
   const cadenceParams = sport ? getSportProfile(sport).cadence : null;
   const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;

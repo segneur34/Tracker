@@ -30,6 +30,14 @@ describe('summaryShareStats', () => {
     expect(v.elevationGain).toBe('+120 m');
   });
 
+  it("surf sans vague : vitesse max « — », jamais 0 ; écartée de l'image", () => {
+    const units = { speed: 'kmh', distance: 'km' } as const;
+    const none = summaryShareStats(summary({ maxSpeedMs: 0, waveCount: 0 }), 'surf', units);
+    expect(values(none).maxSpeed).toBe('—');
+    expect(shareableStats(none).map((s) => s.key)).not.toContain('maxSpeed');
+    expect(values(summaryShareStats(summary({ maxSpeedMs: 5 }), 'surf', units)).maxSpeed).toBe('18,0 km/h');
+  });
+
   it('écarte, une fois filtrés, les chiffres que la session n\'a pas', () => {
     const stats = shareableStats(summaryShareStats(summary({ elevationGainM: null }), 'velo', { speed: 'kmh', distance: 'km' }));
     const keys = stats.map((s) => s.key);

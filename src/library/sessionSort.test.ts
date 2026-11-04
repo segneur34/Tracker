@@ -24,6 +24,11 @@ describe('sortSessions', () => {
     expect(names(sortSessions([gym, a, b], 'distance'))).toBe('b,a,m');
     expect(names(sortSessions([gym, a, b], 'duration'))).toBe('m,a,b');
   });
+  it('surf sans vague (vitesse max 0) : en fin de liste au tri « v. max », par date, avant une muscu', () => {
+    const old = session('p1', 1500, 60_000, 500, 0);
+    const recent = session('p2', 2500, 60_000, 500, 0);
+    expect(names(sortSessions([old, gym, a, recent, b], 'maxSpeed'))).toBe('a,b,p2,p1,m');
+  });
   it('égalité : la plus récente d\'abord', () => {
     const x = session('x', 1000, 10_000, 100, 5);
     const y = session('y', 2000, 10_000, 100, 5);

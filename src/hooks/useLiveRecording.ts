@@ -1,19 +1,20 @@
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { getSportProfile, hasPositions, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
-import { METERS_PER_DISTANCE_UNIT } from '../core/units';
+import { defaultActiveThresholdOf, getSportProfile, hasPositions, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
+import { METERS_PER_DISTANCE_UNIT, msToKnots } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { createFollowCursor, type FollowCursor, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import {
-  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup, type LiveStats,
-  type LiveStatsMemory, type LiveStatsOptions,
+  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, liveReferenceSpeedMs, usesActiveAverage,
+  type LiveEnergySetup, type LiveStats, type LiveStatsMemory, type LiveStatsOptions,
 } from '../recording/liveStats';
 import { runningEnergyParams, walkingEnergyParams } from '../running/energy';
+import { resolveSailingThresholds } from '../sailing/sailingConfig';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
 import { getLiveHeartSegments, getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
-import { effectiveBikeSetup, effectiveDistanceUnit, effectiveEnergyModel } from './useSportSettings';
+import { effectiveBikeSetup, effectiveDistanceUnit, effectiveEnergyModel, effectiveFoil, effectiveThresholdOverride } from './useSportSettings';
 import { createListeners } from './createStore';
 
 /**
@@ -30,8 +31,9 @@ import { createListeners } from './createStore';
  * secondes quand les positions s'arrêtent (pause manuelle, fin d'un rejeu).
  *
  * Le « dernier kilomètre » (ou mille) suit l'unité de distance de l'activité ;
- * la puissance et l'énergie (course, vélo), le modèle de l'analyse. En dehors
- * d'un parcours de voile, l'avancement sur la trace suivie est calculé ici.
+ * la puissance et l'énergie (course, vélo), le modèle de l'analyse ; la moyenne
+ * active (voile, surf), le seuil de l'analyse. En dehors d'un parcours de voile,
+ * l'avancement sur la trace suivie est calculé ici.
  * Sans position (muscu), la FC moyenne seule, sur les mesures de la ceinture
  * (`heartOnlyLiveStats`) : aucun calcul GPS.
  */
@@ -40,6 +42,8 @@ import { createListeners } from './createStore';
 const PAGE_REFRESH_MS = 2000;
 /** Intervalle minimal entre deux recalculs sans page, pour la notification. */
 const BACKGROUND_REFRESH_MS = 5000;
+/** Intervalle minimal entre deux mesures de l'allure de la session, qui ne sert qu'au seuil suggéré en voile. */
+const REFERENCE_REFRESH_MS = 60_000;
 
 export interface LiveRecording {
   segments: LocationFix[][];
@@ -81,6 +85,7 @@ export const liveStatsOptionsFor = (activity: Activity): LiveStatsOptions => ({
   ...LIVE_STATS_DEFAULTS,
   lastDistanceM: METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(activity)],
   energy: liveEnergySetup(activity),
+  activeAverage: usesActiveAverage(getSportProfile(activity.base)),
 });
 
 /** Trace suivie dont l'avancement se compte le long d'elle : pas un parcours à balises (voile, surf). */
@@ -96,6 +101,8 @@ let computedFor: { pointCount: number; activity: Activity; trace: FollowedTrace 
  */
 let memory: LiveStatsMemory = createLiveStatsMemory();
 let follow: { trace: FollowedTrace; cursor: FollowCursor } | null = null;
+/** Allure de la session en cours, pour le seuil suggéré ; jetée au retour au repos. */
+let reference: { atMs: number; ms: number } | null = null;
 let lastRunMs = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 /** Pages qui lisent le direct (`useLiveRecording`). */
@@ -120,9 +127,29 @@ const reset = () => {
   computedFor = null;
   memory = createLiveStatsMemory();
   follow = null;
+  reference = null;
   if (live === EMPTY) return;
   live = EMPTY;
   publish();
+};
+
+/**
+ * Seuil de la moyenne active du direct, comme l'analyse d'une session qui n'a
+ * pas encore le sien : celui de l'activité, réglé ou pré-réglé ; à défaut, en
+ * surf celui du calcul selon le foil, en voile la suggestion selon l'allure
+ * (règle 4), l'allure n'étant alors mesurée qu'au plus toutes les
+ * `REFERENCE_REFRESH_MS`. `undefined` quand le direct n'a pas de moyenne active.
+ */
+const liveActiveThreshold = (activity: Activity, segments: LocationFix[][]): number | undefined => {
+  const profile = getSportProfile(activity.base);
+  if (!usesActiveAverage(profile)) return undefined;
+  const own = effectiveThresholdOverride(activity);
+  if (own !== undefined) return own;
+  if (sportTreatment(activity.base) === 'surf') return defaultActiveThresholdOf(profile, effectiveFoil(activity) ?? false);
+  if (reference === null || lastRunMs - reference.atMs >= REFERENCE_REFRESH_MS) {
+    reference = { atMs: lastRunMs, ms: liveReferenceSpeedMs(segments, profile.maxGapS) };
+  }
+  return resolveSailingThresholds(profile, null, null, msToKnots(reference.ms)).activeKn;
 };
 
 const compute = () => {
@@ -143,7 +170,8 @@ const compute = () => {
     return;
   }
   const segments = getLiveSegments();
-  const computed = computeLiveStats(segments, getSportProfile(activity.base), liveStatsOptionsFor(activity), memory);
+  const options: LiveStatsOptions = { ...liveStatsOptionsFor(activity), activeThreshold: liveActiveThreshold(activity, segments) };
+  const computed = computeLiveStats(segments, getSportProfile(activity.base), options, memory);
   const along = tracedAlong(trace, activity);
   if (along && follow?.trace !== along) follow = { trace: along, cursor: createFollowCursor(along) };
   live = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? follow!.cursor.progress(segments) : null };

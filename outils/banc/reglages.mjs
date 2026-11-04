@@ -15,7 +15,9 @@
 //  7. activités de la version 3 rangées sur l'appareil et dans son fichier : au lancement, le fichier passe aux
 //     nuances de la version 4 sans changer de date ;
 //  8. « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une
-//     tablette rangé sous son nom, reprise refusée puis faite depuis la liste ; pas de bandeau ensuite.
+//     tablette rangé sous son nom, reprise refusée puis faite depuis la liste ; pas de bandeau ensuite ;
+//  9. bornes de couleur de Course (lot 150) : 12-30, on efface 30, on retape 35 : 12-35 ; une borne vidée puis quittée
+//     reprend son défaut et garde l'autre ; les deux vidées : plus de réglage, « défaut ».
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -27,7 +29,7 @@ if (!port) {
 const PRESETS_VERSION = 3;
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, settle, waitFor, wait, shoot, onMessage, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, waitFor, wait, shoot, onMessage, check, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
 const dialogs = [];
 onMessage((msg) => { if (msg.method === 'Page.javascriptDialogOpening') dialogs.push(msg.params.message.split(String.fromCharCode(10))[0]); });
 /**
@@ -204,6 +206,60 @@ console.log('carte Mémoire :', await openMemory());
 await wait(500);
 console.log('bandeau après rechargement (aucun attendu) :', await banner());
 await shoot('reglages-import');
+
+// 9. Bornes de couleur : un champ vidé n'efface que sa borne. Course : la liste reprise de la Tablette n'a pas de vélo.
+await evaluate(`(() => {
+  const sections = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}');
+  sections.settings = { ...sections.settings, activites: true };
+  sections['settings-families'] = { ...sections['settings-families'], course: true };
+  sections['settings-activities'] = { ...sections['settings-activities'], running: true };
+  sections['settings-activity-parts'] = { ...sections['settings-activity-parts'], affichage: true };
+  localStorage.setItem('tracker.sections', JSON.stringify(sections));
+  return 'ok';
+})()`);
+await go('/parametres', 3000);
+const rangeRow = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent === 'Course')?.querySelector('.settings-sports__pair')`;
+await waitFor(`Boolean(${rangeRow}?.querySelector('input'))`, { timeout: 4000, label: 'bornes de Course' });
+/** Saisie dans un des deux champs : 0 la borne basse, 1 la haute ; le champ garde le focus jusqu'à `leaveBound`. */
+const typeBound = async (k, text) => {
+  await evaluate(`(() => {
+    const i = ${rangeRow}.querySelectorAll('input')[${k}];
+    i.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)});
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+    return 'ok';
+  })()`);
+  await wait(150);
+};
+const leaveBound = async (k) => {
+  await evaluate(`${rangeRow}.querySelectorAll('input')[${k}].blur(); 'ok'`);
+  await wait(150);
+};
+const storedBounds = async () => {
+  const r = (await stored())?.speedRanges?.running;
+  return r ? `${Math.round(r.minMs * 36) / 10}-${Math.round(r.maxMs * 36) / 10}` : 'aucune';
+};
+const shownBounds = () => evaluate(`[...${rangeRow}.querySelectorAll('input')].map((i) => i.value).join('-')`);
+const [defaultMin, defaultMax] = await evaluate(`[...${rangeRow}.querySelectorAll('input')].map((i) => i.placeholder)`);
+console.log('bornes de Course par défaut :', `${defaultMin}-${defaultMax}`);
+await typeBound(0, '12');
+await leaveBound(0);
+await typeBound(1, '30');
+await leaveBound(1);
+check('bornes : 12-30 rangées', (await storedBounds()) === '12-30', await storedBounds());
+await typeBound(1, '');
+check('bornes : 30 effacé, le 12 reste', (await storedBounds()).startsWith('12-'), await storedBounds());
+await typeBound(1, '3');
+check('bornes : première frappe, « 3 », sous le 12 : le 12 reste', (await storedBounds()).startsWith('12-'), await storedBounds());
+await typeBound(1, '35');
+await leaveBound(1);
+check('bornes : 35 retapé : 12-35', (await storedBounds()) === '12-35' && (await shownBounds()) === '12-35', `${await storedBounds()} / ${await shownBounds()}`);
+await typeBound(1, '');
+await leaveBound(1);
+check('bornes : borne haute vidée puis quittée : son défaut, le 12 reste', (await storedBounds()) === `12-${defaultMax}` && (await shownBounds()) === `12-${defaultMax}`, `${await storedBounds()} / ${await shownBounds()}`);
+await typeBound(0, '');
+await leaveBound(0);
+check('bornes : les deux vidées : plus de réglage, « défaut »', (await storedBounds()) === 'aucune' && (await evaluate(`${rangeRow}.innerText`)).includes('défaut'), await storedBounds());
 
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/parametres', 3000);

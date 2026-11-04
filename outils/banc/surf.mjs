@@ -10,7 +10,8 @@
 //     rechargement, puis « Défaut » et « Annuler » ;
 //  4. une session de surf foil (un vol de trois vagues reliées en pompant, puis un vol court) : case Foil de la
 //     session, onglet « vols », plus long vol, ligne de la bibliothèque ;
-//  5. la page à 390 × 844, sans débordement.
+//  5. la vitesse max (lot 150) : celle de la page et celle de la fiche, une vague ; une rame sans vague n'en a pas (« — », 0 dans la fiche) ;
+//  6. la page à 390 × 844, sans débordement.
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -52,9 +53,11 @@ const FOIL = [
 ];
 const T_MORNING = Date.UTC(2026, 9, 10, 7, 0, 0);
 const T_FOIL = Date.UTC(2026, 9, 9, 15, 0, 0);
+const PADDLE = [[1800, 2.2], [20, 2.4]];
+const T_PADDLE = Date.UTC(2026, 9, 8, 15, 0, 0);
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)})
@@ -202,7 +205,24 @@ console.log('fiche : foil', foilSaved?.analysis?.foil, '| plus long vol', foilSa
 await go('/surf');
 console.log('bibliothèque :', await evaluate(`document.querySelector('.lib-list')?.innerText.replace(/\\n+/g, ' / ').slice(0, 400) ?? '(vide)'`));
 
-// 5. Téléphone.
+// 5. Vitesse max : la page et la fiche donnent la même, celle d'une vague ; une rame sans vague n'en a pas.
+await go(morningPath, 5000);
+await openTab('général');
+await wait(300);
+const morningMax = (await recordAt(T_MORNING))?.summary?.maxSpeedMs ?? 0;
+const morningShown = `Vitesse max / ${(morningMax * 3.6).toFixed(1).replace('.', ',')} km/h`;
+check(`matinée : la fiche et la page, ${morningShown}`, morningMax > 0 && (await panel('Général')).includes(morningShown), (await panel('Général')).slice(0, 400));
+await go('/surf');
+console.log('import rame :', await importGpx(buildGpx('Rame', T_PADDLE, PADDLE), 'rame.gpx'));
+const paddle = await waitFor(() => recordAt(T_PADDLE), { timeout: 6000, label: 'fiche rame' });
+await settle({ max: 2000, label: 'import rame' });
+check('rame sans vague : fiche à 0 vague, vitesse max 0', paddle?.summary?.waveCount === 0 && paddle?.summary?.maxSpeedMs === 0, JSON.stringify(paddle?.summary));
+await go(`/surf/analyse?session=${encodeURIComponent(paddle?.gpx ?? '')}`, 5000);
+await openTab('général');
+await wait(300);
+check('rame sans vague : « — » sur la page', (await panel('Général')).includes('Vitesse max / —'), (await panel('Général')).slice(0, 400));
+
+// 6. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(foilPath, 5000);
 await openTab('vagues');

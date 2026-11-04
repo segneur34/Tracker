@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ACTIVITIES } from '../core/activities';
 import { getSportProfile, hasActiveThreshold, TERRAIN_STEP_CHOICES_M } from '../core/sportProfiles';
+import { isValidGradeRange } from '../core/grade';
 import { knotsToMs } from '../core/units';
 import { DEFAULT_PACE_LEVEL } from '../planning/duration';
 import { WAY_TYPES } from '../planning/brouterProfile';
@@ -8,7 +9,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveRecordingProfile, resolveThresholdOverride,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveRecordingProfile, resolveThresholdOverride,
   SETTING_FIELDS, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
@@ -349,5 +350,71 @@ describe('réglages abîmés relus avec contrôle (lot 117)', () => {
     const view = settingsView({ thresholds: { [run.id]: wrong(Number.NaN) }, autoPause: { [run.id]: wrong({}) } }, run);
     expect(view.isThresholdOverridden).toBe(false);
     expect(view.isAutoPauseOverridden).toBe(false);
+  });
+});
+
+describe("paire de bornes de Réglages : un champ vidé n'efface que sa borne", () => {
+  const fallback = { minMs: 5, maxMs: 30 };
+
+  it('12-30, on efface 30, on retape 35 : 12-35 ; le 12 survit à chaque frappe', () => {
+    let range: typeof fallback | null = { minMs: 12, maxMs: 30 };
+    range = nextSpeedRange(range, 'maxMs', null, fallback);
+    expect(range).toEqual({ minMs: 12, maxMs: 30 });
+    // « 3 », première frappe de « 35 », passe sous 12 : refusé, rien n'est perdu.
+    range = nextSpeedRange(range, 'maxMs', 3, fallback);
+    expect(range).toEqual({ minMs: 12, maxMs: 30 });
+    range = nextSpeedRange(range, 'maxMs', 35, fallback);
+    expect(range).toEqual({ minMs: 12, maxMs: 35 });
+  });
+
+  it("la borne vidée reprend son défaut, l'autre reste", () => {
+    expect(nextSpeedRange({ minMs: 12, maxMs: 40 }, 'maxMs', null, fallback)).toEqual({ minMs: 12, maxMs: 30 });
+    expect(nextSpeedRange({ minMs: 12, maxMs: 40 }, 'minMs', null, fallback)).toEqual({ minMs: 5, maxMs: 40 });
+  });
+
+  it('les deux bornes vidées : plus de réglage', () => {
+    const once = nextSpeedRange({ minMs: 12, maxMs: 40 }, 'maxMs', null, fallback);
+    expect(nextSpeedRange(once, 'minMs', null, fallback)).toBeNull();
+  });
+
+  it('rendre la paire au défaut en la vidant efface le réglage ; le taper le garde', () => {
+    expect(nextSpeedRange({ minMs: 12, maxMs: 30 }, 'minMs', null, fallback)).toBeNull();
+    expect(nextSpeedRange({ minMs: 12, maxMs: 30 }, 'minMs', 5, fallback)).toEqual(fallback);
+  });
+
+  it('sans réglage, vider ne fige rien et une saisie part du défaut', () => {
+    expect(nextSpeedRange(null, 'maxMs', null, fallback)).toBeNull();
+    expect(nextSpeedRange(null, 'minMs', 12, fallback)).toEqual({ minMs: 12, maxMs: 30 });
+  });
+
+  it('une paire invalide laisse la valeur rangée telle quelle, le même objet', () => {
+    const current = { minMs: 35, maxMs: 50 };
+    // Le défaut 30 passerait sous le min de 35.
+    expect(nextSpeedRange(current, 'maxMs', null, fallback)).toBe(current);
+    expect(nextSpeedRange(current, 'maxMs', 20, fallback)).toBe(current);
+    expect(nextSpeedRange(current, 'minMs', -1, fallback)).toBe(current);
+    expect(nextSpeedRange(null, 'minMs', 40, fallback)).toBeNull();
+  });
+
+  it('pente : mêmes règles, avec ses bornes', () => {
+    const grades = { min: 0.02, max: 0.2 };
+    expect(nextBoundPair({ min: 0.05, max: 0.3 }, 'max', null, grades, isValidGradeRange)).toEqual({ min: 0.05, max: 0.2 });
+    expect(nextBoundPair({ min: 0.05, max: 0.2 }, 'min', null, grades, isValidGradeRange)).toBeNull();
+    expect(nextBoundPair(null, 'max', 0.1, grades, isValidGradeRange)).toEqual({ min: 0.02, max: 0.1 });
+    expect(nextBoundPair({ min: 0.05, max: 0.3 }, 'max', 0.01, grades, isValidGradeRange)).toEqual({ min: 0.05, max: 0.3 });
+  });
+
+  it('pause automatique : vider le délai garde la vitesse ; 0 km/h reste permis', () => {
+    const pause = { speedMs: 1, delayS: 10 };
+    expect(nextBoundPair({ speedMs: 2, delayS: 60 }, 'delayS', null, pause, isValidAutoPause)).toEqual({ speedMs: 2, delayS: 10 });
+    expect(nextBoundPair({ speedMs: 2, delayS: 10 }, 'speedMs', null, pause, isValidAutoPause)).toBeNull();
+    expect(nextBoundPair(null, 'speedMs', 0, pause, isValidAutoPause)).toEqual({ speedMs: 0, delayS: 10 });
+    expect(nextBoundPair({ speedMs: 2, delayS: 60 }, 'delayS', -5, pause, isValidAutoPause)).toEqual({ speedMs: 2, delayS: 60 });
+  });
+
+  it("une paire rendue est toujours acceptée par le rangement et par la lecture, jamais à une seule borne", () => {
+    const run = DEFAULT_ACTIVITIES.find((a) => a.base === 'running')!;
+    const stored = withSetting({}, run.id, 'speedRange', nextSpeedRange(null, 'minMs', 1, defaultSpeedRangeOf(run)));
+    expect(settingsView(stored!, run).speedRange).toEqual({ minMs: 1, maxMs: defaultSpeedRangeOf(run).maxMs });
   });
 });

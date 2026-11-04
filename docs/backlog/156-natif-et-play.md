@@ -28,3 +28,10 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Pourquoi
 
 C'est la fonction première au téléphone, et ce que la revue Play et Android vitals regardent.
+
+## Réponses de l'utilisateur (04/11)
+
+- Verrous de veille : retirés maintenant, en connaissance de cause ; un essai écran éteint d'au moins 2 h est requis (levée ponctuelle de la consigne « ne pas réclamer le test de 2 h »).
+- Reprise après chute du moteur : seule, sans rien demander, si le service GPS est encore vivant (même journal, segment neuf) ; appli tuée et rouverte moins de 10 min après la dernière ligne du journal : proposition « Continuer l'enregistrement » ; au-delà, comportement actuel.
+- Plafond de 30 Mo (orchestrateur) : GPX et fiches lus au lancement seulement, jamais les `.imu`, lus à la demande (plus gros fichiers réels : GPX 2,6 Mo, `.imu` 15,4 Mo).
+- Reporté en Plus tard : test JUnit de `.imu`, copie de la capture par flux.

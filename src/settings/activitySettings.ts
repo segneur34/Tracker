@@ -283,6 +283,30 @@ export const resolveGradeRange = (stored: StoredSettings, activity: Activity): G
   return range && isValidGradeRange(range) ? range : defaultGradeRange(activity);
 };
 
+/**
+ * Valeur rangée d'une paire de bornes de Réglages (couleurs, pente, pause
+ * automatique) après la saisie de l'une d'elles. `current` : la paire rangée,
+ * `null` sans réglage. `value` : la borne saisie, `null` pour le champ vidé, qui
+ * ne reprend que son propre défaut (`fallback`) : l'autre borne reste. Vider ne
+ * fige jamais une paire qui n'était pas réglée, et une paire vidée revenue
+ * entière au défaut n'est plus un réglage (`null`). Une paire invalide (`isValid`)
+ * n'est pas rangée : `current` tel quel, le champ revient à sa valeur en le quittant.
+ */
+export const nextBoundPair = <K extends string, T extends Record<K, number>>(
+  current: T | null, key: K, value: number | null, fallback: T, isValid: (pair: T) => boolean
+): T | null => {
+  if (value === null && current === null) return null;
+  const next = { ...(current ?? fallback), [key]: value ?? fallback[key] } as T;
+  if (!isValid(next)) return current;
+  const isDefault = (Object.keys(fallback) as (keyof T)[]).every((k) => next[k] === fallback[k]);
+  return value === null && isDefault ? null : next;
+};
+
+/** Bornes de couleur après la saisie de l'une d'elles (`nextBoundPair`) ; `fallback` : celles de l'activité (`defaultSpeedRangeOf`). */
+export const nextSpeedRange = (
+  current: SpeedRangeMs | null, bound: keyof SpeedRangeMs, value: number | null, fallback: SpeedRangeMs
+): SpeedRangeMs | null => nextBoundPair<keyof SpeedRangeMs, SpeedRangeMs>(current, bound, value, fallback, isValidSpeedRange);
+
 /** Rapport du retour de boucle admis, en fois l'aller. */
 export const isValidLoopReturnRatio = (value: unknown): value is number =>
   inRange(value, LOOP_RETURN_RATIO_RANGE.min, LOOP_RETURN_RATIO_RANGE.max);

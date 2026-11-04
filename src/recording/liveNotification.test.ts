@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IntervalTimerState } from './intervalTimer';
 import type { LiveFieldContext } from './liveFields';
 import { liveNotification, liveNotificationKey, notificationStateKey, trainingStep, type LiveNotificationInput } from './liveNotification';
-import { EMPTY_LIVE_STATS } from './liveStats';
+import { EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   stats: { ...EMPTY_LIVE_STATS, currentSpeedMs: 10, averageSpeedMs: 5, distanceM: 12_345 },
@@ -48,6 +48,16 @@ describe('liveNotification', () => {
     const n = liveNotification(input({ fields: ['speed'], context: context({ speedUnit: 'minkm' }) }));
     expect(n.text.startsWith('Allure ')).toBe(true);
     expect(n.lines[0].startsWith('Allure : ')).toBe(true);
+  });
+
+  it('dit la moyenne active en voile et en surf, la moyenne ailleurs', () => {
+    const stats = { ...EMPTY_LIVE_STATS, averageSpeedMs: 3, activeAverageSpeedMs: 5 };
+    const active = liveNotification(input({ fields: ['average'], context: context({ stats, options: { ...LIVE_STATS_DEFAULTS, activeAverage: true } }) }));
+    expect(active.text).toBe('Moy. act. 18,0 km/h');
+    expect(active.lines).toEqual(['Moyenne active : 18,0 km/h']);
+    const plain = liveNotification(input({ fields: ['average'], context: context({ stats }) }));
+    expect(plain.text).toBe('Moy. 10,8 km/h');
+    expect(plain.lines).toEqual(['Moyenne : 10,8 km/h']);
   });
 
   it('marque les valeurs absentes', () => {
