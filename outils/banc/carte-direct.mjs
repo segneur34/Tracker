@@ -19,6 +19,7 @@
 // montent d'au moins 4, pause exclue, et la carte immobile, le tracé ou la distance immobiles. Relevés détaillés sur la
 // sortie d'erreur (ils varient d'un passage à l'autre) ; la sortie standard ne porte que les contrôles.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect, diag, TEMPS } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -47,7 +48,7 @@ const writeTrack = (name, endS, { still = null, holes = [] } = {}) => {
     pts.push(`<trkpt lat="${lat}" lon="${(3.85 + meters / mPerDegLon).toFixed(7)}"><ele>50</ele><time>${new Date(t0 + k * 1000).toISOString()}</time>`
       + `<extensions><speed>${isStill ? 0 : SPEED_MS}</speed></extensions></trkpt>`);
   }
-  const path = `${workDir}\\${name}`;
+  const path = join(workDir, name);
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
   return { path, count: pts.length };
 };

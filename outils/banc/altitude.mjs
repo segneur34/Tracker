@@ -8,6 +8,7 @@
 //  3. passe la session au GPS dans ses réglages, puis revient à l'IGN : D+ et liste suivent ;
 //  4. règle un point tous les 20 m dans Réglages : l'altitude est redemandée à la réouverture.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -73,7 +74,7 @@ for (let k = 0; k <= 1200; k++) {
   const noise = 1.5 * Math.sin(k / 7) + Math.sin(k * 1.3);
   fixes.push([start[0] + north, start[1], 150 + noise]);
 }
-const runPath = `${workDir}\\course-altitude.gpx`;
+const runPath = join(workDir, 'course-altitude.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course altitude</name><type>running</type><trkseg>\n${
   fixes.map(([lat, lon, ele], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${ele.toFixed(1)}</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);

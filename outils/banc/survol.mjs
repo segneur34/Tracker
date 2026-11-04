@@ -61,9 +61,9 @@ for (let k = 0; k < 10_800; k++) {
   const lon = 3.86 + ((radius * Math.sin(angle)) / (R * Math.cos((43.62 * Math.PI) / 180))) * (180 / Math.PI);
   run.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${(80 + 30 * Math.sin(k / 400)).toFixed(1)}</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
 }
-const runPath = `${workDir}\\survol-course.gpx`;
+const runPath = join(workDir, 'survol-course.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course longue</name><type>running</type><trkseg>\n${run.join('\n')}\n</trkseg></trk></gpx>\n`);
-const sailPath = `${workDir}\\survol-voile.gpx`;
+const sailPath = join(workDir, 'survol-voile.gpx');
 execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'make-gpx.mjs'), sailPath]);
 
 // 2. Course.

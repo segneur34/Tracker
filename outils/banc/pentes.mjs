@@ -10,6 +10,7 @@
 //  5. planification : deux points en Course, « Voir sur la carte » du bloc Général colore le tracé ;
 //  6. captures à 1400×1000 et à 390×844.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -70,7 +71,7 @@ const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(sel
 const t0 = Date.UTC(2026, 9, 7, 8, 0, 0);
 const fixes = [];
 for (let k = 0; k <= 1200; k++) fixes.push([43.655 + (3 * k) / 111_195, 3.8, 150]);
-const runPath = `${workDir}\\course-pentes.gpx`;
+const runPath = join(workDir, 'course-pentes.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course pentes</name><type>running</type><trkseg>\n${
   fixes.map(([lat, lon, ele], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${ele.toFixed(1)}</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);
@@ -166,7 +167,7 @@ console.log('carte, bleu        :', await mapInfo('.plan-map'));
 // points à 6 m/s. L'altitude vient de l'IGN, la pente se lit malgré le pas large : zones relevées, pente sur la carte, légende gardée.
 const bikeSeconds = 1200;
 const bikeT0 = Date.UTC(2026, 9, 8, 8, 0, 0);
-const bikePath = `${workDir}\\velo-pentes.gpx`;
+const bikePath = join(workDir, 'velo-pentes.gpx');
 const bikeFixes = [];
 for (let k = 0; k <= bikeSeconds; k += 4) bikeFixes.push([43.655 + (6 * k) / 111_195, 3.8, k]);
 writeFileSync(bikePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Velo pentes</name><type>cycling</type><trkseg>\n${

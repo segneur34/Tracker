@@ -7,6 +7,7 @@
 //  2. Course de nouveau : rangée vide, rien de repris de la session d'avant ; sans choix, pas de matériel dans la fiche ;
 //  3. Voile, sans liste : pas de rangée.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -35,7 +36,7 @@ const recordUntilEnd = async (family, type, tag, offsetMin) => {
   for (let k = 0; k <= 30; k++) {
     pts.push(`<trkpt lat="${lat}" lon="${(3.85 + (k * 3) / mPerDegLon).toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time><extensions><speed>3</speed></extensions></trkpt>`);
   }
-  const path = `${workDir}\\materiel-fin-${tag}.gpx`;
+  const path = join(workDir, `materiel-fin-${tag}.gpx`);
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>${type}</type><trkseg>${pts.join('')}</trkseg></trk></gpx>`);
   await go('/enregistrer');
   console.log(`[${tag}] famille :`, await clickText(family));

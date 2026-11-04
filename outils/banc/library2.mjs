@@ -4,10 +4,11 @@
 //    pas repris de lui-même (§10, point 90 ; « Reprendre » est éprouvé par reglages.mjs).
 // Usage : node library2.mjs <port> <dossier de travail>
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
-const win = (name) => `${workDir.replace(/\//g, '\\')}\\${name}`;
+const win = (name) => join(workDir, name);
 
 // --- Protocole (lib/cdp.mjs) ---
 const { send, evaluate, go: goRaw, settle, waitFor, wait, importFiles, logs, close } = await connect({ port });

@@ -10,6 +10,7 @@
 // Usage : node recherche-sans-reponse.mjs <port> <dossier de travail, chemin Windows>
 // Le GPX écrit n'a pas d'altitude : l'IGN est donc interrogé d'office. Sur un profil neuf, avec réseau (overpass-api.de et data.geopf.fr) pour la fin. Dure environ 3 à 5 min.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -62,7 +63,7 @@ const t0 = Date.UTC(2026, 9, 7, 8, 0, 0);
 const fixes = [];
 // Sans altitude dans le fichier : c'est ce qui fait demander celle de l'IGN.
 for (let k = 0; k <= 1200; k++) fixes.push([43.655 + (3 * k) / 111_195, 3.8, 0]);
-const runPath = `${workDir}\\course-sans-reponse.gpx`;
+const runPath = join(workDir, 'course-sans-reponse.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course sans réponse</name><type>running</type><trkseg>\n${
   fixes.map(([lat, lon, _ele], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);

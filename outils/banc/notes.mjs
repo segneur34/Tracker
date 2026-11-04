@@ -9,6 +9,7 @@
 //  3. en Course seulement : nomme la note 1, supprime la note 2, « Enregistrer la session », relit la fiche,
 //     recharge la page (la liste garde « Saut »), puis à 1400×1000.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TEMPS, connect, diag } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -74,7 +75,7 @@ const replayGpx = (family, speedMs, t0) => {
   for (let k = 0; k <= 30; k++) {
     pts.push(`<trkpt lat="${lat}" lon="${(3.9 + (k * speedMs) / mPerDegLon).toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time><extensions><speed>${speedMs}</speed></extensions></trkpt>`);
   }
-  const path = `${workDir}\\notes-${family}.gpx`;
+  const path = join(workDir, `notes-${family}.gpx`);
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
   return path;
 };

@@ -1,10 +1,11 @@
 // Banc de la bibliothèque (lot 3a) : mémoire du navigateur (OPFS), enregistrement rangé, notes dans la fiche,
 // import, doublon, à classer, suppression, relance, fichier de réglages de l'appareil. Profil Chrome neuf : OPFS vide au départ.
 // Usage : node library.mjs <port> <dossier des GPX : voile.gpx, course.gpx, sans-type.gpx> <dossier des captures>
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, gpxDir, shotDir] = process.argv.slice(2);
-const win = (name) => `${gpxDir.replace(/\//g, '\\')}\\${name}`;
+const win = (name) => join(gpxDir, name);
 
 // --- Protocole (lib/cdp.mjs) ---
 const { send, evaluate, go: goRaw, settle, waitFor, wait, importFiles, records, shoot, logs, close } = await connect({ port, shotDir });

@@ -12,6 +12,7 @@
 //  4. marqueur d'une version plus récente (lot 148) : à l'ouverture et à « Mettre à jour », aucun fichier ne change (noms, tailles,
 //     dates), un GPX à la racine et un GPX sans fiche restent tels quels, l'import est grisé et la carte de la mémoire le dit.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -29,7 +30,7 @@ const rideGpx = (name, t0) => {
   }
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${name}</name><type>cycling</type><trkseg>\n${points.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
-const firstPath = `${workDir}\\sortie-copiee.gpx`;
+const firstPath = join(workDir, 'sortie-copiee.gpx');
 writeFileSync(firstPath, rideGpx('Sortie copiée', Date.UTC(2026, 9, 5, 8, 0, 0)));
 const secondGpx = rideGpx('Seconde sortie', Date.UTC(2026, 9, 6, 8, 0, 0));
 const SECOND_NAME = '2026-10-06_10-00-00_cycling.gpx';

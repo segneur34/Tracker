@@ -17,6 +17,7 @@
 //  choisit aucune répétition (un clic sur le tracé, si) ; le profil zoomé revient à tout voir quand l'autre séance
 //  s'ouvre sans rechargement (avant le lot 61, « Tout voir » restait : échec attendu sur l'ancienne version).
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -160,7 +161,7 @@ for (let k = 0; k <= 45; k++) {
   if (k > 0) meters += v;
   pts.push(`<trkpt lat="${lat}" lon="${(3.85 + meters / mPerDegLon).toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time><extensions><speed>${v}</speed></extensions></trkpt>`);
 }
-const replayPath = `${workDir}\\fractionne-rejeu.gpx`;
+const replayPath = join(workDir, 'fractionne-rejeu.gpx');
 writeFileSync(replayPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>run-intervals</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
 console.log('famille Entraînement :', await clickText('Entraînement'));
 await wait(300);

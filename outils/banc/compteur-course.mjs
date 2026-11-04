@@ -6,6 +6,7 @@
 //  2. oui : fiche en run-intervals, séances gardées, analyse ouverte dans le Fractionné, onglet « fractionné » ;
 //  3. non : fiche en running, séances gardées quand même, analyse à pied sans onglet « fractionné ».
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -71,7 +72,7 @@ const recordCourse = async (tag, offsetMin) => {
     if (k > 0) meters += 3;
     pts.push(`<trkpt lat="${lat}" lon="${(3.85 + meters / mPerDegLon).toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time><extensions><speed>3</speed></extensions></trkpt>`);
   }
-  const path = `${workDir}\\lot2-${tag}.gpx`;
+  const path = join(workDir, `lot2-${tag}.gpx`);
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
   await go('/enregistrer');
   console.log(`[${tag}] famille Entraînement :`, await clickText('Entraînement'));

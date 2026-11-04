@@ -45,7 +45,7 @@ export const SCRIPTS = [
   { nom: 'carte-direct', args: ['{port}', '{travail}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
   { nom: 'carte-perf', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'bibliotheque'], sansCache: true, delaiMin: 15 },
   { nom: 'cardio', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'fractionne', 'voile', 'reglages', 'statistiques'] },
-  // Sans `Network.enable`, rien n'est bloqué : l'altitude de l'IGN remplace la côte (LISEZMOI, « Scripts à revoir »).
+  // Sans `Network.enable`, rien n'est bloqué : l'altitude de l'IGN remplace la côte (SCRIPTS.md, « Scripts à revoir »).
   { nom: 'charge', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'reglages'], reseau: true },
   { nom: 'chrono', args: ['{port}', '{captures?}'], pages: ['enregistrer'], solo: true },
   { nom: 'classer', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course', 'velo'] },

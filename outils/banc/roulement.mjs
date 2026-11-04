@@ -8,6 +8,7 @@
 //     revêtement, puissance moyenne changée, voies rangées dans la fiche ;
 //  4. recharge : mêmes chiffres, aucune nouvelle requête ; nom de l'onglet « graphiques ».
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -32,7 +33,7 @@ for (let k = 1; k < path.length; k++) {
   const steps = Math.max(1, Math.round(d / SPEED));
   for (let j = 1; j <= steps; j++) fixes.push([path[k - 1][0] + ((path[k][0] - path[k - 1][0]) * j) / steps, path[k - 1][1] + ((path[k][1] - path[k - 1][1]) * j) / steps]);
 }
-const ridePath = `${workDir}\\sortie-roulement.gpx`;
+const ridePath = join(workDir, 'sortie-roulement.gpx');
 writeFileSync(ridePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Sortie roulement</name><type>cycling</type><trkseg>\n${
   fixes.map(([lat, lon], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);

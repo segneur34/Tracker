@@ -8,6 +8,7 @@
 // Rejeu ×1 d'une course de 400 s à 1 Hz : 60 s carte ouverte, 60 s carte réduite, 60 s sur l'accueil ; une ligne
 // par phase et par composant suivi, puis les autres composants les plus rendus.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -79,7 +80,7 @@ const pts = [];
 for (let k = 0; k <= 400; k++) {
   pts.push(`<trkpt lat="${lat}" lon="${(3.85 + (3 * k) / mPerDegLon).toFixed(7)}"><ele>50</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
 }
-const path = `${workDir}\\rendus-course.gpx`;
+const path = join(workDir, 'rendus-course.gpx');
 writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
 
 await go('/enregistrer', 6000);

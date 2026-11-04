@@ -1,8 +1,9 @@
 // Banc : module course ouvert depuis la bibliothèque, puis rechargé. Usage : node library3.mjs <port> <dossier des GPX>
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
-const win = (name) => `${workDir.replace(/\//g, '\\')}\\${name}`;
+const win = (name) => join(workDir, name);
 
 // --- Protocole (lib/cdp.mjs) ---
 const { send, evaluate, go: goRaw, settle, waitFor, importFiles, logs, close } = await connect({ port });

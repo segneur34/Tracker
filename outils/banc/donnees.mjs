@@ -13,6 +13,7 @@
 //     l'échec est nommé, et le GPX à moitié rangé est retiré ; importé de nouveau avec des capteurs, il les reçoit ;
 //  5. le stockage plein : un réglage refusé reste en place pour la session, et le bandeau le dit.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { BASE, connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -31,7 +32,7 @@ const rideGpx = (name, t0, count = 900) => {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${name}</name><type>cycling</type><trkseg>\n${points.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
 const T0 = Date.UTC(2026, 9, 5, 8, 0, 0);
-const firstPath = `${workDir}\\sortie-ign.gpx`;
+const firstPath = join(workDir, 'sortie-ign.gpx');
 writeFileSync(firstPath, rideGpx('Sortie avec altitude', T0));
 
 // --- Protocole (lib/cdp.mjs) ---
@@ -160,9 +161,9 @@ console.log(`${during} | en mémoire : « ${await evaluate(`(async () => (${LIB}
 
 // 4. Import : un illisible, un dont la fiche ne peut s'écrire.
 console.log('— 4. import');
-const okPath = `${workDir}\\import-ok.gpx`;
-const brokenPath = `${workDir}\\import-illisible.gpx`;
-const blockedPath = `${workDir}\\import-bloque.gpx`;
+const okPath = join(workDir, 'import-ok.gpx');
+const brokenPath = join(workDir, 'import-illisible.gpx');
+const blockedPath = join(workDir, 'import-bloque.gpx');
 const T_BLOCKED = Date.UTC(2026, 9, 8, 8, 0, 0);
 writeFileSync(okPath, rideGpx('Import rangé', Date.UTC(2026, 9, 7, 8, 0, 0)));
 writeFileSync(brokenPath, '<gpx><trk><trkseg><trkpt lat="43"');
@@ -181,7 +182,7 @@ const after = await listOpfs('sessions');
 console.log(`sessions/ : ${blockedGpx} ${after.includes(blockedGpx) ? 'RESTÉ' : 'retiré'}, autre nom du bloqué : ${after.filter((n) => n.startsWith(blockedGpx.slice(0, 19)) && n !== blockedGpx && n !== blockedJson + '/').join(', ') || 'aucun'}, rangé : ${after.some((n) => n.startsWith('2026-10-07')) ? 'oui' : 'NON'}`);
 await evaluate(`(async () => { await (await ${dirJs('sessions')}).removeEntry(${JSON.stringify(blockedJson)}); return 'ok'; })()`);
 // La session rangée, importée de nouveau avec des capteurs : ils la rejoignent.
-const okImu = `${workDir}\\import-ok.imu`;
+const okImu = join(workDir, 'import-ok.imu');
 writeFileSync(okImu, Buffer.from('capteurs du banc'));
 await evaluate(`(async () => { (${LIB}).dismissLibraryMessage(); return 'ok'; })()`);
 await importFiles([okPath, okImu], 'input[type=file][accept=".gpx"][multiple]');

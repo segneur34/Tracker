@@ -6,6 +6,7 @@
 //  2. l'ouvrir montre la question « Quelle activité ? » au lieu d'ouvrir l'analyse ; Échap la ferme sans rien changer ;
 //  3. choisir Gravel range l'activité dans la fiche et ouvre l'analyse vélo, pas celle de la page Course.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -19,7 +20,7 @@ const points = [];
 for (let k = 0; k <= 900; k++) {
   points.push(`<trkpt lat="43.7700000" lon="${(3.8 + (k * 5) / 80500).toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
 }
-const gpxPath = `${workDir}\\sans-activite.gpx`;
+const gpxPath = join(workDir, 'sans-activite.gpx');
 writeFileSync(gpxPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="autre application" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Sortie</name><type>other</type><trkseg>\n${points.join('\n')}\n</trkseg></trk></gpx>\n`);
 
 // --- Protocole (lib/cdp.mjs) ---

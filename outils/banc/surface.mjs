@@ -9,6 +9,7 @@
 //     l'ouvre et déplie l'onglet « surface » : une requête à Overpass, voies rangées dans la fiche ;
 //     recharge la page : mêmes chiffres, aucune nouvelle requête.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -105,7 +106,7 @@ const route = JSON.parse(await readOpfs('itineraires/Surface banc.json'));
 const path = route.legs.flatMap((l, k) => (k === 0 ? l.points : l.points.slice(1)));
 
 // 2. GPX sans horodatage : trace importée.
-const importedPath = `${workDir}\\trace-importee.gpx`;
+const importedPath = join(workDir, 'trace-importee.gpx');
 writeFileSync(importedPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Importée</name><trkseg>\n${
   path.map(([lat, lon]) => `<trkpt lat="${lat}" lon="${lon}"></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);
@@ -126,7 +127,7 @@ for (let k = 1; k < path.length; k++) {
   const steps = Math.max(1, Math.round(d / SPEED));
   for (let j = 1; j <= steps; j++) fixes.push([path[k - 1][0] + ((path[k][0] - path[k - 1][0]) * j) / steps, path[k - 1][1] + ((path[k][1] - path[k - 1][1]) * j) / steps]);
 }
-const runPath = `${workDir}\\course-surface.gpx`;
+const runPath = join(workDir, 'course-surface.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course surface</name><type>running</type><trkseg>\n${
   fixes.map(([lat, lon], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);

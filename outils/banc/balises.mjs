@@ -11,7 +11,10 @@
 //     départ), puis « Passer » et « Bips » coupés ;
 //  4. éprouve l'éditeur de la courbe dans Réglages : glisser le dernier point, ajouter un point,
 //     « Vibrer aussi », « Écouter », « Par défaut ».
+// Verdicts (lot 159) : chiffres attendus par construction (balises, distances 300 − 6t, caps, bips à ±1 s ; rien sur la
+// valeur tirée au glisser, 13 ou 14 m selon le pixel) ; fin par « Tout passe. » ou le nombre d'échecs, code 0 ou 1.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { BASE, connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
@@ -41,15 +44,15 @@ const walk = (pts) => {
   }
 };
 walk([[0, 0], [0, 300], [300, 300]]);
-const gpxPath = `${workDir}\\parcours-balises.gpx`;
+const gpxPath = join(workDir, 'parcours-balises.gpx');
 writeFileSync(gpxPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Balises</name><trkseg>\n${
   fixes.map((f) => `<trkpt lat="${f.lat.toFixed(7)}" lon="${f.lon.toFixed(7)}"><time>${new Date(t0 + f.t * 1000).toISOString()}</time><extensions><speed>${SPEED}</speed></extensions></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);
 console.log(`GPX synthétique : ${fixes.length} points, ${fixes.length - 1} s à ${SPEED} m/s`);
 
-// --- Protocole ---
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, wait, importFiles, shoot, close, logs, onMessage } = await connect({ port, shotDir });
+const { send, evaluate, wait, importFiles, shoot, check, finish, logs, onMessage } = await connect({ port, shotDir });
+check('GPX synthétique : 101 points sur 100 s', fixes.length === 101 && fixes.at(-1).t === 100, `${fixes.length} points, ${fixes.at(-1).t} s`);
 const beeps = [];
 onMessage((msg) => {
   if (msg.method !== 'Runtime.consoleAPICalled') return;
@@ -136,10 +139,17 @@ const planState = () => evaluate(`JSON.stringify({
   liste: [...document.querySelectorAll('.plan-point__text strong')].map((x) => x.textContent),
   sélecteursDeVoie: document.querySelectorAll('.plan-points select').length,
 })`);
-console.log('trois balises :', await planState());
+const trois = await planState();
+console.log('trois balises :', trois);
+check('itinéraire : repères 1, 2, 3', JSON.parse(trois ?? '{}').repères?.join(',') === '1,2,3', trois);
 console.log('Boucler :', await clickButton('Boucler'));
 await wait(300);
-console.log('boucle :', await planState());
+const boucle = await planState();
+console.log('boucle :', boucle);
+{
+  const b = JSON.parse(boucle ?? '{}');
+  check('« Boucler » : 4 balises, dont le bord 3 → 1', (b.blocs ?? []).includes('Balises (4)') && (b.bords ?? []).some((x) => x.startsWith('3 → 1')), boucle);
+}
 console.log('note :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).find((t) => t.includes('se valide')) ?? null`));
 await shoot('balises-planification');
 console.log('Régler pour ce parcours :', await clickButton('Régler pour ce parcours'));
@@ -150,26 +160,37 @@ await wait(300);
   const [vx, vy] = await evaluate(`(() => { const c = document.querySelectorAll('.plan-beeps .beep-editor__point')[0].querySelectorAll('circle')[1].getBoundingClientRect(); return [c.left + c.width / 2, c.top + c.height / 2]; })()`);
   await drag(vx, vy, vx + 25, vy);
 }
-console.log('bips du parcours :', await evaluate(`[...document.querySelectorAll('.plan-beeps .beep-editor__row')].slice(1).map((r) => [...r.querySelectorAll('input')].map((i) => i.value).join('/')).join('  ')`));
+const rangeesParcours = await evaluate(`[...document.querySelectorAll('.plan-beeps .beep-editor__row')].slice(1).map((r) => [...r.querySelectorAll('input')].map((i) => i.value).join('/')).join('  ')`);
+console.log('bips du parcours :', rangeesParcours);
 console.log('note :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).find((t) => t.includes('se valide')) ?? null`));
 await shoot('balises-parcours-bips');
 await evaluate(`(() => { const i = document.querySelector('.plan-form input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Parcours banc'); i.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
 console.log('Enregistrer :', await clickButton('Enregistrer'));
 await wait(1500);
 console.log('message :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).find((t) => t.startsWith('Enregistré')) ?? null`));
-console.log('bips dans la fiche :', await evaluate(`(async () => {
+const ficheBips = await evaluate(`(async () => {
   const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('itineraires');
   return JSON.stringify(JSON.parse(await (await (await d.getFileHandle('Parcours banc.json')).getFile()).text()).markGuide ?? null);
-})()`));
-console.log('GPX rangé :', await evaluate(`(async () => {
+})()`);
+console.log('bips dans la fiche :', ficheBips);
+// La valeur tirée au glisser (13 ou 14 m selon le pixel) n'est pas contrôlée : seulement la fiche égale aux rangées affichées.
+const courbeFiche = JSON.parse(ficheBips ?? 'null')?.curve ?? [];
+check('fiche : les bips rangés sont ceux des rangées affichées', courbeFiche.length > 0
+  && courbeFiche.map((p) => `${p.distanceM}/${p.intervalMs / 1000}`).join('  ') === rangeesParcours, `${ficheBips} | ${rangeesParcours}`);
+const gpxRange = await evaluate(`(async () => {
   const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('itineraires');
   const text = await (await (await d.getFileHandle('Parcours banc.gpx')).getFile()).text();
   return [...text.matchAll(/<wpt[^>]*><name>([^<]*)<\\/name>/g)].map((m) => m[1]).join(', ');
-})()`));
+})()`);
+console.log('GPX rangé :', gpxRange);
+check('GPX rangé : balises numérotées 1, 2, 3', gpxRange === '1, 2, 3', gpxRange);
 console.log('Partir :', await clickButton('Partir'));
 await wait(2000);
-console.log('page :', await evaluate('location.pathname'), '; balises suivies :', await evaluate(`JSON.parse(localStorage.getItem('tracker.followedTrace')).marks?.length ?? 0`),
-  '; validation suivie :', await evaluate(`JSON.parse(localStorage.getItem('tracker.followedTrace')).markGuide?.curve[0].distanceM ?? null`));
+const suivies = await evaluate(`JSON.parse(localStorage.getItem('tracker.followedTrace')).marks?.length ?? 0`);
+const validationSuivie = await evaluate(`JSON.parse(localStorage.getItem('tracker.followedTrace')).markGuide?.curve[0].distanceM ?? null`);
+console.log('page :', await evaluate('location.pathname'), '; balises suivies :', suivies, '; validation suivie :', validationSuivie);
+check('« Partir » : 4 balises suivies', suivies === 4, suivies);
+check('« Partir » : validation suivie au premier point de la courbe du parcours', validationSuivie !== null && validationSuivie === courbeFiche[0]?.distanceM, `${validationSuivie} / ${courbeFiche[0]?.distanceM}`);
 console.log('aperçu, balises sur la carte :', await evaluate(`document.querySelectorAll('.leaflet-marker-icon span').length`));
 
 // 2. Parcours synthétique, rejeu ×1.
@@ -189,9 +210,14 @@ const runStart = Date.now();
 beeps.length = 0;
 console.log('Démarrer (×1) :', await clickButton('Démarrer', true));
 const samples = [];
+const lectures = [];
 for (let s = 0; s < 104; s += 4) {
   await wait(4000);
-  samples.push(`${String(Math.round((Date.now() - runStart) / 1000)).padStart(3)} s  ${await guideCard()}  [${await followedStats()}]`);
+  const t = Math.round((Date.now() - runStart) / 1000);
+  const card = await guideCard();
+  const stats = await followedStats();
+  lectures.push({ t, card: card ?? '', stats: stats ?? '' });
+  samples.push(`${String(t).padStart(3)} s  ${card}  [${stats}]`);
   if (s === 20) await shoot('balises-guidage');
 }
 console.log(samples.join('\n'));
@@ -202,6 +228,32 @@ console.log(beeps.map((b, k) => {
   const gap = k > 0 ? ` +${((b.at - beeps[k - 1].at) / 1000).toFixed(2)} s` : '';
   return `  ${rel(b).padStart(6)} s ${b.text.replace(/ à \d+$/, '').replace('[bips] ', '')}${gap}`;
 }).join('\n'));
+// Par construction : 300 m au nord à 6 m/s (balise 2 à 50 s), puis 300 m à l'est (arrivée à 100 s) ; ±1 s, soit ±15 m
+// en comptant la lecture de la carte. Les lectures à moins de 2 s d'une balise ne sont pas jugées.
+{
+  const metres = (card) => Number(card.match(/· (\d+) m ·/)?.[1]);
+  const aller = lectures.filter((l) => l.t <= 48);
+  const retour = lectures.filter((l) => l.t >= 52 && l.t <= 98);
+  const fini = lectures.filter((l) => l.t >= 101);
+  const malAller = aller.filter((l) => !l.card.startsWith('Balise 2 ·') || !l.card.includes('· 0° ·') || !(Math.abs(metres(l.card) - (300 - 6 * l.t)) <= 15));
+  const malRetour = retour.filter((l) => !l.card.startsWith('Arrivée ·') || !l.card.includes('· 90° ·') || !(Math.abs(metres(l.card) - (300 - 6 * (l.t - 50))) <= 15));
+  const malFini = fini.filter((l) => !l.card.includes('Parcours fini') || !l.stats.endsWith('3/3'));
+  check('rejeu ×1, avant 50 s : cible « Balise 2 », cap 0°, distance 300 − 6t', aller.length > 0 && malAller.length === 0, malAller.map((l) => `${l.t} s ${l.card}`).join(' ; '));
+  check('rejeu ×1, de 50 à 100 s : cible « Arrivée », cap 90°, distance 300 − 6(t − 50)', retour.length > 0 && malRetour.length === 0, malRetour.map((l) => `${l.t} s ${l.card}`).join(' ; '));
+  check('rejeu ×1, après 100 s : « Parcours fini », 3/3', fini.length > 0 && malFini.length === 0, malFini.map((l) => `${l.t} s ${l.card} [${l.stats}]`).join(' ; '));
+  const t = (b) => (b.at - runStart) / 1000;
+  const longs = beeps.filter((b) => b.text.includes('long') && t(b) > 1 && t(b) < 99);
+  check('bips ×1 : un seul long en route, à la balise 2 (50 s ±1)', longs.length === 1 && Math.abs(t(longs[0]) - 50) <= 1, longs.map(rel).join(', '));
+  const fin = beeps.find((b) => b.text.includes('fin'));
+  check('bips ×1 : « fin » à l\'arrivée (100 s ±1)', fin !== undefined && Math.abs(t(fin) - 100) <= 1, fin ? rel(fin) : 'aucun');
+  // Courts dans les 6 s avant chaque balise seulement (±1 s) ; autant dans les deux approches, à un près (le rejeu à
+  // temps réel en donne 18 et 19 d'un passage à l'autre).
+  const approche1 = shorts.filter((b) => t(b) >= 43 && t(b) <= 51);
+  const approche2 = shorts.filter((b) => t(b) >= 93 && t(b) <= 101);
+  check('bips ×1 : courts seulement dans les 6 s avant chaque balise', shorts.length > 0 && approche1.length + approche2.length === shorts.length,
+    shorts.filter((b) => !approche1.includes(b) && !approche2.includes(b)).map(rel).join(', '));
+  check('bips ×1 : autant de courts dans les deux approches (à un près)', approche1.length > 0 && Math.abs(approche1.length - approche2.length) <= 1, `${approche1.length} / ${approche2.length}`);
+}
 console.log('Arrêter :', await holdStop());
 await wait(1500);
 console.log('Jeter :', await clickButton('Jeter'));
@@ -216,17 +268,24 @@ await prepareReplay(10);
 beeps.length = 0;
 console.log('Démarrer (×10) :', await clickButton('Démarrer', true));
 await wait(1200);
-console.log('au départ :', await guideCard());
+const auDepart = await guideCard();
+console.log('au départ :', auDepart);
+// Validation à 280 m : la balise 2, à 300 m, tombe dès les premiers points (×10).
+check('rejeu ×10, rayon 280 m : « Arrivée » dès le départ', auDepart?.startsWith('Arrivée ·'), auDepart);
 console.log('Passer :', await clickButton('Passer'));
 await wait(300);
-console.log('après Passer :', await guideCard());
+const apresPasser = await guideCard();
+console.log('après Passer :', apresPasser);
+check('« Passer » : parcours fini', apresPasser?.includes('Parcours fini'), apresPasser);
 console.log('Bips :', await clickButton('Bips'));
 const mutedAt = Date.now();
 await wait(300);
 console.log('après Bips :', await guideCard());
 await wait(10_000);
-console.log('fin :', await guideCard(), '; bips après la coupure :', beeps.filter((b) => b.at > mutedAt).length,
+const apresCoupure = beeps.filter((b) => b.at > mutedAt).length;
+console.log('fin :', await guideCard(), '; bips après la coupure :', apresCoupure,
   '; avant :', beeps.filter((b) => b.at <= mutedAt).map((b) => b.text.split(' ')[1]).join(', '));
+check('bips coupés : aucun son ensuite', apresCoupure === 0, apresCoupure);
 await holdStop();
 await wait(1500);
 await clickButton('Jeter');
@@ -242,26 +301,36 @@ const stored = () => evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('t
 const editorRows = () => evaluate(`[...document.querySelectorAll('.beep-editor__row')].map((r) => [...r.querySelectorAll('input')].map((i) => i.value).join('/')).join('  ')`);
 await evaluate(`document.querySelector('.beep-editor').scrollIntoView({ block: 'center' }); 'ok'`);
 await wait(300);
-console.log('éditeur :', await editorRows(), '; rangé :', await stored());
+const rangeesDepart = await editorRows();
+console.log('éditeur :', rangeesDepart, '; rangé :', await stored());
+const rangees = (texte) => String(texte ?? '').split('  ').filter((r) => r.trim()).length;
 const pointAt = (i) => evaluate(`(() => { const c = document.querySelectorAll('.beep-editor__point')[${i}].querySelectorAll('circle')[1].getBoundingClientRect(); return [c.left + c.width / 2, c.top + c.height / 2]; })()`);
 const [lx, ly] = await pointAt(await evaluate(`document.querySelectorAll('.beep-editor__point').length - 1`));
 await drag(lx, ly, lx + 40, ly - 15);
 console.log('dernier point tiré :', await editorRows(), '; rangé :', await stored());
 const chart = await evaluate(`(() => { const b = document.querySelector('.beep-editor__chart').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()`);
 await clickAt(chart[0] + chart[2] * 0.35, chart[1] + chart[3] * 0.75);
-console.log('point ajouté :', await editorRows());
+const ajoute = await editorRows();
+console.log('point ajouté :', ajoute);
+check('Réglages : 4 rangées après l\'ajout d\'un point', rangees(ajoute) === 4, ajoute);
 await evaluate(`document.querySelector('.beep-editor__check input').click(); 'ok'`);
 await wait(300);
-console.log('sans vibration :', await stored());
+const sansVibration = await stored();
+console.log('sans vibration :', sansVibration);
+check('Réglages : « Vibrer aussi » décoché, rangé vibrate faux', JSON.parse(sansVibration ?? 'null')?.wingfoil?.vibrate === false, sansVibration);
 await shoot('balises-reglage');
 beeps.length = 0;
 const listenStart = Date.now();
 console.log('Écouter :', await clickButton('Écouter'));
 await wait(27_000);
 console.log(`écoute : ${beeps.length} sons`, beeps.map((b) => `${((b.at - listenStart) / 1000).toFixed(1)}${b.text.includes('long') ? 'L' : ''}`).join(' '));
+check('« Écouter » : des courts, puis un dernier son long (la balise atteinte)', beeps.length > 1 && beeps.at(-1).text.includes('long'), beeps.map((b) => b.text.split(' ')[1]).join(', '));
 console.log('Par défaut :', await clickButton('Par défaut'));
 await wait(300);
-console.log('après défaut :', await editorRows(), '; rangé :', await stored());
+const rangeesDefaut = await editorRows();
+const rangeDefaut = await stored();
+console.log('après défaut :', rangeesDefaut, '; rangé :', rangeDefaut);
+check('« Par défaut » : les rangées du départ, rien de rangé', rangeesDefaut === rangeesDepart && rangeDefaut === '{}', `${rangeesDefaut} ; ${rangeDefaut}`);
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-await close();
+await finish();

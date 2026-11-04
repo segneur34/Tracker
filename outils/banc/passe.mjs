@@ -16,7 +16,16 @@ import { PAGES, PASSAGE_COURANT, SCRIPTS } from './scripts.mjs';
 
 const BANC = path.dirname(fileURLToPath(import.meta.url));
 const DEPOT = path.resolve(BANC, '..', '..');
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const WINDOWS = process.platform === 'win32';
+// Premier node_modules qui contient Vite en remontant depuis `depart` (comme outils/verif.mjs), sinon le sien : un
+// worktree sous .claude/worktrees/ sert avec celui du dépôt principal, sans jonction.
+const modulesDe = (depart) => {
+  for (let dossier = depart; ; dossier = path.dirname(dossier)) {
+    if (fs.existsSync(path.join(dossier, 'node_modules', 'vite', 'bin', 'vite.js'))) return path.join(dossier, 'node_modules');
+    if (path.dirname(dossier) === dossier) return path.join(depart, 'node_modules');
+  }
+};
+const MODULES = modulesDe(DEPOT);
 const PORT_APRES = 4191;
 const PORT_AVANT = 4192;
 // Préchauffage : chaque page chargée une fois (Vite compile à la demande, un premier chargement dépasse les attentes
@@ -58,6 +67,34 @@ const opts = { noms: [], pages: null, tous: false, avant: null, parCote: false, 
 
 function sortie(code, message) { console.error(message); process.exit(code); }
 
+// --- Chrome : la variable CHROME, sinon ses emplacements ordinaires (macOS et Linux relus, non essayés sur le poste) ---
+const surLeChemin = (nom) => {
+  const r = spawnSync(WINDOWS ? 'where' : 'which', [nom], { encoding: 'utf8', windowsHide: true });
+  return r.status === 0 ? (r.stdout.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? null) : null;
+};
+function trouverChrome() {
+  const impose = process.env.CHROME;
+  if (impose) return fs.existsSync(impose) ? impose : sortie(2, `Chrome introuvable : CHROME=${impose} n'existe pas`);
+  const fichiers = [];
+  if (WINDOWS) {
+    for (const v of ['ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA']) {
+      if (process.env[v]) fichiers.push(path.join(process.env[v], 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    }
+  } else if (process.platform === 'darwin') {
+    for (const racine of ['/Applications', path.join(os.homedir(), 'Applications')]) {
+      fichiers.push(path.join(racine, 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'), path.join(racine, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+    }
+  }
+  const trouve = fichiers.find((f) => fs.existsSync(f));
+  if (trouve) return trouve;
+  for (const nom of WINDOWS ? ['chrome'] : ['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser']) {
+    const p = surLeChemin(nom);
+    if (p) return p;
+  }
+  return sortie(2, 'Chrome introuvable : poser CHROME=<chemin du programme>');
+}
+const CHROME = trouverChrome();
+
 // --- Brouillon ---
 const B = Object.fromEntries(['releves', 'profils', 'travail', 'captures', 'vite'].map((d) => [d, path.join(opts.brouillon, d)]));
 for (const d of Object.values(B)) fs.mkdirSync(d, { recursive: true });
@@ -96,13 +133,19 @@ const bancDe = (cote) => (cote === 'avant' && opts.parCote ? path.join(racineAva
 // --- Processus suivis, nettoyage ---
 const enfants = new Set();
 let jonction = null;
+// Tue le processus et ses descendants (Vite et esbuild, Chrome et les siens) : sous Windows, `child.kill` ne tue que le
+// processus direct, d'où `taskkill /T` ; ailleurs, chaque enfant est lancé en tête de son groupe (`detached`), tué en entier.
 function tuer(child) {
   if (!child?.pid || child.exitCode !== null) return;
-  spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore' });
+  if (WINDOWS) { spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore' }); return; }
+  try { process.kill(-child.pid, 'SIGTERM'); } catch { return; }
+  setTimeout(() => {
+    if (child.exitCode === null && !child.signalCode) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* déjà fini */ }
+  }, 2000).unref();
 }
 function retirerJonction() {
   if (!jonction) return;
-  // Jamais de suppression récursive : elle viderait node_modules du dépôt à travers la jonction.
+  // Jamais de suppression récursive : elle viderait node_modules du dépôt à travers la jonction (ou le lien).
   try { fs.unlinkSync(jonction); } catch { try { fs.rmdirSync(jonction); } catch (e) { console.error(`jonction non retirée (${jonction}) : ${e.message}`); return; } }
   jonction = null;
 }
@@ -115,7 +158,7 @@ process.on('SIGINT', () => { console.error('\nInterrompu : nettoyage…'); netto
 process.on('SIGTERM', () => { nettoyer(); process.exit(143); });
 
 function lancer(cmd, args, options) {
-  const child = spawn(cmd, args, { windowsHide: true, ...options });
+  const child = spawn(cmd, args, { windowsHide: true, detached: !WINDOWS, ...options });
   enfants.add(child);
   child.on('exit', () => enfants.delete(child));
   return child;
@@ -145,8 +188,10 @@ async function ouvrirChrome(profil) {
   fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
   fs.mkdirSync(profil, { recursive: true });
   const port = await prendrePort();
+  // Sans bac à sable seulement en root (conteneur Linux), où Chrome refuse de démarrer avec.
+  const sansBac = process.getuid?.() === 0 ? ['--no-sandbox'] : [];
   const child = lancer(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profil}`,
-    '--window-size=1400,1000', '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
+    '--window-size=1400,1000', '--no-first-run', '--no-default-browser-check', ...sansBac, 'about:blank'], { stdio: 'ignore' });
   const limite = Date.now() + 30000;
   while (Date.now() < limite) {
     if (child.exitCode !== null) break;
@@ -195,12 +240,12 @@ async function demarrerServeur(cote) {
     `export default async (env: any) => {`,
     `  const b: any = typeof base === 'function' ? await (base as any)(env) : base;`,
     `  return { ...b, cacheDir: ${JSON.stringify(posix(path.join(B.vite, `cache-${cote}`)))},`,
-    `    server: { ...(b.server ?? {}), fs: { ...(b.server?.fs ?? {}), allow: ['.', ${JSON.stringify(posix(path.join(DEPOT, 'node_modules')))}] } } };`,
+    `    server: { ...(b.server ?? {}), fs: { ...(b.server?.fs ?? {}), allow: ['.', ${JSON.stringify(posix(MODULES))}] } } };`,
     `};`,
     '',
   ].join('\n'));
   const journal = fs.createWriteStream(path.join(B.vite, `${cote}.log`));
-  const child = lancer(process.execPath, [path.join(racine, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(port), '--strictPort',
+  const child = lancer(process.execPath, [path.join(modulesDe(racine), 'vite', 'bin', 'vite.js'), '--port', String(port), '--strictPort',
     '--host', '127.0.0.1', '--config', config], { cwd: racine, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, BROWSER: 'none' } });
   child.stdout.pipe(journal);
   child.stderr.pipe(journal);
@@ -331,7 +376,7 @@ async function executer(s, cote) {
   }
   const valeurs = { '{port}': String(chrome.port), '{gpx}': gpx?.[0], '{gpx2}': gpx?.[1], '{dossierGpx}': opts.gpx, '{travail}': travail, '{captures}': captures };
   const args = s.args.filter((a) => a !== '{captures?}' || opts.captures).map((a) => (a === '{captures?}' ? captures : valeurs[a] ?? a));
-  const env = { ...process.env, ...(s.env ?? {}), BASE: serveur.base, MSYS_NO_PATHCONV: '1', TEMP: travail, TMP: travail };
+  const env = { ...process.env, ...(s.env ?? {}), BASE: serveur.base, MSYS_NO_PATHCONV: '1', TEMP: travail, TMP: travail, TMPDIR: travail };
   if (/process\.env\.DUMP|const DUMP/.test(source)) env.DUMP = path.join(depot, 'releve');
   if (opts.captures && /process\.env\.SHOT/.test(source)) env.SHOT = path.join(captures, `${s.nom}.png`);
   if (accelerable(cote, s)) env.TEMPS = opts.temps;
@@ -378,14 +423,15 @@ let miseEnRoute = 0;
 let code = 0;
 try {
   if (aLancer.length) {
-    // Worktree de la version d'avant, jonction node_modules vers celle du dépôt.
+    // Worktree de la version d'avant, son node_modules relié à celui du dépôt : jonction sous Windows (un lien symbolique
+    // y demande les droits d'administrateur), lien de dossier ailleurs.
     if (commitAvant) {
       if (!fs.existsSync(path.join(racineAvant, '.git'))) {
         git(['worktree', 'prune']);
         git(['worktree', 'add', '--detach', racineAvant, commitAvant]);
       }
       const nm = path.join(racineAvant, 'node_modules');
-      if (!fs.existsSync(nm)) fs.symlinkSync(path.join(DEPOT, 'node_modules'), nm, 'junction');
+      if (!fs.existsSync(nm)) fs.symlinkSync(MODULES, nm, WINDOWS ? 'junction' : 'dir');
       jonction = nm;
     }
     // L'avant ne se sert que si un de ses relevés manque.
@@ -426,7 +472,8 @@ try {
   code = 1;
 } finally {
   nettoyer();
-  if (opts.nettoyerAvant && racineAvant && fs.existsSync(racineAvant)) {
+  // Le lien node_modules est retiré (`nettoyer`) avant `git worktree remove`, qui le traverserait sinon.
+  if (opts.nettoyerAvant && racineAvant && fs.existsSync(racineAvant) && !jonction) {
     try { git(['worktree', 'remove', '--force', racineAvant]); } catch (e) { console.error(`worktree non retiré : ${e.message}`); }
   }
 }

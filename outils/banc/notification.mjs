@@ -11,6 +11,7 @@
 //  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte ; « Étape » d'office (26/10) ;
 //  6. la moyenne en voile (lot 150) : « Moyenne active » dans les menus de Réglages, « Moy. act. » dans un rejeu.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -133,7 +134,7 @@ const voileSummary = await evaluate(`${voileCard}?.querySelector('.settings-acti
 check('carte repliée : « · modifié »', voileSummary.includes('· modifié'), voileSummary);
 
 // 2. Rejeu ×10 de voile.
-const sailPath = `${workDir}\\notification-voile.gpx`;
+const sailPath = join(workDir, 'notification-voile.gpx');
 nowTrace(sailPath, 600, 'wingfoil');
 const s0 = sent.length;
 console.log('Démarrer :', await startReplay('Voile', sailPath, 10));
@@ -194,7 +195,7 @@ console.log('Jeter :', await evaluate(`(() => { window.confirm = () => true; ret
 await wait(800);
 
 // 5. Compteur pendant un enregistrement de fractionné.
-const runPath = `${workDir}\\notification-fractionne.gpx`;
+const runPath = join(workDir, 'notification-fractionne.gpx');
 nowTrace(runPath, 60, 'run-intervals');
 console.log('Démarrer (fractionné, ×1) :', await startReplay('Entraînement', runPath, 1));
 await wait(2500);

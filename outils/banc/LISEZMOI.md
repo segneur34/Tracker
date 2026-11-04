@@ -1,24 +1,33 @@
 # Banc de test
 
-Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone) par le protocole DevTools, pour éprouver l'application sans la manipuler à la main. Ils complètent les tests unitaires, qui ne couvrent ni les hooks, ni les pages, ni la mémoire (§8 de `docs/ETAT_DU_PROJET.md`). Aucune dépendance : Node 22 ou plus (`fetch` et `WebSocket` natifs).
+Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone) par le protocole DevTools, pour éprouver l'application dans un vrai navigateur sans la manipuler à la main. Ils complètent les tests unitaires (`npx vitest run`), qui tournent sous Node sans navigateur : ni les pages montées, ni la mémoire du navigateur (OPFS), ni les sons ou le rejeu en temps réel. Aucune dépendance : Node 22 ou plus (`fetch` et `WebSocket` natifs). Chaque script, ce qu'il éprouve et s'il rend un verdict : `SCRIPTS.md`.
 
 ## Mise en place
 
-Un passage se lance par `passe.mjs` (section suivante) : serveurs, Chrome, profils neufs, préchauffage, worktree « avant », relevés et comparaison.
+1. Node 22 ou plus et Google Chrome (ou Chromium).
+2. `npm ci` à la racine du dépôt (Vite et l'application ; le banc lui-même n'a aucune dépendance).
+3. Chrome est cherché à ses emplacements ordinaires : sous Windows `%ProgramFiles%`, `%ProgramFiles(x86)%` et `%LOCALAPPDATA%` (`Google\Chrome\Application\chrome.exe`), puis `where chrome` ; sous macOS `/Applications` et `~/Applications` (Google Chrome, Chromium) ; sous Linux `google-chrome-stable`, `google-chrome`, `chromium`, `chromium-browser` sur le `PATH`. Ailleurs : `CHROME=<chemin du programme>`. Introuvable, le lanceur le dit et sort en code 2. macOS et Linux : chemins relus, pas essayés sur le poste de développement (Windows 11).
+4. Depuis un worktree sans `node_modules` (par exemple sous `.claude/worktrees/`), le lanceur prend le premier `node_modules` qui contient Vite en remontant les dossiers, comme `outils/verif.mjs`.
 
-À la main, pour un script seul : un serveur `node node_modules/vite/bin/vite.js --port 4191 --strictPort --host 127.0.0.1` chargé une fois dans un navigateur (jamais 5173, celui de l'utilisateur ; 4190 est refusé, « bad port ») ; un Chrome sans fenêtre sur un **profil neuf**, `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --remote-debugging-port=9400 --user-data-dir=<brouillon>/chrome-profil --window-size=1400,1000 --no-first-run about:blank`, fermé par `Browser.close` ; puis `MSYS_NO_PATHCONV=1 BASE=http://127.0.0.1:4191 node outils/banc/<script>.mjs 9400 …`, chemins au format Windows (`DOM.setFileInputFiles`).
+À la main, pour un script seul : un serveur `node node_modules/vite/bin/vite.js --port 4191 --strictPort --host 127.0.0.1` chargé une fois dans un navigateur (jamais 5173, celui de l'utilisateur ; 4190 est refusé, « bad port ») ; un Chrome sans fenêtre sur un **profil neuf**, `"<chemin de Chrome>" --headless=new --remote-debugging-port=9400 --user-data-dir=<brouillon>/chrome-profil --window-size=1400,1000 --no-first-run about:blank`, fermé par `Browser.close` ; puis `MSYS_NO_PATHCONV=1 BASE=http://127.0.0.1:4191 node outils/banc/<script>.mjs 9400 …`, chemins au format du système (`DOM.setFileInputFiles`).
+
+## Lancer un passage
+
+`node outils/banc/passe.mjs <noms…> --avant HEAD` : joue les scripts nommés sur l'arbre de travail (« après ») et sur le dernier commit (« avant »), et compare leurs relevés. Sans nom, le passage courant du registre ; `--pages voile,course` choisit par page touchée ; `--tous` les joue tous. Le passage dure de 1 à 20 min selon les scripts.
+
+Le tableau final, une ligne par script : durées des deux côtés ; résultat (`ok`, `N échecs` comptés sur les lignes « ÉCHEC », `code N`, « délai dépassé ») ; erreurs de console (nouvelles entre parenthèses) ; relevé `identique` ou `différent` (le diff suit, 20 lignes, avec le chemin des deux relevés). Code 1 dès qu'un script échoue ou diffère. Un script « à verdict » contrôle lui-même des chiffres attendus (`check`, puis « Tout passe. » ou le nombre d'échecs) ; les autres ne prouvent qu'une neutralité par rapport au commit d'avant (`SCRIPTS.md`, « Verdict ou neutralité »).
 
 ## Lanceur
 
 `node outils/banc/passe.mjs [noms…] [--pages a,b] [--tous] [--avant <commit>] [--scripts-par-cote] [-j N] [--sans-reseau] [--gpx <dossier>] [--brouillon <dossier>] [--temps k] [--captures] [--garder] [--sans-cache] [--nettoyer-avant] [--chrome <port>] [--port <port Vite>]`
 
 - Sélection : des noms, ou `--pages` (étiquettes du registre `scripts.mjs` : voile, course, velo, surf, fractionne, enregistrer, bibliotheque, planification, statistiques, profil, reglages, accueil), ou `--tous` ; sans rien, le passage courant : `general`, `statistiques`, `profil`, `onglets`, `bench`, `familles`, `cardio`, plus `library` et `planning` avec `--gpx <dossier>` (les GPX faits à la main) ; il ne comprend plus `tailles` (20 min), à jouer par son nom ou `--pages` quand le lot touche la mise en page, le thème ou Réglages. `--sans-reseau` écarte les scripts marqués `reseau`. Un script marqué `manuel` dans le registre n'est jamais lancé, la raison est dans le tableau.
-- Côtés : « après » est l'arbre de travail, servi sur 4191. Avec `--avant <commit>`, « avant » est ce commit, dans un worktree `<brouillon>/avant-<commit>` (gardé d'un passage à l'autre ; `--nettoyer-avant` le retire), jonction `node_modules` posée puis retirée, servi sur 4192. Les deux serveurs ont leur config générée dans `<brouillon>/vite/` (cache à part, polices `@fontsource` permises) et sont préchauffés sur un profil jetable. Par défaut, les scripts de l'arbre de travail tournent des deux côtés (neutralité de l'application) ; `--scripts-par-cote` donne à l'avant ses propres scripts (reprise d'un script : `--avant HEAD --scripts-par-cote`).
-- Exécution : un Chrome par script et par côté, profil effacé avant, ports à partir de 9400 (`--chrome`) ; `--port` déplace les serveurs Vite (après sur ce port, avant sur le suivant), pour plusieurs passages en même temps avec chacun son `--brouillon`, fermé par `Browser.close` ; `-j 4` scripts en parallèle, avant et après en même temps ; les scripts `solo` (temps réel) passent seuls, à la fin. Le script reçoit `BASE`, `MSYS_NO_PATHCONV=1`, `TEMP` vers son dossier de travail, `DUMP` s'il le lit, `SHOT` et le dossier des captures avec `--captures`. Délai : 10 min (20 pour `tailles`), puis « délai dépassé ».
+- Côtés : « après » est l'arbre de travail, servi sur 4191. Avec `--avant <commit>`, « avant » est ce commit, dans un worktree `<brouillon>/avant-<commit>` (gardé d'un passage à l'autre ; `--nettoyer-avant` le retire), son `node_modules` relié à celui du dépôt (jonction sous Windows, où un lien symbolique demande les droits d'administrateur ; lien de dossier ailleurs) puis retiré, jamais par une suppression récursive, servi sur 4192. Les deux serveurs ont leur config générée dans `<brouillon>/vite/` (cache à part, polices `@fontsource` permises) et sont préchauffés sur un profil jetable. Par défaut, les scripts de l'arbre de travail tournent des deux côtés (neutralité de l'application) ; `--scripts-par-cote` donne à l'avant ses propres scripts (reprise d'un script : `--avant HEAD --scripts-par-cote`).
+- Exécution : un Chrome par script et par côté, profil effacé avant, ports à partir de 9400 (`--chrome`) ; `--port` déplace les serveurs Vite (après sur ce port, avant sur le suivant), pour plusieurs passages en même temps avec chacun son `--brouillon`, fermé par `Browser.close` ; `-j 4` scripts en parallèle, avant et après en même temps ; les scripts `solo` (temps réel) passent seuls, à la fin. Chrome tourne sans bac à sable (`--no-sandbox`) seulement lancé en root (conteneur Linux). Fin d'un processus : `taskkill /T` sous Windows (`child.kill` n'y tue que le processus direct : Vite, esbuild et Chrome survivraient), ailleurs le groupe du processus (`SIGTERM`, puis `SIGKILL` 2 s plus tard). Le script reçoit `BASE`, `MSYS_NO_PATHCONV=1`, `TEMP`, `TMP` et `TMPDIR` vers son dossier de travail, `DUMP` s'il le lit, `SHOT` et le dossier des captures avec `--captures`. Délai : 10 min (20 pour `tailles`), puis « délai dépassé ».
 - Horloge : `--temps k` pose `TEMPS=k` aux scripts marqués `accelerable` du registre (`compteur-course`, `notes`, `test-fcmax`), dont la page vit alors k fois plus vite (`lib/horloge.mjs`, « Bibliothèque ») ; `--temps 10` est le réglage conseillé pour un passage (ces trois scripts : 4 min 20 → 1 min, sortie inchangée au bruit déjà connu près). Avec `--scripts-par-cote`, c'est le registre du commit d'avant qui dit si son script lit `TEMPS` (sans registre à ce commit, aucun) : la reprise d'un script pour l'horloge se prouve ainsi, l'avant à temps réel. Restent à temps réel (sortie changée à `TEMPS=10`, 29/10) : `fractionne` (sons au dixième de seconde, répétitions calées sur l'heure des points), `balises` (écarts entre bips au centième), `timer` (décompte lu juste après un changement de page), `chrono` (dixièmes), `notification` (durée de la pause lue à 0,1 s de la page).
 - Relevés : `<brouillon>/releves/<commit>/<script>.txt` (côté après : `<commit>-apres`, ou `<commit>-modifie` pour un arbre non commité), sortie normalisée (`HOTE`, `TRAVAIL`, `DEPOT`, `BROUILLON` ; masques communs : `UUID`, `DATE` pour un horodatage ISO ou un nom de session daté, `EPOQUE` pour un instant en ms, `N ms` pour une durée ; puis les masques du registre), sortie d'erreur, code de sortie et texte du `DUMP`. Le relevé « avant » est réutilisé tant que commit, script (et `lib/` s'il l'importe), arguments et `TEMPS` n'ont pas changé (« relevé réutilisé ») ; `--sans-cache` le refait (un relevé raté par lenteur resterait sinon) ; `tailles` n'est jamais réutilisé.
 - Sortie : sur la sortie d'erreur, une ligne par script fini ; puis le tableau (durées, résultat : ok, N échecs comptés sur les lignes « ÉCHEC », code de sortie ; erreurs de console comptées sur les lignes `EXCEPTION:` et `error:` ; identique, différent ou avant absent), le diff de chaque relevé différent (20 lignes) avec le chemin des deux relevés, les erreurs de console nouvelles, le temps du passage et de sa mise en route. Code 1 dès un échec ou un code non nul côté après, une erreur de console nouvelle, une différence ou un script inconnu ; les échecs de l'avant sont montrés sans compter (un script neuf sur l'ancienne application).
-- Brouillon par défaut `%TEMP%\tracker-banc` ; `--garder` y laisse profils et dossiers de travail. Ctrl+C tue serveurs et Chrome et retire la jonction.
+- Brouillon par défaut `tracker-banc` dans le dossier temporaire du système (`%TEMP%` sous Windows) ; `--garder` y laisse profils et dossiers de travail. Ctrl+C tue serveurs et Chrome et retire la jonction. Les chemins passés aux scripts se forment par `join` (`node:path`), jamais avec un `\\` écrit en dur.
 - Les scripts à attentes fixes (`bench`, `familles`…) peuvent échouer quand la machine est chargée (`-j 4` pendant d'autres travaux) : refaire le script seul (`-j 1`, `--sans-cache`) avant de conclure.
 
 ## Bibliothèque
@@ -34,418 +43,37 @@ Un passage se lance par `passe.mjs` (section suivante) : serveurs, Chrome, profi
 - Diagnostics sur stderr seulement (`settle /voile 410 ms (plafond 3000)`, un plafond atteint avec sa cause, la durée totale) : stdout reste le relevé qui prouve la neutralité. `BANC_DIAG=0` les coupe.
 - Reprise d'un script : même déroulé, mêmes `check`, même sortie standard (comparée par `diff` avant et après, chacun sur un profil neuf) ; `go` garde son ancien délai comme plafond ; un `wait(≥ 800)` qui suit une action devient `settle({ max: N })` ; l'attente après un import devient `waitFor` sur `records()` ; les petits `wait` (glissés, animations courtes) restent. `general.mjs` : 103 s → 40 s, sortie identique.
 
-## Scripts
-
-- `make-gpx.mjs <sortie> [décalage en heures]` : trace de voile synthétique à 1 Hz, environ 3 750 points. Elle comporte des bords de près et de portant, des virements et des empannages, avec un vent du nord. Le décalage produit une autre session, avec un autre instant de départ.
-- `bench.mjs <port> analyse <gpx>` : rejeu du GPX à ×600, Arrêter, Analyser. Les onglets de la colonne de la carte sont forcés ouverts. Le script affiche le titre, le nombre de traits SVG (`segments`), celui des canevas de la trace colorée (`traceCanvas`, 1 par carte depuis le point 93 : la trace n'est plus en SVG), le nombre de graphes, et les erreurs de console. `DUMP=x.txt` relève le texte de la page, `SHOT=x.png` fait une capture.
-- `session-save.mjs <port> <gpx>` et, sur le même profil, `session-save-resume.mjs <port>` : brouillon et « Enregistrer la session » (lot 3b), refaits le 29/10 sur la page d'aujourd'hui (n° 84). `session-save.mjs` copie la trace en lui posant un type wingfoil (sans type, la session est « à classer » et son brouillon ne s'enregistre pas), l'importe, ouvre l'analyse par son adresse, saisit le vent par « Régler » (Entrée), l'enregistre, saisit le seuil dans l'onglet réglages (15 nœuds, qui change le temps actif de la fiche), relit vent et seuil au rechargement, écrit des notes dans « matos et conditions » puis Annuler, garde un brouillon après un retour arrière du navigateur et l'abandonne en quittant. L'avertissement en quittant est refusé par un `confirm` de la page qui répond non (la bibliothèque accepte les dialogues d'office). Chaque étape dit `ok` ou `ÉCHEC`, code de sortie 1 au premier échec. `session-save-resume.mjs` : sur le même Chrome (l'OPFS de session-save), classe la session en Voile par le choix d'activité de l'onglet réglages, puis enregistre un seuil de 4 puis 12 nœuds et relève « Temps en vol (≥N nds) » et la fiche ; il ne se lance pas seul (`manuel` du registre). À la main : un serveur sur 4197 et un Chrome sur 9600, `session-save.mjs 9600 <gpx>` puis `session-save-resume.mjs 9600`.
-- `allure-session.mjs <port> <gpx 1> <gpx 2>` : l'allure imposée propre à chaque session. Les deux GPX viennent de `make-gpx.mjs`, sans décalage puis avec 1 h de décalage. Le champ « Allure de la session » est dans l'onglet « réglages » de l'analyse voile : le script l'ouvre avant chaque lecture (`openSettingsTab`, tolérant à l'état mémorisé). Il vérifie le brouillon, l'écriture dans la fiche, le recalcul du résumé et la relecture. Il vérifie aussi que la seconde session n'est pas touchée et que l'ancienne allure par support (`referenceSpeeds`) est effacée des réglages de l'appareil, ce qu'une écriture au lancement suffit à faire (il n'y a plus de support à changer et rétablir).
-- `rename.mjs <port> <gpx>` : renommage d'une session (lot II), depuis la bibliothèque puis depuis l'en-tête de l'analyse. Il vérifie Échap, Entrée, la fiche, la relecture après rechargement et l'effacement par un nom vide.
-- `library.mjs <port> <dossier des GPX> [<dossier des captures>]` (captures facultatives depuis le 31/10), puis `library2.mjs` et `library3.mjs` : la bibliothèque (lot 3a). Il faut dans le dossier `voile.gpx` (produit par `make-gpx.mjs`), `course.gpx` (une trace avec `<type>Trail Running</type>`) et `sans-type.gpx` (une trace sans `<type>`). Ces deux derniers sont à fabriquer à la main. Certaines étapes visent des champs d'avant le brouillon de session et la liste d'activités dessinée (notes du matériel, « Classer la session », seuil de Réglages) : elles ne trouvent plus rien, sans que ce soit un défaut. Le fichier de réglages de l'appareil, lui, est vérifié. `library3.mjs` ne dépend plus de `library.mjs` (il importe `course.gpx` lui-même) ; sa ligne de texte de page, qui rendait `undefined` (un `
-` écrit dans un gabarit), est corrigée. Ces deux scripts restent `manuel` du registre (dossier de GPX à fournir par `--gpx`) : `node outils/banc/passe.mjs library library3 --gpx <dossier>`.
-- `planning.mjs <port> <dossier des GPX> [<dossier des captures>]` : la page Itinéraires. Il faut dans le dossier `sans-heure.gpx` (une trace sans horodatage, avec altitude et un `<type>`), `route-rte.gpx` (des `<rtept>` seulement), `boucle.gpx` (une trace qui revient à quelques mètres de son départ) et `pas-un-gpx.gpx` (aucun point de trace ni de route), tous à fabriquer à la main. Le script se met en Course, onglets tous ouverts, pose des points et vérifie « Précédent » et la boucle en ligne droite, puis la ligne droite d'un seul point, allumée et éteinte dans son panneau, qui part avec lui quand on le retire. Il charge ensuite les GPX, insère un point sur la trace importée, déplace l'arrivée, inverse, range l'itinéraire et le rouvre après rechargement (il attend le bouton de la liste, puis les points de l'itinéraire rouvert : la liste et le GPX viennent de la mémoire, que `settle` ne voit pas ; n° 89). Les confirmations sont acceptées et affichées.
-- `activite.mjs <port> <gpx de voile> [<dossier des captures>]` : l'activité d'une session. Le GPX vient de `make-gpx.mjs`. Le script vérifie :
-  - que suivre un itinéraire propose son activité (sur un profil où `planning.mjs` a rangé des itinéraires) ;
-  - le passage de Voile à Course pendant un rejeu à ×10 ;
-  - la carte réduite et ses grands chiffres ;
-  - le rangement sous la nouvelle activité ;
-  - la bascule course ↔ voile depuis l'analyse, avec confirmation quand un brouillon est ouvert.
-- `balises.mjs <port> <dossier de travail> [<dossier des captures>]` : parcours de voile et bips d'approche (point 77), à 390×844, sur un profil neuf. Le script écrit lui-même son GPX dans le dossier de travail. Il vérifie :
-  - le parcours sur la page Itinéraires : balises numérotées, bloc « Parcours », bips propres au parcours rangés dans la fiche, puis « Partir » ;
-  - un rejeu ×1 d'un parcours de trois balises, avec le relevé des bips : la version navigateur de `platform/beeper.ts` consigne chaque son en `console.debug` (« [bips] ») ;
-  - un rejeu ×10 avec les bips du parcours, « Passer » et « Bips » coupés ;
-  - l'éditeur de la courbe dans Réglages : glisser, ajouter un point, vibration, « Écouter », « Par défaut ».
-  
-  Il dure environ 2 min 30.
-- `surface.mjs <port> <dossier de travail> [<dossier des captures>]` : revêtement (point 78), sur un profil neuf, avec réseau (brouter.de et overpass-api.de). Le script écrit lui-même ses GPX. Il vérifie :
-  - un itinéraire de deux points en Course : bloc « Surface » rempli par le calcul, voies rangées dans la fiche ; une fiche sans voies, rouverte, montre « Inconnu » et « Calculer », qui les rend ;
-  - un GPX sans horodatage chargé en itinéraire : tout « Inconnu » ;
-  - une course synthétique le long du tracé, importée puis ouverte : l'onglet « surface » fait une requête à Overpass et range les voies ; après rechargement, mêmes chiffres, sans nouvelle requête.
-
-  Overpass peut mettre plus d'une minute : ne pas le relancer en rafale.
-- `altitude.mjs <port> <dossier de travail> [<dossier des captures>]` : altitude de l'IGN (point 84), sur un profil neuf, avec réseau (data.geopf.fr). Le script écrit lui-même son GPX : une course au nord de Montpellier, altitude GPS plate et bruitée. Il vérifie :
-  - l'ouverture de l'analyse : une requête à l'IGN, l'altitude rangée dans la fiche, la ligne « Source : IGN » et le dénivelé changé ; après rechargement, aucune nouvelle requête ;
-  - le passage au GPS puis le retour à l'IGN dans les réglages de la session, suivis par le dénivelé de l'analyse et le D+ de la liste ;
-  - un point tous les 20 m réglé dans Réglages : l'altitude est redemandée à la réouverture.
-- `pentes.mjs <port> <dossier de travail> [<dossier des captures>]` : pentes sur la carte et onglet énergie (point 85), sur un profil neuf, avec réseau (data.geopf.fr, brouter.de et overpass-api.de). Le script écrit lui-même ses GPX, une course et une sortie à vélo au nord de Montpellier. Il vérifie :
-  - « Voir sur la carte » sous le graphe d'altitude : la trace prend les couleurs de la pente, la légende de pente se pose sur la carte, puis « Masquer » rend la vitesse ;
-  - la colonne Puissance du tableau des zones d'énergie, et son repli « Énergie par zone de pente », gardé après rechargement ;
-  - l'exclusion de la pente et du revêtement sur la carte, si Overpass répond dans les 3 min ;
-  - la même chose à 390×844 ;
-  - en planification, deux points en Course, puis « Voir sur la carte » du bloc Général ;
-  - (lot 24, 28/10) une sortie à vélo à 1 point toutes les 4 s (301 points, 24 m entre deux, même relief), à la suite : altitude de l'IGN, tableau des zones de pente relevé, « Voir sur la carte » qui donne des couleurs de pente et la légende de pente malgré le pas large, « Masquer » qui rend la vitesse. Le script dure environ 3 min : le lancer en arrière-plan.
-- `boucle.mjs <port> [<dossier des captures>]` : mode « Boucle » de la planification (point 87), sur un profil neuf, avec réseau (brouter.de). En Course, puis à vélo (activité Route), le script pose A, B et C au nord-est de Montpellier, boucle allumée, et attend la fin de chaque calcul. Il vérifie :
-  - la boucle fermée toute seule, et la ligne d'état du retour ;
-  - A fixe dans la liste des points, la ligne du retour sans boutons ;
-  - B déplacé, « Autre retour », un point posé sur le retour, « Précédent » ;
-  - A retiré (B devient le départ), puis rendu ;
-  - le rangement, puis la réouverture après rechargement : bouton allumé, aucune requête au serveur, rien à enregistrer ;
-  - le bouton éteint, qui retire le retour.
-
-  Il dure environ 3 min.
-- `roulement.mjs <port> <dossier de travail> [<dossier des captures>]` : roulement selon le revêtement à vélo (point 88), sur un profil neuf, avec réseau (brouter.de, overpass-api.de et data.geopf.fr). Le script demande lui-même à BRouter un tracé mêlant routes et chemins au nord de Montpellier, et en tire une sortie à 6 m/s ; l'activité Route y prend un vélo gravel. Il vérifie :
-  - la recherche des voies à l'ouverture de l'analyse, onglet « surface » fermé ;
-  - l'onglet « énergie » : roulement moyen et avertissement pendant la recherche, puis roulement selon le revêtement dans la note, puissance moyenne recalculée, voies rangées dans la fiche ;
-  - deux rechargements : mêmes chiffres, aucune nouvelle requête (une seule si la première a échoué) ; les réponses d'Overpass sont relevées ;
-  - le nom de l'onglet « graphiques » (« vitesse et altitude » jusqu'au 16/10).
-- `miseajour.mjs <port> <dossier de travail> [<dossier des captures>]` : « Mettre à jour » (point 88), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et touche à la mémoire du navigateur pendant que la page est ouverte. Il vérifie :
-  - une session retirée du dossier : la liste ne change qu'avec « Mettre à jour » (« 1 session en moins ») ;
-  - un GPX et sa fiche posés à la racine, un GPX seul dans `sessions/` : les deux apparaissent, la fiche suit son GPX (nom et activité gardés), celle du GPX seul est créée ;
-  - « rien de nouveau » à la relecture suivante, le bouton dans la rangée des imports, et dans Réglages › Mémoire, carte repliée comprise.
-- `classer.mjs <port> <dossier de travail> [<dossier des captures>]` : session à classer (point 88), sur un profil neuf, sans réseau. Le script écrit lui-même un GPX dont le `<type>` ne dit rien (`other`) et l'importe depuis la page Course. Il vérifie la carte « À classer », la question « Quelle activité ? » à l'ouverture au lieu de l'analyse, Échap qui la ferme sans rien changer, puis Gravel choisi : activité rangée dans la fiche, analyse vélo ouverte.
-- `fractionne.mjs <port> <dossier de travail> [<dossier des captures>]` : groupe Fractionné et compteur d'intervalles (point 89), sur un profil neuf, sans réseau. Le script écrit lui-même son GPX. Il vérifie :
-  - l'onglet Fractionné d'Enregistrer, ses deux activités et la carte « Compteur » ;
-  - une séance de 2 × 0:05 / 0:05 gardée sous un nom, retrouvée après rechargement ;
-  - le compteur seul : les phases à l'écran, et les sons relevés (« [bips] ») comparés à leur heure attendue ;
-  - pause, reprise, « Passer », puis un rechargement en pleine séance : séance reprise, bandeau sur /course, arrêt ;
-  - le compteur pendant un enregistrement en rejeu ×1 : répétitions rangées dans la fiche, onglet « fractionné » de l'analyse (synthèse, tableau, graphes d'évolution et de profil ; profil lu au-dessus, sans bulle, double-clic qui zoome, « Tout voir » sans « Sur la carte ») et « Voir », « 2 rép. » dans la bibliothèque ;
-  - une séance sans compteur importée, 8 efforts d'une minute : répétitions retrouvées dans la vitesse ; seuil d'effort imposé dans l'onglet réglages, trop haut (aucun effort) puis plus bas, enregistré dans la fiche et relu ; retour au seuil tiré de la session. Ce GPX passe par la page, dans un `File` : le Chrome sans fenêtre peut refuser de lire le dossier de travail (`NotReadableError`) ;
-  - le groupe dans Réglages, sur l'accueil et dans la barre du haut, son absence en planification, la page à 390 px sans débordement.
-
-  Il dure environ 2 min.
-- `compteur-course.mjs <port> <dossier de travail> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; sortie à pied enregistrée avec le compteur d'intervalles (lot 2 des demandes du 19/10), sur un profil neuf, sans réseau, environ 40 s. Le compteur est lancé depuis l'onglet Fractionné d'Enregistrer, puis une Course est enregistrée en rejeu ×10, deux fois. Le script vérifie :
-  - la question posée à « Analyser » : passer la session en « Fractionné à pied » ;
-  - oui : fiche en `run-intervals`, séances gardées, analyse ouverte dans le Fractionné avec l'onglet « fractionné » ;
-  - non : fiche en `running`, séances gardées quand même, analyse à pied sans l'onglet « fractionné » (il n'existe plus qu'en famille Fractionné, Réglages compris).
-- `chrono.mjs <port> [<dossier des captures>]` : chronomètre de la carte du compteur (lot 2 des demandes du 10-14/10), sur un profil neuf, sans réseau, à 390×844 puis à 1400×1000. Il vérifie :
-  - la bascule « Compteur | Chrono » ;
-  - Départ, deux tours (le dernier en haut), Arrêt (temps figé), Reprendre ;
-  - la pastille du chrono sur la vue Compteur ;
-  - le chrono repris juste après un rechargement ;
-  - la carte gardée en Course tant que le chrono est lancé, puis retirée par « Remise à zéro » ;
-  - la page sans débordement.
-
-  Il dure environ 30 s. Sur un serveur neuf, charger une page avant : le premier passage, à 390 px, ne trouve sinon rien.
-- `notes.mjs <port> <dossier de travail> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; bouton « Note » de l'enregistrement (lot 3 des demandes du 10-14/10), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX. En Course à pied, en Voile puis en Surf, il vérifie :
-  - un rejeu ×1 à 390×844, avec deux notes posées : le bouton dit « Note N posée » puis revient, le vibreur est relevé (« [bips] vibreur »), la page ne déborde pas ;
-  - l'analyse : deux fanions numérotés sur la carte, la liste de « Général », « Voir » qui passe le fanion au violet, un trait par repère sur les graphes, deux repères dans la fiche ;
-  - en Course seulement : la note 1 nommée, la note 2 supprimée, « Enregistrer la session », la fiche relue, puis la liste après rechargement, et à 1400×1000.
-
-  Il dure environ 2 min.
-- `charge.mjs <port> [<dossier des captures>]` : charge portée en course et poids du vélo par session (lot 4 des demandes du 10-14/10), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX, deux côtes à 5 %, et pose un poids de 70 kg. Il vérifie :
-  - dans Réglages, partie Onglet analyse : le champ « Charge portée » sur Course et Fractionné à pied, pas sur Route ; 5 kg rangés pour Course ;
-  - une course importée : énergie et note avec la charge de l'activité, puis 12 kg dans l'onglet réglages (énergie × 82/75), barre « charge », « Enregistrer la session », fiche relue, rechargement, « Revenir à l'activité » puis Annuler ;
-  - une sortie à vélo importée : 20 kg de vélo et de bagages, puissance et masse totale recalculées, fiche relue ;
-  - à 390×844, aucun débordement.
-
-  Il dure environ 1 min.
-- `depense.mjs <port> [<dossier des captures>]` : énergie de la marche (Pandolf, descentes par Santee) et réglage « Dépense » (lot 21, 28/10), sur un profil neuf, sans réseau, poids de 70 kg posé par le script. La côte à 5 % de `charge.mjs`, à 1,4 m/s, passée en Marche : « Énergie de marche » vers 82 kcal et la note de Pandolf ; « Dépense » de la Marche passée sur Course dans Réglages : « Énergie de course » vers 115 kcal et la note de Minetti (la marche à 0,6 à 0,8 fois) ; remise sur Marche, plus rien de rangé. Il dure environ 40 s et finit par « tout est passé » ou le nombre d'échecs.
-- `imports.mjs <port> [<dossier des captures>]` : imports anciens sans artefact (lot 5 des demandes du 10-14/10), sur un profil neuf, sans réseau, poids du pratiquant non renseigné. Le script écrit lui-même ses GPX et leurs fiches, et les importe par la page. Il vérifie :
-  - le matériel : une wing importée seule n'emprunte rien à la dernière session notée ; une wing enregistrée sans notes le reçoit ;
-  - une fiche de la première version (24/09) : notes gardées, réglages, activité et nom nuls, session modifiable ;
-  - une fiche au résumé abîmé, importée puis posée dans `sessions/` avant « Mettre à jour » : nom et notes gardés, résumé refait, pas de lecture seule ;
-  - une course importée seule, puis avec sa fiche : nom et voies reçus, « fiche complétée » ;
-  - à vélo, sans poids : énergie à « — », avertissement, pas de graphe ;
-  - en surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, aucun débordement.
-
-  Il dure environ 1 min 30.
-- `materiel-fin.mjs <port> <dossier de travail> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; matériel choisi à la fin de la session, avant « Analyser » (lot 143), sur un profil neuf, sans réseau : rangée vide d'office, choix écrit dans la fiche et retrouvé dans l'onglet « matériel et notes », rien de repris à la session suivante, pas de rangée sans liste de matériel.
-- `materiel.mjs <port> [<dossier des captures>]` : onglet « matériel et notes » hors voile (lot 2 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et les importe par la page. Il vérifie :
-  - dans Réglages, partie Matériel : la ligne « Matériel » sur Course, Route et Surf, pas sur Voile ; « Chaussures » et « Sac » rangés pour Course ;
-  - une course, une sortie à vélo et une session de surf : l'onglet juste avant « réglages », les intitulés de l'activité (ceux par défaut à vélo et en surf), ni vent ni plan d'eau, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre, « Enregistrer la session », fiche relue, rechargement ;
-  - à 390×844, aucun débordement.
-
-  Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs. La voile se vérifie à part, par `bench.mjs` et `DUMP` avant et après : texte identique.
-- `onglets.mjs <port> [<dossier des captures>]` : onglets choisis par activité et « tops » à pied et en surf (lot 3 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même une course, une sortie à vélo et une session de surf, prend celle de voile de `make-gpx.mjs`, et les importe par la page. Il :
-  - ouvre tous les onglets de chaque analyse et, avec `DUMP=x`, relève leur texte dans `x-course.txt`, `x-velo.txt`, `x-surf.txt` et `x-voile.txt`. Avec `RELEVE_SEUL=1`, il s'arrête là : c'est le relevé à faire sur la version d'avant (un `git worktree` servi sur un autre port), pour un texte identique sans réglage ;
-  - vérifie dans Réglages, partie Onglet analyse, la ligne « Onglets » de Voile, Course, Route, Fractionné à pied, Surf et Surf foil : « tops » enfoncé en voile et à vélo, relâché à pied et en surf, « vols » sur foil seulement, pas de « sauts » en fractionné ;
-  - coche « tops » en surf et en course, cache « vagues » en surf et « vmg » en voile, et vérifie ce qui est rangé ;
-  - en surf : « tops » entre « rame » et « graphiques », le panneau « Vagues » absent bien que laissé ouvert, le tableau, « Voir » qui trace le podium, la surbrillance effacée à la fermeture de l'onglet et pas ramenée ; en course : « tops » et ses distances (400 m vers 18 km/h) ; en voile : ni onglet ni panneau VMG ;
-  - à 390×844 : Réglages et le surf sans débordement ; puis « Par défaut » (menu « … » de la carte) de la carte Surf, qui efface ses choix et garde ceux des autres.
-
-  Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. Il appelle `Network.enable` : sans lui, le blocage par hôte ne tient pas toujours, Overpass répond (504) et le relevé du vélo change.
-- `cardio.mjs <port> [<dossier des captures>]` : onglet « cardio » et FC dans les analyses (lot 7, étape analyse), sur un profil neuf, sans réseau. Le script écrit lui-même une course, une session de surf et une séance de fractionné, et prend celle de voile de `make-gpx.mjs`, toutes avec la FC (`gpxtpx:hr`), plus une course sans FC, et les importe par la page. Il vérifie :
-  - l'onglet juste après celui des graphes, FC moyenne et max, pas de zones sans FC max ni âge, « La retenir » qui range la FC max de la sortie ; pas d'onglet sur la course sans FC ;
-  - FC max et de repos posées : le tableau des zones (réserve cardiaque), la charge, la dérive et le nuage FC / vitesse en course, « Voir » qui trace les passages d'une zone en violet, effacés à la fermeture de l'onglet et pas ramenés ;
-  - la courbe de FC dans l'onglet des graphes des trois modules (trois graphes en course, deux sans FC) ;
-  - Réglages : « Zones cardiaques » (Personnaliser, Revenir au calcul), la case « Ceinture cardio » en voile et en surf, « FC moyenne » et « Zone cardiaque » parmi les chiffres de la voile ;
-  - une séance de fractionné sans compteur, avec la FC : colonnes « FC » (moyenne / max) et « Récup. » de chaque répétition ;
-  - la FC dans le résumé des fiches (`calcVersion` 4), rien pour la course sans FC, et l'onglet « cardio » des statistiques (sessions avec FC, charge, temps par zone, charge par semaine, FC par session) ;
-  - à 390×844, l'analyse de course, onglet cardio ouvert, et le fractionné, sans débordement.
-
-  Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. La neutralité se prouve par `onglets.mjs` en `RELEVE_SEUL=1` : sans FC, le texte des quatre analyses ne change pas.
-- `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Les fichiers de réglages qu'il fabrique portent `presetsVersion` à 3 : sans elle, un fichier d'avant verrait ses seuils effacés une fois à la reprise (point 168), et le seuil relu serait `undefined`. Il vérifie :
-  - `reglages/pc.json` écrit au premier lancement ;
-  - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;
-  - le fichier d'un autre appareil (« Léa », activités de la version 3) déposé dans `reglages/` : visible après « Mettre à jour », pas repris de lui-même, proposé par le bandeau « Nouveau fichier de réglages » ;
-  - « Reprendre » du bandeau : activités recolorées dans les nuances de leur famille, seuil repris, choix retenus de l'appareil gardés ; plus de bandeau ensuite ;
-  - le renommage de l'appareil, qui renomme son fichier, et le refus d'un nom déjà pris ;
-  - un autre appareil sous le nom de celui-ci : l'appareil prend un nom libre et le dit ; le bandeau le propose, « Fermer » le retire pour de bon ;
-  - des activités de la version 3 au lancement : le fichier de l'appareil passe aux nouvelles couleurs sans changer de date ;
-  - « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une tablette rangé sous son nom, reprise refusée puis faite depuis la liste.
-- `sauts.mjs <port> [<dossier des captures>]` : sauts en voile et case « Foil » (point 91), sur un profil neuf, sans réseau. Le script fabrique dans la page une session de voile et ses capteurs (`.imu`, par l'encodeur de l'application). Il vérifie :
-  - dans Réglages, « Foil » puis « Sauts » (parties de la carte ouvertes), leurs sous-options, relus après rechargement ;
-  - l'import d'une session avec ses capteurs : `.imu` rangé à côté du GPX ;
-  - le foil de l'activité, puis celui de la session : « Ratio de navigation » ou « Ratio de vol », champs Foil et Mât ;
-  - l'onglet « sauts » : chiffres, podium, tableau et son tri, courbe (lue au-dessus, double-clic qui zoome, « Tout voir » sans « Sur la carte »), « Voir », « Détail », comparaison, sauts rangés dans la fiche, sur ordinateur et à 390×844 ;
-  - l'absence de « Mesurer les sauts » dans le navigateur, et la suppression de la session avec son `.imu`.
-
-  La partie Réglages suit la page d'aujourd'hui (lot 24, 28/10) : les sauts de la Voile sont cochés d'office (poitrine, 0,5 m), le script ne coche rien pour eux, règle l'emplacement au bras et la hauteur à 1,5 m, décoche « Foil » (partie Onglet analyse), et n'ouvre la carte que si elle est repliée (elle retient son état après rechargement). Le résumé de la carte repliée dit « sauts » et plus « foil ».
-- `pumping.mjs <port> [<dossier des captures>]` : pumping foil en surf (point 104 ; séries validées par leur cadence, lot 50), sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page). Le script fabrique dans la page une session de surf foil de quatre vols et ses capteurs (`core/imuSynthetic.fixture.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz sur une partie des vols seulement : deux séries dans le vol 1, une dans les vols 2 et 4, aucune dans le vol 3), et vérifie :
-  - dans Réglages, la case « Pumping foil » de Surf foil (pas de Surf), l'aide du seuil de vol, le résumé de la carte repliée ;
-  - l'import de la session avec ses capteurs, Foil et Pumping cochés pour la session, l'onglet « vols » : titre « Pumping (4 séries) », tuiles (Cadence vers 90 /min en tête, Séries, Temps pompé, Coups, Par coup, Part du vol pompée), les 3 plus longues séries (cadence d'abord), « Toutes les séries (4) », puis les vols à part (tuiles, 3 plus longs avec décollage, séries et temps pompé, « Tous les vols (4) » replié puis déplié) ; « Voir » d'une série puis d'un vol, une seule surbrillance ;
-  - Pumping décoché pour la session (les vols seuls, colonnes du GPS « Hors vague »), puis « Enregistrer la session » (`analysis.pumping` dans la fiche) ;
-  - l'absence de « Mesurer le pumping » dans le navigateur, et la page à 390 × 844 sans débordement.
-
-  Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs.
-- `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel, par `charge-ts.mjs`). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
-  - le téléphone, les capteurs, l'emplacement et le foil choisis ;
-  - la durée, la cadence et les trous de chaque flux ;
-  - l'écart avec le GPX ;
-  - les sauts tels que l'application les calcule (`src/core/jumps.ts`), avec la vitesse GPS au décollage, et la part de la séance que garderait l'élagage ;
-  - avec `--tous`, les vols écartés et leur raison, pour recaler la détection.
-- `manoeuvres-diagnostic.mjs <gpx> [--support=wingfoil] [--seuil=7] [--vent=321] [--ecartes]` : sans navigateur ni serveur (Node 22.18 ou plus). Relit une vraie session de voile par la chaîne de l'application (lecture du GPX, filtres accordés à l'allure, estimation du vent, deux passes de détection), pour recaler la détection des manœuvres. Le GPX reste dans le dossier mémoire de l'utilisateur : son chemin se donne en argument, jamais une copie dans le dépôt. `--seuil` est celui de la fiche (sinon la suggestion), `--vent` le vent saisi (sinon l'estimé). Il donne :
-  - l'allure, le seuil, le ratio de l'application et le temps en mouvement ;
-  - la part active par seuil de 5 à 10 nd, sur le total et sur le temps en mouvement, et la chronologie des suites au-dessus du seuil (les vols) ;
-  - le vent estimé (confiance, orientation, manœuvres à caps stabilisés) ;
-  - chaque manœuvre comptée : heure, type, réussite, vitesse d'approche, creux, conservation, relance, changement de cap, caps de contrôle avant et après relus par l'outil (médianes de 10 à 2 s avant la rotation, de 1 à 8 s après la sortie) et leurs côtés du vent, bissectrice, vent local, caps stabilisés, en vol avant et après ;
-  - les demi-tours hors vol et les tours complets écartés ; avec `--ecartes`, tous les virages écartés, par motif.
-
-  Il charge le TypeScript de l'application tel quel par `charge-ts.mjs`, un crochet de résolution (`registerHooks`) qui ajoute `.ts` aux imports relatifs sans extension ; un autre script s'en sert de même (`import './charge-ts.mjs'`, puis les modules par `await import`). Essai sans vraie session : `node make-gpx.mjs <brouillon>/voile.gpx`, puis `node manoeuvres-diagnostic.mjs <brouillon>/voile.gpx` (12 virements ratés, 12 empannages réussis, vent 4°).
-- `pumping-diagnostic.mjs <gpx> <imu> [--support=wingfoil] [--seuil=7] [--min-vol=10] [--coups] [--tous]` : sans navigateur ni serveur (Node 22.18 ou plus, par `charge-ts.mjs`). Relit une vraie session de voile sur foil et sa capture des capteurs, rangées dans le dossier mémoire (chemins en argument, jamais une copie dans le dépôt), pour régler le pumping en voile (`SAILING_PUMP_DETECTION`). Les vols sont ceux de l'onglet « pumping » (`sailingFlights`, au seuil de la fiche donné par `--seuil`, sinon la suggestion ; listés dès `--min-vol` secondes, sinon le profil). Il donne :
-  - les seuils du pumping et ceux de la cadence qui valide une série (lot 50), l'état de la capture (entière ou élaguée, et ses fenêtres en minutes depuis le début de la trace) ;
-  - par vol touché par la capture (`--tous` : tous) : début, heure, durée, part couverte (une étoile si partielle), décollage et sa vitesse, coups, cadence, temps pompé, distance par coup, part du vol validée par la cadence ; sous chaque vol, ses séries : début, durée, coups, cadence des coups et cadence de l'autocorrélation (médiane des fenêtres de la série), vitesse avant et après, distance par coup ; le total ;
-  - les coups trouvés autour de chaque saut rangé (faux coups possibles) ;
-  - avec `--coups`, l'accélération verticale lissée, sans dérive, crête à crête par tranche de 5 s dans les vols couverts, et les coups de chaque tranche, à comparer à `strokeMinG`.
-- `donnees.mjs <port> <dossier de travail> [<dossier des captures>]` : données sûres (lot A, point 92), sur un profil neuf, dans la mémoire du navigateur. Il faut le serveur de développement, **redémarré depuis la dernière modification des sources** : le script importe `/src/hooks/useSessionLibrary.ts`, et après un rechargement à chaud, il obtiendrait une seconde copie du module, vide. Aucune demande à l'IGN ni à Overpass n'est attendue : elles sont relevées. Le script écrit lui-même ses GPX. Il vérifie :
-  - le cache allégé : une sortie à vélo dont la fiche porte une altitude IGN et des voies. Après deux lancements, `tracker.libraryCache` ne les contient plus, et la session est partielle. Un renommage depuis la liste les laisse dans la fiche. L'analyse s'ouvre sans aucune demande, altitude « IGN » ;
-  - le recalcul de fond : 30 fiches au résumé périmé. La dernière, renommée pendant le balayage, garde son nom et passe en `calcVersion` 2 ;
-  - « Mettre à jour » : une session renommée pendant la relecture garde son nom, en mémoire et dans la fiche ;
-  - l'import de trois GPX : un illisible, et un dont la fiche ne s'écrit pas, à cause d'un dossier piège posé au nom de la fiche. Le troisième est rangé, l'échec est nommé dans le bandeau avec le compte rendu, et le GPX à moitié rangé est retiré. Importé de nouveau avec un `.imu`, le troisième reçoit ses capteurs (« capteurs ajoutés à 1 session déjà présente ») ;
-  - le stockage plein : `localStorage` rempli, un pli des totaux de l'accueil reste en mémoire sans être gardé, et le bandeau d'erreur le dit sur l'accueil.
-
-  Il dure environ 1 min 30. Le passer aussi sur la version d'avant le lot, `770fa94` (un `git worktree` servi sur un autre port), montre chaque perte qu'il évite.
-- `survol.mjs <port> <dossier de travail> [<dossier des captures>]` : coût de la carte sur une longue trace (lot B de l'audit, point 93), sur un profil neuf. L'IGN, Overpass, BRouter et Photon sont bloqués par hôte. Un motif comme `*brouter*` bloquerait aussi le module `/src/planning/brouter.ts`, et la page resterait vide. Le script :
-  - écrit une course de 3 h à 1 Hz (10 800 points) et la session de `make-gpx.mjs`, et les importe par la page, dans un `File` : le Chrome sans fenêtre refuse de lire le dossier de travail ;
-  - en course, compte les traits SVG et les canevas de la trace, puis mesure 50 survols du graphe de vitesse ;
-  - en voile, mesure 10 clics « Voir (Carte) » d'un top ;
-  - avec `DUMP=x`, relève le texte des deux analyses dans `x-course.txt` et `x-voile.txt`, avant tout survol ;
-  - avec le dossier des captures, photographie les deux cartes, puis la course à 390×844 et sa carte en plein écran.
-
-  Avant le lot, il relevait 10 799 traits SVG, 325 ms par survol et 235 ms par clic ; après, aucun trait SVG, 60 ms et 55 ms, pour un texte identique.
-- `rendus.mjs <port> <dossier de travail>` (lot 67, hors registre : une mesure, pas une preuve de neutralité) : rendus de React pendant un enregistrement, sur un profil neuf, sans réseau, environ 3 min 30 en temps réel. Un faux crochet des outils de React, posé avant tout script de la page, compte à chaque commit les composants rendus ; rejeu ×1 d'une course de 400 s, 60 s carte ouverte, 60 s carte réduite, 60 s sur l'accueil, une ligne par composant suivi et par phase. Avant le lot 67 : `RecordingScreen` 90 et `AppShell` 60 par minute (un par position, plus les calculs du direct).
-- `surf.mjs <port> [<dossier des captures>]` : le surf (point 97), sur un profil neuf, sans réseau. Le script écrit lui-même deux sessions synthétiques, cap de l'appareil compris, et les importe par la page, dans un `File`. Il vérifie :
-  - la famille Surf sur l'accueil et dans la barre, et ses deux activités dans Réglages (« Seuil de vague », « Seuil de vol » pour Surf foil, ni pente ni terrain) ;
-  - une matinée de trois vagues, dont une enchaînée : la ligne de la bibliothèque, puis les onglets général, vagues (tableau, tri, « Voir », podium), rame et graphiques ;
-  - un seuil de vague imposé dans l'onglet réglages : une vague en moins, rangé dans la fiche, relu après rechargement, puis « Défaut » et « Annuler » ;
-  - une session de surf foil : case Foil de la session, onglet « vols », plus long vol dans la fiche et la bibliothèque ;
-  - la page à 390 × 844, sans débordement.
-
-  Les onglets ouverts sont mémorisés : le script n'ouvre un onglet que s'il est fermé (`openTab`). Il dure environ 1 min.
-- `cacher.mjs <port> [<dossier des captures>]` : familles et activités cachées (point 100), sur un profil neuf, sans réseau. Le script importe par la page une sortie à vélo (rangée sous Route). Il vérifie :
-  - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors de la barre du haut, de l'accueil et d'Enregistrer, la barre du bas inchangée (Accueil, Profil, Statistiques, Réglages) ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
-  - l'œil de la dernière famille visible désactivé ;
-  - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ.
-- `familles.mjs <port> [<dossier des captures>]` : familles repliables dans Réglages (lot 2 des demandes du 15/10), sur un profil neuf, sans réseau, environ 30 s. Avec `DUMP=x.txt`, il ouvre toutes les familles, activités et parties et relève le texte des cartes d'activité ; avec `RELEVE_SEUL=1` en plus, il s'arrête là (relevé de la version d'avant). Il vérifie ensuite :
-  - les cinq familles fermées au départ, aucune carte d'activité montée ;
-  - Voile ouverte, son œil qui la cache sans la replier, puis la rend ;
-  - l'état retenu après rechargement (`settings-families` dans `tracker.sections`) ;
-  - une activité ajoutée en surf, qui ouvre la famille Surf et sa carte ;
-  - le menu « … » de la carte d'activité (Renommer, Supprimer, Par défaut), « Par défaut » grisé puis actif après un réglage changé ;
-  - à 390×844, aucun débordement, familles fermées puis ouvertes.
-
-  Depuis ce lot, les scripts qui passent par les cartes d'activité ouvrent d'abord les familles (clic sur `.settings-activities__family-toggle`, ou `settings-families` dans la mémoire préremplie).
-- `notification.mjs <port> <dossier de travail>` : notification de l'enregistrement (point 101), sur un profil neuf, sans réseau, environ 1 min 30. La version navigateur de `platform/notification.ts` consigne chaque envoi en `console.debug` (« [notification] »). Le script vérifie :
-  - la partie « Notification » de la carte Voile dans Réglages : deux menus, « défaut », puis une ligne changée et rangée, qui suffit à dégriser « Par défaut » dans le menu « … » de la carte (grisé, non absent, tant que rien n'est changé) et, repliée, « · modifié » ;
-  - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;
-  - pause manuelle (envoi immédiat, « en pause », posé seul), reprise, puis effacement à l'arrêt ;
-  - le compteur pendant un enregistrement de fractionné : phase au titre et décompte ; « Étape » d'office (0/2 au départ, 1/2 au premier travail, lot A du 26/10).
-- `statistiques.mjs <port> [<dossier des captures>]` : la page des statistiques (lot 5 des demandes du 10-13/10), sur un profil neuf, environ 1 min. Le script écrit lui-même douze sessions (course, vélo, wingfoil, kite sans activité créée pour lui, surf, deux fractionnés), datées en jours avant aujourd'hui, et les importe par la page Course. Le réseau n'est pas nécessaire ; l'analyse ouverte à l'étape du graphe demande seulement l'altitude à l'IGN s'il est là. Il vérifie :
-  - l'accès par la barre du haut, plus de lien sur l'accueil (lot 1 des demandes du 20/10) ;
-  - la vue d'ensemble (12 sessions, une ligne par famille, pas de records, le graphique de la durée seule), la descente vers Course, la période « 30 jours », le retour arrière, puis « Fractionné vélo » ; les pastilles d'activité de chaque famille, celles sans session et « Kite », activité de base, comprises ;
-  - un point du graphique, cliqué, puis « Ouvrir » qui mène à l'analyse ; les données proposées en course, en voile (% de vol du wingfoil seul) et en surf, chacune tracée avec l'unité de son axe ; le choix retenu après rechargement, la vitesse max à sa place là où il n'existe pas ; les fiches en version 5 du résumé (point 122) ;
-  - une planche à voile de `make-gpx.mjs` importée puis ouverte dans son analyse : la réussite des manœuvres rangée dans sa fiche, « % de manœuvres réussies » tracé en deux séries, la note des sessions à rouvrir ;
-  - Surf caché (écrit dans `tracker.sportSettings`) : absent des pastilles et des totaux, sa page ouverte par l'adresse ;
-  - à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
-
-  Depuis le lot 1 des demandes du 16/10, la page reprend le dernier affichage quand son adresse n'a pas de paramètre : le script efface `tracker.statistiques` avant l'étape de la famille cachée. Depuis le 17/10, les pastilles sont repliées sous « Sélection » : le script vérifie le bouton replié au départ et le choix qu'il affiche, le déplie et vérifie qu'il le reste au rechargement ; `barre.mjs` le déplie avant de cliquer une pastille. Depuis le 17/10 aussi, la famille s'appelle « À pied » (pastille, ligne de la vue d'ensemble, bouton « Sélection ») ; sa clé reste `course` dans l'adresse. `barre.mjs`, `cacher.mjs` et `notes.mjs` suivent le même nom.
-- `barre.mjs <port> [<dossier des captures>]` : barre d'onglets repliable, régularité et dernier affichage des statistiques (lot 1 des demandes du 16/10), sur un profil neuf, sans réseau, environ 1 min. Le script importe une course (10 jours avant aujourd'hui) et une session de voile de `make-gpx.mjs` (20 jours avant). Il vérifie :
-  - la flèche en fin de barre, qui cache la barre seule (panneaux ouverts gardés) et laisse le bouton fin « onglets » ; l'état gardé après rechargement et d'une analyse à l'autre ; le bouton fin, qui rend la barre et disparaît ; à 390×844, sans débordement ;
-  - Course sur « Année » : « Semaines actives » comptées depuis la course, pas sur 52 semaines ;
-  - le dernier affichage repris à l'ouverture sans paramètre, une adresse avec paramètres qui l'emporte, « Tout » retenu aussi.
-
-  Il finit par « Tout passe. » ou le nombre d'échecs. Le texte des analyses ne change pas (la flèche n'a pas de texte) : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
-- `graphes.mjs <port> [<dossier des captures>]` : graphes repliables un par un et graphe d'altitude de l'onglet « zones de pente » (demandes du 16/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une course avec la FC et une côte, une session de surf avec la FC, et prend la voile de `make-gpx.mjs` avec la FC. Il vérifie :
-  - l'ordre des onglets à pied (« graphiques » à la place des zones, « cardio » derrière lui) ;
-  - en course, les replis Vitesse, Altitude et FC : un graphe replié disparaît, avec la légende de pente et « Voir sur la carte » pour l'altitude ; le panneau rapetisse ; le repli est retenu après rechargement ;
-  - le mode superposé : la même rangée de replis, une série repliée n'est pas tracée, tout replié plus de graphe ;
-  - l'onglet « zones de pente » : le tableau puis le graphe d'altitude, le repli de chacun (le tableau seul replié laisse le graphe), le survol qui pose le repère sur la carte, « Voir sur la carte » qui colore la trace par la pente tant qu'un graphe d'altitude est montré ;
-  - le surf (Vitesse et FC) et la voile (les trois graphes, titre gardé replié) ; à 390×844, sans débordement.
-
-  Il finit par « Tout passe. » ou le nombre d'échecs.
-- `cadence.mjs <port> [<dossier des captures>]` : cadence à pied (demande du 16/10), sur un profil neuf, sans réseau, environ 1 min 30. La mesure sur l'accéléromètre ne se joue pas dans le navigateur (tests de `running/cadence.test.ts`) : le script écrit des GPX qui portent déjà `gpxtpx:cad`, en foulées par minute. Il vérifie :
-  - la cadence dans le résumé de la fiche ; l'onglet « cadence » juste après les graphes, la courbe repliable dans « graphiques » ;
-  - les chiffres (moyenne, max sur 30 s, pas, longueur de pas, dérive), les tranches de la course et « Voir » qui trace leurs passages, effacés à la fermeture de l'onglet ; selon la vitesse et selon la pente ;
-  - la marche (tranches de la marche), puis une seconde marche dont `cad` vaut déjà 110 (en pas par minute, lot 24) : le facteur est deviné par la longueur de pas par fréquence (0,42 telle quelle, 0,10 doublée), la cadence affichée reste **110 pas/min** (longueur de pas 0,76 m, 1 650 pas) et non 220 ; la marche à `cad` 55 (foulées) donne aussi 110 pas/min ; le vélo (`cad` en tours de pédale : ni onglet ni courbe), une course sans cadence ;
-  - les colonnes « Cadence » et « Pas » du fractionné ; la donnée « Cadence moyenne » des statistiques ;
-  - Réglages : « Mesurer la cadence » coché d'office à pied, absent à vélo, rangé seulement décoché ; à 390×844, sans débordement. Les statistiques comptent trois points (la course et les deux marches).
-
-  Il finit par « Tout passe. » ou le nombre d'échecs. Sans cadence, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
-- `partage.mjs <port> <dossier de travail> [<dossier des captures>]` : « Partager » du menu « … », image de la trace et des chiffres choisis (demande du 18/10), sur un profil neuf, environ 1 min 30. Réseau : les tuiles d'OpenStreetMap seulement (fond de l'image) ; IGN, Overpass et BRouter bloqués. Le script importe une boucle de course et la voile de `make-gpx.mjs`. Il vérifie :
-  - dans chaque analyse : « Partager » en tête du menu « … », la fenêtre, l'aperçu carré de 1080 px, les pastilles égales à la liste entière des chiffres de l'image (l'onglet « général » n'en montre plus que l'essentiel depuis le 22/10 ; l'essentiel s'y retrouve), les six premières enfoncées ; l'image est gardée dans le dossier des captures (`partage-<page>.png`) ;
-  - en course : deux pastilles seulement (image toujours carrée), fond de carte décoché, choix rangés sous l'activité (`tracker.partage`) et retrouvés à la réouverture ; « Partager » par le partage du navigateur (simulé), puis sans lui (téléchargement et message) ; Échap qui ferme ;
-  - à 390×844 : la fenêtre tient dans l'écran ; fin d'enregistrement (rejeu de la boucle, Arrêter, « … » › « Partager » de « Session terminée ») : aperçu carré, chiffres du résumé, choix de la course repris.
-
-  Il finit par « Tout passe. » ou le nombre d'échecs. Menu fermé, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
-- `profil.mjs <port> [<dossier des captures>]` : la page « Profil » (demande du 18/10), sur un profil neuf, sans réseau, environ 40 s. Le script écrit lui-même six sessions de 20 min, datées en jours avant aujourd'hui : quatre dans l'année en cours (deux courses, une sortie à vélo en côte de 200 m, une de wingfoil) et deux l'an passé. Il les importe par la page Course. Il vérifie :
-  - l'accueil sans graphe d'activités ni ligne « Profil » (retirée le 20/10) ; le lien « Profil » de la barre du haut ouvre la page, allumé ;
-  - l'année en cours : la distance en km (à 5 % de la somme des vitesses × durées), « 1 h 20 », le D+ de la côte, le nombre de sessions ; l'ordre chiffres › répartition › graphe ; l'anneau (une part par activité) et sa légende (la course à 50 %), le total au centre, la part d'une ligne survolée ;
-  - les flèches : « suivante » désactivée sur l'année en cours, l'an passé et ses chiffres (D+ à 0 sur le plat), « précédente » désactivée sur la plus vieille année, le graphe toujours là ;
-  - une ligne de la légende qui ouvre la bibliothèque filtrée sur son activité ;
-  - à 390×844 : rien ne déborde, chiffres empilés ; la barre du bas (Accueil, Profil, Statistiques, Réglages), dont la case « Profil » ouvre la page, allumée.
-
-  Il finit par « Tout est bon. » ou le nombre d'échecs. Le graphe d'activités ayant quitté l'accueil, l'étape 5 de `donnees.mjs` (stockage plein) passe par `/profil`.
-- `reglages-aide.mjs <port> [<dossier des captures>]` : les aides de Réglages sous des « ? » (lot 3 des demandes du 19/10), sur un profil neuf, sans réseau, environ 40 s. Tout ouvert (blocs, familles, activités, parties), il vérifie :
-  - plus aucun `title` sur une ligne de réglage, plus de grande note sous les activités, aucune aide dépliée au départ, chaque « ? » nommé « Aide : … » ;
-  - chaque « ? » de la page, un par un : son texte apparaît seul (le suivant referme le précédent), court ; un second appui referme ;
-  - le « ? » du seuil de Voile : libellé inchangé, aide sous sa ligne ; celui du bloc Activités ne replie pas le bloc ;
-  - à 390×844 : aucun débordement, une aide ouverte comprise ;
-  - hors de Réglages (Itinéraires), le mode d'emploi des bips d'un parcours est sous le « ? » du bloc Parcours (aides partout depuis le point 148).
-
-  Il finit par « Tout est passé. » ou le nombre d'échecs. Seuls des textes d'aide ont quitté la page : le relevé `familles.mjs` en `DUMP=… RELEVE_SEUL=1`, avant et après, le prouve.
-- `reduire.mjs <port> [<dossier des captures>]` : « Tout réduire » et nom ou pseudo de Réglages (demandes du 19/10 au soir), sur un profil neuf, sans réseau, environ 20 s. Il vérifie que « Tout réduire » replie tout (blocs, familles, activités, parties, aide ouverte, choix d'icône), mémoire comprise, et que le choix d'icône se rouvre ensuite ; que le pseudo saisi dans Pratiquant devient le titre du Profil, et « Profil » une fois effacé ; l'en-tête sans débordement à 390×844.
-- `vides.mjs <port> [<dossier des captures>]` : lot 1 des demandes du 20/10, sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une voile en aller simple (vent impossible à estimer), une course sans altitude et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
-  - voile : « manœuvres », « vmg » et « vent » ouverts disent « Vent inconnu » et ce qui en dépend, avec « Ouvrir l'onglet général » tant que « général » est fermé, qui l'ouvre ;
-  - course : « zones de pente » dit pourquoi elle est vide (pas d'altitude dans le fichier, IGN injoignable) et propose « Réessayer » ;
-  - surf : « Sur la vague (x %) » dans les chiffres, et la légende de la répartition qui ne redit pas son pourcentage ;
-  - à 360×800 : l'accueil sans lien Profil ni Statistiques, la barre du bas Accueil · Profil · Statistiques · Réglages ; dans Réglages, la carte Voile ouverte montre son nom en texte (un toucher replie la carte), le menu « … » (dont « Renommer ») et l'œil sur la même ligne ; Échap n'enregistre rien, Entrée renomme, le nom est relu après rechargement ; rien ne déborde.
-
-  Il finit par « Tout est bon. » ou le nombre d'échecs.
-- `marche.mjs <port> [<dossier des captures>]` : activité « Marche » de départ (lot 3 des demandes du 20/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
-  - installation neuve : la Marche juste après Course dans À pied, son icône, ses couleurs de 1,5 à 8 km/h et son temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course garde 4 à 15 km/h ;
-  - des réglages d'avant écrits dans `localStorage` : une liste de la version 5 reçoit la Marche une fois, une « marché » créée par l'utilisateur empêche le doublon, une liste de la version 6 sans Marche ne la voit pas revenir ;
-  - à 390×844, la liste d'activités d'Enregistrer pour À pied (Course, Marche), sans débordement.
-- `satellite.mjs <port> [<dossier des captures>]` : vue satellite (lot 4 des demandes du 20/10), sur un profil neuf, avec réseau vers `server.arcgisonline.com` seulement (IGN, Overpass, BRouter et OSM bloqués), environ 1 min 30. Le script écrit lui-même quatre allers-retours le long de la côte à Palavas (voile, course, vélo, surf) et les importe par la page. Il vérifie :
-  - dans chaque analyse : un bouton « Vue satellite » sous le + et le −, mention OSM ; un clic passe au satellite (mention Esri, tuiles affichées), le texte de la page ne change pas hors mention ; le fond rangé pour la famille seule (`tracker.fondCarte`), retrouvé après rechargement ; la voile en satellite laisse la course en plan ;
-  - vignettes de la bibliothèque : images fixes (aucune carte Leaflet), pas de bouton, plan ; planification : le fond de la famille de son activité (la Voile, en satellite), son bouton, qui ne pose pas de point, et deux points posés sur la photo ;
-  - l'aperçu de l'image de partage de la voile (capture, à regarder : photo et mention Esri) ;
-  - hors ligne : tuiles `sat_…` gardées, réaffichées sans Esri ;
-  - à 390×844 : bouton présent, rien ne déborde, un toucher sur le bouton n'ouvre pas le plein écran, la vue agrandie suit le fond avec son bouton.
-
-  Il finit par « Tout passe. » ou le nombre d'échecs.
-- `prereglages.mjs <port> [<dossier des captures>]` : pré-réglages du bateau, puis de tous les sports hors surf (demandes du 21/10), sur un profil neuf, sans réseau, environ 1 min. Le script écrit dans `localStorage` des réglages d'avant (bateau, Voile, Course, kite), puis il vérifie :
-  - la mise à jour au démarrage : ceux du bateau, de la Voile et de la Course effacés une fois, l'unité du bateau et ceux du kite gardés, `presetsVersion` à 3 ;
-  - Réglages : le bateau colore de 1 à 15 nd, avec une pause sous 0,2 km/h pendant 60 s, ses chiffres et aucune ligne « Seuil d'activité » ; la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Marche (depuis le 28/10), Route, Gravel, VTT et les deux fractionnés « aucun seuil » ; leurs couleurs, leur pause et le poids du vélo pré-réglés ; plus de ligne « Terrain » ; « Dépense » sur Marche pour la Marche, sur Course pour la Course et le Fractionné à pied, aucune ligne à vélo ; aucune carte « modifié » ;
-  - deux allers-retours lents importés par la page, l'un en bateau, l'autre en Voile : le résumé du bateau compte toute la session en navigation, son « général » n'a ni chiffres actifs ni ratio, et son onglet réglages n'a pas de seuil ; la Voile les garde ;
-  - une course de deux `<trkseg>` séparés par 10 min de pause, vitesse Doppler comprise : 1,80 km et 10 min en mouvement sur 20, dans la fiche et dans l'analyse (bug du 17/10) ;
-  - un réglage du bateau fait après la mise à jour, qui reste au rechargement ;
-  - la mise à jour 2 → 3 (28/10) : le seuil de 0,5 km/h rangé pour la Marche effacé, celui de la Course gardé.
-
-  Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
-- `entrainement.mjs <port> [<dossier des captures>]` : famille Entraînement, page Fractionné et compteur à blocs (chantier du 24/10, lot A), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
-  - le nom « Entraînement » sur l'accueil, dans la barre et sur la page de la famille, et sa tuile « Fractionné et tests » (la tuile « Muscu et timer » est éprouvée par `timer.mjs`) ;
-  - la page Fractionné : une séance à blocs créée d'un geste (ajouts sans « 3 × 3 min / 1 min » ni « 10 × 30/30 », « + Échauffement » en tête, vraies flèches ↑ ↓ : lot A du 26/10), gardée, modifiée, dupliquée, la copie retirée ;
-  - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied ; la rangée des types dit « Fractionné, Tests, Muscu » depuis le lot 11), la séance dans le compteur, « Série 1 · Travail 1/3 » ; arrêtée, la page quittée puis retrouvée par le retour : séance close oubliée, l'éditeur et jamais « Séance arrêtée » ;
-  - Réglages › Enregistrement : « Son des bips » médium par défaut, retenu, « Écouter », un son choisi toujours écrit ;
-  - à 390 × 844 : sans débordement.
-- `icones.mjs <port> [<dossier des captures>]` : icônes des activités (demande du 17/10), sur un profil neuf, sans réseau, environ 1 min. Il importe six sessions synthétiques par la page Course et vérifie :
-  - l'accueil : boutons de famille sans petites icônes d'activité, « À pied » pour la course ;
-  - les bibliothèques Voile et Vélo : bandeau qui nomme les activités créées, une icône devant chaque ligne et dans chaque onglet d'activité, l'onglet « Kite » qui ne laisse que sa ligne ;
-  - la liste de choix d'activité d'une session à classer : une icône par activité, à sa couleur ;
-  - Réglages : seize icônes au choix, celle devinée cochée, choix gardé après rechargement et repris par la bibliothèque, activité « Paddle » ajoutée en surf ;
-  - à 390×844 : bibliothèque et accueil sans débordement.
-- `timer.mjs <port> [<dossier des captures>]` : la tuile « Muscu et timer » de l'Entraînement (lot D des demandes du 25/10, réécrit au lot 24 sur la page à deux tuiles du lot 11), sur un profil neuf, sans réseau, environ 1 min. Il vérifie :
-  - les deux tuiles « Fractionné et tests » et « Muscu et timer » ; la liste « Muscu et timer », vide au départ, une séance créée, modifiée, dupliquée, la copie retirée, sans toucher aux séances du Fractionné ;
-  - « Timer » d'une séance (ex-« Lancer », lot A du 26/10) : Enregistrer en mode Timer (ni famille, ni « Démarrer », ni carte), le compteur lancé d'emblée, « Départ » puis le premier travail, le bandeau « Timer » qui y ramène ; un appui court sur « Arrêter » ne fait que rappeler le geste ; « Modifier » à sa droite arrête la séance (confirmation acceptée) et rend l'éditeur sur elle, « Lancer le compteur » la relance ; tenu 1 s, « Arrêter » l'arrête ; la page quittée puis retrouvée par le retour : séance close oubliée, l'éditeur et jamais « Séance arrêtée » ; la position jamais demandée (sonde sur `navigator.geolocation`) ;
-  - « Enregistrer une session » rend la page ordinaire ;
-  - « Enregistrer » d'une séance (muscu avec la ceinture) : Enregistrer sur Muscu, la séance dans la carte du compteur sans être lancée, ceinture cochée et grisée (FC d'exemple du navigateur), « Lancer le compteur » puis « Démarrer », « Arrêter » de la session tenu 2 s qui arrête le compteur avec elle (« Séance arrêtée », commande d'arrêt dans `tracker.intervalRun`), « Session terminée » jetée, aucune position demandée ; le lien « Enregistrer sans séance » absent (retiré, lot 102) ;
-  - à 390 × 844 : sans débordement, compteur en marche compris.
-- `carte-perf.mjs <port> [<dossier des captures>]` : poids de la carte (lot 73, point 212), trace de 3 h à 5 Hz : nombre de couches de la carte, histogramme du canevas, script et tâches (`Performance.getMetrics`) sur 10 zooms et déplacements en plan puis en satellite, durée de l'image de partage ; `sansCache` mesure la trace sans le cache. À ne pas confondre avec `zoom-carte.mjs`, qui éprouve les graphes zoomés.
-- `vignettes.mjs <port> <dossier de travail> [<dossier des captures>]` : vignettes de la bibliothèque et tuiles gardées (lot 74, point 213), 150 courses synthétiques importées, tuiles fausses (`lib/tuiles.mjs` : `fakeTiles`, damier servi en 50 ms ; `BLOCKED_EXCEPT_TILES` bloque le reste du réseau ; `formatTileStats`) : cartes Leaflet vivantes, tas, requêtes de tuiles (doubles, annulées) pendant un défilement, mention OSM, captures des vignettes (plan, économe, sombre, 1400 et 390 px) et durée de `tileStore.list()` à 10 000 tuiles, avec puis sans index. `carte-perf.mjs` sert aussi de fausses tuiles et compte les requêtes.
-- `fluidite.mjs <port> <dossier de travail>` : fluidité au téléphone, mesurée (lot 114 ; une mesure, pas une preuve de neutralité : `sansCache`, `solo`, environ 12 min, durées en secondes), sur un profil neuf, sans réseau, à vitesse normale puis processeur ralenti six fois (`Emulation.setCPUThrottlingRate`), trois prises et médiane, tableau des médianes en fin de sortie : ouverture d'une voile de 3 h à 5 Hz depuis la bibliothèque (titre, trace, chiffres de « général », tâches longues par `PerformanceObserver`, durée de `DOMParser`, prise sous `Profiler` avec le temps par fonction), seuil d'activité changé (tous les onglets ouverts), zoom d'un graphe d'une course de 2 h avec FC (double-clic de `lib/graphes.mjs`, partagé avec `zoom-carte.mjs` : script, images par seconde), résumés de 30 sessions refaits au lancement (fiches marquées d'une version antérieure, latence d'un mouvement de souris pendant ce temps), démarrage de `/` avec et sans `preloadPages` (`requestIdleCallback` neutralisé depuis le script). `FLUIDITE_MESURES=ouverture,seuil,zoom,resumes,demarrage` et `FLUIDITE_REPS` limitent le passage. Relevés et diagnostic dans `docs/backlog/114-fluidite-mesure.md`.
-- `zoom-carte.mjs <port> [<dossier des captures>]` : graphe zoomé vu sur la carte (lot 2 des demandes du 23/10), sur un profil neuf, sans réseau, environ 2 min 30. Il vérifie :
-  - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
-  - les onglets cardio, énergie et zones de pente ;
-  - le profil d'altitude de « général » (lot 2 du 24/10) : nom et lecture, double-clic, « Sur la carte », zoom à part de « graphiques » ; boutons du zoom à 24 px ; titres à 13 px et noms des graphes à 10 px ;
-  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue (depuis « graphiques » et depuis « général »), cadrage sur place sinon.
-- `test-fcmax.mjs <port> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; test de FC max de l'Entraînement (lot B du chantier du 24/10), sur un profil neuf (un second passage sur le même profil échoue : la FC max retenue change les zones), sans réseau. Il vérifie :
-  - la tuile « Tests », la liste des tests, la page du protocole (déroulé, bips, graphique annoté à deux graphes, réglages) ; l'échauffement réglé à 3 min, retenu après rechargement ;
-  - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ; la case « FC repos » qui mène à sa page ;
-  - rejeu ×10 d'une sortie synthétique avec FC : la carte « Test » suit les phases, les signaux sont ceux de `stepFitnessTest` rejoué dans la page, les bips ceux de leurs motifs ; « Analyser » range le test ; titre « Analyse test », onglet « test » et ses deux courbes, « Retenir cette FC max », ligne de la bibliothèque ;
-  - à 390 et 320 px : les pages sans débordement.
-- `test-fcrepos.mjs <port> [<dossier des captures>]` : test de FC repos de l'Entraînement (24/10), sur un profil neuf, sans réseau, environ 35 s. Pas de ceinture dans le navigateur : la page joue la FC d'exemple de `exampleRestingHr`, à ×1 puis à ×30 (`?vitesse=30`). Il vérifie :
-  - la tuile « FC repos » dans Tests, la page (déroulé, et « sans GPS » sous le « ? » du déroulé) ;
-  - à ×1 : le décompte de préparation, la mesure (courbe qui se remplit, FC lue, un bip court), « Annuler » qui ne garde rien ;
-  - à ×30 : un bip court et un long, la moyenne de 10 s la plus basse et sa fenêtre, **comparées à un calcul refait dans le script** sur la même FC, la courbe de 180 secondes (axe 0:00 à 3:00, fenêtre surlignée), le test gardé (`tracker.restingHr`) ;
-  - « La retenir » (FC repos de Pratiquant), « Refaire », « Vos tests » avec sa courbe, « Retirer » ;
-  - à 390 et 320 px : les pages sans débordement.
-
-  `innerText` rend les titres et boutons en capitales : les contrôles de texte sont insensibles à la casse. La ceinture elle-même (prise à l'ouverture de la page, bips écran allumé) ne se prouve qu'avec l'APK.
-- `general.mjs <port> [<dossier des captures>]` : onglet « général » complet et rangée « avancé » (demande du 22/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une wing (la trace de `make-gpx.mjs`), une course et une sortie à vélo en côte, et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
-  - la première rangée « général · avancé », « avancé » fermé au départ, les chiffres du nouveau général dans chaque module (voile : distance en vol, manœuvres réussies, top 2 s et 100 m ; à pied et à vélo : meilleurs segments et profil d'altitude compact ; surf : chiffres réduits) ;
-  - « avancé » qui déplie les onglets, puis, refermé, replie rangée et panneaux, rendus à la réouverture ; la flèche qui cache la barre sans toucher aux panneaux ;
-  - le réglage du vent sur la carte : flèche tirée à la souris (90°), écrite au lâcher dans le brouillon, « Inverser », « Polaire », « Calculé », « Terminé » ;
-  - à 390×844 : aucun débordement, « Régler » qui ouvre la carte en plein écran avec la boussole.
-
-  Les autres scripts ouvrent la rangée « avancé » d'office à chaque page et à chaque session neuve, « général » rouvert avec elle (`Page.addScriptToEvaluateOnNewDocument`, un observateur du bouton « avancé ») : seul celui-ci l'éprouve fermée. Il vérifie aussi qu'ouvrir « avancé » ferme « général » et que le refermer le rouvre, qu'une session neuve s'ouvre sur « général » seul, et que la même session rouverte après une autre page garde son état (23/10).
-- `glisser.mjs <port> [<dossier des captures>]` : le bouton glissant qu'on fait glisser (demande du 22/10), sur le Profil (période) et les Statistiques (famille), sur un profil neuf, sans réseau ni session, à 390×844 en écran tactile puis sur ordinateur. Il vérifie :
-  - à la souris, la case tenue sur le choix en cours et glissée de deux crans : elle suit le pointeur, le choix sous elle s'allume, rien n'est choisi avant le lâcher, qui prend le choix sous la case ;
-  - au doigt, la même chose dans l'autre sens, sans que la page défile de côté ;
-  - un toucher sur un autre choix le prend toujours ; un appui qui bouge à peine ne change rien ; un glisser parti d'un autre choix ne déplace pas la case ;
-  - Statistiques : l'adresse ne change qu'au lâcher, la vue est retenue au rechargement.
-- `racine.mjs <port> [<dossier des captures>]` : la racine du Profil (22/10), sur un profil neuf, sans réseau. Le script écrit lui-même cinq courses de 20 min sur les six derniers jours, un jour manqué, et une sixième aujourd'hui s'il est plus de 0 h 40, importées par la page Course ; il suppose les valeurs d'essai (une période par jour, 15 min, tour en 15, tout perdu en 30). Il vérifie :
-  - le carré à droite du pseudo (4,5 étapes) et le canevas dessiné sur toute la page ; la bulle du carré, qu'Échap ferme ;
-  - Réglages › Pratiquant : un recul plus fort, la partie sèche, une période de 7 jours (« Cette semaine »), le retour aux valeurs d'essai une fois les champs vidés ;
-  - le rejeu à l'ouverture depuis une visite d'hier retenue sur l'appareil, puis rien qui bouge sans changement ;
-  - à 390 et 320 px : rien ne déborde, carré et bulle dans l'écran.
-
-  Les valeurs de la racine remises à la semaine, ses chiffres attendus seront à reprendre.
-- `racine-periodes.mjs <port> [<dossier des captures>]` : la racine du Profil ne dépend pas de la période (demande du 26/10, lot B), sur un profil neuf, sans réseau, environ 2 min. Treize courses d'un lundi chacune, page à la semaine 13 ; le Profil aux cinq périodes, à 390×844 et 1400×1000 : niveau, longueur visible de la racine mère (`data-longueur` du canevas), hauteurs de la page et des cadres, débordement. Il vérifie que la longueur est la même aux cinq périodes. Avec un dossier, une capture réduite (échelle 0,35) par période et par taille.
-- `tailles.mjs <port> <dossier de travail> [<dossier des captures>]` : relevé de toutes les pages à toutes les tailles de téléphone, droit et tourné (point 139 ; mode d'emploi détaillé en tête du fichier), sur un profil neuf, sans réseau, 8 à 12 min. Il importe une session de chaque famille, passe chaque page par douze tailles d'écran (dont 375×834 et 834×375, le téléphone de l'utilisateur) et trois tailles de texte (100, 115, 130 %), et relève : page plus large que l'écran, élément qui en sort, texte coupé, rangée qui défile, cibles qui se recouvrent ; pour information, cibles de moins de 40 px et surface prise par les barres. Une analyse tournée s'ouvre sur sa carte en plein écran : le script la referme avant de mesurer. Il écrit `rapport.md` et `rapport.json`, et la capture de la pire combinaison de chaque page. `SIZES`, `FONTS` et `PAGES` restreignent le relevé.
-- `aides.mjs <port> [<dossier des captures>]` : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10, point 148), sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une wing et une course. Il vérifie :
-  - course : aucune explication à l'ouverture des graphiques, le « ? » du titre l'ouvre juste sous le titre sans replier le panneau, celui des réglages referme le premier, un second appui referme ;
-  - voile : le « ? » des manœuvres, puis celui du vent, qui referme le premier ;
-  - Statistiques : la note du graphique sous son « ? » ; passer par Profil et revenir, par la barre, referme l'aide ;
-  - barre du haut sans « Accueil », le logo qui y mène, une ligne sans rien de coupé à 1400 et 1000 px (800 px relevé pour information : la barre n'y tient pas) ; « Accueil » dans la barre du bas au téléphone, pas de pop-up du profil dans le navigateur.
-
-  Le pop-up du profil ne paraît que dans l'application : il s'éprouve sur le téléphone.
-- `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`), toucher compris (pointeur grossier, donc disposition téléphone tournée au-delà de 768 px de large). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes. Le nom de la capture vient du chemin, `?`, `=`, `:` et `&` remplacés.
-- `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
-
-« Arrêter » se tient depuis le point 99 (2 s par défaut) : les scripts qui arrêtent un enregistrement le font par `holdStop`, un appui simulé (`pointerdown`, 2,3 s, `pointerup`). L'arrêt du compteur d'intervalles est distinct : tenu 1 s (point 154), simulé à 1,2 s sur `.ivl button.ui-btn--danger` dans `fractionne.mjs`, `compteur-course.mjs` et `timer.mjs`.
-
 ## Prouver qu'un changement est neutre
 
-1. Avant le changement : `bench.mjs` avec `DUMP=avant.txt`, sur un profil neuf.
-2. Après le changement : la même chose sur un autre profil neuf, avec `DUMP=apres.txt`.
-3. Comparer les deux par `diff`. Pour un nettoyage ou une conversion, le texte doit être identique au caractère près (§10, point 44).
+`node outils/banc/passe.mjs <noms…> --avant HEAD` (ou `--pages`) : chaque script tourne sur un profil neuf contre le dernier commit et contre l'arbre de travail, et le tableau dit `identique` ou montre le diff. Pour un nettoyage ou une conversion, le relevé doit être identique au caractère près (§10, point 44). Un script modifié se rejoue contre son ancienne version par `--avant HEAD --scripts-par-cote`.
 
-## Pièges du poste
+## Pièges
 
-Ce que l'agent `banc` et Claude doivent savoir sur ce poste, en plus de la mise en place. Tout est ici et nulle part ailleurs : un sous-agent ne voit pas la mémoire automatique de Claude.
+Ce que l'agent `banc` et Claude doivent savoir, en plus de la mise en place : les pièges de tout poste, puis ceux du poste de développement. Tout est ici et nulle part ailleurs : un sous-agent ne voit pas la mémoire automatique de Claude.
 
-- Brouillon pour les GPX, profils Chrome et relevés : le scratchpad de la session, jamais le dépôt.
+### Pièges généraux
+
 - Sous charge du lanceur (passage complet, 04/11), un script peut ne pas trouver le champ d'import dans ses 3 s (« import : absent », puis tous ses ÉCHEC) : vu sur `partage` et `statistiques`, deux fois de suite, alors que le script joué seul (`passe.mjs <nom> --avant HEAD`, ou hors du lanceur sur un serveur à part) passe et rend un relevé identique. Rejouer seul avant de conclure. De même `balises` : « bips du parcours 14 → 13 » sur le côté après du lanceur, 14 hors du lanceur ; un pixel de glisser, pas un écart du code.
 - Sans `--avant <commit>`, le lanceur ne joue que l'arbre de travail et chaque ligne du tableau dit « (avant absent) » : le passage n'a rien comparé, à refaire avec `--avant HEAD`.
-- Un serveur lancé en arrière-plan par `npx vite …` survit à l'arrêt de la tâche (seul `npx` s'arrête) : vérifier le port (`netstat -ano`), et tuer le processus node à la fin. Tant qu'il tourne, `npx vitest run` peut échouer sur tous les fichiers (« reading 'config' ») : d'où `npm run verif` et le banc jamais en même temps.
 - Serveur Vite neuf : le premier chargement compile tout et dépasse les 3 s d'attente des scripts (page vide, « Cannot read properties of undefined ») : charger une page une fois avant de lancer un script.
 - Deux serveurs Vite sur une même jonction `node_modules` se disputent `node_modules/.vite` (504 « Outdated Optimize Dep ») : donner un `cacheDir` propre au serveur « avant ».
-- Le `npm run dev` de l'utilisateur écoute sur `[::1]:5173` (IPv6 seul) : le Chrome du PC l'atteint, pas un `adb reverse` (IPv4). La WebView de l'application refuse le HTTP en clair ; pour un serveur de développement sur le téléphone, passer par Chrome Android (`chrome_devtools_remote`) et un serveur `--host 127.0.0.1` sur un autre port. Ne jamais toucher aux autres onglets de l'utilisateur.
-- Sous Git Bash, un argument `/chemin` passé à un script devient un chemin Windows (« Cannot navigate to invalid URL ») : `MSYS_NO_PATHCONV=1`. `DUMP=` et `SHOT=` : chemin relatif au dossier courant ; un chemin `/c/...` sous `MSYS_NO_PATHCONV=1` devient `C:\c\...`.
 - `tailles`, `general`, `pentes` prennent le port Chrome en premier argument ; la plupart des scripts n'ont pas d'option `DUMP=` (copies `*-d.mjs` dans le brouillon).
 - Le texte de page n'inclut pas un tableau replié : pour les podiums de manœuvres, une copie du script dans le brouillon clique « Détails des manœuvres » avant le relevé.
+- Rejouer l'analyse hors navigateur, sans Vitest : `node --import <hook>` où le hook (`registerHooks` de `node:module`) ajoute `.ts` aux imports relatifs ; Node lit le TypeScript du projet tel quel. Les sessions réelles du PC se lisent en lecture seule dans la mémoire de l'utilisateur, avec les réglages du hook recopiés.
+- Overpass (onglet surface) met de quelques secondes à plus d'une minute selon sa charge ; ne pas l'interroger en rafale.
+- Un bug non reproduit vient souvent d'un état de l'utilisateur (onglets graphiques ouverts, mémorisés dans `tracker.sections`) : demander tôt l'erreur de console et reproduire son état persistant.
+
+### Pièges du poste
+
+Propres au poste de développement (Windows 11, Git Bash, téléphone branché, outils de Claude).
+
+- Brouillon pour les GPX, profils Chrome et relevés : le scratchpad de la session, jamais le dépôt.
+- Un serveur lancé en arrière-plan par `npx vite …` survit à l'arrêt de la tâche (seul `npx` s'arrête) : vérifier le port (`netstat -ano`), et tuer le processus node à la fin. Tant qu'il tourne, `npx vitest run` peut échouer sur tous les fichiers (« reading 'config' ») : d'où `npm run verif` et le banc jamais en même temps.
+- Le `npm run dev` de l'utilisateur écoute sur `[::1]:5173` (IPv6 seul) : le Chrome du PC l'atteint, pas un `adb reverse` (IPv4). La WebView de l'application refuse le HTTP en clair ; pour un serveur de développement sur le téléphone, passer par Chrome Android (`chrome_devtools_remote`) et un serveur `--host 127.0.0.1` sur un autre port. Ne jamais toucher aux autres onglets de l'utilisateur.
+- Sous Git Bash, un argument `/chemin` passé à un script devient un chemin Windows (« Cannot navigate to invalid URL ») : `MSYS_NO_PATHCONV=1`. `DUMP=` et `SHOT=` : chemin relatif au dossier courant ; un chemin `/c/...` sous `MSYS_NO_PATHCONV=1` devient `C:\c\...`.
 - `shots.mjs` nomme la capture d'après le chemin : une adresse avec `?session=` donne un nom refusé par Windows ; faire la capture par un petit script du brouillon.
 - Grosses captures (images de `partage.mjs`, jusqu'à 1,2 Mo) : lues en taille réelle, elles ont coupé deux sessions (ECONNRESET) ; les réduire d'abord en JPEG de 540 px dans le brouillon (System.Drawing en PowerShell : `Image.FromFile`, `Graphics.DrawImage`, `Save` en JPEG qualité 75), puis lire une copie à la fois.
 - Écran du vrai téléphone : `adb exec-out screencap -p > x.png`, puis lecture de l'image (pas de PIL). Prévenir l'utilisateur avant (écran possiblement verrouillé, notifications privées).
 - Un heredoc dont le texte compte un nombre impair d'apostrophes échoue sous le Bash de Claude (« unexpected EOF ») : écrire le script dans un fichier du brouillon. Un `\'` à écrire dans un fichier .ts depuis un script Node en heredoc ressort `'` : corriger ces lignes avec l'outil Edit. Un `node -e "…"` en Bash avale les accents graves.
-- Rejouer l'analyse hors navigateur, sans Vitest : `node --import <hook>` où le hook (`registerHooks` de `node:module`) ajoute `.ts` aux imports relatifs ; Node lit le TypeScript du projet tel quel. Les sessions réelles du PC se lisent en lecture seule dans la mémoire de l'utilisateur, avec les réglages du hook recopiés.
 - Neutralité contre la version commitée sans toucher au dépôt : `git worktree add --detach <brouillon>/avant <commit>`, jonction `node_modules` vers celle du dépôt (`New-Item -ItemType Junction` en PowerShell ; `mklink` sous Git Bash échoue), Vite sur un autre port ; à la fin, retirer la jonction (`rmdir`) **avant** `git worktree remove --force`. Un relevé qui quitte une page à itinéraire non enregistré doit accepter le dialogue `beforeunload`, sinon il se bloque.
-- Worktree « avant » à jonction `node_modules` : depuis le 22/10, les polices viennent de `@fontsource` et Vite refuse de les servir (« outside of Vite serving allow list ») ; la version d'avant retombe sur une police de secours et les relevés diffèrent pour rien. Lancer ce serveur avec un `vite.banc.config.ts` posé dans le worktree, qui reprend `./vite.config` et ajoute `server.fs.allow: ['.', 'C:/Users/segne/tracker/node_modules']`. Vérifier par `document.fonts` : tout en `loaded`.
-- Overpass (onglet surface) met de quelques secondes à plus d'une minute selon sa charge ; ne pas l'interroger en rafale.
-- Un bug non reproduit vient souvent d'un état de l'utilisateur (onglets graphiques ouverts, mémorisés dans `tracker.sections`) : demander tôt l'erreur de console et reproduire son état persistant.
-
-## Scripts à revoir
-
-Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à compléter ; pas des défauts du code. Lot 91 (31/10) : `test-fcmax`, `marche`, `glisser`, `satellite`, `partage`, `reglages-aide`, `onglets`, `library`, `library3`, `prereglages`, `brouillon-voile` et `recherche-sans-reponse` remis d'aplomb ; `test-fcrepos` passe depuis le lot 107 (31/10, courbe du test gardé corrigée dans l'application).
-
-- `planning.mjs` attend la fin de « Calcul du tracé… » avant « Enregistrer » (bouton grisé pendant le calcul).
-- `fractionne.mjs` en rejeu temps réel donne des vitesses de répétitions qui bougent de 0,1 km/h d'un passage à l'autre (analyse déterministe identique nombre à nombre) : pas un écart.
-- Écarts admis depuis le lot 8 (performances) : dernière graduation de cap 242° au lieu de 241° (extrême gardé par la décimation) ; une mention « © OpenStreetMap » de moins quand la carte est agrandie (la carte compacte, cachée dessous, ne dessine plus ses couches).
-- À ajouter un jour : `trackerBack()` avec un pop-up ouvert et `/essai/erreur` (lot 5).
-- `timer.mjs` : deux contrôles échouent avant comme après les lots 102 et 103 (31/10) : « tuiles : Fractionné et tests, Muscu et timer » et « tuile Muscu et timer : aucune séance gardée » ; libellés ou disposition des tuiles de la page Entraînement à relire dans le script, pas un défaut connu de l'application.
-- `prereglages.mjs` (lot 21) : repris le 31/10 (lot 91). L'étape « bateau : pause réglée à 0,5 km/h » échouait par intermittence, des deux côtés, parce qu'elle écrivait dans la ligne avant son montage puis lisait la mémoire après 500 ms fixes : elle attend maintenant la ligne, puis l'écriture. Le défaut de « profil déjà servi » ci-dessus n'existe plus (le lanceur efface le profil de chaque script).
-- `charge.mjs`, repris sur la bibliothèque le 29/10, bloque vraiment l'IGN (`blockNetwork`) : la côte à 5 % reste celle du fichier, comme `depense.mjs`. Ses chiffres d'énergie ont changé à la reprise (course à 5 kg : 248 kcal au lieu de 210 avec le relief de l'IGN) ; les relevés d'avant la reprise ne sont plus comparables. (`chrono`, `imports`, `materiel` et `notes` avaient le même défaut, corrigé au lot 53 ; leurs relevés d'avant ne sont plus comparables.)
-- Adresse par défaut des scripts : `http://localhost:5173` (le port 4190 est refusé par Chrome), `BASE` la remplace.
-- `tailles.mjs`, rangées `ui-segmented--fit` d'Enregistrer (« Famille ») et de Profil (« Période ») : selon l'état du poste, 0 et 1 combinaisons avec défaut sur 33, ou 6 et 7 (la rangée défile à 115 et 130 % de texte), la même version passant de l'un à l'autre d'un jour à l'autre (29/10, lot 53 : avant et après identiques une fois repassés le même jour). Comparer avant et après dans la même séance, jamais avec un relevé ancien.
-- `brouillon-voile.mjs <port> <dossier de travail>` (29/10 ; `session-save.mjs` a été refait le même jour sur le même patron) : deux sessions de voile (`make-gpx.mjs`, dates hors des sessions de démonstration), vent saisi dans A puis « Enregistrer la session », passage à B sans rechargement (relevés à 20 ms près : B ne montre jamais le vent de A), retour à A, et fiches JSON relues (vent dans A, pas d'`analysis` dans B). Profil Chrome neuf à chaque lancement. Ok le 29/10 (lot 54). Le contrôle « B n'affiche jamais le vent de A » était intermittent (31/10, lot 91) : l'adresse change par `pushState` avant que React rende B, et une relève de 20 ms faite dans cet intervalle lisait encore la page de A sous l'adresse de B. Les relèves portent maintenant le nombre de mutations du DOM vues depuis le changement d'adresse, et seules comptent celles faites après la première (B rendu) ; les relèves à 50 ms et plus des instants fixes, elles, comptent toutes. Huit passages de suite ok.
-- `recherche-sans-reponse.mjs` (29/10, fini le 31/10, lot 91) : tient les requêtes vers Overpass et l'IGN par le domaine `Fetch` (motifs préfixés `https://`, sinon le module Vite `src/planning/overpass.ts` est intercepté et la page casse), GPX sans altitude pour que l'IGN soit interrogé. Le « rien après 170 s » du 29/10 venait du script, pas de l'application : la boucle d'attente recalculait sa borne à chaque tour (`170 - temps écoulé`) tout en comptant ses tours, et s'arrêtait vers 85 s ; l'échéance est fixée une fois (200 s). Les deux onglets, « graphiques » (erreur de l'altitude) et « surface » (erreur du revêtement), restent ouverts. Relevé : IGN en erreur à 31 s, Overpass à 121 s, « Réessayer » rend l'altitude et le revêtement. Dure 2 min 40, avec réseau pour la fin (`reseau` du registre).
+- Worktree « avant » à jonction `node_modules` : depuis le 22/10, les polices viennent de `@fontsource` et Vite refuse de les servir (« outside of Vite serving allow list ») ; la version d'avant retombe sur une police de secours et les relevés diffèrent pour rien. Lancer ce serveur avec un `vite.banc.config.ts` posé dans le worktree, qui reprend `./vite.config` et ajoute `server.fs.allow: ['.', 'C:/Users/segne/tracker/node_modules']`. Vérifier par `document.fonts` : tout en `loaded`. (Cette config est générée par `passe.mjs`, dans `<brouillon>/vite/<côté>.config.mts` : à poser à la main seulement hors du lanceur.)

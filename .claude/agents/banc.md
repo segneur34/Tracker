@@ -8,7 +8,7 @@ maxTurns: 40
 omitClaudeMd: true
 ---
 
-Tu éprouves l'application Tracker avec le banc de `outils/banc/`, depuis `C:\Users\segne\tracker`. Le mode d'emploi est `outils/banc/LISEZMOI.md` (61 Ko, une entrée par script, 64 scripts) : ne le lis jamais en entier. Lis, par Grep sur le titre puis Read avec `offset` et `limit`, ses sections « Mise en place », « Prouver qu'un changement est neutre », « Pièges du poste » et « Scripts à revoir », puis l'entrée du script demandé (Grep sur son nom dans la section « Scripts ») et l'en-tête du script lui-même.
+Tu éprouves l'application Tracker avec le banc de `outils/banc/`, depuis `C:\Users\segne\tracker`. Le mode d'emploi est `outils/banc/LISEZMOI.md` (court, 80 lignes) ; le journal des scripts est dans `outils/banc/SCRIPTS.md` (80 Ko, une entrée par script, 82 scripts) : ne le lis jamais en entier. Lis, par Grep sur le titre puis Read avec `offset` et `limit`, ses sections « Mise en place », « Prouver qu'un changement est neutre », « Pièges » (généraux, puis du poste) et, dans `outils/banc/SCRIPTS.md`, « Scripts à revoir », puis l'entrée du script demandé (Grep sur son nom dans la section « Scripts » de `SCRIPTS.md`) et l'en-tête du script lui-même.
 
 Passe par défaut : `node outils/banc/passe.mjs [noms…] [--pages a,b] [--tous] [--avant <commit>]` (options en tête du script, mode d'emploi à la section « Lanceur » du LISEZMOI) ; il monte lui-même les serveurs Vite et Chrome, compare l'avant et l'après et rend un relevé normalisé. Ton rôle : le lancer si on te le demande, et lire et résumer son diff quand il est long. La mise en place à la main ci-dessous ne sert qu'à un script que `passe.mjs` ne sait pas lancer.
 

@@ -16,6 +16,7 @@
 // Les cartes sont trouvées par un crochet posé sur `window.L` (Leaflet 1.9 s'y publie toujours) : chaque carte créée
 // est gardée dans `window.__cartes`.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 import { BLOCKED_EXCEPT_TILES, fakeTiles, formatTileStats } from './lib/tuiles.mjs';
 
@@ -67,7 +68,7 @@ for (let k = 0; k < POINTS; k++) {
   const lon = 3.86 + ((radius * Math.sin(angle)) / (R * Math.cos((43.62 * Math.PI) / 180))) * (180 / Math.PI);
   run.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${(80 + 30 * Math.sin(s / 400)).toFixed(1)}</ele><time>${new Date(t0 + k * (1000 / HZ)).toISOString()}</time></trkpt>`);
 }
-const runPath = `${workDir}\\carte-perf-course.gpx`;
+const runPath = join(workDir, 'carte-perf-course.gpx');
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course 5 Hz</name><type>running</type><trkseg>\n${run.join('\n')}\n</trkseg></trk></gpx>\n`);
 console.log('trace              :', `${POINTS} points à ${HZ} Hz`);
 
@@ -109,7 +110,7 @@ const dumpPixels = async (scope, name) => {
     for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
     return btoa(s);
   })()`);
-  if (b64) writeFileSync(`${workDir}\\carte-perf-${name}.rgba`, Buffer.from(b64, 'base64'));
+  if (b64) writeFileSync(join(workDir, `carte-perf-${name}.rgba`), Buffer.from(b64, 'base64'));
 };
 
 /**

@@ -13,6 +13,7 @@
 //     (`tileStore.list()`) au premier chargement (index à refaire depuis le lot 74), puis au suivant (index rangé).
 // Les durées sont en secondes (le masque commun `N ms` les effacerait) et changent d'un passage à l'autre.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 import { BLOCKED_EXCEPT_TILES, fakeTiles, formatTileStats } from './lib/tuiles.mjs';
 
@@ -54,7 +55,7 @@ for (let i = 0; i < COUNT; i++) {
     const lon = lon0 + (east / (R * Math.cos((lat0 * Math.PI) / 180))) * (180 / Math.PI);
     pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>50</ele><time>${new Date(t0 + s * 1000).toISOString()}</time></trkpt>`);
   }
-  const path = `${workDir}\\vignette-${String(i).padStart(3, '0')}.gpx`;
+  const path = join(workDir, `vignette-${String(i).padStart(3, '0')}.gpx`);
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course ${i}</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
   files.push(path);
 }

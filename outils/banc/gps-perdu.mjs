@@ -10,6 +10,7 @@
 //  4. au retour des positions : alerte effacée, notification sans « GPS perdu », toujours un seul son.
 // La sortie standard ne porte aucune durée : elle sert à comparer deux passages.
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -71,7 +72,7 @@ const gapTrace = (path) => {
 
 await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
-const path = `${workDir}\\gps-perdu.gpx`;
+const path = join(workDir, 'gps-perdu.gpx');
 gapTrace(path);
 await go('/enregistrer');
 await clickText('Voile', '[aria-label=Famille] button');

@@ -229,17 +229,17 @@ const runGpx = ({ seconds, startMs }) => {
 const T_LONG = Date.UTC(2026, 7, 1, 9, 0, 0);
 const T_RUN = Date.UTC(2026, 8, 5, 8, 0, 0);
 const longSail = sailGpx({ hz: 5, seconds: 3 * 3600, startMs: T_LONG, name: 'Voile 3 h 5 Hz' });
-const longPath = `${workDir}\\fluidite-voile-3h.gpx`;
+const longPath = join(workDir, 'fluidite-voile-3h.gpx');
 writeFileSync(longPath, longSail.text);
 console.log('trace voile longue    :', `${longSail.points} points à 5 Hz, 3 h, ${(longSail.text.length / 1e6).toFixed(1).replace('.', ',')} Mo`);
-const hourPath = `${workDir}\\fluidite-voile-1h.gpx`;
+const hourPath = join(workDir, 'fluidite-voile-1h.gpx');
 execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'make-gpx.mjs'), hourPath], { stdio: 'ignore' });
-const runPath = `${workDir}\\fluidite-course-2h.gpx`;
+const runPath = join(workDir, 'fluidite-course-2h.gpx');
 writeFileSync(runPath, runGpx({ seconds: 7200, startMs: T_RUN }));
 const COUNT = 30;
 const manyPaths = [];
 for (let i = 0; i < COUNT; i++) {
-  const p = `${workDir}\\fluidite-voile-${String(i).padStart(2, '0')}.gpx`;
+  const p = join(workDir, `fluidite-voile-${String(i).padStart(2, '0')}.gpx`);
   writeFileSync(p, sailGpx({ hz: 1, seconds: 3600, startMs: Date.UTC(2026, 6, 1, 10, 0, 0) - i * 86_400_000, name: `Voile ${i}`, lat0: 43.5 + (i % 5) * 0.02, lon0: 3.9 + Math.floor(i / 5) * 0.02 }).text);
   manyPaths.push(p);
 }
