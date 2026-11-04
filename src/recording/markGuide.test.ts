@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MARK_GUIDE_DEFAULTS, START_MARK_GUIDE, beepIntervalMs, beepStartM, courseMarks, isCourseFinished, isLoopCourse, markGuideView, markName, remainingCourseM,
-  resumedGuideState, sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
+  replayMarkGuide, resumedGuideState, sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
 } from './markGuide';
 import { at as geoAt, fixesAlong } from '../test/geo.fixture';
 
@@ -237,5 +237,45 @@ describe('markGuideView (lot 67, sortie de useMarkGuide)', () => {
     expect(markGuideView(cases.fini)).toMatchObject({ finished: true, remainingM: 0 });
     expect(markGuideView(cases['sans distance'])).toMatchObject({ finished: false, remainingM: null, muted: true });
     expect(markGuideView(cases['en cours']).remainingM).toBeCloseTo(320, 0);
+  });
+});
+
+describe('rejeu sur les positions relues d\'un journal (lot 156)', () => {
+  const marks = [at(0, 0), at(0, 600), at(400, 600)];
+  const course: [number, number][] = [[0, 0], [0, 600], [400, 600], [400, 900]];
+
+  it.each([[1], [0.2]])('un seul segment, un point toutes les %d s : le même état que suivi en direct', (stepS) => {
+    const fixes = sail(course, 5, stepS);
+    const half = fixes.slice(0, Math.floor(fixes.length / 2));
+    const lived = replay(half, marks);
+    const replayed = replayMarkGuide([half], marks, MARK_GUIDE_DEFAULTS);
+    expect(replayed.state).toEqual(lived.state);
+    expect(replayed.distanceM).toBe(lived.last!.distanceM);
+    expect(replayed.bearingDeg).toBe(lived.last!.bearingDeg);
+  });
+
+  it.each([[1], [0.2]])('à une cadence ou à l\'autre (un point toutes les %d s), parcours fini', (stepS) => {
+    const { state } = replayMarkGuide([sail(course, 5, stepS)], marks, MARK_GUIDE_DEFAULTS);
+    expect(state.outcomes).toEqual(['validated', 'validated', 'validated']);
+    expect(isCourseFinished(state, marks)).toBe(true);
+  });
+
+  it("entre deux segments, le trou n'a pas été parcouru : il ne valide pas une balise qu'il frôle", () => {
+    const marksFar = [at(0, 0), at(300, 300)];
+    const { state } = replayMarkGuide([[at(0, 0), at(0, 300)], [at(600, 300), at(900, 300)]], marksFar, MARK_GUIDE_DEFAULTS);
+    expect(state.target).toBe(1);
+    expect(state.outcomes).toEqual(['validated']);
+    // Un seul segment : la même ligne valide, elle.
+    expect(replayMarkGuide([[at(0, 0), at(0, 300), at(600, 300), at(900, 300)]], marksFar, MARK_GUIDE_DEFAULTS).state.target).toBe(2);
+  });
+
+  it('la dernière position reste : la suite en direct juge la ligne depuis elle', () => {
+    const { state } = replayMarkGuide([[at(0, 0), at(0, 300)]], marks, MARK_GUIDE_DEFAULTS);
+    expect(state.previous).toEqual(at(0, 300));
+    expect(stepMarkGuide(state, at(0, 900), marks, MARK_GUIDE_DEFAULTS).event).toBe('validated');
+  });
+
+  it('sans position : le départ', () => {
+    expect(replayMarkGuide([], marks, MARK_GUIDE_DEFAULTS)).toEqual({ state: START_MARK_GUIDE, distanceM: null, bearingDeg: null });
   });
 });

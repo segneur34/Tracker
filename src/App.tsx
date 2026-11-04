@@ -1,8 +1,9 @@
 import { lazy, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import { DevThrow } from './components/ErrorBoundary';
 import { hasPositions } from './core/sportProfiles';
+import { acknowledgeRecordingLanding, useRecorderSelector } from './hooks/useRecorder';
 import { useLibrarySession } from './hooks/useSessionLibrary';
 import Home from './pages/Home';
 
@@ -98,10 +99,23 @@ function TrainingAnalysis() {
   return sport !== null && !hasPositions(sport) ? <MuscuModule /> : <LandModule key="fractionne" family="fractionne" />;
 }
 
+/** Une recharge mène toujours à l'accueil : après une reprise silencieuse (lot 156), retour sur Enregistrer. */
+function LandOnRecording() {
+  const land = useRecorderSelector((s) => s.landOnRecording);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!land) return;
+    acknowledgeRecordingLanding();
+    navigate('/enregistrer', { replace: true });
+  }, [land, navigate]);
+  return null;
+}
+
 function App() {
   useEffect(preloadPages, []);
   return (
     <Router>
+      <LandOnRecording />
       <Routes>
         {/* Toutes les pages dans le même cadre : navigation et bandeau d'enregistrement. */}
         <Route element={<AppShell />}>

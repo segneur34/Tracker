@@ -10,8 +10,9 @@ import { describe, expect, it } from 'vitest';
  * - La veille du GPS (`BeeperPlugin.java`) et la capture (`MotionPlugin.java`)
  *   n'ont pas de verrou de veille : elles comptent sur celui du service GPS,
  *   sans échéance, pris au démarrage, que le chien de garde ne rend pas.
- * - La reprise après une chute du moteur de la WebView passera par
- *   `window.Capacitor.fromNative`, qui reçoit les réponses des greffons.
+ * - La reprise après une chute du moteur de la WebView passe par
+ *   `window.Capacitor.fromNative`, qui reçoit les réponses des greffons
+ *   (`adoptRunningService`), et compte sur l'appel gardé du greffon.
  */
 
 // Les types de Node ne sont pas ceux de l'app (voir `hooks/mediaQueries.test.ts`) : le peu qui sert est décrit à la main.
@@ -38,6 +39,15 @@ const GPS_SERVICE = packageSource(
 );
 const MESSAGE_HANDLER = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/MessageHandler.java');
 const RECORDING_NOTIFICATION = appJava('RecordingNotificationPlugin.java');
+const GPS_PLUGIN = packageSource(
+  '@capgo/background-geolocation/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocation.java'
+);
+const BRIDGE = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/Bridge.java');
+const BRIDGE_ACTIVITY = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/BridgeActivity.java');
+const WEBVIEW_LISTENER = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/WebViewListener.java');
+const NATIVE_BRIDGE = packageSource('@capacitor/android/capacitor/src/main/assets/native-bridge.js');
+const MAIN_ACTIVITY = appJava('MainActivity.java');
+const RECOVERY_PLUGIN = appJava('RecoveryPlugin.java');
 
 /** Première capture de `pattern` dans `text` ; échoue si le source a changé de forme. */
 const captured = (text: string, pattern: RegExp): string => {
@@ -82,5 +92,60 @@ describe('verrou de veille du service GPS, seul à tenir le processeur pendant u
 describe('pont de Capacitor', () => {
   it('les réponses des greffons entrent dans la page par window.Capacitor.fromNative', () => {
     expect(MESSAGE_HANDLER).toContain('window.Capacitor.fromNative(');
+    expect(NATIVE_BRIDGE).toContain('cap.fromNative = (result) =>');
+  });
+
+  it("seule voie, sur l'ancien pont : le nouveau passerait par un autre chemin, sans fromNative", () => {
+    const config = fs.readFileSync(new URL('../../capacitor.config.ts', import.meta.url), 'utf8');
+    expect(config).toContain('useLegacyBridge: true');
+    expect(between(MESSAGE_HANDLER, 'sendResponseMessage(', 'private void legacySendResponseMessage')).toContain('isUsingLegacyBridge()');
+  });
+
+  it('un message dit son greffon, sa méthode, et si son appel reste gardé', () => {
+    const response = between(MESSAGE_HANDLER, 'sendResponseMessage(', 'private void legacySendResponseMessage');
+    expect(response).toContain('data.put("save", call.isKeptAlive());');
+    expect(response).toContain('data.put("pluginId", call.getPluginId());');
+    expect(response).toContain('data.put("methodName", call.getMethodName());');
+    expect(GPS_PLUGIN).toContain('name = "BackgroundGeolocation"');
+  });
+});
+
+describe('chute du moteur de rendu', () => {
+  it("l'appel gardé du greffon survit à la recharge : `start` le garde, et une position le répond", () => {
+    expect(between(GPS_PLUGIN, 'public void start(final PluginCall call)', 'private void proceedWithStart')).toContain('watchCall = call;');
+    expect(between(GPS_PLUGIN, 'public void onLocation(', 'public void onGeofenceTransition(')).toContain('call.resolve(formatLocation(location));');
+  });
+
+  it("recréer l'activité arrête le service GPS : c'est pourquoi la page se recharge sur la même WebView", () => {
+    expect(between(GPS_PLUGIN, 'protected void handleOnDestroy()', 'super.handleOnDestroy();')).toContain('BackgroundGeolocationService.LocalBinder::stop');
+    expect(BRIDGE).toContain('private final WebView webView;');
+  });
+
+  it('le service GPS ne redémarre pas seul hors du mode natif : le voir vivant prouve le processus', () => {
+    expect(GPS_SERVICE).toContain('return START_NOT_STICKY;');
+  });
+
+  it("écouteur posé sur les signatures de Capacitor, avant le démarrage du pont", () => {
+    expect(BRIDGE).toContain('public Builder addWebViewListener(WebViewListener webViewListener)');
+    expect(BRIDGE).toContain('public void reload()');
+    expect(BRIDGE_ACTIVITY).toContain('protected final Bridge.Builder bridgeBuilder');
+    expect(BRIDGE_ACTIVITY).toContain('protected Bridge bridge;');
+    expect(WEBVIEW_LISTENER).toContain('public boolean onRenderProcessGone(WebView webView, RenderProcessGoneDetail detail)');
+    expect(WEBVIEW_LISTENER).toContain('public void onPageLoaded(WebView webView)');
+    expect(MAIN_ACTIVITY.indexOf('bridgeBuilder.addWebViewListener(')).toBeGreaterThanOrEqual(0);
+    expect(MAIN_ACTIVITY.indexOf('bridgeBuilder.addWebViewListener(')).toBeLessThan(MAIN_ACTIVITY.indexOf('super.onCreate(savedInstanceState);'));
+  });
+
+  it('le greffon de la preuve est déclaré, et nomme le service tel que le greffon GPS le déclare', () => {
+    expect(MAIN_ACTIVITY).toContain('registerPlugin(RecoveryPlugin.class);');
+    const named = captured(RECOVERY_PLUGIN, /\bGPS_SERVICE = "([^"]+)";/);
+    expect(named).toBe(`${captured(GPS_SERVICE, /^package ([\w.]+);/m)}.BackgroundGeolocationService`);
+    expect(GPS_SERVICE).toContain('class BackgroundGeolocationService extends Service');
+  });
+
+  it("onPageLoaded ne fait que retirer l'échéance, deux appels ne comptent pas deux fois", () => {
+    const loaded = between(MAIN_ACTIVITY, 'public void onPageLoaded(WebView webView)', 'super.onCreate(savedInstanceState);');
+    expect(loaded).toContain('main.removeCallbacks(pageLoadMissed);');
+    expect(loaded).not.toContain('RENDER_RELOADS');
   });
 });

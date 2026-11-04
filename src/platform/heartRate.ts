@@ -83,6 +83,7 @@ interface HeartRatePlugin {
   openBluetoothSettings(): Promise<void>;
   keepAlive(options: { title: string; text: string }): Promise<void>;
   stopKeepAlive(): Promise<void>;
+  connection(): Promise<{ wanted: boolean; state: BeltState }>;
   addListener(event: 'heartRate', listener: (data: { bpm: number; timeMs: number; contact?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'status', listener: (data: { state: BeltState; address?: string; random?: boolean }) => void): Promise<PluginListenerHandle>;
 }
@@ -226,6 +227,21 @@ export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() 
       throw err;
     }
   }
+  return () => releaseBelt(holder);
+};
+
+/**
+ * Reprend sous le nom `holder` la connexion restée ouverte côté téléphone après une chute du moteur de la page, sans
+ * la refaire : `connect` couperait une ceinture qui mesure. Rend la fonction qui la rend ; `null` si le greffon n'en
+ * tient aucune, ou dans le navigateur.
+ */
+export const adoptBelt = async (holder: string): Promise<(() => void) | null> => {
+  if (!isNativeApp()) return null;
+  await listen();
+  const { wanted, state: current } = await plugin.connection();
+  if (!wanted) return null;
+  holders.add(holder);
+  setState(current);
   return () => releaseBelt(holder);
 };
 

@@ -5,11 +5,11 @@ import { usesMarkCourse } from '../core/sportProfiles';
 import { getBeeper } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, markGuideView, resumedGuideState, skipMark as skipInState, stepMarkGuide,
+  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, markGuideView, replayMarkGuide, resumedGuideState, skipMark as skipInState, stepMarkGuide,
   type LatLon, type MarkGuideSettings, type MarkGuideState, type MarkGuideView,
 } from '../recording/markGuide';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
-import { getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { getLiveSegments, getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { effectiveMarkGuide } from './useSportSettings';
 import { createStore } from './createStore';
 
@@ -27,7 +27,9 @@ import { createStore } from './createStore';
  * manuelle, les positions ne lui parviennent plus (le GPS reste allumé pour la
  * carte seule, lot 104) : silence. GPS perdu (`RecorderState.gpsLost`, lot
  * 115) : silence aussi, la distance n'étant plus à jour ; la position suivante
- * relance le rythme. La page le lit par `useMarkGuide`
+ * relance le rythme. Session reprise après une chute du moteur de la page (lot
+ * 156) : l'état se refait en silence sur les positions relues (`replayMarkGuide`),
+ * le greffon garde son rythme jusqu'à la position suivante. La page le lit par `useMarkGuide`
  * et le pilote par `skipMark` (« Passer ») et `setBeepsMuted` (« Bips »).
  */
 
@@ -125,14 +127,16 @@ const sync = () => {
   }
   if (!session || session.marks !== marks) {
     const courseGuide = trace?.markGuide ?? null;
+    const settings = courseGuide ?? effectiveMarkGuide(activity);
+    const replayed = recorder.resuming ? replayMarkGuide(getLiveSegments(), marks, settings) : null;
     session = {
       marks,
       courseGuide,
       activityId: activity.id,
-      settings: courseGuide ?? effectiveMarkGuide(activity),
-      state: START_MARK_GUIDE,
-      distanceM: null,
-      bearingDeg: null,
+      settings,
+      state: replayed?.state ?? START_MARK_GUIDE,
+      distanceM: replayed?.distanceM ?? null,
+      bearingDeg: replayed?.bearingDeg ?? null,
       muted: false,
       sent: null,
       manualPause: false,

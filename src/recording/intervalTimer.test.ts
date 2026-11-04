@@ -384,6 +384,11 @@ describe('séance reprise au lancement (lot 143, 124)', () => {
 
   it("ne reprend jamais une séance confiée à un enregistrement : coupé avec la page, elle s'arrête avec lui, rien ne sonne seul", () => {
     expect(runToResume(reread(run, true), at(30))).toBeNull();
+    // L'enregistrement a repris seul après une chute de la page : sa séance continue avec lui (lot 156).
+    expect(runToResume(reread(run, true), at(30), true)).toEqual(run);
+    expect(runToResume(reread(withCommands(run, ['pause', 10]), true), at(30), true)).toEqual(withCommands(run, ['pause', 10]));
+    expect(runToResume(reread(run, true), at(400), true)).toBeNull();
+    expect(runToResume(reread(null, true), at(30), true)).toBeNull();
     expect(runToResume(reread(withCommands(run, ['pause', 10]), true), at(30))).toBeNull();
     // Une séance du Timer confiée à une muscu, de même.
     expect(runToResume(reread(startRun(workout, T0, 'timer'), true), at(30))).toBeNull();

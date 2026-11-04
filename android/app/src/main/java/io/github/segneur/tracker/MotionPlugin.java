@@ -67,6 +67,11 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     private long firstNs = 0;
     private long longestGapNs = 0;
     private String writeError = null;
+    // Réglages de la capture en cours, rendus par `status`.
+    private String placement = "poitrine";
+    private boolean foil = false;
+    private boolean jumps = true;
+    private boolean cadence = false;
 
     private final Runnable flush = new Runnable() {
         @Override
@@ -158,6 +163,10 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
                 firstNs = 0;
                 longestGapNs = 0;
                 writeError = null;
+                this.placement = placement;
+                this.foil = foil;
+                this.jumps = jumps;
+                this.cadence = cadence;
                 listen();
                 handler.postDelayed(flush, FLUSH_MS);
             } catch (Exception e) {
@@ -223,6 +232,30 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
             ret.put("samples", count);
             ret.put("longestGapS", longestGapS);
             if (error != null) ret.put("error", error);
+            call.resolve(ret);
+        });
+    }
+
+    /**
+     * État de la capture, sans y toucher : la page reprise après une chute du moteur de
+     * rendu la suit ainsi, jamais par `start`, qui tronquerait son fichier (ImuWriter).
+     * `path` nul si rien ne tourne ; `listening` faux pendant une pause.
+     */
+    @PluginMethod
+    public void status(PluginCall call) {
+        handler().post(() -> {
+            JSObject ret = new JSObject();
+            if (writer == null) {
+                ret.put("path", JSONObject.NULL);
+                call.resolve(ret);
+                return;
+            }
+            ret.put("path", relativePath);
+            ret.put("listening", listening);
+            ret.put("placement", placement);
+            ret.put("foil", foil);
+            ret.put("jumps", jumps);
+            ret.put("cadence", cadence);
             call.resolve(ret);
         });
     }

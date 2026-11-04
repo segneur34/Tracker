@@ -53,7 +53,7 @@ import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { librarySession, updateSessionRecord } from '../hooks/useSessionLibrary';
 import { EMPTY_NOTES, type GearChoice } from '../library/notes';
 import {
-  addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
+  addRecordingMark, analyzePendingSession, changeRecordingActivity, continuePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
   getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
   resumeRecording, startRecording, stopRecording, type RecorderState,
   useLivePosition, useRecordingClock, useRecorderSelector, useRecorderStatus,
@@ -1122,6 +1122,11 @@ function RecordingScreen() {
             {motionUnreadable && (
               <Button onClick={() => void handleAnalyze(true)} disabled={analyzing}>
                 Analyser sans les capteurs
+              </Button>
+            )}
+            {pending.canContinue && (
+              <Button onClick={() => void continuePendingSession(deviceLocationSource())} disabled={analyzing}>
+                Continuer l'enregistrement
               </Button>
             )}
             {canDownloadFiles() && (

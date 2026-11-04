@@ -144,12 +144,26 @@ describe('séances du compteur pendant un enregistrement (lot 143, 140)', () => 
 
 describe('séance reprise au lancement de l’application (lot 143, 124)', () => {
   /** Relance l'application : modules neufs, stockage de l'appareil gardé. */
-  const relaunch = async () => {
+  const relaunch = async (keepConfided = false) => {
     vi.resetModules();
     const fresh = await import('./useIntervalTimer');
-    fresh.startIntervalTimer();
+    fresh.startIntervalTimer(keepConfided);
     return fresh;
   };
+
+  it("enregistrement repris seul après une chute de la page (lot 156) : sa séance continue, toujours confiée, programme rendu au téléphone", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    runTo(source, 0, 5);
+    timer.startIntervals(FIRST);
+    runTo(source, 6, 10);
+    const schedules = clock.schedules;
+    const fresh = await relaunch(true);
+    expect(fresh.getIntervalRun()?.workout).toEqual(FIRST);
+    expect(clock.schedules).toBeGreaterThan(schedules);
+    fresh.stopAndCloseIntervals();
+    expect(JSON.parse(memory.get('tracker.intervalRun') ?? 'null')).toBeNull();
+  });
 
   it("une séance confiée à l'enregistrement coupé par un arrêt brutal ne reprend pas seule : arrêtée, le téléphone se tait", async () => {
     const source = fakeSource();

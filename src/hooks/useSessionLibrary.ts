@@ -178,6 +178,8 @@ export interface LibraryState {
   duplicates: string[];
   /** GPX qu'on n'a pas su lire. */
   unreadable: string[];
+  /** GPX et fiches trop gros pour être lus (`MAX_LISTED_FILE_BYTES`), laissés en place. */
+  tooLarge: string[];
   /** Sessions enregistrées qui attendent un dossier mémoire (téléphone). */
   pendingCount: number;
   /** Nom de cet appareil, celui de son fichier de réglages. */
@@ -208,6 +210,7 @@ const INITIAL_STATE: LibraryState = {
   toUpdate: 0,
   duplicates: [],
   unreadable: [],
+  tooLarge: [],
   pendingCount: 0,
   deviceName: '',
   settingsFiles: [],
@@ -1351,6 +1354,8 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   const rootEntries = await f.list('');
   const cache = readCache(f);
   let plan = planReconcile(entries, rootEntries, cache.entries);
+  // Ceux de la racine ne se retrouvent pas au second rapprochement, qui ne relit que `sessions/`.
+  const rootTooLarge = plan.tooLarge.filter((name) => !entries.some((e) => e.name === name));
 
   // Un GPX posé à la racine du dossier est rangé dans `sessions/`, avec la fiche posée à côté de lui (pas en lecture seule).
   if (plan.rootGpx.length > 0 && !f.readOnly) {
@@ -1382,6 +1387,7 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
     plan = planReconcile(entries, [], cache.entries);
   }
   if (gen !== generation) return [];
+  setState({ tooLarge: [...new Set([...plan.tooLarge, ...rootTooLarge])].sort() });
 
   knownNames = new Set(entries.map((e) => e.name));
   const jobs: SummaryJob[] = [];
@@ -1865,6 +1871,7 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
     sessions: [],
     duplicates: [],
     unreadable: [],
+    tooLarge: [],
     scanning: null,
     toUpdate: 0,
     error: null,
@@ -1911,6 +1918,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
     sessions: [],
     duplicates: [],
     unreadable: [],
+    tooLarge: [],
     scanning: null,
     toUpdate: 0,
     settingsFiles: [],

@@ -112,6 +112,33 @@ export const journalNoteLine = (mark: SessionMark): string => `${JSON.stringify(
  */
 export const journalTestLine = (test: SessionTest): string => `${JSON.stringify(['test', test])}\n`;
 
+/**
+ * Pause manuelle à l'heure de l'horloge `atMs`, écrite tout de suite : une reprise après une chute du moteur
+ * (`recording/resume.ts`) en recompte la durée. `autoPartMs` : ce qui en a été passé en pause automatique avant
+ * l'appui, et qui reste compté ; absent si rien. Marquée par `'pause'` en tête, ignorée des anciennes versions.
+ */
+export const journalPauseLine = (atMs: number, autoPartMs = 0): string =>
+  `${JSON.stringify(autoPartMs > 0 ? ['pause', atMs, autoPartMs] : ['pause', atMs])}\n`;
+
+/** Fin d'une pause manuelle : sans elle, une reprise juste après croirait la session encore en pause. */
+export const journalResumeLine = (atMs: number): string => `${JSON.stringify(['resume', atMs])}\n`;
+
+/** « Arrêter » : la session attend sa décision, jamais de reprise ni d'offre de continuer. */
+export const journalStopLine = (atMs: number): string => `${JSON.stringify(['stop', atMs])}\n`;
+
+/** Pause manuelle d'un journal relu : son instant, et sa part déjà passée en pause automatique (qui reste comptée). */
+export interface JournalPause {
+  atMs: number;
+  autoPartMs: number;
+}
+
+/** Frontière de segment qui clôt une pause manuelle : l'indice du point dans chaque liste, et la part à garder. */
+export interface ManualBreak {
+  fixIndex: number;
+  heartIndex: number;
+  autoPartMs: number;
+}
+
 export interface ParsedJournal {
   /** En-tête, ou `null` s'il manque ou est illisible : les positions restent récupérables. */
   header: JournalHeader | null;
@@ -130,6 +157,16 @@ export interface ParsedJournal {
   marks: SessionMark[];
   /** Test guidé, dans son dernier état lisible ; `null` sans test. */
   test: SessionTest | null;
+  /** Frontières qui closent une pause manuelle : leur écart n'est pas de la durée. */
+  manualBreaks: ManualBreak[];
+  /** Pause manuelle encore en cours à la fin du journal, `null` sinon. */
+  openPause: JournalPause | null;
+  /** Pause manuelle levée sans point gardé depuis : le suivant la clôt. `null` sinon. */
+  resumedPause: JournalPause | null;
+  /** Instant de « Arrêter », `null` si la session n'a pas été arrêtée. */
+  stoppedAtMs: number | null;
+  /** Heure de la dernière ligne lisible qui en porte une ; `null` sans aucune. */
+  lastLineMs: number | null;
 }
 
 const toHeader = (value: unknown): JournalHeader | null => {
@@ -184,6 +221,10 @@ const toHeartMarker = (value: unknown): { marker: boolean; fix: HeartRateFix | n
   return { marker: true, fix: heartRateBpm === undefined ? { timeMs } : { timeMs, heartRateBpm } };
 };
 
+/** Ligne `[marque, heure, ...]` : son heure si `value` en est une et qu'elle est lisible. */
+const timedMarker = (value: unknown, marker: string): number | null =>
+  Array.isArray(value) && value[0] === marker && typeof value[1] === 'number' && isFinite(value[1]) ? value[1] : null;
+
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg, heartRateBpm] = value;
@@ -218,23 +259,64 @@ export const parseJournal = (text: string): ParsedJournal => {
   const runs = new Map<number, IntervalRun>();
   const marks: SessionMark[] = [];
   let test: SessionTest | null = null;
+  const manualBreaks: ManualBreak[] = [];
+  let openPause: JournalPause | null = null;
+  let resumedPause: JournalPause | null = null;
+  let stoppedAtMs: number | null = null;
+  let lastLineMs: number | null = null;
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
     const value = parseJson(line);
     if (i === 0) {
-      header = toHeader(value);
-      if (header) return;
+      const read = toHeader(value);
+      header = read;
+      if (read) {
+        lastLineMs = read.startedAtMs;
+        return;
+      }
     }
-    if (toBreakMarker(value)) {
+    const breakAt = toBreakMarker(value) ? timedMarker(value, 'break') : null;
+    if (breakAt !== null) {
+      lastLineMs = breakAt;
+      const pause: JournalPause | null = resumedPause ?? openPause;
+      if (pause) manualBreaks.push({ fixIndex: fixes.length, heartIndex: heartFixes.length, autoPartMs: pause.autoPartMs });
+      resumedPause = null;
+      openPause = null;
       if (fixes.length > 0) breaks.push(fixes.length);
       if (heartFixes.length > 0) heartBreaks.push(heartFixes.length);
+      return;
+    }
+    const pauseAt = timedMarker(value, 'pause');
+    if (pauseAt !== null) {
+      lastLineMs = pauseAt;
+      openPause = { atMs: pauseAt, autoPartMs: Math.max(0, finiteOr((value as unknown[])[2], 0)) };
+      resumedPause = null;
+      return;
+    }
+    const resumeAt = timedMarker(value, 'resume');
+    if (resumeAt !== null) {
+      lastLineMs = resumeAt;
+      resumedPause = openPause ?? resumedPause;
+      openPause = null;
+      return;
+    }
+    const stopAt = timedMarker(value, 'stop');
+    if (stopAt !== null) {
+      lastLineMs = stopAt;
+      stoppedAtMs = stopAt;
       return;
     }
     const heart = toHeartMarker(value);
     if (heart.marker) {
       const last = heartFixes[heartFixes.length - 1];
-      if (heart.fix && (!last || heart.fix.timeMs > last.timeMs)) heartFixes.push(heart.fix);
+      if (heart.fix && (!last || heart.fix.timeMs > last.timeMs)) {
+        heartFixes.push(heart.fix);
+        lastLineMs = heart.fix.timeMs;
+        // Un point gardé prouve la fin de la pause, même si sa ligne s'est perdue.
+        openPause = null;
+        resumedPause = null;
+      }
       return;
     }
     const { marker, change } = toActivityMarker(value);
@@ -249,7 +331,10 @@ export const parseJournal = (text: string): ParsedJournal => {
     }
     const note = toNoteMarker(value);
     if (note.marker) {
-      if (note.mark) marks.push(note.mark);
+      if (note.mark) {
+        marks.push(note.mark);
+        lastLineMs = note.mark.timeMs;
+      }
       return;
     }
     const tested = toTestMarker(value);
@@ -258,11 +343,19 @@ export const parseJournal = (text: string): ParsedJournal => {
       return;
     }
     const fix = toFix(value);
-    if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) fixes.push(fix);
+    if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) {
+      fixes.push(fix);
+      lastLineMs = fix.timeMs;
+      openPause = null;
+      resumedPause = null;
+    }
   });
 
   const intervalRuns = [...runs.values()].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  return { header, fixes, breaks, heartFixes, heartBreaks, activityChange, intervalRuns, marks: sortMarks(marks), test };
+  return {
+    header, fixes, breaks, heartFixes, heartBreaks, activityChange, intervalRuns, marks: sortMarks(marks), test,
+    manualBreaks, openPause, resumedPause, stoppedAtMs, lastLineMs,
+  };
 };
 
 /**

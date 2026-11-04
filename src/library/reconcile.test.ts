@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FolderEntry } from '../platform/memoryFolder';
 import type { SessionRecord } from './record';
-import { indexByRecordName, planReconcile, type LibraryCache } from './reconcile';
+import { MAX_LISTED_FILE_BYTES, indexByRecordName, planReconcile, type LibraryCache } from './reconcile';
 import { sessionRecord } from '../test/record.fixture';
 
 const file = (name: string, size = 100, mtimeMs = 1000): FolderEntry => ({ name, kind: 'file', size, mtimeMs });
@@ -92,5 +92,53 @@ describe('indexByRecordName', () => {
     // Le cache rangé sous le nom réel est repris par planReconcile.
     const cache: LibraryCache = { [entry!.name]: { size: 100, mtimeMs: 1000, record: record('a.gpx') } };
     expect(Object.keys(planReconcile(entries, [], cache).reuse)).toEqual(['a.gpx']);
+  });
+
+  describe('plafond de lecture au lancement', () => {
+    const MO = 1024 * 1024;
+
+    it("un GPX de 200 Mo est écarté, jamais lu ; sa fiche reste en place, sans session", () => {
+      const plan = planReconcile([file('gros.gpx', 200 * MO), file('gros.json'), file('a.gpx')], [], {});
+      expect(plan.tooLarge).toEqual(['gros.gpx']);
+      expect(plan.gpxFiles).toEqual(['a.gpx']);
+      expect(plan.summarize).toEqual(['a.gpx']);
+      expect(plan.orphanRecords).toEqual(['gros.json']);
+    });
+
+    it("à 30 Mo tout rond le fichier reste lu : le plafond est au-delà", () => {
+      const plan = planReconcile([file('a.gpx', MAX_LISTED_FILE_BYTES)], [], {});
+      expect(plan.tooLarge).toEqual([]);
+      expect(plan.gpxFiles).toEqual(['a.gpx']);
+    });
+
+    it("un .imu n'est jamais soumis au plafond", () => {
+      const plan = planReconcile([file('a.gpx'), file('a.imu', 200 * MO), file('b.IMU', 200 * MO)], [file('c.imu', 200 * MO)], {});
+      expect(plan.tooLarge).toEqual([]);
+      expect(plan.gpxFiles).toEqual(['a.gpx']);
+    });
+
+    it("une fiche trop grosse écarte aussi son GPX : refaite depuis lui, elle serait écrasée", () => {
+      const plan = planReconcile([file('a.gpx'), file('a.json', 31 * MO), file('b.gpx')], [], {});
+      expect(plan.tooLarge).toEqual(['a.gpx', 'a.json']);
+      expect(plan.gpxFiles).toEqual(['b.gpx']);
+      expect(plan.summarize).toEqual(['b.gpx']);
+      expect(plan.orphanRecords).toEqual([]);
+    });
+
+    it("à la racine aussi : un GPX trop gros, ou dont la fiche l'est, n'est pas rangé", () => {
+      const plan = planReconcile(
+        [],
+        [file('gros.gpx', 200 * MO), file('a.gpx'), file('a.json', 200 * MO), file('b.gpx'), file('b.json')],
+        {}
+      );
+      expect(plan.rootGpx).toEqual(['b.gpx']);
+      expect(plan.rootRecords).toEqual({ 'b.gpx': 'b.json' });
+      expect(plan.tooLarge).toEqual(['a.gpx', 'a.json', 'gros.gpx']);
+    });
+
+    it("un dossier ne compte pas, même marqué d'une grande taille", () => {
+      const plan = planReconcile([{ name: 'gros.gpx', kind: 'directory', size: 200 * MO, mtimeMs: 0 }], [], {});
+      expect(plan.tooLarge).toEqual([]);
+    });
   });
 });

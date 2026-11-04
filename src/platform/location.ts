@@ -104,6 +104,7 @@ let nativeHolder: { role: NativeRole; interrupt: () => Promise<void> } | null = 
 const INTERRUPTED_BY_RECORDING = "Recherche interrompue par l'enregistrement.";
 const HELD_BY_RECORDING = "Position suivie par l'enregistrement : prendre sa dernière position.";
 const SERVICE_BUSY = 'GPS déjà occupé : mettez en pause, puis reprenez.';
+const LOCATION_DISABLED_TEXT = "Localisation du téléphone coupée : activez-la, l'enregistrement démarre à la première position.";
 
 /**
  * GPS du téléphone, par `@capgo/background-geolocation` : un service de
@@ -166,7 +167,7 @@ const startNative = async (
         if (stopped) return;
         if (error) {
           if (isLocationDisabled(error)) {
-            if (!toldDisabled) onError("Localisation du téléphone coupée : activez-la, l'enregistrement démarre à la première position.");
+            if (!toldDisabled) onError(LOCATION_DISABLED_TEXT);
             toldDisabled = true;
             retry = setTimeout(() => {
               retry = null;
@@ -283,6 +284,57 @@ export const stopOrphanedDeviceLocation = async (): Promise<void> => {
   } catch {
     // Rien à arrêter.
   }
+};
+
+/** Message d'un greffon vers la page, tel que `MessageHandler.java` l'envoie à `window.Capacitor.fromNative`. */
+interface NativeMessage {
+  pluginId?: string;
+  methodName?: string;
+  save?: boolean;
+  success?: boolean;
+  data?: PluginLocation;
+  error?: { message?: string; code?: string };
+}
+
+type CapacitorBridge = { fromNative?: (message: NativeMessage) => void };
+
+/**
+ * Rebranche la page rechargée sur le service GPS resté vivant après une chute du moteur de rendu (lot 156), sans
+ * jamais le relancer : écran éteint, le système le laisserait sans position. L'appel gardé par le greffon
+ * (`watchCall`) envoie déjà dans la page neuve, sous un numéro que celle-ci ne connaît plus : ses positions sont lues
+ * au passage dans `window.Capacitor.fromNative`, puis laissées à leur chemin ; ses refus vont à `onError`, comme ceux
+ * d'une source démarrée, sans relance. Lève si le pont manque ou si le service a déjà un détenteur : la reprise retombe
+ * alors sur l'arrêt. Rend l'arrêt, qui rend aussi le pont.
+ */
+export const adoptRunningService = (onFix: (fix: LocationFix) => void, onError: (message: string) => void): StopLocation => {
+  const bridge = (window as unknown as { Capacitor?: CapacitorBridge }).Capacitor;
+  const original = bridge?.fromNative;
+  if (!bridge || !original) throw new Error('Pont du téléphone introuvable.');
+  if (nativeHolder !== null) throw new Error(SERVICE_BUSY);
+  let stopping: Promise<void> | null = null;
+  const stop: StopLocation = () => (stopping ??= (async () => {
+    if (bridge.fromNative === listen) bridge.fromNative = original;
+    if (nativeHolder === holder) nativeHolder = null;
+    const { BackgroundGeolocation } = await import('@capgo/background-geolocation');
+    await BackgroundGeolocation.stop();
+  })());
+  const holder = { role: 'enregistrement' as const, interrupt: stop };
+  const listen = (message: NativeMessage): void => {
+    // Lu avant de passer la main : le pont efface `data` et `error` en fin de traitement.
+    const { pluginId, methodName, save, success, data, error } = message;
+    if (stopping === null && pluginId === 'BackgroundGeolocation' && methodName === 'start') {
+      try {
+        if (success === true && save === true && data) onFix(fromPlugin(data));
+        else if (success === false && error) onError(isLocationDisabled(error) ? LOCATION_DISABLED_TEXT : locationErrorText(error));
+      } catch (err) {
+        console.warn('Message du service GPS repris illisible', err);
+      }
+    }
+    original.call(bridge, message);
+  };
+  nativeHolder = holder;
+  bridge.fromNative = listen;
+  return stop;
 };
 
 /**

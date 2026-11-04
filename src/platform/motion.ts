@@ -59,6 +59,7 @@ interface MotionPlugin {
   pause(): Promise<void>;
   resume(): Promise<void>;
   stop(): Promise<{ path: string | null; bytes?: number; durationS?: number; samples?: number; longestGapS?: number; error?: string }>;
+  status(): Promise<{ path: string | null; listening?: boolean; placement?: JumpPlacement; foil?: boolean; jumps?: boolean; cadence?: boolean }>;
 }
 
 const plugin = registerPlugin<MotionPlugin>('Motion');
@@ -117,6 +118,28 @@ export const stopMotionCapture = async (): Promise<MotionCapture | null> => {
     samples: r.samples ?? 0,
     longestGapS: r.longestGapS ?? 0,
     error: r.error ?? null,
+  };
+};
+
+/** Capture qui tourne encore côté téléphone : son fichier, si elle mesure ou est suspendue, et ses réglages. */
+export interface RunningMotionCapture {
+  path: string;
+  listening: boolean;
+  setup: MotionSetup;
+}
+
+/**
+ * Capture restée ouverte après une chute du moteur de la page, sans y toucher : la reprise la suit, jamais de nouveau
+ * `start`, qui tronquerait son fichier (`ImuWriter.java`). `null` si rien ne tourne.
+ */
+export const runningMotionCapture = async (): Promise<RunningMotionCapture | null> => {
+  if (!isNativeApp()) return null;
+  const r = await plugin.status();
+  if (!r.path) return null;
+  return {
+    path: r.path,
+    listening: r.listening === true,
+    setup: { placement: r.placement ?? 'poitrine', foil: r.foil === true, jumps: r.jumps !== false, cadence: r.cadence === true },
   };
 };
 

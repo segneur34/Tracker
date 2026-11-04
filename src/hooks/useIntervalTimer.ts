@@ -193,19 +193,20 @@ let wasRecording = false;
 let wasStopping = false;
 
 /**
- * Branche le compteur, une fois, au démarrage de l'application : une séance
- * gardée qui court encore est reprise, et son programme rendu au téléphone,
- * sauf si elle était confiée à un enregistrement, coupé avec la page (elle
- * s'arrête avec lui, `runToResume`) ; une séance close est oubliée, et un
- * service resté seul, arrêté. Puis un enregistrement lancé pendant une
- * séance la reçoit, et l'arrête avec lui.
+ * Branche le compteur, une fois, au démarrage de l'application, une fois
+ * tranché le sort de l'enregistrement interrompu : une séance gardée qui court
+ * encore est reprise, et son programme rendu au téléphone, sauf si elle était
+ * confiée à un enregistrement coupé avec la page (elle s'arrête avec lui,
+ * `runToResume`) ; `keepConfided` : cet enregistrement a repris seul, sa séance
+ * continue. Une séance close est oubliée, et un service resté seul, arrêté. Puis
+ * un enregistrement lancé pendant une séance la reçoit, et l'arrête avec lui.
  */
-export const startIntervalTimer = (): void => {
+export const startIntervalTimer = (keepConfided = false): void => {
   if (started) return;
   started = true;
   const stored = readStoredIntervalRun(jsonStore.read<unknown>(STORAGE_KEY));
-  run = runToResume(stored, Date.now());
-  confided = false;
+  run = runToResume(stored, Date.now(), keepConfided);
+  confided = run !== null && stored.confided;
   if (!run && stored.run) persist();
   reschedule(false);
   publish();

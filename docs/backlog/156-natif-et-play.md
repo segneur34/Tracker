@@ -48,3 +48,11 @@ C'est la fonction première au téléphone, et ce que la revue Play et Android v
 - Service GPS au premier plan et verrou survivent à la chute. 13 positions en 15 s reçues par `window.Capacitor.fromNative` dans la page rechargée, `save` et `success` vrais, même `callbackId` ; `stop` propre ensuite.
 - `onPageLoaded` peut arriver deux fois pour une seule recharge : à prendre en compte.
 - Un service lancé téléphone verrouillé reste « inactive » pour le GPS : à ne jamais relancer écran éteint, comme le plan le dit.
+
+## Partie B, commit du 04/11
+
+- Écarts au plan, acceptés : ligne `['resume', t]` écrite aussitôt, sinon une chute juste après une reprise croirait la session en pause ; `['pause', t, autoPartMs]` si une pause automatique précède ; après « Continuer », le temps hors de l'application ne compte pas (traité comme une pause manuelle, durée sans saut) ; une fiche de plus de 30 Mo écarte aussi son GPX, sinon elle serait écrasée ; `Recovery.state()` retire l'échéance de 20 s, une page qui répond évite un `recreate()` qui couperait le GPS.
+- Relecture : un « Arrêter » pendant la reprise se perdait sans rien dire, il attend maintenant sa fin ; une localisation coupée après une reprise s'affiche comme au démarrage.
+- Limites gardées : une balise « Passée » à la main et les bips coupés ne survivent pas à la chute ; la pause automatique n'est pas au journal, elle se redétecte (60 s de points gardés) ; la date de la dernière ligne mêle l'heure GPS des positions et l'horloge du téléphone pour les autres lignes, sans effet connu sur le seuil de 10 min.
+- Reporté en Plus tard : test JUnit de `.imu`, copie de la capture par flux.
+- Banc : `timer`, deux échecs identiques avant et après (tuile « Muscu et timer » cherchée sous un ancien nom, sans lien avec ce lot) ; `balises`, un point glissé à 13 ou 14 selon le rejeu. La reprise ne se voit pas au banc : tests et téléphone.

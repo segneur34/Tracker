@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import { subscribeHeartRate, type HeartRateSample } from '../platform/heartRate';
+import { jsonStore } from '../platform/storage';
 import { TEST_SIGNAL_TONES } from '../recording/fitnessTest';
 import { readableBpm } from '../recording/heartRate';
 import { isRecordingSession } from '../recording/session';
@@ -24,7 +25,20 @@ import { readHeartRateZoneBounds } from './useRunnerProfile';
  * `recording` : muette au départ et en pause, manuelle ou automatique. Chaque
  * signal est joué une fois (`playPattern`, vibreur compris) et consigné en
  * `console.debug` (« [zone] … ») pour le banc.
+ *
+ * Pendant l'enregistrement, la zone visée reste aussi sur l'appareil, le temps de
+ * le reprendre après une coupure (lot 156) ; effacée à l'arrêt, écrasée au départ
+ * suivant : un départ ordinaire ne la relit jamais.
  */
+
+/** Clé de l'appareil de la zone visée pendant l'enregistrement. */
+const STORAGE_KEY = 'tracker.zoneAlertTarget';
+
+/** Zone gardée pour une session reprise ; 0 si absente ou illisible. */
+const readStoredTarget = (): ZoneTarget => {
+  const value = jsonStore.read<unknown>(STORAGE_KEY);
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5 ? value : 0;
+};
 
 export interface ZoneAlertView {
   /** Vrai pendant un enregistrement dont les bips de zone sont armés. */
@@ -66,11 +80,18 @@ const sync = () => {
   const recording = isRecordingSession(recorder);
   if (!recording) {
     // Fin de l'enregistrement : la zone visée ne vaut que pour lui.
-    if (recordingBefore) armed = 0;
+    if (recordingBefore) {
+      armed = 0;
+      jsonStore.write(STORAGE_KEY, null);
+    }
     recordingBefore = false;
     session = null;
     publish();
     return;
+  }
+  if (!recordingBefore) {
+    if (recorder.resuming) armed = readStoredTarget();
+    jsonStore.write(STORAGE_KEY, armed === 0 ? null : armed);
   }
   recordingBefore = true;
   const activity = recorder.activity;
@@ -113,6 +134,9 @@ export const armZoneAlert = (target: ZoneTarget): void => {
   armed = target;
   sync();
 };
+
+/** Zone visée armée, hors React ; 0 sans bips. */
+export const getZoneAlertTarget = (): ZoneTarget => armed;
 
 /** Bips de zone de l'enregistrement en cours : armés ou non, et la zone visée. */
 export const useZoneAlert = (): ZoneAlertView => useSyncExternalStore(store.subscribe, store.get);

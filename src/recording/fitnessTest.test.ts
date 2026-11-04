@@ -11,6 +11,7 @@ import {
   finishRamp,
   fixSpeedMs,
   readSessionTest,
+  replayFitnessTest,
   resolveFitnessTestParams,
   sanitizeFitnessTestSettings,
   startFitnessTest,
@@ -513,5 +514,62 @@ describe('fixSpeedMs (lot 67, sorti de useFitnessTest)', () => {
     expect(fixSpeedMs(fixes[6], fixes[0], gap)).toBeUndefined();
     expect(oldFixSpeedMs(fixes[6], fixes[0])).toBeUndefined();
     expect(fixSpeedMs({ ...fixes[5], timeMs: fixes[5].timeMs + 1 }, fixes[0], gap)).toBeUndefined();
+  });
+});
+
+describe('rejeu sur les positions relues d\'un journal (lot 156)', () => {
+  const asFix = (sample: TestSample): LocationFix => ({ timeMs: sample.timeMs, lat: 43, lon: 3, speedMs: sample.speedMs, heartRateBpm: sample.hrBpm });
+
+  /** Le guidage en direct, comme `useFitnessTest` : vitesse du GPS, reprise à la frontière de segment, sans son. */
+  const lived = (segments: LocationFix[][]) => {
+    let state = startFitnessTest(params());
+    let previous: LocationFix | null = null;
+    segments.forEach((segment, i) => segment.forEach((fix, j) => {
+      const speedMs = fixSpeedMs(fix, previous, PROTOCOL.derivedSpeedMaxGapS);
+      previous = fix;
+      state = stepFitnessTest(state, { timeMs: fix.timeMs, speedMs, hrBpm: fix.heartRateBpm }, { resumed: i > 0 && j === 0 }).state;
+    }));
+    return state;
+  };
+
+  it.each([[1], [5]])('à %i Hz : le même état qu\'en direct, en pleine rampe, signaux et paliers compris', (hz) => {
+    const fixes = samples(hz, 600).map(asFix);
+    const state = lived([fixes]);
+    expect(state.phase).toBe('rampe');
+    const replayed = replayFitnessTest(params(), [fixes], state.test!);
+    expect(replayed.state).toEqual(state);
+    expect(replayed.previous).toBe(fixes[fixes.length - 1]);
+  });
+
+  it.each([[1], [5]])('à %i Hz : une pause manuelle (deux segments) reste une reprise, son temps ôté', (hz) => {
+    const all = samples(hz, 700).map(asFix);
+    const cut = 500 * hz;
+    const resume = 560 * hz;
+    const segments = [all.slice(0, cut), all.slice(resume)];
+    const state = lived(segments);
+    const replayed = replayFitnessTest(params(), segments, state.test!);
+    expect(replayed.state).toEqual(state);
+    // 60 s de pause ôtées du temps actif.
+    expect(replayed.state.activeMs).toBeLessThan(700_000 - 50_000);
+  });
+
+  it('respecte « Finir la rampe », qu\'aucune position ne dit', () => {
+    const fixes = samples(1, 700).map(asFix);
+    const untilTap = fixes.slice(0, 600);
+    let state = lived([untilTap]);
+    state = finishRamp(state).state;
+    const kept = state.test!;
+    expect(kept.endReason).toBe('manuel');
+    const replayed = replayFitnessTest(params(), [fixes], kept);
+    expect(replayed.state.phase).toBe('recuperation');
+    expect(replayed.state.test!.rampEndMs).toBe(kept.rampEndMs);
+    expect(replayed.state.test!.endReason).toBe('manuel');
+  });
+
+  it('ignore les positions d\'avant le test : une activité changée en route', () => {
+    const before: LocationFix[] = [0, 1, 2].map((s) => ({ timeMs: T0 - 60_000 + s * 1000, lat: 43, lon: 3, speedMs: 2 }));
+    const fixes = samples(1, 100).map(asFix);
+    const state = lived([fixes]);
+    expect(replayFitnessTest(params(), [[...before, ...fixes]], state.test!).state).toEqual(state);
   });
 });

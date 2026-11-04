@@ -646,6 +646,33 @@ export const finishRamp = (previous: FitnessTestState): { state: FitnessTestStat
 };
 
 /**
+ * Rejoue en silence un test sur les positions déjà gardées, à la reprise après une chute du moteur de la page
+ * (lot 156) ; `kept` est le test relu du journal : le rejeu part de son premier point et respecte « Finir la rampe »,
+ * qu'aucune position ne dit. Entre deux segments, une reprise de pause. `previous` : la dernière position rejouée.
+ */
+export const replayFitnessTest = (
+  params: FitnessTestParams,
+  segments: ReadonlyArray<ReadonlyArray<LocationFix>>,
+  kept: SessionTest
+): { state: FitnessTestState; previous: LocationFix | null } => {
+  let state = startFitnessTest(params);
+  let previous: LocationFix | null = null;
+  const manualEndMs = kept.endReason === 'manuel' ? kept.rampEndMs : null;
+  for (const segment of segments) {
+    let opening = true;
+    for (const fix of segment) {
+      if (fix.timeMs < kept.startMs) continue;
+      if (manualEndMs !== null && fix.timeMs > manualEndMs) state = finishRamp(state).state;
+      const speedMs = fixSpeedMs(fix, previous, params.protocol.derivedSpeedMaxGapS);
+      state = stepFitnessTest(state, { timeMs: fix.timeMs, speedMs, hrBpm: fix.heartRateBpm }, { resumed: opening }).state;
+      opening = false;
+      previous = fix;
+    }
+  }
+  return { state, previous };
+};
+
+/**
  * Test interrompu (arrêt de l'enregistrement, autre activité) : une rampe en
  * cours finit à la dernière position, raison « arret ». Rend le test à ranger,
  * `null` s'il n'a pas commencé.

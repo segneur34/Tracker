@@ -109,6 +109,12 @@ export interface RecordingProfile {
    * positions sans trou avant qu'une nouvelle perte soit signalée.
    */
   gpsLostRearmS: number;
+  /**
+   * Temps réel depuis la dernière ligne du journal, en secondes, en deçà duquel
+   * une application tuée puis rouverte propose « Continuer l'enregistrement »
+   * (`recording/resume.ts`) ; au-delà, la session attend sa décision.
+   */
+  resumeOfferMaxAgeS: number;
 }
 
 /**
@@ -126,6 +132,7 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   autoPauseDelayS: 60,
   gpsLostDelayS: 60,
   gpsLostRearmS: 120,
+  resumeOfferMaxAgeS: 600,
 };
 
 /**

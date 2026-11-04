@@ -129,6 +129,8 @@ public class HeartRatePlugin extends Plugin {
     private boolean located = false;
     /** Vrai entre `connect` et `disconnect` : une coupure est alors relancée. */
     private boolean wanted = false;
+    /** Dernier état annoncé à la page, rendu par `connection` à une page rechargée. */
+    private String lastStatus = "off";
     /** Vrai dès que la ceinture a été jointe (abonnement posé) depuis `connect` : une coupure est alors une perte. */
     private boolean joined = false;
     /** Vrai entre l'état « connecté » de la liaison et sa fermeture. */
@@ -407,6 +409,20 @@ public class HeartRatePlugin extends Plugin {
             Log.w(TAG, "service impossible à lancer : " + e.getMessage());
             call.reject("service impossible à lancer");
         }
+    }
+
+    /**
+     * Connexion en cours, sans y toucher : la page reprise après une chute du moteur de rendu
+     * la reprend telle quelle, sans `connect`, qui couperait une ceinture qui mesure.
+     */
+    @PluginMethod
+    public void connection(PluginCall call) {
+        main.post(() -> {
+            JSObject ret = new JSObject();
+            ret.put("wanted", wanted);
+            ret.put("state", lastStatus);
+            call.resolve(ret);
+        });
     }
 
     /** Arrête le service de `keepAlive`, et sa notification. */
@@ -830,6 +846,7 @@ public class HeartRatePlugin extends Plugin {
     }
 
     private void sendStatus(String state) {
+        lastStatus = state;
         JSObject data = new JSObject();
         data.put("state", state);
         if (address != null) data.put("address", address);

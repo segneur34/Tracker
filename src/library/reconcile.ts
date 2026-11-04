@@ -42,7 +42,21 @@ export interface ReconcilePlan {
    * Le marqueur et les réglages ne sont jamais pris pour une fiche.
    */
   rootRecords: Record<string, string>;
+  /**
+   * GPX et fiches au-delà de `MAX_LISTED_FILE_BYTES`, jamais lus (dossier `sessions/` et racine), laissés en place. Un
+   * GPX dont la fiche est trop grosse reste de côté avec elle : refaite depuis le GPX, sa fiche serait écrasée.
+   */
+  tooLarge: string[];
 }
+
+/**
+ * Au-delà de cette taille, un GPX ou une fiche n'est pas lu au lancement : il passerait d'un bloc par le pont du
+ * téléphone, avec un plantage possible à chaque ouverture tant qu'il reste dans le dossier. Plus gros GPX réel :
+ * 2,6 Mo. Les `.imu` ne sont pas concernés, lus à la demande seulement.
+ */
+export const MAX_LISTED_FILE_BYTES = 30 * 1024 * 1024;
+
+const isOversized = (entry: FolderEntry): boolean => entry.size > MAX_LISTED_FILE_BYTES;
 
 const isRecordFileName = (name: string): boolean => /\.json$/i.test(name);
 
@@ -61,7 +75,12 @@ export const planReconcile = (
   rootEntries: FolderEntry[],
   cache: LibraryCache
 ): ReconcilePlan => {
-  const files = sessionEntries.filter((e) => e.kind === 'file');
+  const listed = sessionEntries.filter((e) => e.kind === 'file');
+  const oversizedRecords = listed.filter((e) => isRecordFileName(e.name) && isOversized(e));
+  const blockedByRecord = new Set(oversizedRecords.map((e) => lowerRecordExtension(e.name)));
+  const tooLarge = (e: FolderEntry): boolean =>
+    (isRecordFileName(e.name) || isGpxFileName(e.name)) && (isOversized(e) || (isGpxFileName(e.name) && blockedByRecord.has(recordFileName(e.name))));
+  const files = listed.filter((e) => !tooLarge(e));
   // Fiches indexées par leur nom à l'extension en minuscules : `X.JSON` se rapproche de `X.gpx`.
   const records = new Map(files.filter((e) => isRecordFileName(e.name)).map((e) => [lowerRecordExtension(e.name), e]));
   const gpxFiles = files
@@ -70,7 +89,7 @@ export const planReconcile = (
     .sort();
   const gpxRecordNames = new Set(gpxFiles.map(recordFileName));
 
-  const plan: ReconcilePlan = { gpxFiles, reuse: {}, read: [], summarize: [], orphanRecords: [], rootGpx: [], rootRecords: {} };
+  const plan: ReconcilePlan = { gpxFiles, reuse: {}, read: [], summarize: [], orphanRecords: [], rootGpx: [], rootRecords: {}, tooLarge: listed.filter(tooLarge).map((e) => e.name) };
   for (const gpx of gpxFiles) {
     const entry = records.get(recordFileName(gpx));
     if (!entry) {
@@ -85,14 +104,22 @@ export const planReconcile = (
     .filter(([key]) => !gpxRecordNames.has(key))
     .map(([, entry]) => entry.name)
     .sort();
-  plan.rootGpx = rootEntries
-    .filter((e) => e.kind === 'file' && isGpxFileName(e.name))
-    .map((e) => e.name)
-    .sort();
-  const rootFiles = new Set(rootEntries.filter((e) => e.kind === 'file').map((e) => e.name));
-  for (const gpx of plan.rootGpx) {
+  const rootFiles = new Map(rootEntries.filter((e) => e.kind === 'file').map((e) => [e.name, e]));
+  // Le marqueur et les réglages ne sont jamais pris pour une fiche.
+  const rootRecordOf = (gpx: string): FolderEntry | undefined => {
     const name = recordFileName(gpx);
-    if (rootFiles.has(name) && name !== MARKER_FILE && name !== SETTINGS_FILE) plan.rootRecords[gpx] = name;
+    return name !== MARKER_FILE && name !== SETTINGS_FILE ? rootFiles.get(name) : undefined;
+  };
+  for (const entry of [...rootFiles.values()].filter((e) => isGpxFileName(e.name))) {
+    const record = rootRecordOf(entry.name);
+    if (isOversized(entry) || (record && isOversized(record))) {
+      plan.tooLarge.push(entry.name, ...(record && isOversized(record) ? [record.name] : []));
+      continue;
+    }
+    plan.rootGpx.push(entry.name);
+    if (record) plan.rootRecords[entry.name] = record.name;
   }
+  plan.rootGpx.sort();
+  plan.tooLarge.sort();
   return plan;
 };

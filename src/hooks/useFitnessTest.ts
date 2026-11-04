@@ -5,11 +5,11 @@ import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  FITNESS_TESTS, TEST_SIGNAL_TONES, closeFitnessTest, finishRamp, fixSpeedMs, guideReadings, phaseRemainingS, resolveFitnessTestParams, startFitnessTest,
-  stepFitnessTest, stepTargetMs,
+  FITNESS_TESTS, TEST_SIGNAL_TONES, closeFitnessTest, finishRamp, fixSpeedMs, guideReadings, phaseRemainingS, replayFitnessTest, resolveFitnessTestParams,
+  startFitnessTest, stepFitnessTest, stepTargetMs,
   type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner, type TestSignal,
 } from '../recording/fitnessTest';
-import { getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { getLiveSegments, getRecordedTest, getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
 import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
 import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
@@ -34,7 +34,9 @@ import { createStore } from './createStore';
  * comme reprise. Chaque signal est joué une fois (`playPattern`, vibreur
  * compris) et consigné en `console.debug` (« [test] … ») pour le banc. Le
  * test va à l'enregistreur à chaque position (`noteFitnessTest`), au journal
- * à chaque phase, palier et fin.
+ * à chaque phase, palier et fin. Session reprise après une chute du moteur de
+ * la page (lot 156) : le test armé se relit du journal, et son état se refait en
+ * silence sur les positions relues (`replayFitnessTest`).
  */
 
 export interface FitnessTestView {
@@ -153,15 +155,23 @@ const sync = () => {
   const recording = isRecordingSession(recorder);
   if (recorder.status === 'idle') closed = null;
   const testing = recording && recorder.activity !== null && isTestSport(recorder.activity.base);
+  const kept = recorder.resuming ? getRecordedTest() : null;
   if (!testing) {
+    // Reprise sur une autre activité : le test fait avant ne se refait pas si elle revient au test.
+    if (kept) closed = kept;
     end();
     return;
   }
   if (!session) {
     if (closed?.rampStartMs != null) return;
+    if (kept) armed = kept.protocol;
     const protocol = FITNESS_TESTS[armed];
     const params = resolveFitnessTestParams(protocol, readFitnessTestSettings(armed), fitnessTestRunner(readRunnerProfile(), recorder.activity!));
-    session = { state: startFitnessTest(params), previous: null, sawPause: false };
+    session = kept
+      ? { ...replayFitnessTest(params, getLiveSegments(), kept), sawPause: false }
+      : { state: startFitnessTest(params), previous: null, sawPause: false };
+    // Le dernier état refait, plus récent que la dernière ligne du journal ; sans le réécrire.
+    if (kept && session.state.test) noteFitnessTest(session.state.test, false);
     publish();
   }
   if (isManualPause(recorder)) session.sawPause = true;

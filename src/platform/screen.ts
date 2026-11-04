@@ -62,6 +62,20 @@ export const keepScreenOn = (on: boolean): void => {
 };
 
 /**
+ * Le drapeau d'écran allumé survit à une chute du moteur de la page (lot 156), et la page neuve ne le connaît plus.
+ * Sans enregistrement repris, personne ne le lèverait : à appeler une fois celui-ci tranché, pas avant, pour qu'une
+ * reprise ne laisse pas l'écran s'éteindre le temps de revenir sur Enregistrer. Sans effet si la page l'a déjà redemandé.
+ */
+export const clearStaleScreenOn = (): void => {
+  if (isNativeApp() && !wanted) void nativePlugin.keepOn({ on: false }).catch(() => undefined);
+};
+
+/** L'orientation figée survit de même : au démarrage de la page, elle repart libre, comme l'application relancée. */
+export const resetOrientationLock = (): void => {
+  if (isNativeApp()) void nativePlugin.lockOrientation({ locked: false }).catch(() => undefined);
+};
+
+/**
  * Orientation figée (cadenas d'Enregistrer) : le greffon garde l'orientation du moment
  * (`SCREEN_ORIENTATION_LOCKED`), jusqu'à ce qu'on la libère ; l'application relancée repart libre. Sur le téléphone
  * seulement : le navigateur ne fige l'orientation qu'en plein écran.

@@ -15,11 +15,13 @@ import { startFitnessTestGuide } from './hooks/useFitnessTest';
 import { startZoneAlertGuide } from './hooks/useZoneAlert';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
-import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
+import { getRecorderState, isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, reportStartupError, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { startTheme } from './hooks/useTheme';
 import { installBackButton } from './platform/backButton';
+import { isRecordingSession } from './recording/session';
+import { clearStaleScreenOn, resetOrientationLock } from './platform/screen';
 import { initStorage } from './platform/storage';
 
 /**
@@ -38,6 +40,7 @@ startTheme();
 void initStorage()
   .then(() => {
     startTheme();
+    resetOrientationLock();
     return Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]);
   })
   .then(() => {
@@ -71,16 +74,21 @@ void initStorage()
     installLeaveGuard();
     // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en arrière-plan.
     void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave);
-    // Un enregistrement coupé par un arrêt brutal, ou arrêté sans décision, revient en attente.
-    void recoverInterruptedRecording();
+    // Un enregistrement coupé reprend seul si son service a survécu à la page ; sinon, ou arrêté sans décision, il revient en attente.
+    const recovered = recoverInterruptedRecording();
     // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
     startMarkGuide();
     // Guidage d'un test (FC max), pendant un enregistrement d'une activité de test.
     startFitnessTestGuide();
     // Bips de sortie de la zone cardiaque visée, pendant un enregistrement avec la ceinture.
     startZoneAlertGuide();
-    // Compteur du fractionné : séance reprise si elle court encore, et confiée à l'enregistreur.
-    startIntervalTimer();
+    // Compteur du fractionné, une fois l'enregistrement tranché : sa séance continue s'il a repris seul.
+    const afterRecovery = () => {
+      // Déjà à l'arrêt (« Arrêter » attendait la reprise) : sa séance s'arrête avec lui.
+      startIntervalTimer(isRecordingSession(getRecorderState()));
+      if (!isRecordingActive()) clearStaleScreenOn();
+    };
+    void recovered.then(afterRecovery, afterRecovery);
     // Chronomètre de la carte du compteur, repris s'il était lancé.
     startStopwatchStore();
     // Statistiques du direct, lues par la page Enregistrer et par la notification.

@@ -623,10 +623,11 @@ export const readStoredIntervalRun = (value: unknown): StoredIntervalRun => ({
  * lancement, plus rien n'enregistre : celui qui la recevait a été coupé
  * (arrêt brutal), sa session revient en attente, et la séance s'arrête avec
  * elle, comme à « Arrêter » (§5 ; lot 143) : rien ne sonne sans session.
- * `null` : rien à reprendre.
+ * `keepConfided` : l'enregistrement a repris seul après une chute du moteur de
+ * la page (lot 156), sa séance continue avec lui. `null` : rien à reprendre.
  */
-export const runToResume = (stored: StoredIntervalRun, nowMs: number): IntervalRun | null => {
-  if (!stored.run || stored.confided) return null;
+export const runToResume = (stored: StoredIntervalRun, nowMs: number, keepConfided = false): IntervalRun | null => {
+  if (!stored.run || (stored.confided && !keepConfided)) return null;
   const { status } = timerStateAt(stored.run, nowMs);
   return status === 'running' || status === 'paused' ? stored.run : null;
 };

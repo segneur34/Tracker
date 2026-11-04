@@ -191,6 +191,31 @@ export const stepMarkGuide = (
   return { state: next, ...aimAtTarget(position, next, marks), event: isCourseFinished(next, marks) ? 'finished' : 'validated' };
 };
 
+/**
+ * Rejoue en silence le guidage sur les positions déjà gardées, à la reprise après une chute du moteur de la page
+ * (lot 156). Entre deux segments, la position suivante se juge seule, comme à la reprise d'une pause manuelle. Rien
+ * ne garde les balises passées à la main : une balise ainsi laissée redevient visée si le rejeu ne la valide pas.
+ */
+export const replayMarkGuide = (
+  segments: ReadonlyArray<ReadonlyArray<LatLon>>,
+  marks: ReadonlyArray<LatLon>,
+  settings: MarkGuideSettings
+): Omit<MarkGuideStep, 'event'> => {
+  let state = START_MARK_GUIDE;
+  let distanceM: number | null = null;
+  let bearingDeg: number | null = null;
+  for (const segment of segments) {
+    state = resumedGuideState(state);
+    for (const fix of segment) {
+      const step = stepMarkGuide(state, fix, marks, settings);
+      state = step.state;
+      distanceM = step.distanceM;
+      bearingDeg = step.bearingDeg;
+    }
+  }
+  return { state, distanceM, bearingDeg };
+};
+
 /** « Passer » : la balise visée est laissée sans validation, la suivante prend le relais. */
 export const skipMark = (state: MarkGuideState, marks: ReadonlyArray<LatLon>): MarkGuideState =>
   isCourseFinished(state, marks) ? state : { ...state, target: state.target + 1, outcomes: [...state.outcomes, 'skipped'] };

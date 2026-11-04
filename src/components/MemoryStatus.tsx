@@ -19,6 +19,7 @@ import { useInSettings } from './helpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { plural } from '../core/basics';
+import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
 
 /**
  * État de la mémoire : où elle est, combien de sessions, ce qu'il faut faire
@@ -51,7 +52,7 @@ function MemoryStatus({
   collapse?: { open: boolean; onToggle: () => void };
 }) {
   const library = useLibraryFields(
-    'status', 'folderKind', 'folderLabel', 'memoryReadOnly', 'reason', 'sessions', 'scanning', 'pendingCount', 'duplicates', 'unreadable', 'message', 'error'
+    'status', 'folderKind', 'folderLabel', 'memoryReadOnly', 'reason', 'sessions', 'scanning', 'pendingCount', 'duplicates', 'unreadable', 'tooLarge', 'message', 'error'
   );
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
@@ -107,7 +108,7 @@ function MemoryStatus({
   const creating = library.scanning && library.scanning.creating.done < library.scanning.creating.total
     ? library.scanning.creating : null;
   const attention = status !== 'ready' || library.memoryReadOnly || creating !== null || library.pendingCount > 0
-    || library.duplicates.length > 0 || library.unreadable.length > 0;
+    || library.duplicates.length > 0 || library.unreadable.length > 0 || library.tooLarge.length > 0;
   if (compact && !attention) {
     return (
       <>
@@ -270,6 +271,12 @@ function MemoryStatus({
         {library.unreadable.length > 0 && (
           <p style={mutedStyle}>
             {plural(library.unreadable.length, 'GPX illisible')} dans le dossier : {library.unreadable.join(', ')}.
+          </p>
+        )}
+        {library.tooLarge.length > 0 && (
+          <p style={mutedStyle}>
+            {plural(library.tooLarge.length, 'fichier')} de plus de {MAX_LISTED_FILE_BYTES / (1024 * 1024)} Mo laissé
+            {library.tooLarge.length > 1 ? 's' : ''} de côté, trop gros pour être lu{library.tooLarge.length > 1 ? 's' : ''} : {library.tooLarge.join(', ')}.
           </p>
         )}
 
