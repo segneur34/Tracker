@@ -239,7 +239,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // par « Enregistrer la session ». Changer d'activité l'écrit aussi dans la fiche de la session (comme en
   // voile) ; vers une activité de voile, la session part dans le module voile.
   const {
-    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, reading, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family, activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
   /**
    * Seuil d'activité : celui de la session, comme sa ligne dans la liste, sinon celui que sa fiche porte, sinon
@@ -995,6 +995,7 @@ function LandModule({ family }: { family: LandFamily }) {
     <AnalysisShell title={isTestSport(profile.id) ? 'Analyse test' : page.title} family={family} backLabel={page.backLabel} file={gpx.fileName}
       share={{ segments: mapSegments, stats: generalStats }} error={sessionError} draft={draft} loadError={gpx.error}
       empty={!stats && !gpx.error && requestedFile === null}
+      reading={reading}
       map={{
         panelId: panelId('carte'),
         expanded: mapExpanded,

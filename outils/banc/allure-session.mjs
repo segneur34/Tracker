@@ -29,8 +29,9 @@ const holdStop = async () => {
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 };
 const clickText = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)})); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
-// Saisie dans un champ contrôlé par React : setter natif, puis événement `input`.
-const typeInto = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
+// Saisie dans un champ contrôlé par React : setter natif, événement `input`, puis Entrée. Depuis le lot 157,
+// l'allure n'est écrite dans le brouillon qu'à Entrée ou en quittant le champ.
+const typeInto = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'ok'; })()`);
 const ALLURE_LABEL = `[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Allure de la session'))`;
 const ALLURE_INPUT = `${ALLURE_LABEL}?.querySelector('input')`;
 const allure = () => evaluate(`(() => { const l = ${ALLURE_LABEL}; if (!l) return 'pas de champ'; return l.querySelector('input').value + ' nds, ' + (l.textContent.includes('déduite') ? 'déduite' : l.textContent.includes('Défaut') ? 'imposée (bouton Défaut)' : '?'); })()`);

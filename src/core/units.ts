@@ -103,6 +103,21 @@ export const fromDisplaySpeed = (value: number, unit: SpeedUnit, distanceUnit: D
   }
 };
 
+/**
+ * Vitesse saisie (`text`, dans l'unité d'affichage `unit`, virgule ou point)
+ * rendue dans `thresholdUnit`, l'unité où elle est rangée ; `null` pour un
+ * texte vide, illisible (« 12a »), nul ou négatif. Le texte entier doit être
+ * un nombre : `parseFloat` lirait « 12 » dans « 12a ».
+ */
+export const speedFromText = (text: string, unit: SpeedUnit, thresholdUnit: SpeedUnit): number | null => {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  const parsed = Number(trimmed.replace(',', '.'));
+  if (!isFinite(parsed) || parsed <= 0) return null;
+  const next = toDisplaySpeed(fromDisplaySpeed(parsed, unit), thresholdUnit);
+  return isFinite(next) && next > 0 ? next : null;
+};
+
 export const SPEED_UNIT_LABEL: Record<SpeedUnit, string> = {
   kn: 'nœuds',
   kmh: 'km/h',

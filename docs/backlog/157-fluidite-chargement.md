@@ -25,3 +25,21 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Pourquoi
 
 Les relevés du lot 114 (10 à 18 s de gel à ×6) ne sont pas réduits par ces corrections, mais elles évitent le travail inutile et les recalculs par frappe, visibles à chaque sortie.
+
+## Plan (agent Plan, 04/11)
+
+- Fichiers : `hooks/useLibraryNavigation.ts` (drapeau d'abandon par le nettoyage de l'effet, état `reading`, deux fonctions pures exportées `gpxLoadAction(outcome, alive)` → `'drop' | 'error' | 'retry' | 'deliver'` et `sessionReading({ requested, deliveredFor, error })`) et son test ; `hooks/useAnalysisSession.ts` (fait suivre `reading`) ; `components/AnalysisShell.tsx` (prop facultative `reading`, texte « Lecture de la session… » à la place réservée à `empty`, `aria-live="polite"`, couleur par variable) ; `pages/SailingModule.tsx` et `pages/LandModule.tsx` (passent `reading` ; l'allure écrite à la validation) ; `components/SessionThresholdField.tsx` (prop `commit?: 'input' | 'blur'`, `'input'` par défaut, Entrée ou sortie du champ, texte invalide rend l'ancienne valeur, « Défaut » immédiat) ; `core/units.ts` et son test (`speedFromText(text, unit, thresholdUnit): number | null`, reprise des lignes 49-52 du champ).
+- Effet de chargement : `let alive = true` mis à faux par le nettoyage ; le nettoyage remet `loadedFor.current = null` si la trace n'a pas été remise (sinon le double passage de StrictMode et le retour après perte du dossier ne rechargent plus) ; `setDeliveredFor(requested)` dans le même rappel que `onLoad` (React regroupe) ; le test `loadedFor.current !== requested` devient inutile.
+- Modèles à réutiliser : `loadGpxOutcome` / `GpxLoadOutcome` ; `windDegFromText` et `commitText` / Entrée / `onBlur` de `WindAdjustOverlay.tsx:53-61,103-107` ; `prevKey` de `SessionThresholdField` ; `parseDecimal`, `fromDisplaySpeed`, `toDisplaySpeed` ; `isNewAnalysisSession` (`core/analysisTabs.ts`) pour C7a-5.
+- Pourquoi la validation plutôt que `useDeferredValue` : l'allure relance tout depuis `computeKinematics` (≈ 5 s à ×6) dans des `useMemo` non interruptibles ; différée, chaque valeur intermédiaire (« 1 ») lancerait quand même un calcul complet. À la validation : un seul calcul. Ne touche ni `useGpxSession` (126 B) ni `useSailingSession` (159 A).
+- Au passage : C7a-5 (`useAdvancedTabs.ts` : « avancé » fermé dès le rendu où la clé change, par comparaison de clé en état ; l'écriture en mémoire reste dans l'effet) ; C7a-6 (même prop `commit` sur `SpeedRangeEditor` via `SessionColorRangeField` seulement, Réglages inchangé). `MemoryStatus compact` est déjà dans Statistiques et Profil (T7-3) : rien à faire.
+- Tests : `gpxLoadAction` (démonté → `'drop'` quel que soit le résultat ; erreur avec ou sans relance ; texte remis), `sessionReading` (cinq cas), `speedFromText` (nœuds et m/s, virgule, vide, 0, négatif, « 12a »).
+- Banc : `outils/banc/allure-session.mjs` (`typeInto` ligne 33 n'envoie qu'un `input` : ajouter Entrée après la saisie) ; `outils/banc/fluidite.mjs` : mesure `quitter` ajoutée à `FLUIDITE_MESURES` (ouvre la voile de 3 h, revient à la bibliothèque 100 ms plus tard, compte les longues tâches de la page suivante ; attendu : aucun `parseGpx`) ; neutralité : `node outils/banc/passe.mjs allure-session brouillon-voile vides coquille general onglets --avant HEAD`.
+
+## Décisions de l'orchestrateur (04/11)
+
+1. Surf : `SurfModule.tsx` est au lot 125 en parallèle ; le texte « Lecture de la session… » y sera ajouté par le lot 127, qui touche ce fichier ensuite (noté dans son brief). Tranchée par l'orchestrateur : évite un conflit de rapatriement.
+2. Pas de second texte « Calcul de l'analyse… » : un seul texte, « Lecture de la session… », jusqu'au rendu de la trace.
+3. C7a-5 et C7a-6 inclus ; C7a-7 (commentaire) exclu : un commentaire tapé puis quitté doit rester dans le brouillon avec son avertissement.
+4. Une allure tapée mais pas validée (ni Entrée ni sortie du champ) se perd sans avertissement, comme l'angle du vent (décision existante, §1) : accepté, même règle pour les bornes de couleur.
+5. Rouvrir la session relit le fichier : hors du lot (126 B et, plus tard, une copie en mémoire).

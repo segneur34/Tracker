@@ -3,7 +3,7 @@
 // effacerait) et se lisent à l'œil, à vitesse normale puis processeur ralenti six fois (`Emulation.setCPUThrottlingRate`,
 // comme un Android moyen) ; chaque mesure est prise trois fois, médiane retenue.
 // Usage : node fluidite.mjs <port> <dossier de travail, chemin Windows>
-// Sur un profil neuf, sans réseau. Variables : `FLUIDITE_MESURES=ouverture,seuil,zoom,resumes,demarrage` (sous-ensemble),
+// Sur un profil neuf, sans réseau. Variables : `FLUIDITE_MESURES=ouverture,quitter,seuil,zoom,resumes,demarrage` (sous-ensemble),
 // `FLUIDITE_REPS=3`. Le script :
 //  1. écrit une session de voile de 3 h à 5 Hz (54 000 points, bords, virements et empannages comme `make-gpx.mjs`),
 //     la trace d'une heure de `make-gpx.mjs`, une course de 2 h à 1 Hz avec FC et altitude, et 30 sessions de voile
@@ -13,6 +13,9 @@
 //     plus longue tâche bloquante et total bloqué (tâches de plus de 50 ms, `PerformanceObserver` longtask) ; durée
 //     de `DOMParser.parseFromString` (lecture du GPX) ; une prise de plus sous le profileur (`Profiler.start`) pour dire
 //     où le temps part, par fonction ;
+//  2 bis. quitter (lot 157) : la longue session ouverte depuis la bibliothèque, retour à la bibliothèque 100 ms plus tard,
+//     avant que sa lecture ne finisse ; tâches longues de la page suivante, nombre et durée des `DOMParser` (attendu
+//     depuis le lot 157 : aucun, la lecture abandonnée), et si « Lecture de la session… » a paru entre-temps ;
 //  3. seuil d'activité changé dans l'onglet réglages de cette analyse : temps jusqu'aux chiffres refaits, jusqu'au calme
 //     du DOM, tâches longues ;
 //  4. zoom d'un graphe de la course (double-clic de `lib/graphes.mjs`, celui de `zoom-carte.mjs`), onglets graphiques et
@@ -37,7 +40,7 @@ if (!port || !workDir) {
   console.error('Usage : node fluidite.mjs <port> <dossier de travail>');
   process.exit(1);
 }
-const MESURES = (process.env.FLUIDITE_MESURES ?? 'ouverture,seuil,zoom,resumes,demarrage').split(',').map((m) => m.trim());
+const MESURES = (process.env.FLUIDITE_MESURES ?? 'ouverture,quitter,seuil,zoom,resumes,demarrage').split(',').map((m) => m.trim());
 const REPS = Math.max(1, Number(process.env.FLUIDITE_REPS ?? 3) || 3);
 const RATES = [1, 6];
 
@@ -96,6 +99,8 @@ const longTasks = async (t0, t1) => {
 const ltText = (lt) => `tâche max ${sec(lt.max)}, bloqué ${sec(lt.total)} (${lt.count})`;
 /** Durée totale des `parseFromString` entre deux instants. */
 const domParser = async (t0, t1) => evaluate(`window.__fluidite.domparser.filter((d) => d.start >= ${t0} && d.start < ${t1}).reduce((a, d) => a + d.duration, 0)`);
+/** Nombre de `parseFromString` entre deux instants. */
+const domParserCount = async (t0, t1) => evaluate(`window.__fluidite.domparser.filter((d) => d.start >= ${t0} && d.start < ${t1}).length`);
 /** Navigation dans la page (pushState + popstate, ce que fait un lien de React Router), sans recharger les modules. */
 const SPA_GO = (path) => `history.pushState({}, '', ${JSON.stringify(path)}); dispatchEvent(new PopStateEvent('popstate', { state: {} }));`;
 /** Rangée « avancé » ouverte et onglets donnés ouverts (un onglet repris d'une session neuve se ferme : on le rouvre). */
@@ -324,6 +329,58 @@ if (MESURES.includes('ouverture')) {
     const p = await openLong({ profile: true });
     console.log(`×${rate} sous le profileur : chiffres ${sec(p.chiffres)}, ${ltText(p)}`);
     if (p.prof) console.log(profileSummary(p.prof));
+  }
+  await throttle(1);
+}
+
+// --- 2 bis. Quitter l'analyse pendant la lecture ---
+/** Ouvre la longue session, revient à la bibliothèque 100 ms plus tard (minuterie de la page), puis relève la suite. */
+const quitLong = async () => {
+  const out = await evaluate(`new Promise((resolve) => {
+    const t0 = performance.now();
+    ${SPA_GO(longUrl)}
+    const out = { t0, lecture: null, quitte: null };
+    const tick = () => {
+      const now = performance.now();
+      if (out.lecture === null && [...document.querySelectorAll('.an-page p')].some((p) => p.textContent.includes('Lecture de la session'))) out.lecture = now - t0;
+      if (now - t0 >= 100) {
+        ${SPA_GO('/voile')}
+        out.quitte = now - t0;
+        resolve(out);
+      } else setTimeout(tick, 5);
+    };
+    tick();
+  })`);
+  await waitFor(`!document.querySelector('.an-page') && document.querySelectorAll('.lib-row').length >= 2`, { timeout: 30000, every: 50, label: 'bibliothèque rendue' });
+  // Une lecture non abandonnée finit après le retour : on lui laisse le temps (fichier relu, puis texte lu).
+  await settle({ max: 10000, quiet: 300, label: 'après le retour' });
+  await wait(4000);
+  const tEnd = await evaluate('performance.now()');
+  const lt = await longTasks(out.t0, tEnd);
+  return { lecture: out.lecture, quitte: out.quitte, max: lt.max, total: lt.total, count: lt.count,
+    dom: await domParser(out.t0, tEnd), parses: await domParserCount(out.t0, tEnd) };
+};
+const quitText = (r) => `retour à ${sec(r.quitte)} | « Lecture de la session… » ${r.lecture === null ? 'non vue' : `à ${sec(r.lecture)}`} | DOMParser ${r.parses} (${sec(r.dom)}) | ${ltText(r)}`;
+
+if (MESURES.includes('quitter')) {
+  console.log('\n== Quitter la session de voile (3 h à 5 Hz) 100 ms après l\'avoir ouverte, retour à la bibliothèque ==');
+  await go('/voile', 5000);
+  await waitFor(`document.querySelectorAll('.lib-row').length >= 2`, { timeout: 10000, label: 'bibliothèque' });
+  await throttle(1);
+  await quitLong(); // chauffe : modules de l'analyse chargés
+  results.quitter = {};
+  for (const rate of RATES) {
+    await throttle(rate);
+    const runs = [];
+    for (let k = 0; k < REPS; k++) {
+      const r = await quitLong();
+      runs.push(r);
+      console.log(`×${rate} essai ${k + 1} : ${quitText(r)}`);
+    }
+    const med = Object.fromEntries(['quitte', 'max', 'total', 'count', 'dom', 'parses'].map((k) => [k, median(runs.map((r) => r[k]))]));
+    med.lecture = median(runs.map((r) => r.lecture));
+    results.quitter[rate] = med;
+    console.log(`×${rate} médiane : ${quitText(med)}`);
   }
   await throttle(1);
 }
@@ -615,6 +672,10 @@ if (results.ouverture) {
   row('Ouverture voile 3 h 5 Hz : titre / trace / chiffres', (r) => `${sec(o[r].titre)} / ${sec(o[r].trace)} / ${sec(o[r].chiffres)}`);
   row('Ouverture : tâche max / bloqué / fil libre à', (r) => `${sec(o[r].max)} / ${sec(o[r].total)} / ${sec(o[r].libre)}`);
   row('Ouverture : DOMParser (lecture du GPX)', (r) => sec(o[r].dom));
+}
+if (results.quitter) {
+  const q = results.quitter;
+  row('Quitter à 100 ms : DOMParser (nombre, durée) / tâche max / bloqué', (r) => `${q[r].parses} (${sec(q[r].dom)}) / ${sec(q[r].max)} / ${sec(q[r].total)}`);
 }
 if (results.seuil) {
   const s = results.seuil;

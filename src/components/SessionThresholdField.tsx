@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SPEED_UNIT_LABEL, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, fromDisplaySpeed, speedFromText, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import Button from './ui/Button';
 
 interface SessionThresholdFieldProps {
@@ -18,6 +18,13 @@ interface SessionThresholdFieldProps {
   hint?: string;
   /** Phrase discrète sous le champ, quand la valeur n'est pas imposée. */
   note?: string | null;
+  /**
+   * Moment où la valeur tapée est écrite : `input` (défaut), à chaque frappe
+   * valide ; `blur`, à Entrée ou en quittant le champ, pour une valeur dont
+   * chaque changement relance toute l'analyse (l'allure). « Défaut » est
+   * toujours immédiat.
+   */
+  commit?: 'input' | 'blur';
   /** Nouvelle valeur, dans `thresholdUnit`, ou `null` pour revenir au défaut. */
   onChange: (next: number | null) => void;
 }
@@ -28,10 +35,13 @@ interface SessionThresholdFieldProps {
  * Texte local, comme `SpeedRangeEditor` : une frappe intermédiaire n'est pas
  * réécrite par le rendu suivant (« 12 » ne devient pas « 1,02 »), et le
  * champ se vide sans revenir à l'ancienne valeur. Une valeur valide est
- * écrite à chaque frappe ; le texte est réaligné quand la valeur change
- * d'ailleurs (« Défaut », rechargement, changement d'unité).
+ * écrite à chaque frappe, ou seulement à Entrée et en quittant le champ
+ * (`commit="blur"`, comme l'angle du vent : un texte invalide y rend
+ * l'ancienne valeur, une saisie jamais validée se perd) ; le texte est
+ * réaligné quand la valeur change d'ailleurs (« Défaut », rechargement,
+ * changement d'unité).
  */
-function SessionThresholdField({ label, title, value, defaultValue, isOverridden, unit, thresholdUnit, hint, note, onChange }: SessionThresholdFieldProps) {
+function SessionThresholdField({ label, title, value, defaultValue, isOverridden, unit, thresholdUnit, hint, note, commit = 'input', onChange }: SessionThresholdFieldProps) {
   const shown = (v: number): string => String(Number(toDisplaySpeed(fromDisplaySpeed(v, thresholdUnit), unit).toFixed(unit === 'ms' ? 2 : 1)));
   const [text, setText] = useState(() => shown(value));
   const key = `${value}|${unit}`;
@@ -40,17 +50,27 @@ function SessionThresholdField({ label, title, value, defaultValue, isOverridden
     setPrevKey(key);
     setText(shown(value));
   }
+  /** Validation du texte (`commit="blur"`) : écrit s'il a changé la valeur, sinon le champ reprend la valeur en vigueur. */
+  const commitText = () => {
+    const next = speedFromText(text, unit, thresholdUnit);
+    if (next === null || shown(next) === shown(value)) {
+      setText(shown(value));
+      return;
+    }
+    onChange(next);
+  };
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }} title={title}>
       <strong>{label} :</strong>
       <input type="number" min={0} step={unit === 'ms' ? 0.1 : 0.5} value={text} aria-label={label}
         onChange={(e) => {
           setText(e.target.value);
-          const parsed = parseFloat(e.target.value);
-          if (isNaN(parsed) || parsed <= 0) return;
-          const next = toDisplaySpeed(fromDisplaySpeed(parsed, unit), thresholdUnit);
-          if (isFinite(next) && next > 0) onChange(next);
+          if (commit === 'blur') return;
+          const next = speedFromText(e.target.value, unit, thresholdUnit);
+          if (next !== null) onChange(next);
         }}
+        onBlur={commit === 'blur' ? commitText : undefined}
+        onKeyDown={commit === 'blur' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); commitText(); } } : undefined}
         className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
       {SPEED_UNIT_LABEL[unit]}
       {!isOverridden && hint && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({hint})</span>}

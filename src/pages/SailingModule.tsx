@@ -190,7 +190,7 @@ function SailingModule() {
   // session de la mémoire, celles de la voile seules sinon ; vers une activité de course, la session part
   // dans le module course (`useChangeSessionActivity`).
   const {
-    requested: requestedFile, sessionFile, error: sessionError, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
+    requested: requestedFile, sessionFile, error: sessionError, reading, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
   } = useAnalysisSession({ family: 'voile', activity, setActivity, load, loadedFile: shownFile, draftFor: 'requested' });
   const { edits } = draft;
 
@@ -1007,6 +1007,7 @@ function SailingModule() {
         </>
       )}
       empty={trackData.length === 0 && requestedFile === null}
+      reading={reading}
       map={{
         panelId: 'sailing.carte',
         rowZIndex: 0,
@@ -1278,6 +1279,7 @@ function SailingModule() {
                         unit={speedUnit}
                         thresholdUnit="ms"
                         hint="déduite de la trace"
+                        commit="blur"
                         onChange={(next) => draft.update({ referenceSpeedMs: next })} />
                     </div>
                   )}

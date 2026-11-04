@@ -43,7 +43,7 @@ export const useAnalysisSession = ({ family, activity, setActivity, load, loaded
     },
     [activity.id, setActivity, load]
   );
-  const { file: sessionFile, requested, error } = useSessionFromUrl(receiveSession);
+  const { file: sessionFile, requested, error, reading } = useSessionFromUrl(receiveSession);
   /** Fichier de la session affichée : la trace lue est celle de l'adresse, et la session est dans la mémoire. */
   const shownFile = sessionFile !== null && loadedFile === sessionFile ? sessionFile : null;
   const draftFile = draftFor === 'requested' ? (requested !== null && loadedFile === requested ? requested : null) : shownFile;
@@ -66,6 +66,8 @@ export const useAnalysisSession = ({ family, activity, setActivity, load, loaded
     shownFile,
     /** Session absente de la mémoire, ou GPX illisible. */
     error,
+    /** Session demandée dont la trace n'est pas encore lue : « Lecture de la session… » (`AnalysisShell`). */
+    reading,
     draft,
     /** Fiche de la session du brouillon, `null` hors de la mémoire : les réglages qu'elle porte (`sessionActivitySettings`). */
     record,

@@ -14,11 +14,19 @@ const ADVANCED_DEFAULTS: { ouvert: boolean; session: string | null } = { ouvert:
  * Le module le lit pour replier les panneaux de la rangée (`maskAdvancedTabs`),
  * le passe à sa barre (`CollapsibleSectionTabs`) et lui confie l'ouverture de
  * son « général » (`setGeneral`).
+ *
+ * La nouvelle session est reconnue dès le rendu où sa clé change (`fresh`) :
+ * « avancé » y est déjà fermé et « général » ouvert (`useAnalysisTabs`), sans
+ * monter d'abord les panneaux avancés de l'ancienne session ; l'écriture en
+ * mémoire suit, dans l'effet.
  */
 export const useAdvancedTabs = (sessionKey: string | null, setGeneral: (open: boolean) => void) => {
   const { value, update } = useStoredRecord(NAMESPACE, KEY, ADVANCED_DEFAULTS);
+  /** Session autre que la dernière analysée, pas encore écrite en mémoire : « général » seul. */
+  const fresh = isNewAnalysisSession(value.session, sessionKey);
+  const open = fresh ? false : value.ouvert;
 
-  // Lu dans la mémoire et non dans `value`, encore à son défaut au premier rendu.
+  // Relu dans la mémoire au moment d'écrire, comme `update`.
   useEffect(() => {
     if (!isNewAnalysisSession(readStoredRecord(NAMESPACE, KEY, ADVANCED_DEFAULTS).session, sessionKey)) return;
     update({ ouvert: false, session: sessionKey });
@@ -28,9 +36,9 @@ export const useAdvancedTabs = (sessionKey: string | null, setGeneral: (open: bo
   }, [sessionKey]);
 
   const toggle = useCallback(() => {
-    const next = !value.ouvert;
+    const next = !open;
     update({ ouvert: next });
     setGeneral(generalOpenAfterAdvanced(next));
-  }, [value.ouvert, update, setGeneral]);
-  return { open: value.ouvert, toggle };
+  }, [open, update, setGeneral]);
+  return { open, toggle, fresh };
 };

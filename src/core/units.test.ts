@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PACE_MIN_SPEED_MS, commaDecimal, formatDecimal, formatDuration, formatShortDuration, parseDecimal, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
-  editSpeedUnit, formatClock, formatClockMinutes, formatDistance, formatMinSec, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
+  editSpeedUnit, formatClock, formatClockMinutes, formatDistance, formatMinSec, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedFromText, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -301,5 +301,31 @@ describe('gardes des formateurs de durée et de nombre (lot 149, C2-6)', () => {
     expect(formatMinSec(125)).toBe('2:05');
     expect(formatDecimal(0)).toBe('0,0');
     expect(formatMeters(0)).toBe('0 m');
+  });
+});
+
+describe('speedFromText (lot 157)', () => {
+  it('lit une vitesse en nœuds et la range en m/s, ou en nœuds', () => {
+    expect(speedFromText('12', 'kn', 'ms')).toBeCloseTo(12 / 1.94384, 9);
+    expect(speedFromText('12', 'kn', 'kn')).toBeCloseTo(12, 9);
+  });
+
+  it('lit une vitesse en m/s et la range en nœuds', () => {
+    expect(speedFromText('5', 'ms', 'kn')).toBeCloseTo(5 * 1.94384, 9);
+    expect(speedFromText('5', 'ms', 'ms')).toBe(5);
+  });
+
+  it('accepte la virgule et le point, et les espaces autour', () => {
+    expect(speedFromText('12,5', 'kn', 'kn')).toBeCloseTo(12.5, 9);
+    expect(speedFromText(' 12.5 ', 'kn', 'kn')).toBeCloseTo(12.5, 9);
+  });
+
+  it('refuse un texte vide, nul, négatif ou illisible', () => {
+    expect(speedFromText('', 'kn', 'ms')).toBeNull();
+    expect(speedFromText('   ', 'kn', 'ms')).toBeNull();
+    expect(speedFromText('0', 'kn', 'ms')).toBeNull();
+    expect(speedFromText('-3', 'kn', 'ms')).toBeNull();
+    expect(speedFromText('12a', 'kn', 'ms')).toBeNull();
+    expect(speedFromText('abc', 'kn', 'ms')).toBeNull();
   });
 });

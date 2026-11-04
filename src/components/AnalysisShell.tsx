@@ -49,6 +49,8 @@ interface AnalysisShellProps<K extends string> {
   alerts?: ReactNode;
   /** Aucune session demandée : la phrase qui renvoie à la bibliothèque. */
   empty: boolean;
+  /** Session demandée pas encore lue : « Lecture de la session… », à la place de la phrase d'`empty`. */
+  reading?: boolean;
   /** Rangée de la carte ; absente pour une session sans trace. */
   map?: ShellMap;
   tabs: ShellTabs<K> | null;
@@ -63,14 +65,14 @@ const mapRow = ({ rowZIndex, ...props }: ShellMap) => (
 
 /**
  * Mise en page commune des analyses (`docs/MISE_EN_PAGE.md`) : feuille de
- * l'en-tête, barre du brouillon, alertes, phrase « Aucune session ouverte »,
- * rangée de la carte, puis colonne des onglets et de leurs panneaux. Rendu
+ * l'en-tête, barre du brouillon, alertes, phrase « Aucune session ouverte »
+ * ou « Lecture de la session… », rangée de la carte, puis colonne des onglets et de leurs panneaux. Rendu
  * seul, sans état : les modules gardent leurs hooks. Chaque emplacement a sa
  * place fixe, pour que la carte ne soit jamais remontée ; les classes `an-*`
  * sont celles d'`analysisMobile.css`.
  */
 function AnalysisShell<K extends string>({
-  title, family, backLabel, file, share, error, draft, loadError, alerts, empty, map, tabs,
+  title, family, backLabel, file, share, error, draft, loadError, alerts, empty, reading = false, map, tabs,
 }: AnalysisShellProps<K>) {
   // Le filtre d'activité de la bibliothèque d'où l'on vient (lot 158) est rendu au retour.
   const [params] = useSearchParams();
@@ -101,6 +103,12 @@ function AnalysisShell<K extends string>({
       {empty && (
         <p style={{ color: 'var(--muted)' }}>
           Aucune session ouverte : choisissez-en une dans <Link to={back}>{backLabel}</Link>.
+        </p>
+      )}
+
+      {reading && (
+        <p role="status" aria-live="polite" style={{ color: 'var(--muted)' }}>
+          Lecture de la session…
         </p>
       )}
 

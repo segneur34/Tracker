@@ -35,9 +35,11 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
   /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
   const setGeneral = useCallback((shown: boolean) => set({ general: shown } as Partial<Record<K, boolean>>), [set]);
   const advanced = useAdvancedTabs(sessionKey, setGeneral);
+  // Nouvelle session : « général » ouvert dès ce rendu, avant que l'effet de `useAdvancedTabs` ne l'écrive.
+  const fresh = advanced.fresh;
   const open = useMemo(
-    () => maskAdvancedTabs(maskHiddenTabs(storedOpen, tabs, tabChoices), tabs, advanced.open),
-    [storedOpen, tabs, tabChoices, advanced.open]
+    () => maskAdvancedTabs(maskHiddenTabs(fresh ? { ...storedOpen, general: true } : storedOpen, tabs, tabChoices), tabs, advanced.open),
+    [storedOpen, tabs, tabChoices, advanced.open, fresh]
   );
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme. */
   const highlight = useMapHighlight<K, T>(open);

@@ -76,6 +76,38 @@ export const loadGpxOutcome = async (load: Promise<string | null>): Promise<GpxL
 };
 
 /**
+ * Suite à donner à une lecture du GPX terminée : `drop`, la page l'a quittée
+ * (analyse démontée, autre session demandée, session sortie de la mémoire)
+ * et rien n'est lu ni écrit, ce qui épargne à la page suivante la lecture du
+ * texte ; `retry`, l'erreur est dite et la lecture refaite quand la session
+ * reparaîtra ; `error`, l'erreur est dite ; `deliver`, le texte va au module.
+ */
+export const gpxLoadAction = (outcome: GpxLoadOutcome, alive: boolean): 'drop' | 'error' | 'retry' | 'deliver' => {
+  if (!alive) return 'drop';
+  if ('error' in outcome) return outcome.retry ? 'retry' : 'error';
+  return 'deliver';
+};
+
+/**
+ * Session de l'adresse en cours de lecture : demandée, connue de la
+ * bibliothèque prête (`known`, `ready`), sans erreur, et dont le texte n'est
+ * pas encore remis au module (`deliveredFor`, fichier de la dernière trace
+ * remise). Le module la calcule dans le rendu même où elle lui est remise :
+ * « Lecture de la session… » tient jusqu'au rendu de la trace. Mémoire pas
+ * encore ouverte, non autorisée ou perdue, session inconnue : rien n'est lu,
+ * la page reste muette (les messages de la mémoire sont ailleurs).
+ */
+export const sessionReading = ({ requested, ready, known, deliveredFor, error }: {
+  requested: string | null;
+  /** Bibliothèque ouverte (`status === 'ready'`). */
+  ready: boolean;
+  /** Session demandée connue de la bibliothèque. */
+  known: boolean;
+  deliveredFor: string | null;
+  error: string | null;
+}): boolean => requested !== null && ready && known && deliveredFor !== requested && error === null;
+
+/**
  * Côté module : charge la session désignée par l'URL, une seule fois par
  * fichier, dès que la bibliothèque la connaît. Sa fiche est relue en entier
  * avant le GPX (`loadSessionGpx`) : altitude, voies et sauts rangés sont là
@@ -85,6 +117,11 @@ export const loadGpxOutcome = async (load: Promise<string | null>): Promise<GpxL
  * chaque changement de réglage (`setSport`), et la fiche à chaque écriture
  * (notes, nombre de manœuvres) : s'ils relançaient l'effet, la trace serait
  * rechargée en boucle, comme au §10, point 39. D'où les références à part.
+ *
+ * Quitter la page, ou demander une autre session, abandonne la lecture en
+ * cours (nettoyage de l'effet, `gpxLoadAction`) : son texte n'est pas lu, et
+ * la session sera relue si on y revient (double passage de `StrictMode`,
+ * dossier perdu puis rouvert).
  */
 export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySession) => void) => {
   const [params] = useSearchParams();
@@ -92,6 +129,8 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
   const session = useLibrarySession(requested);
   /** Bibliothèque ouverte et balayée : une session encore inconnue n'y est pas. */
   const settled = useLibrarySelector((s) => s.status === 'ready' && s.scanning === null);
+  /** Bibliothèque ouverte : la mémoire est lisible. */
+  const ready = useLibrarySelector((s) => s.status === 'ready');
   const known = session !== undefined;
 
   const latest = useRef({ onLoad, session });
@@ -101,14 +140,22 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
 
   const loadedFor = useRef<string | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  /** Fichier de la dernière trace remise au module (`onLoad`). */
+  const [deliveredFor, setDeliveredFor] = useState<string | null>(null);
   useEffect(() => {
     if (requested === null || !known || loadedFor.current === requested) return;
     loadedFor.current = requested;
+    /** Faux dès le nettoyage de l'effet : la lecture est abandonnée. */
+    let alive = true;
+    /** Vrai quand la lecture a abouti (trace remise ou erreur dite). */
+    let done = false;
     void loadGpxOutcome(loadSessionGpx(requested)).then((outcome) => {
-      if (loadedFor.current !== requested) return;
+      const action = gpxLoadAction(outcome, alive);
+      if (action === 'drop') return;
+      done = true;
       if ('error' in outcome) {
         // Lecture qui a levé : refaite quand la session reparaît (dossier rouvert).
-        if (outcome.retry) loadedFor.current = null;
+        if (action === 'retry') loadedFor.current = null;
         setReadError(outcome.error);
         return;
       }
@@ -119,8 +166,15 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
         return;
       }
       setReadError(null);
+      // Dans le même rappel que la trace : un seul rendu, où la lecture prend fin.
+      setDeliveredFor(requested);
       latest.current.onLoad(outcome.text, current);
     });
+    return () => {
+      alive = false;
+      // Lecture abandonnée : à refaire quand la session sera de nouveau demandée.
+      if (!done && loadedFor.current === requested) loadedFor.current = null;
+    };
   }, [requested, known]);
 
   // Fiche redevenue partielle sous l'analyse ouverte (cas de secours) : relue en entier.
@@ -130,12 +184,15 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
   }, [partial, requested]);
 
   const missing = requested !== null && !known && settled;
+  const error = missing ? 'Cette session n\'est pas dans la mémoire.' : readError;
   return {
     /** Session demandée par l'URL, connue ou non de la mémoire, `null` si aucune. */
     requested,
     /** Fichier de la session chargée depuis la mémoire, `null` sinon. */
     file: known ? requested : null,
     session,
-    error: missing ? 'Cette session n\'est pas dans la mémoire.' : readError,
+    error,
+    /** Session demandée dont la trace n'est pas encore remise au module : « Lecture de la session… ». */
+    reading: sessionReading({ requested, ready, known, deliveredFor, error }),
   };
 };

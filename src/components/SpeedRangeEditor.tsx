@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { SPEED_UNIT_LABEL, editSpeedUnit, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, editSpeedUnit, fromDisplaySpeed, speedFromText, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import Button from './ui/Button';
 
 /**
@@ -17,11 +17,18 @@ interface SpeedRangeEditorProps {
   range: SpeedRangeMs;
   /** Vrai si les bornes viennent de l'utilisateur, pour proposer le retour au défaut. */
   isOverridden: boolean;
+  /**
+   * Moment où une borne tapée est écrite : `input` (défaut), à chaque frappe
+   * valide ; `blur`, à Entrée ou en quittant le champ, et seulement si les
+   * deux bornes restent valides (min < max), sinon le champ reprend la borne
+   * en vigueur. « Défaut » est toujours immédiat.
+   */
+  commit?: 'input' | 'blur';
   /** Nouvelles bornes, ou `null` pour revenir au défaut du support. */
   onChange: (range: SpeedRangeMs | null) => void;
 }
 
-function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }: SpeedRangeEditorProps) {
+function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, commit = 'input', onChange }: SpeedRangeEditorProps) {
   const unit = editSpeedUnit(activityUnit);
   const unitLabel = SPEED_UNIT_LABEL[unit];
 
@@ -42,7 +49,8 @@ function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }:
    * (piège du point 13 de docs/HISTORIQUE.md, que le point 20 pensait
    * éviter ici à tort). Le texte local reflète donc toujours exactement ce
    * qui a été tapé ; l'application reste immédiate dès que la valeur est
-   * valide, flèches ↕ comprises.
+   * valide, flèches ↕ comprises, sauf en mode `blur` (analyses), où elle
+   * attend Entrée ou la sortie du champ.
    */
   const [minText, setMinText] = useState(() => String(boundValue(range.minMs)));
   const [maxText, setMaxText] = useState(() => String(boundValue(range.maxMs)));
@@ -67,6 +75,7 @@ function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }:
   const handleBoundChange = (bound: 'min' | 'max') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     (bound === 'min' ? setMinText : setMaxText)(text);
+    if (commit === 'blur') return;
 
     const parsed = parseFloat(text);
     if (isNaN(parsed) || parsed <= 0) return;
@@ -75,17 +84,39 @@ function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }:
     onChange(bound === 'min' ? { minMs: ms, maxMs: range.maxMs } : { minMs: range.minMs, maxMs: ms });
   };
 
+  /** Validation d'une borne (`commit="blur"`) : écrite si elle change et garde min < max, sinon le champ reprend la borne en vigueur. */
+  const commitBound = (bound: 'min' | 'max') => () => {
+    const current = bound === 'min' ? range.minMs : range.maxMs;
+    const reset = () => (bound === 'min' ? setMinText : setMaxText)(String(boundValue(current)));
+    const ms = speedFromText(bound === 'min' ? minText : maxText, unit, 'ms');
+    if (ms === null || boundValue(ms) === boundValue(current)) {
+      reset();
+      return;
+    }
+    const next = bound === 'min' ? { minMs: ms, maxMs: range.maxMs } : { minMs: range.minMs, maxMs: ms };
+    if (!isValidSpeedRange(next)) {
+      reset();
+      return;
+    }
+    onChange(next);
+  };
+  /** Écouteurs de validation d'un champ, en mode `blur` seulement. */
+  const commitHandlers = (bound: 'min' | 'max') => commit === 'blur' ? {
+    onBlur: commitBound(bound),
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); commitBound(bound)(); } },
+  } : {};
+
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
       <strong>Couleur de la trace :</strong>
       de
       <input type="number" min={0} step={0.5} value={minText}
-        onChange={handleBoundChange('min')}
+        onChange={handleBoundChange('min')} {...commitHandlers('min')}
         className="ui-field ui-field--s num"
         style={{ width: '68px', textAlign: 'right' }} />
       à
       <input type="number" min={0} step={0.5} value={maxText}
-        onChange={handleBoundChange('max')}
+        onChange={handleBoundChange('max')} {...commitHandlers('max')}
         className="ui-field ui-field--s num"
         style={{ width: '68px', textAlign: 'right' }} />
       {unitLabel}
@@ -101,13 +132,14 @@ export default SpeedRangeEditor;
 /**
  * Bornes de couleur de la trace dans l'onglet réglages d'une analyse : le
  * champ `SpeedRangeEditor`, qui ne passe au brouillon que des bornes valides
- * (min < max) ou `null` (retour au défaut).
+ * (min < max) ou `null` (retour au défaut), écrites à Entrée ou en quittant le
+ * champ (`commit="blur"`) : chaque borne écrite redessine toute la trace.
  */
-export function SessionColorRangeField({ unit, range, isOverridden, onChange }: Omit<SpeedRangeEditorProps, 'onChange'> & {
+export function SessionColorRangeField({ unit, range, isOverridden, onChange }: Omit<SpeedRangeEditorProps, 'onChange' | 'commit'> & {
   onChange: (range: SpeedRangeMs | null) => void;
 }) {
   return (
-    <SpeedRangeEditor unit={unit} range={range} isOverridden={isOverridden}
+    <SpeedRangeEditor unit={unit} range={range} isOverridden={isOverridden} commit="blur"
       onChange={(next) => { if (next === null || isValidSpeedRange(next)) onChange(next); }} />
   );
 }
