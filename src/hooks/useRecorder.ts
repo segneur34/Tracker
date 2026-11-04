@@ -912,7 +912,8 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
     );
     // Services arrêtés à présent : seul l'âge du journal décide, reprise échouée comprise.
     const canContinue = recoveryDecision({ ...facts, services: NO_RECOVERY_SERVICES, nowMs }) === 'offer';
-    if (pending) setState({ pending: { ...pending, canContinue }, saved: null, error: null });
+    // « Continuer l'enregistrement » est sur la page Enregistrer : y mener, sinon l'offre reste invisible depuis l'accueil.
+    if (pending) setState({ pending: { ...pending, canContinue }, saved: null, error: null, landOnRecording: canContinue });
     return 'free';
   } catch (err) {
     return setJournalAside(`Session interrompue non récupérée (${errorMessage(err, 'erreur inconnue')})`);

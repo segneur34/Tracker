@@ -185,11 +185,13 @@ const request = () => {
     reset();
     return;
   }
-  if (timer !== null) return;
   const refreshMs = pageListeners.size() > 0 ? PAGE_REFRESH_MS : BACKGROUND_REFRESH_MS;
   const waitMs = Math.max(0, refreshMs - (Date.now() - lastRunMs));
-  if (waitMs === 0) compute();
-  else if (pageListeners.size() > 0) {
+  if (waitMs === 0) {
+    // Écran éteint, le différé ne part plus : l'attendre figerait le direct et la notification jusqu'au retour de la page.
+    clearTimer();
+    compute();
+  } else if (timer === null && pageListeners.size() > 0) {
     timer = setTimeout(() => {
       timer = null;
       compute();

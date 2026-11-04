@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryFile, setAsideName } from './files';
+import { createMemoryFile, filesystem, setAsideName } from './files';
 
 describe('fichier mis de côté (lot 143, 123a)', () => {
   const at = Date.UTC(2026, 10, 3, 14, 25, 1, 123);
@@ -16,5 +16,11 @@ describe('fichier mis de côté (lot 143, 123a)', () => {
     expect(await file.read()).toBeNull();
     await file.append('neuf');
     expect(await file.read()).toBe('neuf');
+  });
+});
+
+describe('greffon de fichiers', () => {
+  it('chargé une seule fois : écran éteint, un nouvel import() ne rend plus la main', () => {
+    expect(filesystem()).toBe(filesystem());
   });
 });

@@ -471,7 +471,7 @@ describe('reprise silencieuse, cas limites', () => {
     expect(state.status).toBe('idle');
     expect(state.pending?.pointCount).toBe(11);
     expect(state.pending?.canContinue).toBe(true);
-    expect(state.landOnRecording).toBe(false);
+    expect(state.landOnRecording).toBe(true);
     expect(gpsService.orphanStops).toBe(1);
     expect(journal.text).toBe(text);
     expect(journal.writes).toBe(1);
@@ -748,11 +748,13 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     await fresh.recoverInterruptedRecording();
     expect(fresh.getRecorderState().pending?.canContinue).toBe(true);
     expect(fresh.getRecorderState().pending?.recovered).toBe(true);
+    expect(fresh.getRecorderState().landOnRecording).toBe(true);
 
     vi.setSystemTime(T0 + 20_000 + 601_000);
     fresh = await reload();
     await fresh.recoverInterruptedRecording();
     expect(fresh.getRecorderState().pending?.canContinue).toBe(false);
+    expect(fresh.getRecorderState().landOnRecording).toBe(false);
   });
 
   it.each([[1], [5]])('même journal, segment neuf, source relancée par le geste, durée sans saut, à %i Hz', async (hz) => {
@@ -760,6 +762,7 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     vi.setSystemTime(T0 + 200_000);
     const fresh = await reload();
     await fresh.recoverInterruptedRecording();
+    fresh.acknowledgeRecordingLanding();
     const next = fakeSource();
     await fresh.continuePendingSession(next);
     const state = fresh.getRecorderState();

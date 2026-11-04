@@ -56,3 +56,40 @@ C'est la fonction première au téléphone, et ce que la revue Play et Android v
 - Limites gardées : une balise « Passée » à la main et les bips coupés ne survivent pas à la chute ; la pause automatique n'est pas au journal, elle se redétecte (60 s de points gardés) ; la date de la dernière ligne mêle l'heure GPS des positions et l'horloge du téléphone pour les autres lignes, sans effet connu sur le seuil de 10 min.
 - Reporté en Plus tard : test JUnit de `.imu`, copie de la capture par flux.
 - Banc : `timer`, deux échecs identiques avant et après (tuile « Muscu et timer » cherchée sous un ancien nom, sans lien avec ce lot) ; `balises`, un point glissé à 13 ou 14 selon le rejeu. La reprise ne se voit pas au banc : tests et téléphone.
+
+## Écran éteint, cause et correction (partie C, 0.4.69, 04/11)
+
+**Cause :** environ une minute après le passage en arrière-plan, la page gèle ses minuteries, ses messages internes (`MessageChannel`, donc React) et ses `import()` ; seuls les messages venus d'Android passent (mesuré page cachée : minuterie, message et `import()` sans réponse en 6 s, `nativePromise` répond). Les verrous de veille sont hors de cause. Le diagnostic précédent, « `appendFile` sans réponse », était faux : rien n'arrivait à Android.
+
+**Course réelle du 04/11 (0.4.68 de débogage) :** 3,41 km, 24 min 24, 1 448 points, capture complète (146 910 mesures, écart maximal 1,12 s). Journal sans écriture de 15:11:17 à 15:23:11, 723 positions reçues par la page pendant ce temps, tout écrit au rallumage : rien de perdu, mais 12 min en mémoire seule.
+
+**Corrigé :**
+- `filesystem()` chargé une fois et gardé (`import()` à chaque écriture jusque-là) ; garde-fou retiré, sa minuterie gelant aussi.
+- `request` (`useLiveRecording`) n'attend plus un différé gelé : une position arrivée après l'échéance calcule et le remplace ; la notification repart.
+- `landOnRecording` vrai quand « Continuer » est proposé.
+
+**Prouvé au téléphone (fausses positions, debug 0.4.68 avec ces corrections) :**
+- Journal écrit toutes les 10 s sur plus de 9 min de page cachée ; notification récrite toutes les 6 s.
+- Appli tuée, rouverte : arrive sur Enregistrer. « Continuer » : même journal, début identique, segment neuf, durée sans saut, capture non reprise et dite à l'écran, `.imu` gardé.
+- Chute après 2 min 30 de page cachée : écriture reprise en 2 s et suivie au-delà de 2 min, même processus, un seul en-tête, une seule coupure.
+- Veille profonde forcée : positions toujours écrites. GPS muet : son et « GPS perdu » à 58 s, écran éteint, effacé au retour.
+- Quatre chutes en 6 min : « Trop de chutes rapprochées », processus tué, carte avec « Continuer » à la réouverture. Offre à 12 min : carte seule, ouverture sur l'accueil.
+- `assembleRelease` et `bundleRelease` sans clé : refusés par le message clair ; `assembleDebug` passe, **signé alors de la clé de debug du PC : à ne pas installer**.
+
+**Pas essayé :** chute avec compteur en cours et avec ceinture (Bluetooth éteint, compteur natif par construction) ; capture après une chute avec capteurs actifs, déjà prouvée en 0.4.68 avant ces corrections.
+
+**Limites :**
+- `import()` du greffon GPS dans `startNative` : « Continuer » reste bloqué page cachée (vu téléphone verrouillé) ; sans effet réel, le geste se fait écran allumé.
+- `currentPosition` et la relance « localisation coupée » (`LOCATION_RETRY_MS`) reposent sur des minuteries : gelées écran éteint, reprises au rallumage.
+
+**Banc :** `gps-perdu`, `notification`, `marche`, `session-save` contre 8487f8e : seul écart, 5 ms sur un intervalle de notification ; `carte-direct` ok, sans comparaison.
+
+**Non joués :** scripts manuels `library`, `library2`, `library3`, `session-save-resume`, `planning`, faute de GPX fournis. Commentaire périmé vu : `RecordingNotificationPlugin.java:25-28` dit « service arrêté » en pause. `formatSpeed(null)` rend « - » et non « — » dans le direct.
+
+## Passe `doc`, après validation seulement
+- DECISIONS §6 : moyenne active du direct, reprise seule, « Continuer » sous 10 min, verrous retirés, et le temps hors de l'appli non compté après « Continuer ». §8 : le seuil suit la session, fiche changée relue et fondue, plafond de 30 Mo, mémoire plus récente en lecture seule. §4 : vitesse max du surf partout celle des vagues.
+- `CLAUDE.md` règle 12 : `recovery.ts` (et `errorText.ts` s'il compte). INVENTAIRE : `resume.ts`, `recovery.ts`, `RecoveryPlugin.java`, `errorText.ts`, `loadedListStore.ts`, `useRetainedScroll.ts`, `recordMerge.ts`, `summaryGestures.ts`, `nativeConstants.test.ts`. ETAT §12 : `bundleRelease`, release refusée sans clé.
+- LISEZMOI du banc, « Scripts à revoir » : `timer` (tuile « Muscu et timer » sous un ancien nom, deux échecs avant et après), `notification` et `chrono` (écarts de chronomètre), `partage` et `miseajour` (lecture trop tôt sous charge). Pièges : `passe.mjs --sans-cache -j 2` sous charge ; un agent en worktree part d'`origin/main` et n'écrit pas hors de lui (déjà dans `/chaine`).
+
+**Non joués, à savoir :** scripts manuels `library`, `library2`, `library3`, `session-save-resume`, `planning`, faute de GPX fournis. Commentaire périmé vu : `RecordingNotificationPlugin.java:25-28` dit « service arrêté » en pause. `formatSpeed(null)` rend « - » et non « — » dans le direct.
+- HISTORIQUE : le gel de la page cachée (minuteries, `MessageChannel`, `import()`), piège à retenir pour tout code qui doit vivre écran éteint ; CLAUDE.md règle 10 ou 12 si l'utilisateur le veut.
