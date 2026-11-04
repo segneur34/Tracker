@@ -213,6 +213,7 @@ function SailingModule() {
     windInputRequired,
     hasDeviceSpeed,
     loadError,
+    reading: trackReading,
     sessionKey,
     cumulative,
     flights,
@@ -1028,7 +1029,7 @@ function SailingModule() {
         </>
       )}
       empty={trackData.length === 0 && requestedFile === null}
-      reading={reading}
+      reading={reading || trackReading}
       map={{
         panelId: 'sailing.carte',
         rowZIndex: 0,

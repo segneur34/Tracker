@@ -1,21 +1,17 @@
 import { plainError } from '../platform/errorText';
-import { useCallback, useMemo, useState } from 'react';
-import { parseGpx } from '../core/gpxParser';
-import { computeKinematics, detectTrackDeviceSpeedUnit } from '../core/kinematics';
-import {
-  referenceSpeedMs as sessionReferenceSpeedMs,
-  kinematicsOptionsOf,
-  samplingIntervalS,
-  scalesFiltersToSession,
-  type KinematicsProfile,
-} from '../core/sessionSpeed';
-import { buildCumulativeTrack } from '../core/sessionStats';
-import type { RawTrackPoint, TrackPoint } from '../core/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { kinematicsProfileOf, prepareRawTrack, type PreparedTrack } from '../core/prepareTrack';
+import type { KinematicsProfile } from '../core/sessionSpeed';
+import { runInWorker } from '../library/trackWorkerClient';
 
 /**
  * Ingestion générique d'une trace GPX. Aucune notion de sport ici : le hook
  * lit le fichier, calcule la kinématique et s'arrête là. Chaque module de
  * support construit ensuite ses propres statistiques par-dessus.
+ *
+ * Lecture et kinématique se font hors du fil de l'affichage (lot 126 B,
+ * `core/prepareTrack.ts` dans `library/trackWorker.ts`) : le résultat arrive
+ * d'un coup, avec les mêmes chiffres qu'en ligne.
  */
 
 export interface GpxSessionOptions {
@@ -29,92 +25,143 @@ export interface GpxSessionOptions {
   referenceSpeedOverrideMs?: number;
 }
 
-export interface GpxSessionState {
+/** GPX à lire : son texte, gardé tant que l'analyse est ouverte (un changement d'allure ou de support le relit), et son fichier. */
+export interface GpxSource {
+  text: string;
   fileName: string | null;
-  trackName: string | null;
-  rawPoints: RawTrackPoint[];
-  /** Vrai si la vitesse vient de l'appareil (Doppler) et non des positions. */
-  hasDeviceSpeed: boolean;
-  /** Message d'erreur de lecture, le cas échéant. */
-  error: string | null;
 }
 
-const EMPTY_STATE: GpxSessionState = {
-  fileName: null,
-  trackName: null,
-  rawPoints: [],
-  hasDeviceSpeed: false,
-  error: null,
-};
+/** Trace affichée : celle d'une source préparée (`from`), ou aucune. */
+export interface ShownGpx {
+  /** Source dont vient la trace affichée ; `null` : aucune. */
+  from: GpxSource | null;
+  fileName: string | null;
+  /** Message d'erreur de lecture, le cas échéant. */
+  error: string | null;
+  /** Trace préparée ; `null` : aucune (rien de lu, ou GPX illisible). */
+  prepared: PreparedTrack | null;
+}
+
+interface GpxState {
+  /** GPX demandé, `null` avant le premier. */
+  source: GpxSource | null;
+  shown: ShownGpx;
+}
+
+const NOTHING_SHOWN: ShownGpx = { from: null, fileName: null, error: null, prepared: null };
+
+/** Trace affichée une fois la source préparée ; moins de deux points horodatés : dit en clair. */
+export const preparedState = (from: GpxSource, prepared: PreparedTrack): ShownGpx => ({
+  from,
+  fileName: from.fileName,
+  error: prepared.rawPoints.length < 2 ? 'Le fichier ne contient pas assez de points horodatés.' : null,
+  prepared,
+});
+
+/** GPX illisible : l'erreur dite en clair, pas de trace. */
+export const failedState = (from: GpxSource, err: unknown): ShownGpx => ({
+  from,
+  fileName: from.fileName,
+  error: plainError(err, 'Lecture du fichier impossible.'),
+  prepared: null,
+});
+
+/** Même fichier de la mémoire : une source relue sous le même nom (dossier rouvert) garde la trace affichée jusqu'au résultat. */
+const sameFile = (a: GpxSource, b: GpxSource): boolean => a === b || (a.fileName !== null && a.fileName === b.fileName);
 
 /**
- * Seuls les points bruts sont conservés en état. La trace enrichie est
- * dérivée : changer une fenêtre de filtrage recalcule la kinématique sans
- * relire le fichier.
+ * Vrai quand un autre fichier que celui affiché se prépare : « Lecture de la
+ * session… ». Faux quand la même source est relue (allure, support) : la
+ * trace précédente reste affichée jusqu'au résultat.
  */
-export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
-  const [session, setSession] = useState<GpxSessionState>(EMPTY_STATE);
-  const { profile, referenceSpeedOverrideMs } = kinematicsOptions;
+export const gpxReading = ({ source, shown }: GpxState): boolean =>
+  source !== null && (shown.from === null || !sameFile(shown.from, source));
 
-  /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe : détectée une fois, pour l'allure aussi. */
-  const deviceSpeedUnit = useMemo(() => detectTrackDeviceSpeedUnit(session.rawPoints), [session.rawPoints]);
+/**
+ * Nouvelle source : un autre fichier efface la trace affichée, le même la garde ;
+ * le même texte sous le même nom, redonné tel quel (GPX chargé à la main deux
+ * fois), rend l'état inchangé : rien n'est relu.
+ */
+export const withSource = (state: GpxState, source: GpxSource): GpxState => {
+  if (state.source !== null && state.source.text === source.text && state.source.fileName === source.fileName) return state;
+  return {
+    source,
+    shown: state.shown.from !== null && sameFile(state.shown.from, source) ? state.shown : NOTHING_SHOWN,
+  };
+};
+
+export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
+  const [state, setState] = useState<GpxState>({ source: null, shown: NOTHING_SHOWN });
+  const { profile, referenceSpeedOverrideMs } = kinematicsOptions;
+  const { source, shown } = state;
+
+  // Profil réduit aux champs des filtres, comparé par valeur : un autre objet aux mêmes filtres ne relit rien.
+  const profileId = profile?.id;
+  const medianWindowSeconds = profile?.medianWindowSeconds;
+  const maxDetourRatio = profile?.maxDetourRatio;
+  const maxPlausibleSpeedMs = profile?.maxPlausibleSpeedMs;
+  const maxGapS = profile?.maxGapS;
+  const filters = useMemo(
+    () => (profileId === undefined || medianWindowSeconds === undefined || maxDetourRatio === undefined
+      || maxPlausibleSpeedMs === undefined || maxGapS === undefined
+      ? undefined
+      : kinematicsProfileOf({ id: profileId, medianWindowSeconds, maxDetourRatio, maxPlausibleSpeedMs, maxGapS })),
+    [profileId, medianWindowSeconds, maxDetourRatio, maxPlausibleSpeedMs, maxGapS]
+  );
 
   /**
-   * Allure de la session, en m/s : déduite de la trace, ou imposée. Elle est
-   * calculée sur les vitesses brutes, puisque c'est le filtrage qui en dépend.
+   * Lecture et kinématique de la source, hors du fil de l'affichage. Le
+   * résultat est posé d'un coup ; celui d'une demande dépassée (autre fichier,
+   * autre allure, page quittée) est jeté (`alive`).
    */
-  const referenceSpeedMs = useMemo(
-    () => referenceSpeedOverrideMs ?? sessionReferenceSpeedMs(session.rawPoints, deviceSpeedUnit),
-    [session.rawPoints, referenceSpeedOverrideMs, deviceSpeedUnit]
+  useEffect(() => {
+    if (source === null) return;
+    let alive = true;
+    runInWorker('prepare', source.text, { fileName: source.fileName, profile: filters, referenceSpeedOverrideMs }).then(
+      (prepared) => {
+        if (alive) setState((s) => (s.source === source ? { source, shown: preparedState(source, prepared) } : s));
+      },
+      (err: unknown) => {
+        if (alive) setState((s) => (s.source === source ? { source, shown: failedState(source, err) } : s));
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [source, filters, referenceSpeedOverrideMs]);
+
+  /** Trace vide, tant que rien n'est préparé : les mêmes valeurs qu'une trace sans point (allure imposée comprise). */
+  const empty = useMemo(
+    () => prepareRawTrack([], { trackName: null, hasDeviceSpeed: false }, { referenceSpeedOverrideMs }),
+    [referenceSpeedOverrideMs]
   );
-
-  const track: TrackPoint[] = useMemo(
-    () => computeKinematics(
-      session.rawPoints,
-      profile ? kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs: referenceSpeedMs }) : {}
-    ),
-    [session.rawPoints, profile, referenceSpeedMs]
-  );
-
-  /** Distance et temps cumulés le long de la trace, calculés une fois par trace pour tout le module. */
-  const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
-
-  /** Intervalle médian entre deux points, en secondes : la cadence d'enregistrement. */
-  const samplingS = useMemo(() => samplingIntervalS(session.rawPoints), [session.rawPoints]);
-
-  /** Identité de la trace chargée : nom de trace et instant du premier point. Clé de remontage de la carte, et marque d'une nouvelle trace. */
-  const sessionKey = useMemo(() => {
-    if (track.length === 0) return null;
-    return `${session.trackName ?? session.fileName ?? 'session'}|${track[0].timeMs}`;
-  }, [track, session.trackName, session.fileName]);
+  const prepared = shown.prepared ?? empty;
 
   const loadGpxContent = useCallback((gpxContent: string, fileName: string | null = null) => {
-    try {
-      const { rawPoints, trackName, hasDeviceSpeed } = parseGpx(gpxContent);
-      setSession({
-        fileName,
-        trackName: trackName ?? null,
-        rawPoints,
-        hasDeviceSpeed,
-        error: rawPoints.length < 2 ? 'Le fichier ne contient pas assez de points horodatés.' : null,
-      });
-    } catch (err) {
-      setSession({
-        ...EMPTY_STATE,
-        fileName,
-        error: plainError(err, 'Lecture du fichier impossible.'),
-      });
-    }
+    setState((s) => withSource(s, { text: gpxContent, fileName }));
   }, []);
 
   return {
-    ...session,
-    track,
-    cumulative,
-    referenceSpeedMs,
-    samplingS,
-    sessionKey,
-    deviceSpeedUnit,
+    fileName: shown.fileName,
+    trackName: prepared.trackName,
+    rawPoints: prepared.rawPoints,
+    /** Vrai si la vitesse vient de l'appareil (Doppler) et non des positions. */
+    hasDeviceSpeed: prepared.hasDeviceSpeed,
+    /** Message d'erreur de lecture, le cas échéant. */
+    error: shown.error,
+    track: prepared.track,
+    /** Distance et temps cumulés le long de la trace, calculés une fois par trace pour tout le module. */
+    cumulative: prepared.cumulative,
+    /** Allure de la session, en m/s : déduite de la trace, ou imposée. */
+    referenceSpeedMs: prepared.referenceSpeedMs,
+    /** Intervalle médian entre deux points, en secondes : la cadence d'enregistrement. */
+    samplingS: prepared.samplingS,
+    /** Identité de la trace chargée : nom de trace et instant du premier point. Clé de remontage de la carte, et marque d'une nouvelle trace. */
+    sessionKey: prepared.sessionKey,
+    /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe. */
+    deviceSpeedUnit: prepared.deviceSpeedUnit,
+    /** Un autre fichier que celui affiché se prépare : « Lecture de la session… » (`useAnalysisSession`). */
+    reading: gpxReading(state),
     loadGpxContent,
   };
 };

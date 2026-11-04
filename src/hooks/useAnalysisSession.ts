@@ -22,6 +22,8 @@ export interface AnalysisSessionInput {
    * de la mémoire depuis (la voile, comme avant le lot 62).
    */
   draftFor?: 'shown' | 'requested';
+  /** Trace remise au module encore en préparation (`useGpxSession`, `reading`) : la lecture continue. */
+  preparing?: boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ export interface AnalysisSessionInput {
  * « Enregistrer la session » ; la liste des activités et le changement
  * d'activité de l'onglet réglages (`useChangeSessionActivity`).
  */
-export const useAnalysisSession = ({ family, activity, setActivity, load, loadedFile, draftFor = 'shown' }: AnalysisSessionInput) => {
+export const useAnalysisSession = ({ family, activity, setActivity, load, loadedFile, draftFor = 'shown', preparing = false }: AnalysisSessionInput) => {
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
   const receiveSession = useCallback(
     (content: string, session: LibrarySession) => {
@@ -66,8 +68,11 @@ export const useAnalysisSession = ({ family, activity, setActivity, load, loaded
     shownFile,
     /** Session absente de la mémoire, ou GPX illisible. */
     error,
-    /** Session demandée dont la trace n'est pas encore lue : « Lecture de la session… » (`AnalysisShell`). */
-    reading,
+    /**
+     * Session demandée dont la trace n'est pas encore lue, ou remise au module et encore en préparation :
+     * « Lecture de la session… » (`AnalysisShell`).
+     */
+    reading: reading || preparing,
     draft,
     /** Fiche de la session du brouillon, `null` hors de la mémoire : les réglages qu'elle porte (`sessionActivitySettings`). */
     record,

@@ -247,7 +247,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // voile) ; vers une activité de voile, la session part dans le module voile.
   const {
     sessionFile, requested: requestedFile, shownFile, error: sessionError, reading, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
-  } = useAnalysisSession({ family, activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
+  } = useAnalysisSession({ family, activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName, preparing: gpx.reading });
   /**
    * Seuil d'activité : celui de la session, comme sa ligne dans la liste, sinon celui que sa fiche porte, sinon
    * celui de cet appareil (Q57), sinon le défaut du calcul. Pas de champ à l'écran : il ne se règle que dans Réglages.

@@ -1,7 +1,10 @@
 import { sessionPath } from '../../library/folderLayout';
 import { READ_ONLY_MEMORY_WARNING } from '../../library/recordText';
 import { isBlankGpxText, recordFileName, serializeRecord } from '../../library/record';
-import { analyzeGpx, outdatedRefreshFiles, withSummary, type AnalyzedGpx } from '../../library/summaryOptions';
+import type { LibrarySession, RecordWithoutSummary } from '../../library/record';
+import { summarizeGpxOptions, type SummarizeGpxOptions } from '../../library/summarizeGpx';
+import { outdatedRefreshFiles, withSummary, type AnalyzedGpx } from '../../library/summaryOptions';
+import { runInWorker } from '../../library/trackWorkerClient';
 import type { MemoryFolder } from '../../platform/memoryFolder';
 import { errorMessage } from '../../core/basics';
 import { libraryState, pause, reportError, setState } from './store';
@@ -18,35 +21,53 @@ import type { SummaryJob } from './scan';
 
 /**
  * File des résumés (lot 113) : crée ou recalcule les fiches une trace à la fois, en laissant l'interface
- * répondre, au lancement, à « Mettre à jour » et après un réglage changé. Le calcul d'un résumé est remplaçable
- * (`setSummaryRunner`), et synchrone.
+ * répondre, au lancement, à « Mettre à jour » et après un réglage changé. Le calcul d'un résumé se fait hors du
+ * fil de l'affichage (lot 126 B, `library/trackWorker.ts`), et reste remplaçable (`setSummaryRunner`).
  */
 
 /** `stopped` : le dossier a changé, le balayage s'arrête ; `blank` : GPX vide, qui n'est pas une session (ignoré, pas effacé). */
 type JobOutcome = 'done' | 'unreadable' | 'blank' | 'stopped';
 
-/** Calcul du résumé d'un GPX par la file (`runJob`) : la signature d'`analyzeGpx`, synchrone. */
-export type SummaryRunner = typeof analyzeGpx;
+/**
+ * Calcul du résumé d'un GPX par la file (`runJob`) : le texte et les réglages résolus avant l'envoi
+ * (`summarizeGpxOptions`), rendu de façon asynchrone ; `null` si la trace a moins de deux points, rejeté si le
+ * XML est illisible.
+ */
+export type SummaryRunner = (text: string, options: SummarizeGpxOptions) => Promise<AnalyzedGpx | null>;
 
-/** Calcul en service, `analyzeGpx` sauf remplacement (`setSummaryRunner`). */
-let summaryRunner: SummaryRunner = analyzeGpx;
+/** Calcul par le worker des traces (en ligne sans worker) : les chiffres d'`analyzeGpx`. */
+const workerRunner: SummaryRunner = (text, options) => runInWorker('summarize', text, options);
+
+/** Calcul en service, celui du worker sauf remplacement (`setSummaryRunner`). */
+let summaryRunner: SummaryRunner = workerRunner;
+
+/** Remplace le calcul des résumés de la file (`runJob`), `null` pour revenir à celui du worker : un faux calcul dans les tests. */
+export const setSummaryRunner = (run: SummaryRunner | null): void => {
+  summaryRunner = run ?? workerRunner;
+};
+
+/** Un résumé calculé sur une fiche dont une donnée du calcul a changé pendant qu'il tournait est refait, au plus ce nombre de fois. */
+const MAX_SUMMARY_RETRIES = 2;
 
 /**
- * Remplace le calcul des résumés de la file (`runJob`), `null` pour revenir à `analyzeGpx` : un faux calcul dans
- * les tests ; un calcul hors du fil de l'affichage plus tard (lot 126 B). Il doit rester synchrone : `runJob` lit la
- * session juste avant lui et pose le résumé juste après, sans laisser passer de saisie entre les deux.
+ * Vrai si une donnée de la fiche qui change son résumé a changé (calcul, activité, analyse, altitude, test),
+ * par identité : une saisie qui n'y touche pas (nom, notes) garde les mêmes objets.
  */
-export const setSummaryRunner = (run: SummaryRunner | null): void => {
-  summaryRunner = run ?? analyzeGpx;
-};
+const summaryInputsChanged = (before: RecordWithoutSummary, after: RecordWithoutSummary): boolean =>
+  before.sport !== after.sport
+  || before.activityId !== after.activityId
+  || before.analysis !== after.analysis
+  || before.terrainElevation !== after.terrainElevation
+  || before.elevationSource !== after.elevationSource
+  || before.test !== after.test;
 
 /**
  * Crée une fiche, ou refait le résumé d'une fiche existante. Pour celle-ci,
- * la session est prise au moment du calcul, pas au début du balayage : une
- * saisie faite entre-temps (nom, notes, activité) est gardée, et l'analyse,
- * synchrone, n'en laisse passer aucune avant que le résumé soit posé. Seul un
- * GPX qu'on n'a pas su lire est « illisible » ; un échec d'écriture est dit
- * en clair.
+ * la session est prise au moment du calcul, pas au début du balayage, et
+ * relue quand le calcul rend son résultat : une saisie faite entre-temps
+ * (nom, notes) est gardée ; une qui change le résumé (activité, seuil,
+ * allure, altitude) le fait refaire. Seul un GPX qu'on n'a pas su lire est
+ * « illisible » ; un échec d'écriture est dit en clair.
  */
 const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<JobOutcome> => {
   // Résumé refait entre-temps, ou réglage remis comme avant : la trace n'est pas relue.
@@ -78,21 +99,36 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     if (current?.partial) refreshFailed.add(job.file);
     return 'done';
   }
-  const from = current?.record ?? job.base;
-  let analyzed: AnalyzedGpx | null;
-  try {
-    analyzed = text === null ? null : summaryRunner(text, from ? from.sport : undefined, from?.analysis, sessionSummarySettings(from), from);
-  } catch {
-    return 'unreadable';
+  /** Session dont le résumé est refait, relue après chaque calcul ; absente pour une fiche à créer. */
+  let latest: LibrarySession | undefined = current;
+  let analyzed: AnalyzedGpx | null = null;
+  for (let attempt = 0; ; attempt++) {
+    const from = latest?.record ?? job.base;
+    try {
+      analyzed = text === null ? null : await summaryRunner(text, summarizeGpxOptions(from, sessionSummarySettings(from)));
+    } catch {
+      return 'unreadable';
+    }
+    if (gen !== lib.generation) return 'stopped';
+    if (!latest) break;
+    // Pendant le calcul, la session a pu être supprimée, passer en lecture seule ou changer de réglages.
+    const now = findSession(job.file);
+    if (!now || now.readOnly || now.partial) {
+      if (now?.partial) refreshFailed.add(job.file);
+      return 'done';
+    }
+    const changed = summaryInputsChanged(latest.record, now.record);
+    latest = now;
+    if (!changed || attempt >= MAX_SUMMARY_RETRIES) break;
   }
   if (!analyzed) return 'unreadable';
   // Supprimée pendant le calcul : ni remise dans la liste, ni fiche réécrite.
   if (removing.has(job.file)) return 'done';
 
-  if (current) {
-    const record = withSummary(current.record, analyzed.summary);
-    noteRecordEdits(job.file, current.record, record);
-    replaceSession({ ...current, record }, true);
+  if (latest) {
+    const record = withSummary(latest.record, analyzed.summary);
+    noteRecordEdits(job.file, latest.record, record);
+    replaceSession({ ...latest, record }, true);
     cancelRecordWrite(job.file);
     await writeRecordNow(job.file);
     return 'done';

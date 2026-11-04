@@ -150,6 +150,8 @@ export const useSailingSession = ({
     sessionKey: gpx.sessionKey,
     hasDeviceSpeed: gpx.hasDeviceSpeed,
     loadError: gpx.error,
+    /** Trace remise encore en préparation, hors du fil de l'affichage : « Lecture de la session… ». */
+    reading: gpx.reading,
     maneuverStats,
     maneuverSummary,
     vmgStats,

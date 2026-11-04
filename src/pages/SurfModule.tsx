@@ -159,7 +159,7 @@ function SurfModule() {
   // Session de l'adresse et son brouillon : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
   const {
     sessionFile, requested: requestedFile, shownFile, error: sessionError, reading, draft, record: draftRecord, allActivities, changeActivity: changeSessionActivity,
-  } = useAnalysisSession({ family: 'surf', activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
+  } = useAnalysisSession({ family: 'surf', activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName, preparing: gpx.reading });
 
   /** Seuil et foil de l'activité : ceux que la fiche de la session porte, sinon ceux de cet appareil (Q57). */
   const carried = sessionActivitySettings(draftRecord, { thresholdOverride: thresholdOverride ?? undefined, foil: activityFoil });
