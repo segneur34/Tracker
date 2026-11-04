@@ -19,7 +19,9 @@ import {
   settingsActivityCount,
   settingsEntryKey,
   settingsEntryName,
+  settingsFileInfo,
   settingsSignature,
+  sortedSettingsFiles,
   unseenSettingsEntries,
   type SettingsEntry,
 } from './settingsFile';
@@ -154,6 +156,18 @@ describe('appareils et noms de fichier', () => {
     expect(ownSettingsEntry([phone, pc, friend], 'pc')).toBe(pc);
     const sameName = entry('telephone.json', 1000, { id: 'autre', name: 'Téléphone' });
     expect(ownSettingsEntry([sameName], 'tel')).toBeNull();
+  });
+
+  it('montre un fichier comme Réglages › Mémoire : nom, date, activités, et s’il est celui de l’appareil (lot 113)', () => {
+    expect(settingsFileInfo(phone, 'tel')).toEqual({
+      fileName: 'telephone.json', name: 'Téléphone', savedAt: 3000, activityCount: settingsActivityCount(phone.file), own: true,
+    });
+    expect(settingsFileInfo(friend, 'tel')).toMatchObject({ name: 'lea', own: false });
+  });
+
+  it('range la liste : le fichier de l’appareil en tête, puis du plus récent au plus ancien (lot 113)', () => {
+    expect(sortedSettingsFiles([pc, friend, phone], 'pc').map((f) => f.fileName)).toEqual(['pc.json', 'lea.json', 'telephone.json']);
+    expect(sortedSettingsFiles([], 'pc')).toEqual([]);
   });
 
   it('désigne le plus récent, pour un appareil neuf', () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity } from '../core/activities';
-import { activityValues, noteGestures, readSummaryGestures, settleGestures, type SummaryGestures } from './summaryGestures';
+import { sessionRecord } from '../test/record.fixture';
+import type { LibrarySession } from './record';
+import { activityValues, noteGestures, readSummaryGestures, settleGestures, waitingGestureActivities, type SummaryGestures } from './summaryGestures';
 
 const activity = (id: string, base: Activity['base']): Activity => ({ id, name: id, base, color: '#000' });
 
@@ -76,5 +78,31 @@ describe('gestes', () => {
     expect(readSummaryGestures(null)).toBeNull();
     expect(readSummaryGestures({ pending: {} })).toBeNull();
     expect(readSummaryGestures({ baseline: { a: { threshold: 'x', foil: true } } })).toEqual({ baseline: { a: { foil: true } }, pending: {} });
+  });
+});
+
+describe('activités dont un geste attend encore (lot 113)', () => {
+  const session = (file: string, patch: Partial<LibrarySession> = {}, record: Parameters<typeof sessionRecord>[0] = {}): LibrarySession =>
+    ({ file, record: sessionRecord({ gpx: file, ...record }), readOnly: false, warning: null, ...patch });
+
+  it('relève l’activité de chaque session qui attend, ni en lecture seule ni sans calcul', () => {
+    const sessions = [
+      session('a.gpx', {}, { activityId: 'wing' }),
+      session('b.gpx', { readOnly: true }, { activityId: 'kite' }),
+      session('c.gpx', {}, { sport: null, activityId: 'moth' }),
+      session('d.gpx', {}, { activityId: 'faite' }),
+      session('e.gpx', {}, { activityId: 'supprimee' }),
+    ];
+    const ids = waitingGestureActivities(sessions, (s) => s.file !== 'd.gpx', (_sport, id) => (id === 'supprimee' ? null : id ?? null));
+    expect([...ids]).toEqual(['wing']);
+  });
+
+  it('demande l’activité du geste par le calcul et l’activité de la session', () => {
+    const asked: string[] = [];
+    waitingGestureActivities([session('a.gpx', {}, { activityId: null })], () => true, (sport, id) => {
+      asked.push(`${sport}|${id}`);
+      return 'wingfoil';
+    });
+    expect(asked).toEqual(['wingfoil|null']);
   });
 });

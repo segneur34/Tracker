@@ -120,6 +120,33 @@ export interface SettingsEntry {
   file: SettingsFile;
 }
 
+/** Un fichier de réglages du dossier, tel que Réglages › Mémoire le montre. */
+export interface SettingsFileInfo {
+  fileName: string;
+  /** Nom de l'appareil qui l'a écrit, sinon celui du fichier. */
+  name: string;
+  /** Instant du dernier changement de ses réglages. */
+  savedAt: number;
+  activityCount: number;
+  /** Fichier de cet appareil. */
+  own: boolean;
+}
+
+/** Ce que Réglages › Mémoire montre d'un fichier, pour l'appareil d'identifiant `deviceId`. */
+export const settingsFileInfo = (e: SettingsEntry, deviceId: string): SettingsFileInfo => ({
+  fileName: e.fileName,
+  name: settingsEntryName(e),
+  savedAt: e.file.savedAt,
+  activityCount: settingsActivityCount(e.file),
+  own: e.file.device?.id === deviceId,
+});
+
+/** Liste de Réglages › Mémoire : le fichier de l'appareil en tête, puis les autres du plus récent au plus ancien. */
+export const sortedSettingsFiles = (entries: readonly SettingsEntry[], deviceId: string): SettingsFileInfo[] =>
+  entries
+    .map((e) => settingsFileInfo(e, deviceId))
+    .sort((a, b) => Number(b.own) - Number(a.own) || b.savedAt - a.savedAt);
+
 /** Fichier de l'appareil : celui qui porte son identifiant. */
 export const ownSettingsEntry = (entries: readonly SettingsEntry[], deviceId: string): SettingsEntry | null =>
   entries.find((e) => e.file.device?.id === deviceId) ?? null;

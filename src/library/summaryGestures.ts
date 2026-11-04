@@ -1,7 +1,8 @@
 import { getSportProfile } from '../core/sportProfiles';
 import { isFiniteNumber, isObject } from '../core/basics';
 import type { Activity } from '../core/activities';
-import type { SummaryActivitySettings } from './record';
+import type { SportType } from '../core/types';
+import type { LibrarySession, SummaryActivitySettings } from './record';
 import type { ActivitySummarySettings } from './summaryOptions';
 
 /**
@@ -84,3 +85,23 @@ export const settleGestures = (gestures: SummaryGestures, stillWaiting: (activit
   ...gestures,
   pending: Object.fromEntries(Object.entries(gestures.pending).filter(([id]) => stillWaiting(id))),
 });
+
+/**
+ * Activités dont un geste attend encore des sessions (lot 113, sorti de la bibliothèque) : celles de chaque session
+ * `waiting` (résumé à refaire, ou en échec), sauf en lecture seule ou sans calcul ; `gestureActivity` dit
+ * l'activité dont le geste s'applique à une session, `null` si elle n'en suit plus aucun.
+ */
+export const waitingGestureActivities = (
+  sessions: readonly LibrarySession[],
+  waiting: (session: LibrarySession) => boolean,
+  gestureActivity: (sport: SportType, activityId: string | null | undefined) => string | null
+): Set<string> => {
+  const ids = new Set<string>();
+  for (const session of sessions) {
+    const { sport } = session.record;
+    if (session.readOnly || sport === null || !waiting(session)) continue;
+    const id = gestureActivity(sport, session.record.activityId);
+    if (id !== null) ids.add(id);
+  }
+  return ids;
+};

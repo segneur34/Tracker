@@ -1,3 +1,4 @@
+import type { FileStat } from '../platform/memoryFolder';
 import { sameJson, type RecordWithoutSummary, type SessionRecord, type SessionSummary } from './record';
 
 /**
@@ -151,3 +152,11 @@ const isSaisie = (path: string): boolean => topField(path) in SAISIE_LABEL;
 
 /** Ce qui a changé des deux côtés, en clair, sans doublon. */
 export const conflictLabels = (conflicts: readonly string[]): string[] => [...new Set(conflicts.map((path) => SAISIE_LABEL[topField(path)]))];
+
+/**
+ * Mêmes taille et date, connues : le fichier n'a pas changé. Une date nulle (téléphone : fournisseur qui
+ * ne la donne pas), un tampon ou une date absents ne prouvent rien : la fiche est relue. Reste un trou
+ * accepté : même taille et même date, ou changement entre cette vérification et l'écriture.
+ */
+export const sameStamp = (a: FileStat | undefined, b: FileStat | null): boolean =>
+  a !== undefined && b !== null && a.mtimeMs > 0 && b.mtimeMs > 0 && a.size === b.size && a.mtimeMs === b.mtimeMs;

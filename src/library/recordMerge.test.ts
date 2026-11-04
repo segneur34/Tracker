@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addRecordEdits, conflictLabels, mergeChangedRecord } from './recordMerge';
+import { addRecordEdits, conflictLabels, mergeChangedRecord, sameStamp } from './recordMerge';
 import { SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
 import { sessionRecord } from '../test/record.fixture';
 
@@ -130,5 +130,19 @@ describe('fiche changée sur le disque', () => {
       const { summary } = mergeChangedRecord({ ...read, summary: null }, read, new Map()).record;
       expect(summary).toEqual(read.summary);
     });
+  });
+});
+
+describe('tampon d’une fiche (lot 113)', () => {
+  it('ne tient pour inchangé qu’un fichier de même taille et de même date, connues', () => {
+    expect(sameStamp({ size: 10, mtimeMs: 5 }, { size: 10, mtimeMs: 5 })).toBe(true);
+    expect(sameStamp({ size: 10, mtimeMs: 5 }, { size: 11, mtimeMs: 5 })).toBe(false);
+    expect(sameStamp({ size: 10, mtimeMs: 5 }, { size: 10, mtimeMs: 4 })).toBe(false);
+  });
+
+  it('ne prouve rien sans tampon, sans fichier ni date (fournisseur du téléphone qui ne la donne pas)', () => {
+    expect(sameStamp(undefined, { size: 10, mtimeMs: 5 })).toBe(false);
+    expect(sameStamp({ size: 10, mtimeMs: 5 }, null)).toBe(false);
+    expect(sameStamp({ size: 10, mtimeMs: 0 }, { size: 10, mtimeMs: 0 })).toBe(false);
   });
 });

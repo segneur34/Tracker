@@ -1,3 +1,5 @@
+import { plural } from '../core/basics';
+
 /**
  * Compte rendu d'un import de sessions (fichiers GPX ou dossier mémoire) et sa
  * phrase pour l'utilisateur, purs (lot 72).
@@ -51,4 +53,18 @@ export const describeImport = (report: ImportReport): string => {
     parts.push(`${report.unsaved} non rangée${report.unsaved > 1 ? 's' : ''} : désignez d'abord le dossier mémoire (Réglages › Mémoire)`);
   }
   return `${parts.join(', ')}.`;
+};
+
+/**
+ * Compte rendu de « Mettre à jour » : sessions apparues et disparues, d'après les débuts de trace d'avant et
+ * d'après la relecture (lot 113, sorti de la bibliothèque).
+ */
+export const describeRefresh = (before: ReadonlySet<number>, after: ReadonlySet<number>): string => {
+  const added = [...after].filter((startMs) => !before.has(startMs)).length;
+  const removed = [...before].filter((startMs) => !after.has(startMs)).length;
+  const changes = [
+    ...(added > 0 ? [`${plural(added, 'session')} de plus`] : []),
+    ...(removed > 0 ? [`${plural(removed, 'session')} en moins`] : []),
+  ];
+  return `Dossier relu : ${changes.length > 0 ? changes.join(', ') : 'rien de nouveau'}.`;
 };

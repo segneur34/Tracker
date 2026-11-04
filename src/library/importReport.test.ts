@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeImport, type ImportReport } from './importReport';
+import { describeImport, describeRefresh, type ImportReport } from './importReport';
 
 const report = (patch: Partial<ImportReport> = {}): ImportReport => ({
   added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0, ...patch,
@@ -35,5 +35,13 @@ describe("compte rendu d'un import (lot 72)", () => {
     expect(describeImport(report({ duplicates: 2, recordNotRead: 2 }))).toBe(
       '0 sessions ajoutées, 2 déjà présentes, fiche non relue pour 2 sessions déjà présentes : non complétées.',
     );
+  });
+});
+
+describe('compte rendu de « Mettre à jour » (lot 113)', () => {
+  it('dit les sessions apparues et disparues, d’après leurs débuts de trace', () => {
+    expect(describeRefresh(new Set([1, 2]), new Set([1, 2]))).toBe('Dossier relu : rien de nouveau.');
+    expect(describeRefresh(new Set([1]), new Set([1, 2]))).toBe('Dossier relu : 1 session de plus.');
+    expect(describeRefresh(new Set([1, 2, 3]), new Set([4]))).toBe('Dossier relu : 1 session de plus, 3 sessions en moins.');
   });
 });

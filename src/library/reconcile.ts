@@ -123,3 +123,16 @@ export const planReconcile = (
   plan.tooLarge.sort();
   return plan;
 };
+
+/**
+ * Fiches `X.JSON` (extension autre qu'en minuscules) posées à côté d'un `X.gpx`, dont `X.json` n'existe pas :
+ * à renommer, toute la suite relisant et réécrivant la fiche par `recordFileName(gpx)` (lot 113, sorti de la
+ * bibliothèque).
+ */
+export const oddRecordExtensions = (entries: readonly FolderEntry[]): FolderEntry[] => {
+  const names = new Set(entries.map((e) => e.name));
+  const gpxRecordNames = new Set(entries.filter((e) => e.kind === 'file' && isGpxFileName(e.name)).map((e) => recordFileName(e.name)));
+  return entries.filter(
+    (e) => e.kind === 'file' && /\.json$/i.test(e.name) && !e.name.endsWith('.json') && gpxRecordNames.has(lowerRecordExtension(e.name)) && !names.has(lowerRecordExtension(e.name))
+  );
+};

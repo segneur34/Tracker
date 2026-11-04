@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FolderEntry } from '../platform/memoryFolder';
 import type { SessionRecord } from './record';
-import { MAX_LISTED_FILE_BYTES, indexByRecordName, planReconcile, type LibraryCache } from './reconcile';
+import { MAX_LISTED_FILE_BYTES, indexByRecordName, oddRecordExtensions, planReconcile, type LibraryCache } from './reconcile';
 import { sessionRecord } from '../test/record.fixture';
 
 const file = (name: string, size = 100, mtimeMs = 1000): FolderEntry => ({ name, kind: 'file', size, mtimeMs });
@@ -140,5 +140,16 @@ describe('indexByRecordName', () => {
       const plan = planReconcile([{ name: 'gros.gpx', kind: 'directory', size: 200 * MO, mtimeMs: 0 }], [], {});
       expect(plan.tooLarge).toEqual([]);
     });
+  });
+});
+
+describe('fiches à renommer en .json (lot 113)', () => {
+  it('désigne une fiche X.JSON à côté de X.gpx, sans X.json', () => {
+    const odd = oddRecordExtensions([file('a.gpx'), file('a.JSON'), file('b.gpx'), file('b.Json'), file('b.json'), file('c.JSON'), file('d.gpx'), file('d.json')]);
+    expect(odd.map((e) => e.name)).toEqual(['a.JSON']);
+  });
+
+  it('ignore un dossier et une fiche sans GPX', () => {
+    expect(oddRecordExtensions([{ ...file('a.JSON'), kind: 'directory' }, file('a.gpx'), file('x.JSON')])).toEqual([]);
   });
 });
