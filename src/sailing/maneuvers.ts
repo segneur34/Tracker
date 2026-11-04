@@ -18,6 +18,7 @@ import {
   TURN_STRIDE_MIN_S,
   WIND_CONFIDENCE_MIN,
   WIND_ESTIMATION_MIN_SPEED_KN,
+  WIND_UNCHECKED_CONFIDENCE_FACTOR,
   getDefaultThresholdKn,
   getStillSpeedKn,
 } from './sailingConfig';
@@ -470,9 +471,10 @@ export interface CandidateSelection {
 }
 
 /**
- * Choisit, parmi les centres d'angle mort proposés par la polaire, celui dont
- * le classement des manœuvres colle le mieux à la physique : vol perdu au
- * virement, conservé à l'empannage.
+ * Choisit, parmi les centres d'angle mort proposés par la polaire, la
+ * direction votée par les virages et leurs jumeaux au vent arrière, celui
+ * dont le classement des manœuvres colle le mieux à la physique : vol perdu
+ * au virement, conservé à l'empannage.
  *
  * Un classement incohérent pèse double en négatif : un candidat faux de 30° à
  * 40° attrape des abattées et des remontées comme fausses manœuvres, et
@@ -498,14 +500,20 @@ export const selectWindCandidate = (
   const detection = detectionFor(points, options);
   const classification = classificationOptions(options);
 
-  // Candidats : les maxima du score, plus l'opposé du meilleur, jumeau au
-  // vent arrière que seules les manœuvres peuvent écarter avec certitude.
+  // Candidats, dans cet ordre, qui départage à égalité d'accord : les maxima du
+  // score polaire ; la direction votée par les virages à vol perdu, le filet
+  // quand la polaire désigne un trou de couverture à 90° du vrai vent (lot
+  // 149, C1-2) ; puis le jumeau au vent arrière de chacun, que seules les
+  // manœuvres écartent avec certitude. Dédoublonnés à 45°, comme la polaire.
   const stage = polarStageFor(points, options);
-  const candidates = [...stage.candidates];
-  if (candidates.length === 0) return fallback;
-  const twin = normalizeDeg(candidates[0].direction + 180);
-  if (candidates.every((c) => Math.abs(angleDiff(c.direction, twin)) >= CANDIDATE_MIN_SEPARATION)) {
-    candidates.push(stage.describe(twin));
+  if (stage.candidates.length === 0) return fallback;
+  const directions = stage.candidates.map((c) => c.direction);
+  if (stage.turnsDirection !== null) directions.push(stage.turnsDirection);
+  for (const direction of directions.slice()) directions.push(normalizeDeg(direction + 180));
+  const candidates: PolarWindEstimate[] = [];
+  for (const direction of directions) {
+    if (candidates.some((c) => Math.abs(angleDiff(c.direction, direction)) < CANDIDATE_MIN_SEPARATION)) continue;
+    candidates.push(stage.candidates.find((c) => c.direction === direction) ?? stage.describe(direction));
   }
 
   let chosen: PolarWindEstimate | null = null;
@@ -521,7 +529,14 @@ export const selectWindCandidate = (
     }
   }
 
-  if (chosen === null) return fallback;
+  // Aucun candidat ne classe une seule manœuvre alors que la trace a des
+  // virages : la polaire garde le dernier mot, mais rien ne l'a contrôlée, et
+  // sa confiance est rabattue (`WIND_UNCHECKED_CONFIDENCE_FACTOR`) plutôt que
+  // d'annoncer fiable une direction fausse de 90°. Sans aucun virage (cap
+  // constant), la polaire répond seule, comme avant.
+  if (chosen === null) {
+    return stage.turns.length > 0 ? { ...fallback, polarConfidence: fallback.polarConfidence * WIND_UNCHECKED_CONFIDENCE_FACTOR } : fallback;
+  }
   const agreementScore = bestScore;
   if (chosen.direction === polar.direction) return { ...fallback, agreementScore };
 
@@ -1777,9 +1792,14 @@ export const classifyManeuvers = (
       fields: Pick<ManeuverLocation, 'type' | 'localWind' | 'stableHeadings' | 'windwardGainM' | 'tack' | 'takeoff'>
     ): ManeuverLocation => {
       const underMs = measure.lostFlightMs(successThresholdKn);
+      // Repère sur la carte : le point le plus lent de la fenêtre, sauf s'il
+      // précède la rotation (planche qui accélère ou décolle en entrant dans
+      // le virage, 04/11) : alors le creux de la rotation elle-même. `timeMs`
+      // reste celui de la détection (courbe du vent).
+      const markerIndex = anchorIndex < measure.entryIndex ? measure.apexIndex : anchorIndex;
       return {
-        lat: points[anchorIndex].lat,
-        lon: points[anchorIndex].lon,
+        lat: points[markerIndex].lat,
+        lon: points[markerIndex].lon,
         type: fields.type,
         success: underMs < lostFlightMs,
         lostFlightS: underMs / 1000,
@@ -1788,7 +1808,7 @@ export const classifyManeuvers = (
         vmin: measure.vmin,
         localWind: fields.localWind,
         timeMs,
-        trackIndex: anchorIndex,
+        trackIndex: markerIndex,
         stableHeadings: fields.stableHeadings,
         windCriteria,
         entrySpeed: measure.entrySpeed,

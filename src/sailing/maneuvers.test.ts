@@ -1449,6 +1449,31 @@ describe('selectWindCandidate', () => {
     expect(selection.polarConfidence).toBeGreaterThanOrEqual(0);
     expect(selection.polarConfidence).toBeLessThanOrEqual(1);
   });
+
+  it('rabat la confiance polaire de moitié quand aucun candidat ne classe une manœuvre alors que la trace a des virages (lot 149, C1-2)', () => {
+    // Balayage lent de tous les caps : la polaire a une direction et une confiance, aucun virage n'est détecté.
+    const track = buildTrack(600, 1, fullSweep, polarSpeed(0));
+    const stage = prepareWindPolar(track);
+    const polar = stage.polar;
+    expect(polar.confidence).toBeGreaterThan(0);
+    expect(selectWindCandidate(track, polar, { polarStage: stage }).polarConfidence).toBe(polar.confidence);
+    // Les mêmes candidats, mais la trace a un virage que personne ne classe : la confiance est rabattue.
+    const turn: TurnObservation = { headingAtMin: 0, midHeading: 0, minSpeed: 3, speedLoss: 9, cumulativeTurn: 90, slow: true };
+    const withTurns = { ...stage, turns: [turn], turnsDirection: null };
+    expect(selectWindCandidate(track, polar, { polarStage: withTurns }).polarConfidence).toBeCloseTo(polar.confidence * 0.5, 12);
+  });
+
+  it('ajoute aux candidats la direction votée par les virages et le jumeau de chacun, dédoublonnés à 45°', () => {
+    // Session au près seul (vent 0°) : les candidats polaires ne portent pas forcément le vrai vent ; la direction
+    // votée par les virements à vol perdu, face au vent, y est ajoutée et les manœuvres la retiennent.
+    const legs = Array.from({ length: 7 }, (_, i) => ({ twa: i % 2 === 0 ? 45 : -45, durationS: 150 }));
+    const track = buildLegSession(legs, () => 0);
+    const stage = prepareWindPolar(track);
+    expect(stage.turnsDirection).not.toBeNull();
+    expect(Math.abs(angleDiff(stage.turnsDirection!, 0))).toBeLessThanOrEqual(10);
+    const selection = selectWindCandidate(track, stage.polar, { polarStage: stage });
+    expect(Math.abs(angleDiff(selection.direction, 0))).toBeLessThanOrEqual(10);
+  });
 });
 
 describe('calculateWindStats', () => {
@@ -1926,6 +1951,8 @@ describe('vitesse d\'approche au départ de la rotation (04/11)', () => {
       expect(tack.entrySpeed).toBeGreaterThanOrEqual(11);
       expect(tack.takeoff).toBe(false);
       expect(tack.success).toBe(true);
+      // Repère sur la carte dans la rotation, pas au point lent d'avant le décollage (lecture de l'utilisateur, 04/11).
+      expect(tack.trackIndex, `${stepS}`).toBeGreaterThanOrEqual(tack.entryIndex);
     }
   });
 

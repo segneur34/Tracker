@@ -23,7 +23,7 @@ export const kmhToMs = (kmh: number): number => kmh / MS_TO_KMH;
  * (« 12,40 »). Le seul formateur des décimales d'écran : les valeurs passées aux
  * bibliothèques, aux fichiers et aux fiches restent des nombres à point.
  */
-export const formatDecimal = (value: number, decimals = 1): string => value.toFixed(decimals).replace('.', ',');
+export const formatDecimal = (value: number, decimals = 1): string => (isFinite(value) ? value.toFixed(decimals).replace('.', ',') : '-');
 
 /** Texte décimal déjà arrondi (« 12.4 ») mis à la virgule pour l'affichage ; tout autre texte est rendu tel quel. */
 export const commaDecimal = (text: string | number): string => String(text).replace(/^(-?\d+)\.(\d+)$/, '$1,$2');
@@ -237,31 +237,47 @@ export const formatDistance = (m: number, unit: DistanceUnit, decimals = 2): str
 /** Distance dans l'unité, deux décimales sous 10 unités et une au-delà (bibliothèque, statistiques). */
 export const formatDistanceAuto = (m: number, unit: DistanceUnit): string => formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
 
-/** Mètres entiers, « 120 m » ; « — » sans valeur. */
-export const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
+/** Mètres entiers, « 120 m » ; « — » sans valeur ou sans valeur finie. */
+export const formatMeters = (m: number | null): string => (m === null || !isFinite(m) ? '—' : `${Math.round(m)} m`);
 
 /** Distance d'approche (une balise) : en mètres sous 1 000 m, quelle que soit l'unité ; au-delà, dans l'unité. */
 export const formatShortDistance = (m: number, unit: DistanceUnit): string =>
   isFinite(m) && m < 1000 ? `${Math.round(m)} m` : formatDistance(m, unit);
 
-/** Formate une durée en millisecondes, par exemple `1 h 24` ou `37 min` : la seule écriture des durées. */
+/**
+ * Formate une durée en millisecondes, par exemple `1 h 24` ou `37 min` : la
+ * seule écriture des durées. « - » pour une durée négative, `NaN` ou infinie
+ * (C2-6) : aucune durée de l'application n'est négative, et une telle valeur
+ * ne s'écrit pas comme un chiffre.
+ */
 export const formatDuration = (ms: number): string => {
+  if (!isFinite(ms) || ms < 0) return '-';
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h.toLocaleString('fr-FR')} h ${pad2(m)}` : `${m} min`;
 };
 
-/** Durée courte, en secondes : « 45 s », « 1 min 05 », puis comme `formatDuration` au-delà d'une heure. */
+/**
+ * Durée courte, en secondes : « 45 s », « 1 min 05 », puis comme `formatDuration`
+ * au-delà d'une heure ; « - » si `NaN` ou infinie. Une durée négative garde son
+ * plancher à 0 : un reste de soustraction (temps pompé) s'écrit « 0 s ».
+ */
 export const formatShortDuration = (s: number): string => {
+  if (!isFinite(s)) return '-';
   const total = Math.max(0, Math.round(s));
   if (total < 60) return `${total} s`;
   if (total >= 3600) return formatDuration(total * 1000);
   return `${Math.floor(total / 60)} min ${pad2(total % 60)}`;
 };
 
-/** Durée en `h:mm:ss`, pour un chronomètre. */
+/**
+ * Durée en `h:mm:ss`, pour un chronomètre ; « - » si `NaN` ou infinie. Une
+ * durée négative garde son plancher à 0 : le chrono du direct ne doit jamais
+ * montrer « - » sur un reste de soustraction (pause, reprise).
+ */
 export const formatClock = (ms: number): string => {
+  if (!isFinite(ms)) return '-';
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 3600)}:${pad2(Math.floor((total % 3600) / 60))}:${pad2(total % 60)}`;
 };
@@ -283,8 +299,9 @@ export const formatMinSecHours = (totalSeconds: number, secondSuffix = ''): stri
 /** Joules par kilocalorie. */
 export const J_PER_KCAL = 4184;
 
-/** Durée en secondes au format `m:ss` (de 0 à 59 min), pour un décompte. */
+/** Durée en secondes au format `m:ss` (de 0 à 59 min), pour un décompte ; « - » si `NaN` ou infinie, plancher à 0 pour un reste négatif. */
 export const formatMinSec = (s: number): string => {
+  if (!isFinite(s)) return '-';
   const total = Math.max(0, Math.round(s));
   return `${Math.floor(total / 60)}:${pad2(total % 60)}`;
 };

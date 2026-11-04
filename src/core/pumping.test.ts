@@ -346,8 +346,10 @@ describe('vols d’une suite de plages actives', () => {
       points.push({ lat: 43.4, lon: 3.6, time: new Date(timeMs), timeMs, speedMs: 5, smoothedSpeedMs: 5, bearing: 0, speedSource: 'doppler' });
     }
     const t = (i: number) => (points[i].timeMs - W) / 1000;
-    const mask = points.map((_, i) => (t(i) > 10 && t(i) <= 40) || (t(i) > 50 && t(i) <= 55) || (t(i) > 70 && t(i) <= 120));
-    return { points, runs: activeRuns(points, mask, 10) };
+    // Le trou, immobile (points posés au même endroit), est inactif dans le masque, comme `computeActivityMask`
+    // le poserait ; c'est le masque seul qui coupe (Q56), pas la durée du pas.
+    const mask = points.map((_, i) => ((t(i) > 10 && t(i) <= 40) || (t(i) > 50 && t(i) <= 55) || (t(i) > 70 && t(i) <= 120)) && t(i) !== 105);
+    return { points, runs: activeRuns(points, mask) };
   };
 
   it.each([1, 5])('garde les vols assez longs, numérotés dans l’ordre, coupés au trou de la trace (%s Hz)', (hz) => {

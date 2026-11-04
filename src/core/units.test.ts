@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PACE_MIN_SPEED_MS, commaDecimal, formatDecimal, formatDuration, formatShortDuration, parseDecimal, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
+  editSpeedUnit, formatClock, formatClockMinutes, formatDistance, formatMinSec, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -271,5 +271,35 @@ describe('formatLandSpeed', () => {
     expect(formatLandSpeed(10, 'kmh', 'nm')).toBe('36,0 km/h');
     // @ts-expect-error l'unité de distance est obligatoire
     formatLandSpeed(1000 / 300, 'minkm');
+  });
+});
+
+describe('gardes des formateurs de durée et de nombre (lot 149, C2-6)', () => {
+  it('« - » pour NaN et l’infini, partout ; pour le négatif dans les durées seulement', () => {
+    for (const v of [NaN, Infinity, -Infinity]) {
+      expect(formatDuration(v)).toBe('-');
+      expect(formatShortDuration(v)).toBe('-');
+      expect(formatClock(v)).toBe('-');
+      expect(formatMinSec(v)).toBe('-');
+      expect(formatDecimal(v)).toBe('-');
+      expect(formatMeters(v)).toBe('—');
+    }
+    expect(formatDuration(-90_000)).toBe('-');
+    expect(formatClockMinutes(NaN)).toBe('-');
+  });
+
+  it('formatShortDuration, le chronomètre et le décompte gardent leur plancher à 0 pour un reste négatif, et les écritures ordinaires ne bougent pas', () => {
+    expect(formatShortDuration(-1)).toBe('0 s');
+    expect(formatClock(-1)).toBe('0:00:00');
+    expect(formatMinSec(-1)).toBe('0:00');
+    expect(formatDuration(0)).toBe('0 min');
+    expect(formatDuration(100 * 3600_000)).toBe('100 h 00');
+    expect(formatDuration(59_999)).toBe('0 min');
+    expect(formatClock(0)).toBe('0:00:00');
+    expect(formatClock(3_725_000)).toBe('1:02:05');
+    expect(formatMinSec(0)).toBe('0:00');
+    expect(formatMinSec(125)).toBe('2:05');
+    expect(formatDecimal(0)).toBe('0,0');
+    expect(formatMeters(0)).toBe('0 m');
   });
 });

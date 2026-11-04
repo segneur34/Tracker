@@ -428,3 +428,40 @@ describe('computeKinematics, positions répétées et reprises', () => {
     expect(track[20].gapDistanceM).toBeUndefined();
   });
 });
+
+describe('computeKinematics, cap du point qui suit un trou de la trace (lot 149, C1-1)', () => {
+  /** Vers l'est à 3 m/s pendant 20 s, silence de `silenceS`, puis vers le nord à 3 m/s depuis le point atteint. */
+  const turnThroughSilence = (silenceS: number): RawTrackPoint[] => {
+    const raw: RawTrackPoint[] = [];
+    for (let s = 0; s <= 20; s++) raw.push(pointAt(3 * s, s));
+    for (let s = 1; s <= 20; s++) raw.push(pointAt(60, 20 + silenceS + s, 3 * s));
+    return raw;
+  };
+
+  it('un trou (pas plus long que maxGapS) : le point de reprise prend le cap du pas suivant, pas celui de la corde', () => {
+    const track = computeKinematics(turnThroughSilence(30), { maxGapS: 10 });
+    const resume = 21;
+    expect(track[resume].gapDistanceM).toBeDefined();
+    // La corde du silence pointe à 45° (60 m à l'est, 3 m au nord, puis le nord) ; le cap de bord est le nord.
+    expect(track[resume].bearing).toBeCloseTo(track[resume + 1].bearing, 6);
+    expect(track[resume].bearing).toBeCloseTo(0, 0);
+    expect(track[resume - 1].bearing).toBeCloseTo(90, 0);
+  });
+
+  it('un pas ordinaire (au plus maxGapS) garde le cap de sa corde', () => {
+    const track = computeKinematics(turnThroughSilence(8), { maxGapS: 10 });
+    const resume = 21;
+    expect(track[resume].gapDistanceM).toBeUndefined();
+    expect(track[resume].bearing).toBeCloseTo(initialBearing(track[resume - 1].lat, track[resume - 1].lon, track[resume].lat, track[resume].lon), 6);
+  });
+
+  it('un dernier point après un trou garde la corde, faute de pas suivant', () => {
+    const raw: RawTrackPoint[] = [];
+    for (let s = 0; s <= 20; s++) raw.push(pointAt(3 * s, s));
+    raw.push(pointAt(60, 50, 30));
+    const track = computeKinematics(raw, { maxGapS: 10 });
+    const last = track.length - 1;
+    expect(track[last].gapDistanceM).toBeDefined();
+    expect(track[last].bearing).toBeCloseTo(0, 0);
+  });
+});

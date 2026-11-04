@@ -92,9 +92,10 @@ export const buildSailingSessionStats = (
 /**
  * Vols d'une session de voile sur foil (pumping, lot 22) : les suites du
  * masque d'activité au seuil de la session, celui des statistiques (temps et
- * ratio de vol), coupées aux trous de la trace (`maxGapS`) ; celles de moins de
- * `minFlightS` secondes ne sont pas listées. La détection n'est pas retouchée :
- * c'est celle des chiffres « en vol ». Rien en bateau, sans seuil.
+ * ratio de vol) ; un trou de la trace parcouru en vol reste dans le vol, comme
+ * dans le temps de vol (Q56, `activeRuns`) ; celles de moins de `minFlightS`
+ * secondes ne sont pas listées. La détection n'est pas retouchée : c'est celle
+ * des chiffres « en vol ». Rien en bateau, sans seuil.
  *
  * `threshold` : le seuil d'activité en nœuds, ou le masque d'activité déjà
  * calculé à ce seuil (`sailingActivityMask`), celui des statistiques.
@@ -105,5 +106,5 @@ export const sailingFlights = (
   const profile = getSportProfile(sport);
   if (track.length < 2 || !hasActiveThreshold(profile)) return [];
   const mask = typeof threshold === 'number' ? sailingActivityMask(track, sport, threshold) : threshold;
-  return flightSpans(track, cumulative, activeRuns(track, mask, profile.maxGapS), minFlightS);
+  return flightSpans(track, cumulative, activeRuns(track, mask), minFlightS);
 };

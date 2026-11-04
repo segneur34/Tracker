@@ -4,7 +4,7 @@ import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from './pointData';
 import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type ManeuverLocation, type ManeuverStats, type Tack, type WindReference } from './maneuvers';
 import { VMG_MIN_WINDOW_RATIO, VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
-import { circularStats, interpolateDirection, type TimedDirection } from './wind';
+import { circularStats, interpolateDirection, type TimedDirection, type WindEstimate } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
 import { formatDecimal, msToKnots } from '../core/units';
 import { MAX_GAP_S } from '../core/sportProfiles';
@@ -466,6 +466,36 @@ const byTackOf = (locations: ManeuverLocation[], type: 'tack' | 'jibe'): Maneuve
 });
 
 const EMPTY_BY_TACK: ManeuversByTack = { starboard: null, port: null };
+
+/** Écart, en degrés, au-delà duquel un vent saisi loin du vent calculé fiable est signalé (`windInputWarning`). */
+export const WIND_INPUT_WARNING_DEG = 45;
+
+/** Ce que la phrase d'avertissement sous le tableau des manœuvres dit : vent saisi, vent calculé, virages écartés. */
+export interface WindInputWarning {
+  manualDeg: number;
+  autoDeg: number;
+  /** Virages francs que le vent saisi range « ni virement ni empannage » (`rejected.unclassified`). */
+  unclassified: number;
+}
+
+/**
+ * Avertissement d'un vent saisi probablement faux (lot 149, C1-3) : avec des
+ * bords à ±45° du vent, un vent saisi à plus de 45° du vent calculé met
+ * l'approche et la sortie d'un virement du même côté de l'axe, et toutes les
+ * manœuvres tombent en « sens incertain » sans qu'aucun chiffre ne le relie
+ * au vent saisi. Levé quand le vent est saisi, que le vent calculé est fiable,
+ * que l'écart dépasse `WIND_INPUT_WARNING_DEG` et que les virages écartés
+ * dépassent les virements et empannages comptés ; `null` sinon.
+ */
+export const windInputWarning = (
+  { manualDeg, autoWind, stats }: { manualDeg: number | null; autoWind: WindEstimate | null; stats: ManeuverStats | null }
+): WindInputWarning | null => {
+  if (manualDeg === null || !autoWind?.reliable || !stats) return null;
+  if (Math.abs(angleDiff(manualDeg, autoWind.direction)) <= WIND_INPUT_WARNING_DEG) return null;
+  const counted = stats.tackSuccess + stats.tackFail + stats.jibeSuccess + stats.jibeFail;
+  if (!(stats.rejected.unclassified > counted)) return null;
+  return { manualDeg, autoDeg: autoWind.direction, unclassified: stats.rejected.unclassified };
+};
 
 /** Moyennes et podiums des métriques de qualité, par type de manœuvre, et le détail par amure. */
 export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): ManeuverSummary => {

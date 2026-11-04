@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
-import { calculateVmgStats, calculateWindStats, type VmgStats } from './sailingAnalytics';
+import { calculateVmgStats, calculateWindStats, windInputWarning, type VmgStats } from './sailingAnalytics';
 
 /** Forme des copies gelées : cases en chaînes `toFixed(1)`, comme avant le lot 79. */
 type FrozenVmgStats = Omit<VmgStats, 'upStbd' | 'upPort' | 'downStbd' | 'downPort'> & Record<'upStbd' | 'upPort' | 'downStbd' | 'downPort', { max: string; avg: string }>;
@@ -415,5 +415,28 @@ describe('calculateVmgStats, podium sans tri (lot 56)', () => {
   it("vitesse constante : toutes les fenêtres égales, la première l'emporte", () => {
     const track = buildTrackAt(regularTimes(600, 1), () => 30, () => 10);
     expect(asFrozen(calculateVmgStats(track, 0, 0)!)).toEqual(frozenVmgStats(track, 0, 0));
+  });
+});
+
+describe('windInputWarning (lot 149, C1-3)', () => {
+  const stats = (counted: number, unclassified: number): ManeuverStats => ({
+    tackSuccess: counted, tackFail: 0, jibeSuccess: 0, jibeFail: 0, undecided: 0,
+    rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified, tooShort: 0, fullTurn: 0, noFlight: 0 },
+    rejectedTurns: [], locations: [],
+  });
+  const auto = { direction: 20, confidence: 0.9, reliable: true, orientedBy: 'polaire' as const, maneuverCount: 10 };
+
+  it('levé quand le vent saisi est à plus de 45° du vent calculé fiable et que les virages écartés dépassent les manœuvres comptées', () => {
+    expect(windInputWarning({ manualDeg: 80, autoWind: auto, stats: stats(1, 22) })).toEqual({ manualDeg: 80, autoDeg: 20, unclassified: 22 });
+    expect(windInputWarning({ manualDeg: 320, autoWind: auto, stats: stats(0, 3) })).toEqual({ manualDeg: 320, autoDeg: 20, unclassified: 3 });
+  });
+
+  it('muet sans vent saisi, sans vent calculé fiable, à 45° ou moins, ou quand les manœuvres comptées l’emportent', () => {
+    expect(windInputWarning({ manualDeg: null, autoWind: auto, stats: stats(1, 22) })).toBeNull();
+    expect(windInputWarning({ manualDeg: 80, autoWind: null, stats: stats(1, 22) })).toBeNull();
+    expect(windInputWarning({ manualDeg: 80, autoWind: { ...auto, reliable: false }, stats: stats(1, 22) })).toBeNull();
+    expect(windInputWarning({ manualDeg: 65, autoWind: auto, stats: stats(1, 22) })).toBeNull();
+    expect(windInputWarning({ manualDeg: 80, autoWind: auto, stats: stats(22, 22) })).toBeNull();
+    expect(windInputWarning({ manualDeg: 80, autoWind: auto, stats: null })).toBeNull();
   });
 });

@@ -85,8 +85,13 @@ export const RECORD_VERSION = 1;
  * 15 (4 novembre 2026) : en surf, la vitesse max est celle d'une vague, comme sa
  * page (Q34), 0 sans vague ; plus celle de toute la trace (les autres familles
  * ne bougent pas).
+ *
+ * 16 (4 novembre 2026, lot 149) : un trou de la trace parcouru en mouvement
+ * reste dans un vol ou une glisse (Q56 : vols du surf dans le résumé) ; le
+ * lecteur GPX écarte un point à la date illisible ou qui recule (tops, temps
+ * actif) ; le point qui suit un trou prend le cap du pas suivant (vent).
  */
-export const SUMMARY_CALC_VERSION = 15;
+export const SUMMARY_CALC_VERSION = 16;
 
 export type SessionSource = 'enregistrement' | 'import';
 

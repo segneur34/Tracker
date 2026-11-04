@@ -286,3 +286,13 @@ export const ORIENTATION_MIN_VOTE_WEIGHT = 0.5;
  */
 export const WIND_CONFIDENCE_MIN = 0.4;
 
+/**
+ * Facteur appliqué à la confiance polaire quand aucun candidat de vent ne
+ * classe une seule manœuvre alors que la trace a des virages (lot 149, C1-2) :
+ * la polaire a le dernier mot, mais rien ne l'a contrôlée, et sur une session
+ * de wing réaliste son meilleur score désigne souvent le trou de couverture
+ * entre près et largue, à 90° du vrai vent. Sous `WIND_CONFIDENCE_MIN` dans
+ * les cas vus : le vent est demandé plutôt qu'annoncé faux.
+ */
+export const WIND_UNCHECKED_CONFIDENCE_FACTOR = 0.5;
+

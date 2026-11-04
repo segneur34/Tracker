@@ -172,6 +172,23 @@ describe('analyzeSurf, cadence', () => {
     expect(summary.trouS).toBeCloseTo(26, -0.5);
     expect(analysis.waves[1].distanceM).toBeCloseTo(120, -1);
   });
+
+  it('une glisse qui traverse un trou parcouru en mouvement reste une glisse (Q56), le pas du trou garde sa phase « trou »', () => {
+    // La deuxième vague (20 s à 6 m/s) perd ses points du milieu pendant 12 s, planche lancée : un seul pas de 13 s.
+    const through: Phase[] = [
+      ...MORNING.slice(0, 13),
+      { s: 4, speed: 6, heading: 160 },
+      { s: 12, speed: 6, heading: 160, gap: true },
+      { s: 4, speed: 6, heading: 160 },
+      ...MORNING.slice(14),
+    ];
+    const { analysis, summary } = analyze(buildSurfSession(through));
+    expect(analysis.waves).toHaveLength(3);
+    expect(analysis.waves[1].durationS).toBeCloseTo(20, -0.5);
+    // La distance du trou est celle de sa corde (règle 6) : 12 s à 6 m/s en ligne droite.
+    expect(analysis.waves[1].distanceM).toBeCloseTo(120, -1);
+    expect(summary.trouS).toBeCloseTo(13, -0.5);
+  });
 });
 
 describe('analyzeSurf, sur foil', () => {

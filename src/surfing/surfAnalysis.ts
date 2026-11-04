@@ -210,13 +210,15 @@ const returnOf = (
 /**
  * Analyse d'une session. `rideMask` : le masque d'activité au seuil de la
  * session (vague, ou vol sur foil) ; `waveMask` : sur foil, le masque au seuil
- * de vague en foil, `null` sans foil.
+ * de vague en foil, `null` sans foil. Une glisse qui traverse un trou de la
+ * trace parcouru en mouvement reste une glisse (Q56, `activeRuns`) ; le pas du
+ * trou garde sa phase « trou » dans la frise (`stepPhases`).
  */
 export const analyzeSurf = (
   track: TrackPoint[], cum: CumulativeTrack, rideMask: boolean[], waveMask: boolean[] | null, p: SurfParams
 ): SurfAnalysis => {
   if (track.length < 2) return { phases: track.map(() => 'trou'), waves: [], flights: [], returns: [] };
-  const rides = keptRuns(track, cum, activeRuns(track, rideMask, p.maxGapS), p);
+  const rides = keptRuns(track, cum, activeRuns(track, rideMask), p);
   const phases = stepPhases(track, rides, p);
 
   const waves: SurfWave[] = [];
@@ -231,7 +233,7 @@ export const analyzeSurf = (
   } else {
     rides.forEach((r, k) => {
       // Vagues du vol : les suites du masque de vague entre ses bornes, sans reparcourir la trace (27/10).
-      const flightWaves = keptRuns(track, cum, activeRuns(track, waveMask, p.maxGapS, r.start + 1, r.end), p);
+      const flightWaves = keptRuns(track, cum, activeRuns(track, waveMask, r.start + 1, r.end), p);
       let waveS = 0;
       let waveDistanceM = 0;
       for (const w of flightWaves) {

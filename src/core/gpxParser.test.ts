@@ -139,10 +139,44 @@ describe('parseGpx : points sans position (muscu, lot I du 25/10)', () => {
     ]);
   });
 
-  it('date lue une fois : rawTimeMs vaut la date relue, NaN pour une date illisible', () => {
-    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00.123+02:00')}${pt(45, 5.001, 'pas une date')}</trkseg></trk>`));
+  it('date lue une fois : rawTimeMs vaut la date relue ; un point à la date illisible est écarté (C2-2)', () => {
+    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00.123+02:00')}${pt(45, 5.001, 'pas une date')}${pt(45, 5.002, '20261001T100002Z')}${pt(45, 5.003, '2026-10-01T10:00:03Z')}</trkseg></trk>`));
+    expect(r.rawPoints.map((p) => p.lon)).toEqual([5, 5.003]);
     expect(r.rawPoints.map((p) => p.rawTimeMs)).toEqual(r.rawPoints.map((p) => new Date(p.time).getTime()));
-    expect(r.rawPoints[1].rawTimeMs).toBeNaN();
+    expect(r.rawPoints.every((p) => isFinite(p.rawTimeMs!))).toBe(true);
+  });
+});
+
+describe('parseGpx : la trace ne remonte jamais le temps (lot 149, C2-1, C1-4)', () => {
+  const T = (s: number) => `2026-10-01T10:00:${String(s).padStart(2, '0')}Z`;
+
+  it('écarte un point daté avant le dernier gardé, et garde une date égale (répartie ensuite par spreadEqualTimes)', () => {
+    // Dates 0, 1, 2, 1 (recule), 3, 3 (égale), 4.
+    const xml = gpx(`<trk><trkseg>${pt(45, 5.000, T(0))}${pt(45, 5.001, T(1))}${pt(45, 5.002, T(2))}${pt(45, 5.003, T(1))}${pt(45, 5.004, T(3))}${pt(45, 5.005, T(3))}${pt(45, 5.006, T(4))}</trkseg></trk>`);
+    const r = parseGpx(xml);
+    expect(r.rawPoints.map((p) => p.lon)).toEqual([5, 5.001, 5.002, 5.004, 5.005, 5.006]);
+    expect(r.rawPoints.map((p) => p.rawTimeMs)).toEqual([0, 1, 2, 3, 3, 4].map((s) => Date.parse(T(s))));
+  });
+
+  it('deux points permutés : le second, daté avant, est écarté ; la suite reprend', () => {
+    const xml = gpx(`<trk><trkseg>${pt(45, 5.000, T(0))}${pt(45, 5.002, T(2))}${pt(45, 5.001, T(1))}${pt(45, 5.003, T(3))}</trkseg></trk>`);
+    expect(parseGpx(xml).rawPoints.map((p) => p.lon)).toEqual([5, 5.002, 5.003]);
+  });
+
+  it('un point écarté pour sa date en tête d’un segment ne fait pas perdre la reprise', () => {
+    const xml = gpx(`<trk><trkseg>${pt(45, 5, T(5))}</trkseg><trkseg>${pt(45, 5.001, T(4))}${pt(45, 5.002, T(9))}</trkseg></trk>`);
+    const r = parseGpx(xml);
+    expect(r.rawPoints.map((p) => p.lon)).toEqual([5, 5.002]);
+    expect(r.rawPoints.map((p) => p.segmentStart === true)).toEqual([false, true]);
+  });
+
+  it('même règle pour les points sans position (muscu) : date illisible ou qui recule écartée, reprise reportée', () => {
+    const hr = (time: string, bpm: number) => `<trkpt><time>${time}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${bpm}</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions></trkpt>`;
+    const xml = gpx(`<trk><trkseg>${hr(T(0), 100)}${hr('pas une date', 101)}${hr(T(2), 102)}${hr(T(1), 103)}${hr(T(2), 104)}</trkseg><trkseg>${hr(T(1), 105)}${hr(T(9), 106)}</trkseg></trk>`);
+    const r = parseGpx(xml);
+    expect(r.rawPoints).toEqual([]);
+    expect(r.timedPoints.map((p) => p.hr)).toEqual([100, 102, 104, 106]);
+    expect(r.timedPoints.map((p) => p.segmentStart === true)).toEqual([false, false, false, true]);
   });
 });
 

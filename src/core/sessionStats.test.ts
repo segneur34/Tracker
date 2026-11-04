@@ -96,21 +96,41 @@ describe('buildBaseSessionStats, dénominateur du ratio', () => {
 
 describe('activeRuns', () => {
   const track = analyzed(buildRaw([{ durationS: 120, speedMs: WALK_MS }]), RUNNING);
-  // Deux suites : 10 à 30, 50 à 80 ; un trou de 3 s dans la seconde la coupe à 65.
+  // Deux suites : 10 à 30, 50 à 80.
   const mask = track.map((_, i) => (i >= 11 && i <= 30) || (i >= 51 && i <= 80));
-  const gapped = track.map((p, i) => (i === 65 ? { ...p, timeMs: p.timeMs + 2000 } : p));
 
-  it('trouve les suites, et un trou plus long que la limite les coupe', () => {
+  it('trouve les suites du masque, et seul le masque décide (Q56) : un trou de la trace ne coupe pas par sa durée', () => {
     expect(activeRuns(track, mask)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 80 }]);
-    expect(activeRuns(gapped, mask, 2)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 64 }, { start: 65, end: 80 }]);
+    // Pas de 3 s au point 65 : actif dans le masque, il reste dans la suite ; inactif (trou immobile), il la coupe.
+    const gapped = track.map((p, i) => (i >= 65 ? { ...p, timeMs: p.timeMs + 2000 } : p));
+    expect(activeRuns(gapped, mask)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 80 }]);
+    const still = mask.map((m, i) => m && i !== 65);
+    expect(activeRuns(gapped, still)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 64 }, { start: 65, end: 80 }]);
   });
 
   it('bornée, donne les suites du masque restreint aux bornes (vagues d’un vol)', () => {
     const bounded = (from: number, to: number) => mask.map((m, i) => m && i >= from && i <= to);
     for (const [from, to] of [[20, 60], [0, 120], [31, 49], [55, 70], [50, 80]] as const) {
-      expect(activeRuns(track, mask, Infinity, from, to)).toEqual(activeRuns(track, bounded(from, to)));
-      expect(activeRuns(gapped, mask, 2, from, to)).toEqual(activeRuns(gapped, bounded(from, to), 2));
+      expect(activeRuns(track, mask, from, to)).toEqual(activeRuns(track, bounded(from, to)));
     }
+  });
+
+  it.each([1, 5])('trou parcouru en mouvement : il reste dans la suite comme dans le temps actif, trou immobile : il coupe et n’y compte pas (C2-3, %s Hz)', (hz) => {
+    // 5 min en vol à 9 m/s, 5 min sans point en vol, 5 min en vol : un seul vol de 15 min.
+    const moving = analyzed(buildRaw([{ durationS: 300, speedMs: 9 }, { durationS: 300, speedMs: 9, noPoints: true }, { durationS: 300, speedMs: 9 }], hz, true), SPORT_PROFILES.wingfoil);
+    const movingMask = thresholdActivityMask(moving, SPORT_PROFILES.wingfoil, 8);
+    const movingRuns = activeRuns(moving, movingMask);
+    const runS = (t: TrackPoint[], runs: { start: number; end: number }[]) => runs.reduce((s, r) => s + (t[r.end].timeMs - t[r.start].timeMs) / 1000, 0);
+    expect(movingRuns).toHaveLength(1);
+    expect(runS(moving, movingRuns)).toBeCloseTo(computeActiveTimeMs(moving, movingMask) / 1000, 6);
+    expect(Math.abs(runS(moving, movingRuns) - 900)).toBeLessThan(3);
+    // Le même trou, immobile (GPS coupé à l'arrêt) : deux vols de 5 min, et le trou hors du temps actif.
+    const still = analyzed(buildRaw([{ durationS: 300, speedMs: 9 }, { durationS: 300, speedMs: 0, noPoints: true }, { durationS: 300, speedMs: 9 }], hz, true), SPORT_PROFILES.wingfoil);
+    const stillMask = thresholdActivityMask(still, SPORT_PROFILES.wingfoil, 8);
+    const stillRuns = activeRuns(still, stillMask);
+    expect(stillRuns).toHaveLength(2);
+    expect(runS(still, stillRuns)).toBeCloseTo(computeActiveTimeMs(still, stillMask) / 1000, 6);
+    expect(Math.abs(runS(still, stillRuns) - 600)).toBeLessThan(3);
   });
 });
 

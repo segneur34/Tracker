@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import { sessionManeuverThresholds } from './sailingConfig';
-import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, polarWindCandidates, prepareWindPolar, speedPolar, scoreWindCandidate, windDegFromText } from './wind';
+import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, polarWindCandidates, prepareWindPolar, speedPolar, scoreWindCandidate, turnsDirectionOf, windDegFromText } from './wind';
 import { angleDiff, circularMean } from '../core/angles';
 
 describe('buildWindTimeline', () => {
@@ -283,6 +283,40 @@ describe('observeTurns', () => {
     expect(observeTurns(buildPoints(turnAt(4.5)))).toHaveLength(1);
     expect(observeTurns(buildPoints(turnAt(4)))).toHaveLength(0);
     expect(observeTurns(buildPoints(turnAt(4)), 3.9)).toHaveLength(1);
+  });
+});
+
+describe('turnsDirectionOf et WindPolarStage.turnsDirection (lot 149, C1-2)', () => {
+  /** Deux virements 45° ↔ 315° dont le point le plus lent est face au nord, entre deux bords tenus. */
+  const tacking = (): PointData[] => {
+    const samples: { bearing: number; speed: number }[] = [];
+    const turn = (from: number) => {
+      const speeds = [12, 9, 6, 3, 6, 9, 12];
+      speeds.forEach((speed, k) => samples.push({ bearing: ((from + (from === 45 ? -15 : 15) * k) % 360 + 360) % 360, speed }));
+    };
+    for (let t = 0; t < 20; t++) samples.push({ bearing: 45, speed: 12 });
+    turn(45);
+    for (let t = 0; t < 20; t++) samples.push({ bearing: 315, speed: 12 });
+    turn(315);
+    for (let t = 0; t < 20; t++) samples.push({ bearing: 45, speed: 12 });
+    return buildPoints(samples);
+  };
+
+  it('moyenne circulaire du cap au point le plus lent des virages à vol perdu, au degré près', () => {
+    const turns = observeTurns(tacking());
+    expect(turns.filter((t) => t.slow)).toHaveLength(2);
+    expect(turnsDirectionOf(turns)).toBe(0);
+    expect(turnsDirectionOf([{ ...turns[0], headingAtMin: 350 }, { ...turns[1], headingAtMin: 10 }])).toBe(0);
+    expect(turnsDirectionOf([{ ...turns[0], headingAtMin: 20.4 }])).toBe(20);
+  });
+
+  it('null sans virage à vol perdu ; l’étage polaire porte les virages et leur direction', () => {
+    const turns = observeTurns(tacking());
+    expect(turnsDirectionOf([])).toBeNull();
+    expect(turnsDirectionOf(turns.map((t) => ({ ...t, slow: false })))).toBeNull();
+    const stage = prepareWindPolar(tacking(), 5, 4);
+    expect(stage.turns).toEqual(turns);
+    expect(stage.turnsDirection).toBe(0);
   });
 });
 

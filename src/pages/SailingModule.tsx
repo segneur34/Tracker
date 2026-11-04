@@ -37,7 +37,7 @@ import {
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_LOST_FLIGHT_S } from '../sailing/sailingConfig';
-import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import type { ManeuverLocation } from '../sailing/maneuvers';
 import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
@@ -371,6 +371,12 @@ function SailingModule() {
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
+
+  /** Vent saisi loin du vent calculé fiable, qui écarte les manœuvres (C1-3) : une phrase sous le tableau. */
+  const windWarning = useMemo(
+    () => windInputWarning({ manualDeg: edits.windDeg === null ? null : normalizeDeg(edits.windDeg), autoWind: windEstimate, stats: maneuverStats }),
+    [edits.windDeg, windEstimate, maneuverStats]
+  );
 
   /** Podium de manœuvres sélectionné pour la carte. */
   const maneuverTopArray = useMemo((): ManeuverTop[] => {
@@ -752,6 +758,13 @@ function SailingModule() {
         </tbody>
       </table>
       </div>
+
+      {/* Vent saisi loin du vent calculé fiable (C1-3, lot 149) : les virages tombent en « sens incertain », on le dit. */}
+      {windWarning && (
+        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--warning-soft)', borderLeft: '3px solid var(--warning-line)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
+          Le vent saisi ({formatDecimal(windWarning.manualDeg, 0)}°) écarte <strong>{windWarning.unclassified}</strong> virage{windWarning.unclassified > 1 ? 's' : ''}, ni virement ni empannage ; le vent calculé est à {formatDecimal(windWarning.autoDeg, 0)}°. Vérifier la direction.
+        </p>
+      )}
 
       {/* Par amure (note 135, 04/11) : virements ou empannages selon l'amure d'avant la manœuvre, médianes. */}
       {(maneuverSummary.tack || maneuverSummary.jibe) && (

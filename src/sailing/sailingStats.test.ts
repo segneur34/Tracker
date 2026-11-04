@@ -81,4 +81,23 @@ describe('sailingFlights', () => {
     const track = buildTrack(phases);
     expect(sailingFlights(track, buildCumulativeTrack(track), 'bateau', 8, 10)).toEqual([]);
   });
+
+  it.each([1, 5])('un trou de la trace parcouru en vol reste dans le vol (Q56), un trou immobile le coupe (%s Hz)', (hz) => {
+    // Un vol de 5 min ; les points de la 2e à la 3e minute manquent, la position avance pendant le silence.
+    const raw = phasesTrack([[30, knotsToMs(3)], [300, knotsToMs(15)], [30, knotsToMs(3)]], hz, { startMs: START_MS });
+    const t = (p: { time: string | Date }) => (new Date(p.time).getTime() - START_MS) / 1000;
+    const moving = raw.filter((p) => t(p) <= 150 || t(p) >= 210);
+    const profile = { medianWindowSeconds: 3, maxSpeedMs: 30, maxGapS: 10 };
+    const movingTrack = computeKinematics(moving, profile);
+    const movingFlights = sailingFlights(movingTrack, buildCumulativeTrack(movingTrack), 'wingfoil', 8, 10);
+    expect(movingFlights.map((f) => f.n)).toEqual([1]);
+    expect(Math.abs(movingFlights[0].durationS - 300)).toBeLessThanOrEqual(3);
+    // Le même silence sans avancer (GPS coupé à l'arrêt, la trace est vers l'est) : deux vols, et le trou hors des deux.
+    const lonShift = raw.find((q) => t(q) >= 210)!.lon - raw.find((q) => t(q) >= 150)!.lon;
+    const still = moving.map((p) => (t(p) >= 210 ? { ...p, lon: p.lon - lonShift } : p));
+    const stillTrack = computeKinematics(still, profile);
+    const stillFlights = sailingFlights(stillTrack, buildCumulativeTrack(stillTrack), 'wingfoil', 8, 10);
+    expect(stillFlights.map((f) => f.n)).toEqual([1, 2]);
+    expect(Math.abs(stillFlights[0].durationS + stillFlights[1].durationS - 240)).toBeLessThanOrEqual(3);
+  });
 });

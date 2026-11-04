@@ -360,12 +360,22 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
   // Reprise après une pause : le pas qui y mène enjambe la pause, ni sa vitesse
   // ni son cap ne disent rien. Le point prend ceux du pas suivant, comme le
   // premier point de la trace ; une reprise en dernier point, ceux du pas précédent.
+  // Trou de la trace (pas plus long que `maxGapS`, lot 149, C1-1) : le cap de
+  // la corde pointe au milieu de ce qui s'est passé pendant le silence (un
+  // enregistreur économique y compresse un virage entier, règle 10) et coupait
+  // un virement de 90° en deux moitiés que personne ne lisait ; le point de
+  // reprise prend le cap du pas suivant, son cap de bord. Sa vitesse dérivée,
+  // corde sur durée, reste la moyenne du trou (`gapDistanceM`, masque d'activité).
+  // Un dernier point après un trou garde la corde, faute de pas suivant.
   const derivedSpeeds = derivedRaw.slice();
   const bearings = bearingsRaw.slice();
   for (let i = n - 2; i >= 1; i--) {
-    if (!points[i].segmentStart) continue;
-    derivedSpeeds[i] = derivedSpeeds[i + 1];
-    bearings[i] = bearings[i + 1];
+    if (points[i].segmentStart) {
+      derivedSpeeds[i] = derivedSpeeds[i + 1];
+      bearings[i] = bearings[i + 1];
+    } else if ((timesMs[i] - timesMs[i - 1]) / 1000 > maxGapS) {
+      bearings[i] = bearings[i + 1];
+    }
   }
   const last = n - 1;
   if (last >= 2 && points[last].segmentStart) {
@@ -507,7 +517,8 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
  *
  * Les points d'une même date sont d'abord répartis dans leur intervalle
  * (`spreadEqualTimes`) : les `timeMs` rendus sont ces dates réparties. Un pas
- * plus long que `maxGapS` (trou de la trace) porte `gapDistanceM`.
+ * plus long que `maxGapS` (trou de la trace) porte `gapDistanceM`, et son
+ * point prend le cap du pas suivant, pas celui de la corde.
  */
 export const computeKinematics = (
   points: RawTrackPoint[],

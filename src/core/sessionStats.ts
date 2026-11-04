@@ -183,16 +183,21 @@ export const spanOfRun = (track: readonly TrackPoint[], cum: Pick<CumulativeTrac
 });
 
 /**
- * Suites du masque d'activité. Un pas plus long que `maxGapS` (un trou de la
- * trace) n'est jamais en action : il coupe la suite en cours. Avec `from` et
- * `to`, seuls les pas qui mènent aux points `from` à `to` comptent (les vagues
- * d'un vol en surf) : le même résultat qu'un masque faux hors de ces bornes,
- * sans parcourir toute la trace.
+ * Suites du masque d'activité : seul le masque décide (Q56, 04/11, la règle
+ * écrite une fois). Un trou de la trace parcouru en mouvement (sa vitesse
+ * moyenne atteint la détente basse, `computeActivityMask`) reste dans la suite
+ * en cours, comme il reste dans le temps actif : un enregistreur économique se
+ * tait en plein vol, et le silence n'est pas un posé (règle 10). Un trou
+ * immobile est déjà inactif dans le masque, et coupe. Jusqu'au lot 149, un pas
+ * plus long que `maxGapS` coupait ici quelle que soit sa vitesse : « 15 min en
+ * vol » et deux vols qui en faisaient 10 sur la même page (C2-3). Avec `from`
+ * et `to`, seuls les pas qui mènent aux points `from` à `to` comptent (les
+ * vagues d'un vol en surf) : le même résultat qu'un masque faux hors de ces
+ * bornes, sans parcourir toute la trace.
  */
 export const activeRuns = (
   track: TrackPoint[],
   mask: boolean[],
-  maxGapS = Infinity,
   from = 1,
   to = track.length - 1
 ): ActiveRun[] => {
@@ -200,7 +205,7 @@ export const activeRuns = (
   let start: number | null = null;
   const last = Math.min(to, track.length - 1);
   for (let i = Math.max(1, from); i <= last; i++) {
-    const active = mask[i] && (track[i].timeMs - track[i - 1].timeMs) / 1000 <= maxGapS;
+    const active = mask[i];
     if (active && start === null) start = i - 1;
     if (!active && start !== null) {
       runs.push({ start, end: i - 1 });

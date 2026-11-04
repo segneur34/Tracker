@@ -14,7 +14,11 @@ import type { RawTrackPoint, TimedTrackPoint } from './types';
  */
 
 export interface ParsedGpx {
-  /** Points bruts de la trace, dans l'ordre du fichier. */
+  /**
+   * Points bruts de la trace, dans l'ordre du fichier ; un point sans heure,
+   * à l'heure illisible ou datée avant le point gardé qui le précède est
+   * écarté (une date égale est gardée).
+   */
   rawPoints: RawTrackPoint[];
   /**
    * Points horodatés sans position (muscu, lot I du 25/10 : l'heure et la
@@ -137,8 +141,13 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
   let hasDeviceSpeed = false;
   // Segment du dernier point retenu : un point d'un autre `<trkseg>` reprend
   // après une pause de l'enregistrement (un `<trkseg>` par pause, `gpxWriter.ts`).
+  // Un point écarté en tête d'un segment ne fait pas perdre la reprise, qui
+  // passe au suivant gardé.
   let lastSegment: Element | null = null;
   let lastTimedSegment: Element | null = null;
+  // Date du dernier point gardé de chaque liste : la trace ne remonte jamais le temps.
+  let lastRawTimeMs = -Infinity;
+  let lastTimedMs = -Infinity;
 
   for (let i = 0; i < trkpts.length; i++) {
     const trkpt = trkpts[i];
@@ -150,9 +159,19 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
     // Un point sans horodatage ne sert à rien : toute la kinématique repose
     // sur la différence de temps entre deux points.
     if (!time) continue;
+    // Date lue une fois (lot 56), comme `pointTimeMs` la relirait. Une date
+    // illisible (`NaN`), ou qui recule sous le dernier point gardé, écarte le
+    // point ici, la seule place (lot 149, C2-1 et C2-2) : en aval, un recul
+    // allongeait le pas suivant et fabriquait de faux tops, un `NaN` mettait
+    // « NaN min » en temps actif et amputait les tops de toute la suite. Une
+    // date égale est gardée : `spreadEqualTimes` la répartit.
+    const timeMs = new Date(time).getTime();
+    if (!isFinite(timeMs)) continue;
     // Sans position, mais à l'heure : un point d'une session sans trace (muscu),
     // à part, jamais dans la cinématique.
     if (!isFinite(lat) || !isFinite(lon)) {
+      if (timeMs < lastTimedMs) continue;
+      lastTimedMs = timeMs;
       const segment = trkpt.parentElement;
       const resumes = lastTimedSegment !== null && segment !== lastTimedSegment;
       lastTimedSegment = segment;
@@ -164,6 +183,8 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       });
       continue;
     }
+    if (timeMs < lastRawTimeMs) continue;
+    lastRawTimeMs = timeMs;
 
     const speedMs = readDeviceSpeed(nodes.speed);
     if (speedMs !== undefined) hasDeviceSpeed = true;
@@ -176,8 +197,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       lat,
       lon,
       time,
-      // Date lue une fois (lot 56), comme `pointTimeMs` la relirait.
-      rawTimeMs: new Date(time).getTime(),
+      rawTimeMs: timeMs,
       ele: numberOf(nodes.ele),
       speedMs,
       courseDeg: readCourse(nodes.course),
