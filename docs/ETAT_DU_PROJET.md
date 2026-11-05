@@ -486,6 +486,7 @@ Les principes sont dans `docs/DECISIONS.md` (§6, « Enregistrement ») ; ce qui
   - `android/keystore.properties` (ignoré par git, copie dans le même dossier) en donne le chemin et le mot de passe.
   - Debug et release sont signés par cette clé, pour qu'une version s'installe par-dessus l'autre. Sans le fichier, Gradle retombe sur la clé de debug du PC.
   - Android refuse une mise à jour signée d'une autre clé, sauf désinstallation, qui efface les données (point 41).
+- **Contenu de l'APK** (lot 151) : le manifeste n'a plus le récepteur de démarrage du greffon GPS ni `RECEIVE_BOOT_COMPLETED` (il ne restaurait que des zones de géorepérage, jamais employées) ; `allowBackup` à false et `data_extraction_rules.xml` excluent tout de la sauvegarde et du transfert d'appareil. `androidManifest.test.ts` garde ces points. Les licences : `licences.json` généré à la racine de `dist` par la construction, et le complément `public/licences-hors-js.json`, refait à la main par `outils/licences-hors-js.mjs` quand une dépendance native change ; un test refuse toute dépendance de production hors liste blanche (exceptions nommées `react-leaflet` et `@react-leaflet/core`, n° 171).
 - **Diffusion** : l'APK par un lien (Drive, WeTransfer), avec la fiche `docs/INSTALLATION.md`. Après une réinstallation, désigner à nouveau le dossier mémoire : le sélecteur d'Android redonne accès aux fichiers déjà écrits.
 - **Inspection** :
   - capture d'écran : `adb exec-out screencap -p` ;

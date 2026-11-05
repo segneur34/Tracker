@@ -28,3 +28,5 @@ Première passe, rien de visible ne change.
 - **Renvois de l'atelier** : plus de « lot N », « Q40 », « Q53 », « Q57 » ni de date sans année dans les commentaires de `useZoomOnMap.ts`, `sailingAnalytics.ts`, `sailingSession.ts`, `useSailingSession.ts` ; à la place « HISTORIQUE, point N » (points 142, 156, 197, 220, 225, 265, 267, 268, 272, 275).
 - **Couleurs** : bâbord et tribord dans `highlightColors.ts` (`TACK_PORT_COLOR`, `TACK_STARBOARD_COLOR`, mêmes valeurs), reprises par `renderVmgPanel`.
 - **Styles en ligne** : `renderTop3` et `renderVmgPanel` de `SailingModule.tsx` passés en classes `an-vmg-*` (`analysisMobile.css`), mêmes tailles en pixels ; le reste de ces blocs (une seule occurrence chacun) reste en ligne.
+
+Vu le 05/11 (lot 155) : `readVisibility`, export mort dans `useSportSettings.ts`.
