@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 166, essai 122, question Q58.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 168, essai 122, question Q59.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -11,24 +11,12 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.80 construite le 05/11 (versionCode 4080, paquet « Nouveautés à l'écran » entier : lots 165, 145, 147, 146), pas installée (décision du 05/11 : construire seulement ; `android/app/build/outputs/apk/release/Tracker-0.4.80.apk`, la 0.4.79 intermédiaire a été remplacée) ; 0.4.78 installée. Essais 113 à 121 sur la 0.4.80.
-
-- 165 · [bogue] Retouches d'analyses, en un seul lot : « + carte » après un zoom ouvre toujours le plein écran carte + graphes au téléphone (bogue du 05/11, décision du 25/10 renversée ; banc `zoom-carte` remis d'accord, ex-n° 163), liste des manœuvres de voile repliée sous « Tous les virements (n) », sauts proposés (Enregistrer, onglet « sauts » de Réglages) seulement si la case de l'activité est cochée, défaut coché wing, planche, kite et VTT (pré-réglages version 4, case des sauts du kite et du VTT effacée une fois), appréciations en cinq visages à la place des emoji (ex-n° 41), tranches par kilomètre (ou par mille) repliées dans « tops » en course et à vélo (ex-n° 97) · noté 05/11 · petit · Opus/medium · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/165-retouches-analyses.md
-  - essai 113 : zoomer un graphe de course puis « + carte », carte entière à l'écran ou non → le plein écran carte + graphes s'ouvre, tronçon violet cadré
-  - essai 114 : Enregistrer en course → pas de case « Mesurer les sauts » ; en wing et en VTT → la case est là, cochée
-  - essai 115 : une activité kite ou VTT réglée avant l'APK → sa case « Mesurer les sauts » de Réglages est revenue cochée, ses autres réglages gardés
-- 145 · [idée] Analyses, en un seul lot : 137 bouton « tout fermer », 138 ouverture sur « général » seul, plus de mémoire des onglets avancés (décidé le 03/11), 133 flèches de sens selon le zoom, 139 partage en image (liste entière décidée le 05/11), 134 limites des zones de BPM : tracées sur le graphe cardio de la course, et mode « course à bornes » dans Entraînement (Q54) · noté 03/11 · gros · Opus/high · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/145-lot.md
-  - essai 116 : image de partage d'une séance de voile sur foil → lignes « Manœuvres réussies », « Pumping », « Vent », « Appréciation » lisibles, sans emoji
-  - essai 117 : pincer la carte d'une analyse → les flèches de sens se raréfient en dézoomant, se densifient en zoomant, sans saccade
-  - essai 118 : rouvrir une analyse → « général » seul, « avancé » fermé ; « tout fermer » replie tout
-
-- 147 · [idée] Profil et découverte, en un seul lot : 136 fleur à 6 étapes (papillon qui entre à 4 fois l'objectif, à côté de la fleur à 4,6, posé à 5 ; étapes 4, 5 et 6 nommées dans la bulle), 142 tutoriels (14 leçons, une par nouveau jour d'ouverture, carte « Aujourd'hui » en haut de l'accueil, pages /tutoriels, bloc « Tutoriels » de Réglages) · noté 03/11 · gros · Opus/high · à valider (commit du 05/11, version 0.4.80) · détail : docs/backlog/147-lot.md
-  - essai 120 : accueil → la carte « Aujourd'hui : Enregistrer une session » (absente si la carte des autorisations ou le pop-up du profil est montré) ; « Lire » ouvre la leçon ; le lendemain, « Lire une analyse »
-  - essai 121 : Profil, une semaine à plus de 4 fois l'objectif → le papillon (en vol, puis posé au-delà de 5 fois) et la bulle qui l'annonce, en clair et en sombre
-
-- 146 · [idée] Statistiques, en un seul lot : 132 matériel croisé (une ligne de boutons glissants par groupe de matériel, croisement en ET, adresse `materiel=groupe:piece,…`), 141 onglet « niveau » à pied et à vélo (meilleur 5 km et 10 km en pourcentage de la référence de l'âge et classe, tables d'Alan Jones 2025 CC0 ; VO2max estimée par VDOT située dans les percentiles FRIEND 2022 ; à vélo meilleurs 20 min × 0,95 en W/kg sur le barème dérivé de Coggan ; sans sexe ou année de naissance, une phrase d'invite) ; résumé des fiches version 18 (`bests`), type et poids du vélo dans l'empreinte · noté 03/11 · gros · Opus/high · à valider sur l'APK, sans essai obligatoire (commit du 05/11, version 0.4.80) · détail : docs/backlog/146-lot.md
+APK 0.4.80 installée le 05/11 (versionCode 4080, paquet « Nouveautés à l'écran » validé : lots 165, 145, 147, 146).
 
 ## Ensuite
+
+1. 166 · [bogue] Analyses › graphes, « +carte » ou « Afficher » : quitter le plein écran carte + graphes sans refermer « Afficher » laisse la trace colorée en violet ; voulu : sortir de ce mode retire aussi la coloration (aujourd'hui `closeCompanion` de `hooks/useZoomOnMap.ts` ferme le plein écran mais pas la surbrillance du graphe) · noté 05/11 · petit · Sonnet/medium · prêt
+2. 167 · [idée] Voile › nouveau graphique de VMG (vitesse vers le vent en fonction du temps, près et portant), dans l'onglet « graphiques » ou « vmg » ; et les moments de manœuvre (virements, empannages) écartés du graphique ET des chiffres de l'onglet VMG (moyennes par bord, tops), décidé le 05/11 : les chiffres de VMG des anciennes sessions changent, à signaler · noté 05/11 · petit · Opus/medium · prêt
 
 ## Ça attend une occasion
 
@@ -103,3 +91,4 @@ APK 0.4.80 construite le 05/11 (versionCode 4080, paquet « Nouveautés à l'éc
 - 96 · [idée] Énergie par la FC en voile et en surf (ex-n° 28) : commencer par une recherche documentaire poussée (Keytel et autres formules, leur validité sur l'eau) avant tout code ; dort tant qu'aucune ceinture n'est portée sur l'eau · noté 30/10 · gros
 
 ## Questions
+
