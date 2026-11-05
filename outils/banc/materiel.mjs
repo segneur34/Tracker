@@ -7,7 +7,11 @@
 //     Course, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre,
 //     « Enregistrer la session », fiche relue, rechargement ;
 //  3. la même chose pour une sortie à vélo et une session de surf, sous les intitulés par défaut ;
-//  4. à 390×844 : pas de débordement.
+//  4. à 390×844 : pas de débordement ;
+//  5. Statistiques, matériel croisé (lot 146) : une liste de matériel à trois groupes pour Course, trois courses
+//     équipées par l'onglet « matériel et notes » ; une ligne par groupe porté (pas celle du groupe jamais porté),
+//     croisement en ET (Trail : 2 sessions, Trail et 5 L : 1), adresse `materiel=groupe:piece,…`, résumé de
+//     « Sélection », retour arrière d'un cran, ancienne adresse à une pièce relue dans son groupe.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
 
@@ -142,6 +146,83 @@ for (const path of [runPath, surfPath]) {
   check(`à 390 px, ${path.split('/')[1]} : débordement ${o}`, o === 0);
 }
 await shoot('materiel-telephone');
+
+// --- 5. Statistiques : matériel croisé (lot 146) ---
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await go('/', 3000);
+await evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
+  s.gearGroups = { ...s.gearGroups, running: [
+    { id: 'g-ch', name: 'Chaussures', items: [{ id: 'c-trail', name: 'Trail' }, { id: 'c-route', name: 'Route' }] },
+    { id: 'g-sac', name: 'Sac', items: [{ id: 's-5', name: '5 L' }, { id: 's-10', name: '10 L' }] },
+    { id: 'g-montre', name: 'Montre', items: [{ id: 'm-1', name: 'Jamais portée' }] },
+  ] };
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return 'ok';
+})()`);
+/** Importe une course, choisit une pièce par groupe dans l'onglet « matériel et notes », enregistre. */
+const equipped = async (startIso, shoe, bag) => {
+  const start = Date.parse(startIso);
+  const day = startIso.slice(0, 10);
+  await go('/course', 3000);
+  console.log(`\nimport course ${day} :`, await importGpx(lineGpx('running', 2.8, start), `course-${day}.gpx`));
+  await waitFor(async () => (await records())?.find((r) => r.summary?.startMs === start), { timeout: 4000, label: 'fiche' });
+  await settle({ max: 2000, label: 'import' });
+  const rec = (await records()).find((r) => r.summary?.startMs === start);
+  await go(`/course/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`, 6000);
+  await tabsReady();
+  await openTab('matériel et notes'); await settle({ max: 800, label: 'onglet matériel' });
+  for (const [group, item] of [['g-ch', shoe], ['g-sac', bag]]) {
+    await evaluate(`document.querySelector('[data-testid="gear-picker-${group}"]')?.click()`);
+    await wait(300);
+    console.log(`  ${group} → ${item} :`, await clickText(item, '[data-testid="gear-sheet"] button'));
+    await wait(300);
+  }
+  console.log('  Enregistrer la session :', await clickText('Enregistrer la session'));
+  await waitFor(async () => (await records()).find((r) => r.summary?.startMs === start)?.notes?.gear?.length === 2, { timeout: 2000, label: 'matériel écrit' });
+  await settle({ max: 1500, label: 'enregistrement' });
+  const gear = (await records()).find((r) => r.summary?.startMs === start)?.notes?.gear ?? [];
+  check(`course du ${day} : ${shoe} et ${bag} dans la fiche`, gear.map((g) => g.itemName).join(' + ') === `${shoe} + ${bag}`, JSON.stringify(gear));
+};
+await equipped('2026-10-05T08:00:00Z', 'Trail', '5 L');
+await equipped('2026-10-06T08:00:00Z', 'Trail', '10 L');
+await equipped('2026-10-07T08:00:00Z', 'Route', '5 L');
+
+const statSessions = () => evaluate(`[...document.querySelectorAll('.an-sheet__stat')].find((el) => el.querySelector('.an-sheet__stat-label')?.textContent === 'Sessions')?.querySelector('.an-sheet__stat-value')?.textContent ?? null`);
+/** Lignes du filtre « Matériel » : « Groupe : Tous, pièce… », le choix entre crochets. */
+const gearRows = () => evaluate(`[...document.querySelectorAll('.stats-gear')].map((r) => r.querySelector('.stats-gear__label')?.textContent + ' : ' + [...r.querySelectorAll('[role=radio]')].map((b) => (b.getAttribute('aria-checked') === 'true' ? '[' + b.textContent + ']' : b.textContent)).join(', ')).join(' | ')`);
+const pickGear = (group, item) => evaluate(`(() => {
+  const b = [...document.querySelectorAll(${JSON.stringify(`.ui-segmented[aria-label="Matériel : ${group}"] [role=radio]`)})].find((x) => x.textContent.trim() === ${JSON.stringify(item)});
+  if (!b) return 'absent'; b.click(); return 'ok';
+})()`);
+const choiceText = () => evaluate(`document.querySelector('.stats-choice button[data-chart-fold]')?.textContent ?? ''`);
+const address = () => evaluate('location.pathname + location.search');
+await go('/statistiques?famille=course&activite=running', 4000);
+if ((await evaluate(`document.querySelector('.stats-choice button[data-chart-fold]')?.getAttribute('aria-expanded')`)) !== 'true') {
+  await evaluate(`document.querySelector('.stats-choice button[data-chart-fold]')?.click()`);
+  await settle({ max: 800, label: 'sélection' });
+}
+console.log('\nlignes du matériel :', await gearRows());
+check('Course : 4 sessions, une ligne par groupe porté (pas « Montre »)', (await statSessions()) === '4'
+  && (await gearRows()) === 'Chaussures : [Tous], Trail, Route | Sac : [Tous], 5 L, 10 L', `${await statSessions()} ; ${await gearRows()}`);
+console.log('Trail :', await pickGear('Chaussures', 'Trail'));
+await settle({ max: 800, label: 'Trail' });
+check('Trail : 2 sessions, adresse à une pièce', (await statSessions()) === '2' && (await address()) === '/statistiques?famille=course&activite=running&materiel=g-ch%3Ac-trail',
+  `${await statSessions()} ; ${await address()}`);
+console.log('5 L :', await pickGear('Sac', '5 L'));
+await settle({ max: 800, label: '5 L' });
+console.log('sélection :', await choiceText());
+check('Trail et 5 L : 1 session, croisée dans l\'adresse et le résumé', (await statSessions()) === '1'
+  && (await address()) === '/statistiques?famille=course&activite=running&materiel=g-ch%3Ac-trail%2Cg-sac%3As-5'
+  && (await choiceText()).includes('Course · Chaussures Trail · Sac 5 L'), `${await statSessions()} ; ${await address()} ; ${await choiceText()}`);
+await shoot('materiel-statistiques');
+await evaluate('history.back()');
+await settle({ max: 1000, label: 'retour' });
+check('retour arrière : Trail seul, 2 sessions', (await statSessions()) === '2' && (await gearRows()) === 'Chaussures : Tous, [Trail], Route | Sac : [Tous], 5 L, 10 L',
+  `${await statSessions()} ; ${await gearRows()}`);
+await go('/statistiques?famille=course&activite=running&materiel=s-10', 4000);
+check('ancienne adresse à une pièce : 10 L, rangée dans Sac', (await statSessions()) === '1' && (await gearRows()) === 'Chaussures : [Tous], Trail, Route | Sac : Tous, 5 L, [10 L]',
+  `${await statSessions()} ; ${await gearRows()}`);
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));

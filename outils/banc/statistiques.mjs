@@ -20,6 +20,11 @@
 //  5b. une session de voile de `make-gpx.mjs`, ouverte dans son analyse : la réussite de ses manœuvres rangée
 //     dans sa fiche, et « % de manœuvres réussies » tracé en deux séries, avec sa légende (empannage en rond,
 //     virement en triangle, 23/10) ;
+//  5c. l'onglet « niveau » (lot 146), après « records », à pied et à vélo seulement (ni voile, ni surf, ni
+//     Entraînement, ni Marche) : sans profil, la phrase d'invite ; sans poids, « Poids à renseigner » à vélo ;
+//     profil d'un homme de 40 ans, 70 kg, une course de 50 min (10 km en 41 min) et une sortie à vélo de 30 min
+//     à 9 m/s importées : 5 km, 10 km et VO2max situés, la ligne du 10 km ouvre sa session ; les meilleurs 20 min
+//     à vélo (puissance du modèle, vélo Route de 12 kg) et leur niveau ; une sortie résumée sans poids, refaite ;
 //  6. à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -181,7 +186,8 @@ await settle({ max: 800 });
 check('famille dans l\'adresse', (await search()) === '/statistiques?famille=course', await search());
 check('Course : 5 sessions', (await stat('Sessions')) === '5', await stat('Sessions'));
 check('À pied : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--course', await backdrop());
-check('onglets d\'une famille', (await tabs()) === 'général, graphique, régularité, records', await tabs());
+// Lot 146 : « niveau » après « records », à pied et à vélo.
+check('onglets d\'une famille', (await tabs()) === 'général, graphique, régularité, records, niveau', await tabs());
 check('vitesse max et D+', (await stat('Vitesse max')) !== null && (await stat('Vitesse moyenne en action')) !== null, `${await stat('Vitesse max')} ; ${await stat('Vitesse moyenne en action')}`);
 check('graphique : la vitesse max par défaut, 5 points', (await pressed('Donnée')) === 'Vitesse max' && (await points()) === 5, `${await pressed('Donnée')} ; ${await points()}`);
 await openTab('records');
@@ -348,6 +354,81 @@ check('Durée : deux lignes (tendance pointillée, heures par semaine)', lignesD
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de manœuvres réussies');
 await wait(400);
 await shoot('stats-reussite');
+
+// 5c. Onglet « niveau » (lot 146).
+const levelLines = () => evaluate(`[...document.querySelectorAll('.stats-level__text')].map((e) => e.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')`);
+const levelHint = () => evaluate(`[...document.querySelectorAll('.stats-level__hint')].map((e) => e.textContent).join(' | ')`);
+const setRunner = (profile) => evaluate(`(() => { localStorage.setItem('tracker.runnerProfile', ${JSON.stringify(JSON.stringify({ me: profile }))}); return 'ok'; })()`);
+await go('/statistiques?famille=course');
+await openTab('niveau');
+await wait(400);
+check('niveau sans profil : la phrase d\'invite et son lien', (await levelHint()) === 'Renseignez l\'année de naissance et le sexe dans Réglages › Pratiquant pour vous situer.'
+  && (await evaluate(`document.querySelector('.stats-level__hint a')?.getAttribute('href')`)) === '/parametres', await levelHint());
+for (const [path, name] of [['/statistiques?famille=voile', 'voile'], ['/statistiques?famille=surf', 'surf'], ['/statistiques?famille=fractionne', 'Entraînement'], ['/statistiques?famille=course&activite=a-marche', 'Marche']]) {
+  await go(path);
+  check(`pas d'onglet « niveau » en ${name}`, !(await tabs())?.includes('niveau'), await tabs());
+}
+await go('/statistiques?famille=velo');
+check('onglets du vélo, avec « niveau »', (await tabs()) === 'général, graphique, régularité, records, niveau', await tabs());
+// Un homme de 40 ans l'année des sessions importées, sans poids d'abord.
+const birthYear = new Date(day(3)).getFullYear() - 40;
+await setRunner({ sex: 'm', birthYear });
+await go('/statistiques?famille=velo');
+check('vélo sans poids : « Poids à renseigner »', (await levelLines()) === 'Meilleurs 20 min : Poids à renseigner dans Réglages › Pratiquant', await levelLines());
+await setRunner({ sex: 'm', birthYear, weightKg: 70 });
+// Une course de 50 min à l'allure de 41 min au 10 km, une sortie à vélo de 30 min à 9 m/s.
+const longGpx = (type, daysAgo, speedMs, seconds) => {
+  const t0 = day(daysAgo);
+  const pts = [];
+  for (let k = 0; k <= seconds; k++) pts.push(`<trkpt lat="43.7000000" lon="${(3.8 + (k * speedMs) / 80500).toFixed(7)}"><ele>50</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${type} long</name><type>${type}</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
+};
+await go('/course', 5000);
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
+console.log('import niveau :', await evaluate(`(() => {
+  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const dt = new DataTransfer();
+  for (const [name, text] of ${JSON.stringify([['course-longue.gpx', longGpx('running', 3, 10000 / 2460, 3000)], ['velo-long.gpx', longGpx('cycling', 4, 9, 1800)]])}) dt.items.add(new File([text], name, { type: 'application/gpx+xml' }));
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`));
+await waitFor(async () => {
+  const all = await sessionRecords();
+  return all.some((r) => r.summary.bests?.d10kmS) && all.some((r) => r.summary.startMs === day(4) && r.summary.bests?.p20minW);
+}, { timeout: 15000, label: 'meilleurs efforts' });
+// La sortie à vélo du jour 9, résumée sans poids, est refaite une fois le poids connu (à la réouverture de la mémoire).
+await go('/statistiques?famille=velo', 3000);
+await waitFor(async () => (await sessionRecords()).find((r) => r.summary.startMs === day(9))?.summary.bests?.p20minW, { timeout: 15000, label: 'sortie refaite' });
+const refaite = (await sessionRecords()).find((r) => r.summary.startMs === day(9))?.summary;
+check('sortie résumée sans poids, refaite avec : puissance et poids retenus', refaite?.calcVersion >= 17 && refaite?.bests?.p20minW > 0 && refaite?.bests?.powerRiderKg === 70, JSON.stringify(refaite?.bests));
+await settle({ max: 1500, label: 'résumés' });
+
+await go('/statistiques?famille=course');
+const runLines = await levelLines();
+console.log('niveau à pied :', runLines);
+const [l5, l10, lvo2] = runLines.split(' | ');
+// Temps à 10 s près : à 1 Hz, la fenêtre des meilleurs segments s'arrête sur un point de la trace, un peu au-delà
+// de la distance (mesuré : 20 min 32 et 41 min 03 pour 20 min 30 et 41 min 00 visés).
+const seconds = (m, s) => Number(m) * 60 + Number(s);
+const run5 = l5?.match(/^Meilleur 5 km : (\d+) min (\d\d) \(\d\d\/\d\d\) · (\d+) % de la référence de votre âge : niveau local$/);
+check('5 km : 20 min 30 à 10 s près, 66 %, niveau local', run5 && Math.abs(seconds(run5[1], run5[2]) - 1230) <= 10 && Number(run5[3]) === 66, l5);
+const run10 = l10?.match(/^Meilleur 10 km : (\d+) min (\d\d) \(\d\d\/\d\d\) · (\d+) % de la référence de votre âge : niveau local$/);
+check('10 km : 41 min 00 à 10 s près, 67 %, niveau local', run10 && Math.abs(seconds(run10[1], run10[2]) - 2460) <= 10 && Number(run10[3]) === 67, l10);
+const vo2 = lvo2?.match(/^VO2max estimée : (\d+) ml\/kg\/min \(d'après votre 10 km\) · au-dessus de (\d+) % des hommes de 40 à 49 ans$/);
+check('VO2max : 50, d\'après le 10 km, au-dessus de 90 % des hommes de 40 à 49 ans', vo2 && Number(vo2[1]) === 50 && Math.abs(Number(vo2[2]) - 90) <= 1, lvo2);
+await shoot('stats-niveau');
+await evaluate(`document.querySelectorAll('.stats-level__text')[1]?.closest('button')?.click()`);
+await settle({ max: 2500 });
+check('la ligne du 10 km ouvre sa session', (await search())?.startsWith('/course/analyse?session='), await search());
+
+await go('/statistiques?famille=velo');
+const bikeLine = await levelLines();
+console.log('niveau à vélo :', bikeLine);
+// Route, 12 kg, et 70 kg à 9 m/s sur le plat : pesanteur et roulement, plus l'air, sur une transmission à 97 %.
+const expectedW = ((82 * 9.81 * 0.004 + 0.5 * 1.225 * 0.32 * 81) * 9) / 0.97;
+const bike = bikeLine.match(/^Meilleurs 20 min : (\d+) W estimés \(\d\d\/\d\d\) · (\d+,\d) W\/kg au seuil \(× 0,95\) : (.+)$/);
+check(`vélo : ${Math.round(expectedW)} W estimés, 2,4 W/kg au seuil, loisir`, bike && Math.abs(Number(bike[1]) - expectedW) <= 2 && bike[2] === '2,4' && bike[3] === 'loisir', bikeLine);
 
 // 6. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

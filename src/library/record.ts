@@ -17,6 +17,21 @@ import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes'
 import { finiteOr, isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basics';
 
 /**
+ * Bornes de vraisemblance des meilleurs efforts relus d'une fiche (`SummaryBests`, lot 146), comprises : hors
+ * d'elles, une valeur est abîmée (fichier retouché, autre version) et le champ est oublié.
+ */
+export const SUMMARY_BESTS_BOUNDS = {
+  /** Meilleur 5 km, en secondes : de 5 min (à vélo) à 3 h. */
+  d5kmS: { min: 300, max: 10_800 },
+  /** Meilleur 10 km, en secondes : de 10 min (à vélo) à 6 h. */
+  d10kmS: { min: 600, max: 21_600 },
+  /** Meilleure puissance sur 20 min, en W. */
+  p20minW: { min: 20, max: 2_000 },
+  /** Poids du pratiquant de l'estimation, en kg. */
+  powerRiderKg: { min: 20, max: 300 },
+} as const;
+
+/**
  * Fiche d'une session : le fichier JSON rangé à côté de son GPX dans le
  * dossier mémoire (`docs/ETAT_DU_PROJET.md` §6).
  *
@@ -94,8 +109,11 @@ export const RECORD_VERSION = 1;
  * 17 (5 novembre 2026, lot 145) : meilleur kilomètre en temps à pied
  * (`best1kmS`) et meilleures 5 min en vitesse à vélo (`best5minMs`), pour
  * l'image de partage d'une session dont l'analyse n'est pas ouverte.
+ * 18 (5 novembre 2026, lot 146, après le 17 du lot 145 dans la même APK) : meilleurs 5 km et 10 km à pied et à vélo,
+ * meilleure puissance estimée sur 20 min à vélo (`bests`), pour l'onglet
+ * « niveau » des statistiques (les autres chiffres ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 17;
+export const SUMMARY_CALC_VERSION = 18;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -154,6 +172,8 @@ export interface SessionSummary {
   windDirDeg?: number;
   /** Vélo, posé par l'analyse : puissance mécanique moyenne en mouvement, en watts, d'après le poids du pratiquant (lot 145). */
   avgPowerW?: number;
+  /** Meilleurs efforts à pied et à vélo (lot 146, version 18), pour l'onglet « niveau » des statistiques. */
+  bests?: SummaryBests;
   /**
    * Empreinte des réglages qui ont produit ce résumé (`summaryOptionsKey` : seuil, allure imposée,
    * foil et seuil de vague en surf), lot 37. Une empreinte qui ne correspond plus aux réglages
@@ -434,6 +454,37 @@ export interface SessionRecord {
 }
 
 
+// --- Meilleurs efforts du résumé (lot 146) ---
+
+/**
+ * Meilleurs efforts d'une session à pied ou à vélo, tirés des tops (`computeTopSegments`, distance retenue,
+ * règle 6). Un champ manque quand la session est trop courte pour lui.
+ */
+export interface SummaryBests {
+  /** Meilleur 5 km, en secondes. */
+  d5kmS?: number;
+  /** Meilleur 10 km, en secondes. */
+  d10kmS?: number;
+  /** Vélo : meilleure puissance mécanique moyenne estimée sur 20 min, en W (modèle du vélo, `cycling/energy.ts`). */
+  p20minW?: number;
+  /**
+   * Vélo : poids du pratiquant avec lequel la puissance a été cherchée, en kg ; absent si le poids n'était pas
+   * renseigné au moment du résumé (rien n'est alors estimé, et le résumé est refait une fois le poids connu).
+   */
+  powerRiderKg?: number;
+}
+
+const readSummaryBests = (raw: unknown): SummaryBests | null => {
+  if (!isObject(raw)) return null;
+  const bests: SummaryBests = {};
+  for (const key of Object.keys(SUMMARY_BESTS_BOUNDS) as (keyof typeof SUMMARY_BESTS_BOUNDS)[]) {
+    const value = raw[key];
+    const { min, max } = SUMMARY_BESTS_BOUNDS[key];
+    if (isFiniteNumber(value) && value >= min && value <= max) bests[key] = value;
+  }
+  return Object.keys(bests).length > 0 ? bests : null;
+};
+
 const readSummary = (raw: unknown): SessionSummary | null => {
   if (!isObject(raw)) return null;
   const { calcVersion, startMs, endMs, distanceM, maxSpeedMs, pointCount, samplingS } = raw;
@@ -483,6 +534,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
     const value = raw[field];
     if (!isFiniteNumber(value) || value < min || value > max) delete summary[field];
   }
+  const bests = readSummaryBests(raw.bests);
+  if (bests) summary.bests = bests;
+  else delete summary.bests;
   if (typeof raw.optionsKey !== 'string') delete summary.optionsKey;
   const activitySettings = readActivitySettings(raw.activitySettings);
   if (activitySettings) summary.activitySettings = activitySettings;

@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.79 construite le 05/11 (versionCode 4079, paquet « Nouveautés à l'écran », partie 1 : lots 165 et 145), pas installée (décision du 05/11 : construire seulement) ; 0.4.78 installée. Essais 113 à 118 sur la 0.4.79.
+APK 0.4.80 construite le 05/11 (versionCode 4080, paquet « Nouveautés à l'écran » entier : lots 165, 145, 147, 146), pas installée (décision du 05/11 : construire seulement) ; 0.4.79 (lots 165 et 145 seuls) construite aussi ; 0.4.78 installée. Essais 113 à 121 sur la 0.4.80.
 
 - 165 · [bogue] Retouches d'analyses, en un seul lot : « + carte » après un zoom ouvre toujours le plein écran carte + graphes au téléphone (bogue du 05/11, décision du 25/10 renversée ; banc `zoom-carte` remis d'accord, ex-n° 163), liste des manœuvres de voile repliée sous « Tous les virements (n) », sauts proposés (Enregistrer, onglet « sauts » de Réglages) seulement si la case de l'activité est cochée, défaut coché wing, planche, kite et VTT (pré-réglages version 4, case des sauts du kite et du VTT effacée une fois), appréciations en cinq visages à la place des emoji (ex-n° 41), tranches par kilomètre (ou par mille) repliées dans « tops » en course et à vélo (ex-n° 97) · noté 05/11 · petit · Opus/medium · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/165-retouches-analyses.md
   - essai 113 : zoomer un graphe de course puis « + carte », carte entière à l'écran ou non → le plein écran carte + graphes s'ouvre, tronçon violet cadré
@@ -26,9 +26,10 @@ APK 0.4.79 construite le 05/11 (versionCode 4079, paquet « Nouveautés à l'éc
   - essai 120 : accueil → la carte « Aujourd'hui : Enregistrer une session » (absente si la carte des autorisations ou le pop-up du profil est montré) ; « Lire » ouvre la leçon ; le lendemain, « Lire une analyse »
   - essai 121 : Profil, une semaine à plus de 4 fois l'objectif → le papillon (en vol, puis posé au-delà de 5 fois) et la bulle qui l'annonce, en clair et en sombre
 
+- 146 · [idée] Statistiques, en un seul lot : 132 matériel croisé (une ligne de boutons glissants par groupe de matériel, croisement en ET, adresse `materiel=groupe:piece,…`), 141 onglet « niveau » à pied et à vélo (meilleur 5 km et 10 km en pourcentage de la référence de l'âge et classe, tables d'Alan Jones 2025 CC0 ; VO2max estimée par VDOT située dans les percentiles FRIEND 2022 ; à vélo meilleurs 20 min × 0,95 en W/kg sur le barème dérivé de Coggan ; sans sexe ou année de naissance, une phrase d'invite) ; résumé des fiches version 18 (`bests`), type et poids du vélo dans l'empreinte · noté 03/11 · gros · Opus/high · à valider sur l'APK, sans essai obligatoire (commit du 05/11, version 0.4.80) · détail : docs/backlog/146-lot.md
+
 ## Ensuite
 
-1. 146 · [idée] Statistiques, en un seul lot : 132 matériel croisé sur plusieurs lignes à boutons glissants, 141 niveau sportif comparé à un tableau de référence (sources cherchées par la conversation d'abord) · noté 03/11 · gros · Opus/high · en cours (05/11, briefé, worktree) · détail : docs/backlog/146-lot.md
 ## Ça attend une occasion
 
 **Une vraie sortie d'au moins 2 h, écran éteint et capteurs actifs (lot 156, APK 0.4.69)**

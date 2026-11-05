@@ -15,7 +15,9 @@ import {
 } from '../../library/summaryOptions';
 import type { MemoryFolder } from '../../platform/memoryFolder';
 import { jsonStore, storageStartupFailure } from '../../platform/storage';
-import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from '../useSportSettings';
+import { sportTreatment } from '../../core/sportProfiles';
+import { readRunnerProfile } from '../useRunnerProfile';
+import { effectiveBikeSetup, effectiveFoil, effectiveThresholdOverride, readStoredActivities } from '../useSportSettings';
 import { lib } from './memory';
 
 /**
@@ -29,11 +31,15 @@ export const activityOfSession = (sport: SportType, activityId: string | null | 
 
 /**
  * Réglages de l'activité d'une session qui changent son résumé (seuil, foil),
- * lus dans Réglages pour le calcul retenu (`analyzeGpx`, `summaryOptions`).
+ * lus dans Réglages pour le calcul retenu (`analyzeGpx`, `summaryOptions`) ;
+ * à vélo, son vélo et le poids du pratiquant (meilleurs 20 min, lot 146).
  */
 export const activitySummarySettings = (activityId: string | null | undefined) => (sport: SportType): ActivitySummarySettings => {
   const activity = activityOfSession(sport, activityId);
-  return { thresholdOverride: effectiveThresholdOverride(activity), foil: effectiveFoil(activity) };
+  const settings: ActivitySummarySettings = { thresholdOverride: effectiveThresholdOverride(activity), foil: effectiveFoil(activity) };
+  if (sportTreatment(sport) !== 'velo') return settings;
+  const { bikeType, bikeKg } = effectiveBikeSetup(activity);
+  return { ...settings, cycling: { bikeType, bikeKg, riderKg: readRunnerProfile().weightKg } };
 };
 
 /**

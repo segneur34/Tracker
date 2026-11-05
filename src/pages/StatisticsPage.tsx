@@ -15,6 +15,7 @@ import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { IconChevronRight } from '../components/icons';
 import CardioLoadHelp from '../components/CardioLoadHelp';
+import StatsLevelPanel from '../components/StatsLevelPanel';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/heartRateColors';
 import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
@@ -38,10 +39,10 @@ import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
 import { useVisibleStatSessions, visibleStatSessions } from '../hooks/useVisibleStatSessions';
-import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useGearGroups, useVisibility } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveEnergyModel, effectiveHrOffset, effectiveSpeedUnit, useGearGroups, useVisibility } from '../hooks/useSportSettings';
 import {
   STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
-  gearFilterItems, groupTotals, inBounds, isStatsMetricKey, matchesGear, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
+  gearFilterItems, gearFilterRows, gearParamOf, gearPickLabel, groupTotals, inBounds, isStatsMetricKey, matchesGearSelection, isStatsPeriod, readGearParam, withGearPick, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
   statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
   type StatsTotals, type ZoneBoundsOf,
   groupByActivity,
@@ -58,11 +59,16 @@ import { CHART_GRID_PROPS, CHART_TICK, OTHERS_COLOR, chartTick, yAxisLabel } fro
  * relire un seul GPX (`library/stats.ts`). Le choix est dans l'adresse
  * (`?famille=&activite=&materiel=&periode=`) : le retour arrière remonte d'un niveau.
  * Le filtre « Matériel » (lot 20) garde les sessions d'une activité qui
- * portent une pièce de son matériel enregistré.
+ * portent une pièce de son matériel enregistré ; une ligne par groupe depuis
+ * le lot 146, croisées : une session compte si elle porte chaque pièce choisie
+ * (`materiel=groupe:piece,groupe:piece`).
  * Le dernier choix est retenu sur l'appareil : une adresse sans paramètre le
  * reprend à l'ouverture.
  * Les sessions d'une activité ou d'une famille cachée n'y sont pas, ni celles
  * à classer ; une famille cachée ouverte par son adresse montre tout.
+ *
+ * L'onglet « niveau » (lot 146), à pied et à vélo, situe les meilleurs efforts
+ * de la période par rapport à des références publiées (`StatsLevelPanel`).
  *
  * Onglets et panneaux comme les pages d'analyse (`docs/MISE_EN_PAGE.md`),
  * sans carte. Le graphique trace une donnée au choix par session ; dans la vue
@@ -70,7 +76,7 @@ import { CHART_GRID_PROPS, CHART_TICK, OTHERS_COLOR, chartTick, yAxisLabel } fro
  * comparent pas.
  */
 
-type StatsSection = 'general' | 'vitesse' | 'regularite' | 'records' | 'cardio';
+type StatsSection = 'general' | 'vitesse' | 'regularite' | 'records' | 'niveau' | 'cardio';
 
 const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
   { key: 'general', label: 'général' },
@@ -78,11 +84,13 @@ const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
   { key: 'vitesse', label: 'graphique' },
   { key: 'regularite', label: 'régularité' },
   { key: 'records', label: 'records' },
+  // À pied (sans la marche) et à vélo seulement, d'une famille ou d'une de ses activités (lot 146).
+  { key: 'niveau', label: 'niveau' },
   // Seulement quand une session de la période a de la FC ; les bpm se comparent d'une famille à l'autre.
   { key: 'cardio', label: 'cardio' },
 ];
 
-const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, cardio: false };
+const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, niveau: false, cardio: false };
 
 /** Coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
 const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
@@ -101,7 +109,7 @@ interface StatsView {
   periode: StatsPeriod;
   /** Donnée du graphique ; absente de la sélection, celle par défaut est montrée sans l'oublier. */
   donnee: StatsMetricKey | null;
-  /** Pièce du matériel enregistré de l'activité (son identifiant) ; `null` : tout le matériel. */
+  /** Pièces du matériel enregistré de l'activité, une par groupe (`readGearParam`) ; `null` : tout le matériel. */
   materiel?: string | null;
 }
 
@@ -128,6 +136,9 @@ const isFamily = (value: unknown): value is SportFamily => SPORT_FAMILIES.some((
 
 /** Familles qui comptent le dénivelé et la vitesse moyenne en action. */
 const isLandFamily = (family: SportFamily | null): boolean => family === 'course' || family === 'velo' || family === 'fractionne';
+
+/** Activité de marche (son modèle d'énergie) : écartée de l'onglet « niveau », dont les tables sont celles de la course. */
+const isWalking = (activity: Activity | undefined | null): boolean => !!activity && effectiveEnergyModel(activity) === 'marche';
 
 
 
@@ -277,11 +288,12 @@ function StatisticsPage() {
       ? activityById.get(activityParam)!
       : null;
 
-  // Matériel : les pièces de l'activité choisie (Réglages), et celle de l'adresse si elle en est une.
+  // Matériel : les pièces de l'activité choisie (Réglages), et celles de l'adresse, une par groupe, qui en sont.
   const gearGroups = useGearGroups(activity);
   const gearItems = useMemo(() => gearFilterItems(gearGroups ?? []), [gearGroups]);
+  const gearKnown = useMemo(() => new Set(gearItems.map((it) => it.key)), [gearItems]);
   const gearParam = params.get('materiel');
-  const gearItem = gearItems.find((it) => it.key === gearParam) ?? null;
+  const gearSelection = useMemo(() => readGearParam(gearParam, gearItems), [gearParam, gearItems]);
 
   // Une adresse changée hors de `go` (touche retour d'Android, qui remonte d'un cran) est retenue aussi. Pas tant
   // que la page, ouverte sans paramètre, attend la reprise du dernier affichage : elle l'effacerait.
@@ -307,7 +319,7 @@ function StatisticsPage() {
     const p = new URLSearchParams();
     const f = next.famille !== undefined ? next.famille : family;
     const a = next.activite !== undefined ? next.activite : activity?.id ?? null;
-    const m = next.materiel !== undefined ? next.materiel : next.famille !== undefined || next.activite !== undefined ? null : gearItem?.key ?? null;
+    const m = next.materiel !== undefined ? next.materiel : next.famille !== undefined || next.activite !== undefined ? null : gearParamOf(gearSelection);
     const per = next.periode ?? period;
     if (f) p.set('famille', f);
     if (f && a) p.set('activite', a);
@@ -318,12 +330,20 @@ function StatisticsPage() {
     setParams(p, { replace });
   };
 
-  const scoped = useMemo(() => {
-    const known = new Set(gearItems.map((it) => it.key));
-    return all.filter((s) => (family === null || s.family === family) && (activity === null || s.activityId === activity.id)
-      && (gearItem === null || matchesGear(s, gearItem, known)));
-  }, [all, family, activity, gearItems, gearItem]);
+  const ofActivity = useMemo(
+    () => all.filter((s) => (family === null || s.family === family) && (activity === null || s.activityId === activity.id)),
+    [all, family, activity]
+  );
+  const scoped = useMemo(
+    () => (gearSelection.length === 0 ? ofActivity : ofActivity.filter((s) => matchesGearSelection(s, gearSelection, gearKnown))),
+    [ofActivity, gearSelection, gearKnown]
+  );
   const bounds = useMemo(() => statsPeriodBounds(period, nowMs), [period, nowMs]);
+  // Lignes du matériel : les groupes dont une session de l'activité sur la période porte une pièce.
+  const gearRows = useMemo(
+    () => (activity === null ? [] : gearFilterRows(gearItems, ofActivity.filter((s) => inBounds(s.startMs, bounds)), gearSelection, gearKnown)),
+    [activity, gearItems, ofActivity, bounds, gearSelection, gearKnown]
+  );
   const inPeriod = useMemo(() => scoped.filter((s) => inBounds(s.startMs, bounds)), [scoped, bounds]);
   const totals = useMemo(() => statsTotals(inPeriod), [inPeriod]);
   const activityOrder = useMemo(() => activities.map((a) => a.id), [activities]);
@@ -378,7 +398,14 @@ function StatisticsPage() {
     [hrPoints, narrow]
   );
 
-  const sections = STATS_SECTIONS.filter((s) => (family !== null || s.key !== 'records') && (s.key !== 'cardio' || hasCardio));
+  // Niveau : à pied et à vélo, pas sur une activité de marche ; à pied, les sessions de marche écartées.
+  const levelFamily = (family === 'course' || family === 'velo') && !isWalking(activity) ? family : null;
+  const levelSessions = useMemo(
+    () => (levelFamily === 'course' ? inPeriod.filter((s) => !isWalking(activityById.get(s.activityId))) : inPeriod),
+    [levelFamily, inPeriod, activityById]
+  );
+  const sections = STATS_SECTIONS.filter((s) => (family !== null || s.key !== 'records') && (s.key !== 'cardio' || hasCardio)
+    && (s.key !== 'niveau' || levelFamily !== null));
 
   // Graphique : une donnée au choix, un point par session de la sélection (période comprise) et par série ; en
   // pointillé, le record en escalier (vitesse max) ou la tendance. Le choix retenu, s'il n'existe pas ici, cède
@@ -495,7 +522,7 @@ function StatisticsPage() {
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
   /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
-  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), ...(gearItem ? [gearItem.label] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
+  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), ...gearSelection.map(gearPickLabel), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
     : regular.weeksSinceLast === 0 ? 'cette semaine'
@@ -523,11 +550,14 @@ function StatisticsPage() {
           <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
             onChange={(key) => go({ activite: key === '' ? null : key })} />
         )}
-        {activity !== null && gearItems.length > 0 && (
-          <SegmentedControl label="Matériel" items={[{ key: '', label: 'Tout' }, ...gearItems.map((it) => ({ key: it.key, label: it.label }))]}
-            value={gearItem?.key ?? ''} accent={accent} className="stats-gear"
-            onChange={(key) => go({ materiel: key === '' ? null : key })} />
-        )}
+        {activity !== null && gearRows.map((row) => (
+          <div key={row.groupId} className="stats-gear">
+            <span className="stats-gear__label">{row.groupName}</span>
+            <SegmentedControl label={`Matériel : ${row.groupName}`} items={[{ key: '', label: 'Tous' }, ...row.items.map((it) => ({ key: it.key, label: it.itemName }))]}
+              value={gearSelection.find((it) => it.groupId === row.groupId)?.key ?? ''} accent={accent}
+              onChange={(key) => go({ materiel: gearParamOf(withGearPick(gearSelection, row.groupId, row.items.find((it) => it.key === key) ?? null, gearItems)) })} />
+          </div>
+        ))}
         <SegmentedControl fit label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
           onChange={(key) => go({ periode: key }, true)} />
         </>)}
@@ -877,6 +907,13 @@ function StatisticsPage() {
                     })}
                   </div>
                 )}
+              </ResizablePanel>
+            )}
+
+            {open.niveau && levelFamily !== null && (
+              <ResizablePanel id={panelId('niveau')} style={ANALYSIS_PANEL_STYLE}>
+                <StatsLevelPanel family={levelFamily} sessions={levelSessions} runner={runner} open={open.niveau}
+                  onToggle={() => toggle('niveau')} onOpen={(s) => openSession(s.file, s.family)} />
               </ResizablePanel>
             )}
           </div>

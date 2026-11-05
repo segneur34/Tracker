@@ -4,7 +4,7 @@ import type { SessionRecord } from './record';
 import {
   averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
   inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type StatSession,
-  gearFilterItems, matchesGear, groupByActivity,
+  gearFilterItems, matchesGear, groupByActivity, readGearParam, gearParamOf, withGearPick, matchesGearSelection, gearFilterRows, gearPickLabel,
 } from './stats';
 import type { GearGroup } from './notes';
 import { statSession } from '../test/record.fixture';
@@ -448,6 +448,89 @@ describe('filtre par matériel (lot 20)', () => {
 
   it('écarte une session sans matériel', () => {
     expect(matchesGear(session(at(2026, 10, 6)), item('i-5'), knownIds)).toBe(false);
+  });
+});
+
+describe('matériel croisé (lot 146)', () => {
+  const groups: GearGroup[] = [
+    { id: 'g-foil', name: 'Foil', items: [{ id: 'f-700', name: '700' }, { id: 'f-1000', name: '1000' }] },
+    { id: 'g-aile', name: 'Aile', items: [{ id: 'a-5', name: '5 m²' }, { id: 'a-6', name: '6 m²' }] },
+    { id: 'g-vide', name: 'Planche', items: [] },
+    { id: 'g-mat', name: 'Mât', items: [{ id: 'm-85', name: '85' }] },
+  ];
+  const items = gearFilterItems(groups);
+  const knownIds = new Set(items.map((it) => it.key));
+  const item = (key: string) => items.find((it) => it.key === key)!;
+  const choice = (groupId: string, groupName: string, itemId: string, itemName: string) => ({ groupId, groupName, itemId, itemName });
+  const s700x5 = session(at(2026, 10, 1), { gear: [choice('g-foil', 'Foil', 'f-700', '700'), choice('g-aile', 'Aile', 'a-5', '5 m²')] });
+  const s700x6 = session(at(2026, 10, 2), { gear: [choice('g-foil', 'Foil', 'f-700', '700'), choice('g-aile', 'Aile', 'a-6', '6 m²')] });
+  const s1000x5 = session(at(2026, 10, 3), { gear: [choice('g-foil', 'Foil', 'f-1000', '1000'), choice('g-aile', 'Aile', 'a-5', '5 m²')] });
+  const sansMateriel = session(at(2026, 10, 4));
+
+  it("lit et écrit le paramètre de l'adresse, une pièce par groupe, dans l'ordre des groupes", () => {
+    const selection = readGearParam('g-aile:a-5,g-foil:f-700', items);
+    expect(selection.map((it) => it.key)).toEqual(['f-700', 'a-5']);
+    expect(gearParamOf(selection)).toBe('g-foil:f-700,g-aile:a-5');
+    expect(readGearParam(gearParamOf(selection), items)).toEqual(selection);
+    expect(gearParamOf([])).toBeNull();
+    expect(readGearParam(null, items)).toEqual([]);
+    expect(readGearParam('', items)).toEqual([]);
+  });
+
+  it("garde la première pièce d'un groupe, oublie une pièce inconnue ou hors de son groupe", () => {
+    expect(readGearParam('g-foil:f-700,g-foil:f-1000', items).map((it) => it.key)).toEqual(['f-700']);
+    expect(readGearParam('g-foil:inconnue,g-aile:a-6', items).map((it) => it.key)).toEqual(['a-6']);
+    expect(readGearParam('g-aile:f-700', items)).toEqual([]);
+  });
+
+  it("relit l'ancienne forme à une pièce, rangée dans son groupe", () => {
+    const selection = readGearParam('a-6', items);
+    expect(selection).toEqual([item('a-6')]);
+    expect(gearParamOf(selection)).toBe('g-aile:a-6');
+  });
+
+  it('encode un identifiant qui porte une virgule ou deux-points', () => {
+    const odd = gearFilterItems([{ id: 'g:1', name: 'Foil', items: [{ id: 'p,1', name: '700' }] }]);
+    const param = gearParamOf(odd);
+    expect(param).toBe('g%3A1:p%2C1');
+    expect(readGearParam(param, odd)).toEqual(odd);
+  });
+
+  it('choisit ou rend « Tous » dans un groupe, sans toucher aux autres', () => {
+    const foil = withGearPick([], 'g-foil', item('f-1000'), items);
+    const both = withGearPick(foil, 'g-aile', item('a-5'), items);
+    expect(both.map((it) => it.key)).toEqual(['f-1000', 'a-5']);
+    expect(withGearPick(both, 'g-foil', item('f-700'), items).map((it) => it.key)).toEqual(['f-700', 'a-5']);
+    expect(withGearPick(both, 'g-foil', null, items).map((it) => it.key)).toEqual(['a-5']);
+  });
+
+  it('croise en ET : une session compte si elle porte chaque pièce choisie', () => {
+    const all = [s700x5, s700x6, s1000x5, sansMateriel];
+    const keep = (param: string) => all.filter((s) => matchesGearSelection(s, readGearParam(param, items), knownIds));
+    expect(keep('g-foil:f-700,g-aile:a-5')).toEqual([s700x5]);
+    expect(keep('g-foil:f-1000')).toEqual([s1000x5]);
+    expect(keep('g-aile:a-5')).toEqual([s700x5, s1000x5]);
+    expect(keep('')).toEqual(all);
+  });
+
+  it('rapproche par son nom une pièce inconnue de la liste, dans son groupe', () => {
+    // Pièce gardée pour la session seule, sous un identifiant hors de la liste, au nom d'une pièce de la liste.
+    const renamed = session(at(2026, 10, 5), { gear: [choice('g-foil', 'Foil', 'ailleurs', ' 700 '), choice('g-aile', 'aile', 'autre', '5 M²')] });
+    expect(matchesGearSelection(renamed, readGearParam('g-foil:f-700,g-aile:a-5', items), knownIds)).toBe(true);
+    expect(matchesGearSelection(renamed, readGearParam('g-aile:a-6', items), knownIds)).toBe(false);
+  });
+
+  it("une ligne par groupe dont une session porte une pièce, ou dont une pièce est choisie ; pas de groupe sans pièce", () => {
+    const rows = gearFilterRows(items, [s700x5, s700x6, sansMateriel], [], knownIds);
+    expect(rows.map((r) => [r.groupName, r.items.map((it) => it.itemName)])).toEqual([['Foil', ['700', '1000']], ['Aile', ['5 m²', '6 m²']]]);
+    expect(gearFilterRows(items, [sansMateriel], [], knownIds)).toEqual([]);
+    expect(gearFilterRows(items, [sansMateriel], [item('m-85')], knownIds).map((r) => r.groupId)).toEqual(['g-mat']);
+  });
+
+  it('résume une pièce choisie avec son groupe, sans le répéter', () => {
+    expect(readGearParam('g-foil:f-700,g-aile:a-5', items).map(gearPickLabel).join(' · ')).toBe('Foil 700 · Aile 5 m²');
+    const named = gearFilterItems([{ id: 'g', name: 'Foil', items: [{ id: 'p', name: 'foil 700' }] }]);
+    expect(gearPickLabel(named[0])).toBe('foil 700');
   });
 });
 

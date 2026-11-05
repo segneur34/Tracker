@@ -1,6 +1,8 @@
+import type { BikeType } from '../core/domainTypes';
 import { parseGpx } from '../core/gpxParser';
 import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, isSportType, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
+import { isValidBikeWeight } from '../cycling/energy';
 import { guessSport } from './naming';
 import {
   ANALYSIS_SUMMARY_FIELDS, carriedSettings, isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
@@ -21,6 +23,20 @@ export interface ActivitySummarySettings {
   thresholdOverride: number | undefined;
   /** Foil de l'activité (voile, surf) ; `null` ailleurs. */
   foil: boolean | null;
+  /**
+   * Vélo (lot 146) : type et poids du vélo de l'activité, poids du pratiquant (`null` s'il n'est pas renseigné),
+   * pour la meilleure puissance estimée sur 20 min du résumé ; absent hors vélo. Le type et le poids du vélo
+   * entrent dans l'empreinte, comme le seuil (§8 : les changer dans Réglages refait les sessions de l'activité) ;
+   * le poids du pratiquant n'y entre pas : un résumé fait sans lui est refait une fois, dès qu'il est connu.
+   */
+  cycling?: CyclingSummarySettings;
+}
+
+/** Vélo et pratiquant d'une activité à vélo, pour la puissance du résumé (`ActivitySummarySettings.cycling`). */
+export interface CyclingSummarySettings {
+  bikeType: BikeType;
+  bikeKg: number;
+  riderKg: number | null;
 }
 
 /**
@@ -40,6 +56,7 @@ export const sessionActivitySettings = (
   return {
     thresholdOverride: threshold === undefined ? device.thresholdOverride : threshold ?? undefined,
     foil: foil === undefined ? device.foil : foil,
+    ...(device.cycling !== undefined ? { cycling: device.cycling } : {}),
   };
 };
 
@@ -61,7 +78,9 @@ export type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevati
  * celui de l'activité ; l'allure imposée n'existe que pour une session, et
  * qu'en voile. L'altitude du terrain de la fiche remplace celle du GPS en
  * course et à vélo, sauf si l'utilisateur a gardé le GPS. En surf, le foil
- * de la session (sinon de son activité) et son seuil de vague en foil.
+ * de la session (sinon de son activité) et son seuil de vague en foil. À vélo,
+ * le vélo de l'activité et le poids du pratiquant (le poids du vélo de la
+ * session s'il est saisi), pour la puissance des meilleurs 20 min (lot 146).
  */
 export const summaryOptions = (
   sport: SportType | null,
@@ -80,14 +99,24 @@ export const summaryOptions = (
     foil: analysis?.foil ?? activity.foil ?? undefined,
     waveThreshold: analysis?.waveThreshold ?? undefined,
     test: elevation?.test,
+    ...(sportTreatment(sport) === 'velo' && activity.cycling
+      ? {
+        cyclingPower: {
+          bikeType: activity.cycling.bikeType,
+          bikeKg: isValidBikeWeight(analysis?.bikeWeightKg) ? analysis.bikeWeightKg : activity.cycling.bikeKg,
+          riderKg: activity.cycling.riderKg,
+        },
+      }
+      : {}),
   };
 };
 
 /**
  * Empreinte des réglages qui changent le résumé, gardée dans le résumé (`SessionSummary.optionsKey`,
  * lot 37) : seuil, allure imposée, foil en surf (ailleurs il ne change pas le résumé) et seuil de
- * vague. L'altitude du terrain et le test guidé n'y sont pas : ils sont dans la fiche, et leur
- * changement refait déjà le résumé (`applyRecordPatch`).
+ * vague ; à vélo, depuis le lot 146, le type et le poids du vélo (cinquième place, absente ailleurs :
+ * les empreintes des autres calculs ne changent pas). L'altitude du terrain et le test guidé n'y sont pas :
+ * ils sont dans la fiche, et leur changement refait déjà le résumé (`applyRecordPatch`).
  */
 export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): string =>
   JSON.stringify([
@@ -95,6 +124,7 @@ export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): st
     options.referenceSpeedOverrideMs ?? null,
     getSportProfile(sport).surf ? options.foil ?? false : null,
     options.waveThreshold ?? null,
+    ...(options.cyclingPower ? [[options.cyclingPower.bikeType, options.cyclingPower.bikeKg]] : []),
   ]);
 
 /**
@@ -116,6 +146,8 @@ export const isSummaryOutdated = (
   if (sport === null || !isSportType(sport) || !hasPositions(sport)) return false;
   const expected = summaryOptionsKey(sport, summaryOptions(sport, record.analysis, sessionActivitySettings(record, activityOf(sport))));
   if (record.summary.optionsKey !== expected) return true;
+  // Vélo : puissance des meilleurs 20 min cherchée sans poids du pratiquant, qui est connu maintenant (lot 146).
+  if (sportTreatment(sport) === 'velo' && (activityOf(sport).cycling?.riderKg ?? null) !== null && record.summary.bests?.powerRiderKg === undefined) return true;
   const pending = pendingOf?.(sport);
   if (!pending) return false;
   const carried = carriedSettings(record);

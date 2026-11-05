@@ -13,7 +13,7 @@ import { hasPositions, sportFamily, sportTreatment, type SportFamily, type Treat
 import { DAY_MS, addDays, addMonths, isoWeek, monthYearLong, monthYearShort, shortDate, stacksByActivity, startOfDay, startOfIsoWeek, startOfMonth } from '../core/calendar';
 import { CHART_PERIODS, chartPeriodBounds, type ChartRange } from './activityChart';
 import type { GearChoice, GearGroup } from './notes';
-import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
+import type { ManeuverResults, SessionRecord, SummaryBests, SummaryHeartRate } from './record';
 
 export type StatsPeriod = ChartRange;
 
@@ -74,6 +74,8 @@ export interface StatSession {
   cadenceSpm: number | null;
   /** Matériel enregistré choisi dans les notes (saisi, pas calculé : hors du résumé), `null` sans choix. */
   gear: readonly GearChoice[] | null;
+  /** Meilleurs 5 km, 10 km et 20 min à vélo du résumé (version 17, lot 146), `null` sans eux. */
+  bests: SummaryBests | null;
 }
 
 /**
@@ -108,6 +110,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     heartRate: summary.heartRate ?? null,
     cadenceSpm: summary.cadence?.avgSpm ?? null,
     gear: record.notes?.gear ?? null,
+    bests: summary.bests ?? null,
   };
 };
 
@@ -157,6 +160,85 @@ export const matchesGear = (session: StatSession, item: GearFilterItem, knownIds
     || (!knownIds.has(c.itemId)
       && gearKey(c.itemName) === gearKey(item.itemName)
       && (c.groupId === item.groupId || gearKey(c.groupName) === gearKey(item.groupName))));
+
+// --- Matériel croisé (lot 146) : une pièce au plus par groupe, une session compte si elle les porte toutes ---
+
+/** Pièces choisies, une au plus par groupe, dans l'ordre des groupes de l'activité. */
+export type GearSelection = readonly GearFilterItem[];
+
+/**
+ * Pièces choisies d'après le paramètre `materiel` de l'adresse : `groupe:piece,groupe:piece` (identifiants, chacun
+ * encodé comme un composant d'adresse) ; l'ancienne forme à une pièce (`piece`, sans groupe) est rangée dans son
+ * groupe. Une pièce inconnue, ou d'un groupe qui ne la contient pas, est oubliée ; une seule par groupe, la première.
+ */
+export const readGearParam = (param: string | null, items: readonly GearFilterItem[]): GearFilterItem[] => {
+  if (param === null || param === '') return [];
+  const decode = (part: string): string => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      return part;
+    }
+  };
+  const picked = new Map<string, GearFilterItem>();
+  for (const entry of param.split(',')) {
+    const colon = entry.indexOf(':');
+    const groupId = colon < 0 ? null : decode(entry.slice(0, colon));
+    const key = decode(colon < 0 ? entry : entry.slice(colon + 1));
+    const item = items.find((it) => it.key === key && (groupId === null || it.groupId === groupId));
+    if (item && !picked.has(item.groupId)) picked.set(item.groupId, item);
+  }
+  const order = [...new Set(items.map((it) => it.groupId))];
+  return order.filter((g) => picked.has(g)).map((g) => picked.get(g)!);
+};
+
+/** Paramètre `materiel` d'une sélection (`readGearParam`), `null` sans pièce choisie. */
+export const gearParamOf = (selection: GearSelection): string | null =>
+  selection.length === 0 ? null : selection.map((it) => `${encodeURIComponent(it.groupId)}:${encodeURIComponent(it.key)}`).join(',');
+
+/** Sélection où le groupe `groupId` prend la pièce `item` (`null` : toutes les pièces du groupe), dans l'ordre des groupes. */
+export const withGearPick = (
+  selection: GearSelection, groupId: string, item: GearFilterItem | null, items: readonly GearFilterItem[]
+): GearFilterItem[] => {
+  const next = [...selection.filter((it) => it.groupId !== groupId), ...(item ? [item] : [])];
+  const order = [...new Set(items.map((it) => it.groupId))];
+  return order.flatMap((g) => next.filter((it) => it.groupId === g));
+};
+
+/** Session qui porte chaque pièce choisie (un ET entre les groupes) ; sans pièce choisie, toutes comptent. */
+export const matchesGearSelection = (session: StatSession, selection: GearSelection, knownIds: ReadonlySet<string>): boolean =>
+  selection.every((item) => matchesGear(session, item, knownIds));
+
+/** Une ligne du filtre « Matériel » : un groupe de l'activité et ses pièces. */
+export interface GearFilterRow {
+  groupId: string;
+  groupName: string;
+  items: GearFilterItem[];
+}
+
+/**
+ * Lignes du filtre « Matériel », une par groupe de l'activité qui a des pièces, dans leur ordre : seulement celles
+ * dont une des `sessions` (l'activité sur la période) porte une pièce, ou dont une pièce est choisie.
+ */
+export const gearFilterRows = (
+  items: readonly GearFilterItem[], sessions: readonly StatSession[], selection: GearSelection, knownIds: ReadonlySet<string>
+): GearFilterRow[] => {
+  const rows: GearFilterRow[] = [];
+  for (const item of items) {
+    const row = rows.find((r) => r.groupId === item.groupId);
+    if (row) row.items.push(item);
+    else rows.push({ groupId: item.groupId, groupName: item.groupName, items: [item] });
+  }
+  return rows.filter((row) => selection.some((it) => it.groupId === row.groupId)
+    || sessions.some((s) => row.items.some((it) => matchesGear(s, it, knownIds))));
+};
+
+/** Pièce choisie en clair, dans le résumé de « Sélection » : « Foil 700 » ; le nom seul s'il commence par celui du groupe. */
+export const gearPickLabel = (item: GearFilterItem): string => {
+  const name = item.itemName.trim();
+  const group = item.groupName.trim();
+  return group === '' || gearKey(name).startsWith(gearKey(group)) ? name : `${group} ${name}`;
+};
 
 /** Totaux d'un ensemble de sessions. */
 export interface StatsTotals {

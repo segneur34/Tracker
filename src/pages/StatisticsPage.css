@@ -21,6 +21,29 @@
   margin-left: var(--space-2);
 }
 
+/* Une ligne du filtre « Matériel » par groupe (lot 146) : le nom du groupe, puis ses pièces ; la rangée défile si elle ne tient pas. */
+.stats-gear {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stats-gear__label {
+  flex: 0 0 auto;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.stats-gear > .ui-segmented {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Légende des séries du graphique (empannages, virements), formes dessinées comme sur le graphe. */
 .stats-legend {
   display: flex;
@@ -100,6 +123,26 @@
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--faint);
+}
+
+/* Ligne sans session à ouvrir (onglet « niveau ») ; texte d'une ligne du niveau, qui passe à la ligne. */
+.stats-row--static {
+  cursor: default;
+}
+
+.stats-level__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Phrase d'invite de l'onglet « niveau » (profil incomplet). */
+.stats-level__hint {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.stats-level__text strong {
+  font-weight: 600;
 }
 
 .stats-metric-chips {
