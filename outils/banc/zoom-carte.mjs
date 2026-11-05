@@ -347,6 +347,8 @@ check(`390 px : plein écran carte + profil de « général » (${JSON.stringify
 await shoot('zoom-general-plein-ecran');
 await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
 await settle({ max: 800 });
+// 06/11 (lot 166) : sortir du plein écran carte + graphes retire aussi le tronçon violet de la carte de la page.
+check(`390 px : × du plein écran, plus de tronçon violet sur la carte (${(await violet()).count})`, (await violet()).count === 0);
 await clickZoomButton('Général', 0, 'Tout voir');
 await wait(600);
 // Tout replié sauf « graphiques », en haut de page : la carte est à l'écran, « +carte » ouvre quand même le plein
@@ -400,6 +402,7 @@ check('390 px : zoomé, plein écran ouvert', (await overlayOpen()) === true);
 await back();
 await settle({ max: 800 });
 check(`390 px : zoomé, le retour ferme et garde le zoom (${await ticks('Graphiques', 0)})`, (await overlayOpen()) === false && (await ticks('Graphiques', 0)) === '1 km | 2 km | 3 km');
+check(`390 px : zoomé, le retour retire aussi le tronçon violet (${(await violet()).count})`, (await violet()).count === 0);
 // Carte seule, d'un toucher.
 await evaluate(`window.scrollTo(0, 0)`);
 await wait(500);

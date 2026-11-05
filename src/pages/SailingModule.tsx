@@ -676,6 +676,8 @@ function SailingModule() {
   const endWindAdjust = () => {
     setWindAdjust(false);
     setMapExpanded(false);
+    // Le plein écran se ferme ici sans passer par `onExpandedChange` : le tronçon violet part avec lui.
+    zoomOnMap.closeCompanion();
   };
   /** Polaire à un vent donné, dans l'unité : elle suit la flèche pendant qu'on règle le vent. */
   const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;

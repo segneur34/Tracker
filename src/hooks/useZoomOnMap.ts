@@ -60,7 +60,8 @@ export interface ZoomOnMap<P extends string> {
  * graphes de l'onglet dessous (`companionPanel`), zoomé ou non, carte à
  * l'écran ou non (05/11, à la place du cadrage sur place du 25/10) : sur
  * toute la trace sans zoom ; zoomé, il allume aussi le tronçon et la carte se
- * cadre dessus. Le retour d'Android referme le plein écran (`AnalysisMap`).
+ * cadre dessus. Le retour d'Android referme le plein écran (`AnalysisMap`) ;
+ * en sortir (`closeCompanion`) retire aussi le tronçon violet, le zoom reste.
  */
 export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Record<never, never>>({
   highlight, points, charts, narrow, mapAnchorId, mapExpanded, openMap,
@@ -114,9 +115,9 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
   }, [mapOnScreen, mapAnchorId]);
 
   // Valeurs du dernier rendu, lues par `show` : le rappel reste le même d'un rendu à l'autre.
-  const latest = useRef({ charts, narrow, mapExpanded, openMap, panel, focus, highlight, points });
+  const latest = useRef({ charts, narrow, mapExpanded, openMap, panel, focus, highlight, points, companionPanel });
   useLayoutEffect(() => {
-    latest.current = { charts, narrow, mapExpanded, openMap, panel, focus, highlight, points };
+    latest.current = { charts, narrow, mapExpanded, openMap, panel, focus, highlight, points, companionPanel };
   });
 
   const show = useCallback((target: P) => {
@@ -155,7 +156,15 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
     }
     scrollToMap();
   }, [scrollToMap]);
-  const closeCompanion = useCallback(() => setCompanionPanel(null), []);
+  const closeCompanion = useCallback(() => {
+    const { companionPanel, panel, highlight } = latest.current;
+    // Sortie du plein écran carte + graphes : la trace n'y reste pas colorée (le zoom du graphe, lui, reste).
+    if (companionPanel !== null && panel !== null) {
+      highlight.show(panel, null);
+      setFocus(null);
+    }
+    setCompanionPanel(null);
+  }, []);
 
   const shownFocus = panel !== null ? focus : null;
   const shownCompanion = mapExpanded ? companionPanel : null;
