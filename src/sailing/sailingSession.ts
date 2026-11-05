@@ -19,6 +19,7 @@ import {
   calculateVmgStats,
   calculateWindStats,
   summarizeManeuvers,
+  vmgManeuverSpans,
   vmgSeries,
   type ManeuverSummary,
   type VmgStats,
@@ -32,7 +33,7 @@ import {
 } from './sailingConfig';
 import { buildSailingSessionStats, computeSailingTops, sailingActivityMask, sailingFlights, sailingRatioMask } from './sailingStats';
 import type { SessionStats } from './types';
-import { buildWindTimeline, prepareWindPolar, speedPolar, type PolarBin, type WindEstimate, type WindPolarStage } from './wind';
+import { buildWindTimeline, polarExcludedPoints, prepareWindPolar, speedPolar, type PolarBin, type PolarManeuver, type WindEstimate, type WindPolarStage } from './wind';
 
 /**
  * Analyse d'une session à voile, hors React : la chaîne de `useSailingSession`
@@ -218,7 +219,7 @@ export const analyzeSailingWind = (
   const windAt =
     currentWindValue === null ? null : windStats ? (timeMs: number) => windStats.windAt(timeMs) ?? currentWindValue : currentWindValue;
   // Les manœuvres, tous types confondus, sont écartées des chiffres et de la courbe de la VMG.
-  const maneuvers = maneuverStats?.locations ?? [];
+  const maneuvers = vmgManeuverSpans(maneuverStats?.locations ?? []);
 
   return {
     autoWind: windEstimate?.direction ?? null,
@@ -236,11 +237,16 @@ export const analyzeSailingWind = (
  * Polaire des vitesses par angle au vent retenu, vide sans vent. Au seuil
  * accordé à l'allure de la session (règle 4), le même que celui de
  * l'estimation du vent : sur une trace lente, le seuil fixe du profil laissait
- * le radar presque vide. Elle ne dépend pas du seuil d'activité.
+ * le radar presque vide. Le seuil d'activité ne la touche que par les manœuvres
+ * classées, dont les virements éclairs sont écartés (`polarExcludedPoints`).
  */
-export const sailingPolarGraph = (prepared: PreparedSailingTrack, currentWindValue: number | null): PolarBin[] =>
+export const sailingPolarGraph = (
+  prepared: PreparedSailingTrack,
+  currentWindValue: number | null,
+  maneuvers: readonly PolarManeuver[] = []
+): PolarBin[] =>
   prepared.trackData.length > 0 && currentWindValue !== null
-    ? speedPolar(prepared.trackData, currentWindValue, prepared.maneuverThresholds.polarMinSpeedKn)
+    ? speedPolar(prepared.trackData, currentWindValue, prepared.maneuverThresholds.polarMinSpeedKn, polarExcludedPoints(prepared.trackData, maneuvers, currentWindValue))
     : [];
 
 /** Réglages d'une analyse de session à voile, seuils déjà lus (fiche, appareil) par l'appelant. */
@@ -281,5 +287,5 @@ export const analyzeSailingSession = (track: TrackPoint[], settings: SailingSess
   const prepared = prepareSailingTrack(track, settings);
   const atThreshold = analyzeSailingAtThreshold(prepared, settings.computeThresholdKn ?? thresholds.activeKn);
   const wind = analyzeSailingWind(prepared, atThreshold, settings.windDeg);
-  return { ...prepared, ...atThreshold, ...wind, polarGraphData: sailingPolarGraph(prepared, wind.currentWindValue), thresholds };
+  return { ...prepared, ...atThreshold, ...wind, polarGraphData: sailingPolarGraph(prepared, wind.currentWindValue, wind.maneuverStats?.locations), thresholds };
 };

@@ -21,6 +21,8 @@ export default defineConfig({
     // Pool `forks` gardé (29/10, machine chargée, 3 passes chacun) : forks 5,3 à 10,7 s, threads 8,7 à 12,3 s, et threads
     // a fait expirer deux fois le test le plus lourd (kinematics, 5 Hz).
     pool: 'forks',
+    // Des tests lourds (corpus GPX, vent à tous les seuils) dépassaient les 5 s par défaut dès que le poste était occupé, un test différent à chaque fois.
+    testTimeout: 30_000,
     // Copies de travail des lots menés en parallèle (`/chaine`) : jamais testées depuis le dépôt principal.
     exclude: [...configDefaults.exclude, '.claude/**'],
   },

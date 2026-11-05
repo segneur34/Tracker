@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import { sessionManeuverThresholds } from './sailingConfig';
-import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, polarWindCandidates, prepareWindPolar, speedPolar, scoreWindCandidate, turnsDirectionOf, windDegFromText } from './wind';
+import { buildWindTimeline, circularStats, polarExcludedPoints, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, polarWindCandidates, prepareWindPolar, speedPolar, scoreWindCandidate, turnsDirectionOf, windDegFromText } from './wind';
 import { angleDiff, circularMean } from '../core/angles';
 
 describe('buildWindTimeline', () => {
@@ -421,5 +421,61 @@ describe('observeTurns et reprise de pause', () => {
   it('lit un demi-tour compressé dans un seul pas, mais jamais à travers une reprise de pause', () => {
     expect(observeTurns(buildTurn(false), 5).length).toBe(1);
     expect(observeTurns(buildTurn(true), 5).length).toBe(0);
+  });
+});
+
+describe('polarExcludedPoints', () => {
+  const WIND = 90;
+  /** Virement à `hz` : `before` s au cap 45, `faceS` s face au vent à 15 nd, `after` s au cap 135. */
+  const tackTrack = (hz: number, faceS: number, before = 10, after = 10): PointData[] => {
+    const total = Math.round((before + faceS + after) * hz);
+    return Array.from({ length: total + 1 }, (_, k): PointData => {
+      const t = k / hz;
+      const bearing = t <= before ? 45 : t <= before + faceS ? WIND : 135;
+      return { lat: 43, lon: 3, timeMs: t * 1000, smoothedSpeed: t > before && t <= before + faceS ? 15 : 10, bearing } as PointData;
+    });
+  };
+  const rotation = (hz: number, faceS: number, before = 10) => ({
+    type: 'tack',
+    entryIndex: Math.round((before - 1) * hz),
+    rotationEndIndex: Math.round((before + faceS + 1) * hz),
+  });
+
+  for (const hz of [1, 5]) {
+    it(`${hz} Hz : un virement de moins de 3 s face au vent est écarté, sa pointe disparaît`, () => {
+      const track = tackTrack(hz, 2);
+      const excluded = polarExcludedPoints(track, [rotation(hz, 2)], WIND);
+      expect(speedPolar(track, WIND, 3)[0].vitesse).toBe(15);
+      expect(speedPolar(track, WIND, 3, excluded)[0].vitesse).toBe(0);
+    });
+
+    it(`${hz} Hz : 3 s ou plus face au vent, c'est une vraie remontée, gardée`, () => {
+      const track = tackTrack(hz, 4);
+      const excluded = polarExcludedPoints(track, [rotation(hz, 4)], WIND);
+      expect(excluded.every((v) => v === 0)).toBe(true);
+      expect(speedPolar(track, WIND, 3, excluded)[0].vitesse).toBe(15);
+    });
+  }
+
+  it('seuls les virements : un empannage reste compté', () => {
+    const track = tackTrack(1, 2);
+    expect(polarExcludedPoints(track, [{ ...rotation(1, 2), type: 'jibe' }], WIND).every((v) => v === 0)).toBe(true);
+  });
+
+  it('seule la rotation est écartée : avant et après, les points restent', () => {
+    const excluded = polarExcludedPoints(tackTrack(1, 2), [rotation(1, 2)], WIND);
+    expect([...excluded].flatMap((v, k) => (v ? [k] : []))).toEqual([9, 10, 11, 12, 13]);
+  });
+
+  it('un pas de reprise de pause ne compte pas comme temps face au vent', () => {
+    const track = tackTrack(1, 2);
+    track[11] = { ...track[11], timeMs: track[10].timeMs + 600_000, segmentStart: true };
+    for (let k = 12; k < track.length; k++) track[k] = { ...track[k], timeMs: track[k].timeMs + 599_000 };
+    expect(polarExcludedPoints(track, [rotation(1, 2)], WIND)[10]).toBe(1);
+  });
+
+  it('sans manœuvre, la polaire ne change pas', () => {
+    const track = tackTrack(1, 2);
+    expect(speedPolar(track, WIND, 3, polarExcludedPoints(track, [], WIND))).toEqual(speedPolar(track, WIND, 3));
   });
 });

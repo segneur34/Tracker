@@ -512,6 +512,14 @@ export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): Maneuve
 export type ManeuverSpan = Pick<ManeuverLocation, 'entryIndex' | 'exitIndex'>;
 
 /**
+ * Ce que la VMG écarte d'une manœuvre : sa rotation seule (décidé le 05/11), la
+ * relance pouvant durer jusqu'à une minute sans être encore la manœuvre. Les
+ * mêmes bornes pour les chiffres, la courbe et les trous qu'elle franchit.
+ */
+export const vmgManeuverSpans = (locations: readonly ManeuverLocation[]): ManeuverSpan[] =>
+  locations.map((m) => ({ entryIndex: m.entryIndex, exitIndex: m.rotationEndIndex }));
+
+/**
  * Sommes cumulées de la VMG, sur les intervalles : l'intervalle k arrive au
  * point k (k ≥ 1). Un seul passage lit chaque point une fois (durée du pas,
  * vitesse, VMG, bord, sous le minimum), et chaque fenêtre se lit ensuite en
@@ -702,6 +710,36 @@ export const vmgSeries = (
   return series;
 };
 
+/**
+ * Points de la courbe de VMG que le trait franchit d'un seul tenant (05/11,
+ * demande de l'utilisateur : une courbe coupée à chaque manœuvre devient
+ * illisible) : les trous qui contiennent une manœuvre, entre deux valeurs. Un
+ * autre trou (arrêt, passage sous le seuil, trace coupée) reste un trou, il dit
+ * que rien de comparable ne s'est passé là. La manœuvre reste écartée : aucune
+ * valeur n'y est tracée, le trait va droit d'un bord à l'autre.
+ */
+export const vmgBridgedHoles = (series: readonly (number | null)[], maneuvers: readonly ManeuverSpan[]): Uint8Array => {
+  const n = series.length;
+  const bridged = new Uint8Array(n);
+  const inManeuver = new Uint8Array(n);
+  for (const { entryIndex, exitIndex } of maneuvers) {
+    for (let k = Math.max(0, entryIndex); k <= exitIndex && k < n; k++) inManeuver[k] = 1;
+  }
+  let start = -1;
+  let touches = false;
+  for (let k = 0; k < n; k++) {
+    if (series[k] === null) {
+      if (start < 0) { start = k; touches = false; }
+      if (inManeuver[k]) touches = true;
+    } else {
+      // Un trou au tout début n'a pas de valeur avant lui : rien à relier ; à la toute fin, la boucle ne passe jamais ici.
+      if (start > 0 && touches) bridged.fill(1, start, k);
+      start = -1;
+    }
+  }
+  return bridged;
+};
+
 /** Ligne du graphe de la VMG. */
 export interface VmgGraphPoint {
   /** Point de la trace. */
@@ -717,21 +755,36 @@ export interface VmgGraphPoint {
 /**
  * Lignes du graphe de la VMG aux points `indices` de la trace (croissants, ceux
  * de la plage visible). Une ligne représente aussi les points sautés depuis la
- * précédente : l'un d'eux dans un trou, elle est un trou. Sans cela, une
- * manœuvre tomberait entre deux lignes sur une longue session et la courbe
- * passerait dessus sans la montrer.
+ * précédente : l'un d'eux dans un trou, elle est un trou. Sans cela, un arrêt
+ * tomberait entre deux lignes sur une longue session et la courbe passerait
+ * dessus sans le montrer. Un trou franchi (`bridged`, `vmgBridgedHoles`) ne
+ * donne aucune ligne : le trait relie ses deux bords, y compris quand l'un est
+ * hors de la plage zoomée.
  */
 export const vmgChartRows = (
   series: readonly (number | null)[],
   minutes: ArrayLike<number>,
   indices: readonly number[],
   /** Nœuds vers l'unité du graphe. */
-  toChartValue: (kn: number) => number
+  toChartValue: (kn: number) => number,
+  /** Points des trous que le trait franchit, sinon aucun. */
+  bridged?: ArrayLike<number>
 ): VmgGraphPoint[] => {
   if (series.length === 0) return [];
-  const rows = indices.map((index, k): VmgGraphPoint => {
+  const isBridged = (k: number): boolean => bridged !== undefined && bridged[k] === 1;
+  const drawn = indices.filter((k) => !isBridged(k));
+  if (indices.length > 0) {
+    // Plage qui commence ou finit dans un trou franchi : le bord de ce trou, hors de la plage, tient le trait.
+    let before = indices[0];
+    while (before > 0 && isBridged(before)) before--;
+    if (before !== indices[0]) drawn.unshift(before);
+    let after = indices[indices.length - 1];
+    while (after < series.length - 1 && isBridged(after)) after++;
+    if (after !== indices[indices.length - 1]) drawn.push(after);
+  }
+  const rows = drawn.map((index, k): VmgGraphPoint => {
     let vmg = series[index];
-    for (let p = k > 0 ? indices[k - 1] + 1 : index; p < index && vmg !== null; p++) if (series[p] === null) vmg = null;
+    for (let p = k > 0 ? drawn[k - 1] + 1 : index; p < index && vmg !== null; p++) if (series[p] === null && !isBridged(p)) vmg = null;
     return { index, minutes: minutes[index], vmg: vmg === null ? null : toChartValue(vmg), alone: false };
   });
   rows.forEach((row, k) => {

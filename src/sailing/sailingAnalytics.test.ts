@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
-import { calculateVmgStats, calculateWindStats, vmgChartRows, vmgSeries, windInputWarning, type VmgStats } from './sailingAnalytics';
+import { calculateVmgStats, calculateWindStats, vmgBridgedHoles, vmgChartRows, vmgManeuverSpans, vmgSeries, windInputWarning, type VmgStats } from './sailingAnalytics';
 
 /** Forme des copies gelées : cases en chaînes `toFixed(1)`, comme avant le lot 79. */
 type FrozenVmgStats = Omit<VmgStats, 'upStbd' | 'upPort' | 'downStbd' | 'downPort'> & Record<'upStbd' | 'upPort' | 'downStbd' | 'downPort', { max: string; avg: string }>;
@@ -275,7 +275,7 @@ describe('calculateVmgStats', () => {
 const fakeManeuver = (localWind: number, timeMs: number): ManeuverLocation => ({
   lat: 43.6, lon: 3.8, type: 'tack', success: true, lostFlightS: 0, tack: 'starboard', takeoff: false, vmin: 6, localWind, timeMs, trackIndex: 0, stableHeadings: true,
   windCriteria: { conservation: 0.5, success: true }, entrySpeed: 12, conservation: 0.5, relaunchS: 4, headingChange: 90,
-  distanceM: 40, windwardGainM: 10, apexIndex: 0, entryIndex: 0, exitIndex: 0, entryHeading: 315, exitHeading: 45, path: [],
+  distanceM: 40, windwardGainM: 10, apexIndex: 0, entryIndex: 0, exitIndex: 0, rotationEndIndex: 0, entryHeading: 315, exitHeading: 45, path: [],
 });
 
 describe('calculateWindStats', () => {
@@ -601,5 +601,55 @@ describe('vmgChartRows (lot 167)', () => {
 
   it('sans série, aucune ligne', () => {
     expect(vmgChartRows([], minutes, [0, 1], toChart)).toEqual([]);
+  });
+
+  it('un trou franchi ne donne aucune ligne, le trait relie ses bords', () => {
+    const series = minutes.map((_, k): number | null => (k >= 20 && k <= 25 ? null : 5));
+    const bridged = vmgBridgedHoles(series, [{ entryIndex: 22, exitIndex: 23 }]);
+    const rows = vmgChartRows(series, minutes, [0, 10, 22, 30, 40], toChart, bridged);
+    expect(rows.map((r) => r.index)).toEqual([0, 10, 30, 40]);
+    expect(rows.every((r) => r.vmg === 10)).toBe(true);
+  });
+
+  it("un trou non franchi reste un trou à côté d'un trou franchi", () => {
+    const series = minutes.map((_, k): number | null => ((k >= 20 && k <= 25) || (k >= 60 && k <= 70) ? null : 5));
+    const bridged = vmgBridgedHoles(series, [{ entryIndex: 22, exitIndex: 23 }]);
+    expect(vmgChartRows(series, minutes, [0, 30, 65, 71, 80], toChart, bridged).map((r) => r.vmg)).toEqual([10, 10, null, null, 10]);
+  });
+
+  it('plage zoomée dans un trou franchi : ses deux bords, hors de la plage, tiennent le trait', () => {
+    const series = minutes.map((_, k): number | null => (k >= 20 && k <= 25 ? null : 5));
+    const bridged = vmgBridgedHoles(series, [{ entryIndex: 22, exitIndex: 23 }]);
+    expect(vmgChartRows(series, minutes, [21, 22, 23], toChart, bridged).map((r) => r.index)).toEqual([19, 26]);
+  });
+});
+
+describe('vmgManeuverSpans', () => {
+  it('la rotation seule : un passage sous le seuil pendant la relance reste un trou', () => {
+    const location = { ...fakeManeuver(0, 0), entryIndex: 10, rotationEndIndex: 14, exitIndex: 40 };
+    const spans = vmgManeuverSpans([location]);
+    expect(spans).toEqual([{ entryIndex: 10, exitIndex: 14 }]);
+    const series = Array.from({ length: 60 }, (_, k): number | null => ((k >= 8 && k <= 16) || (k >= 30 && k <= 34) ? null : 5));
+    expect([...vmgBridgedHoles(series, spans)].flatMap((v, k) => (v ? [k] : []))).toEqual([8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  });
+});
+
+describe('vmgBridgedHoles', () => {
+  const holes = (ranges: [number, number][], n = 50): (number | null)[] =>
+    Array.from({ length: n }, (_, k) => (ranges.some(([a, b]) => k >= a && k <= b) ? null : 5));
+
+  it('franchit tout le trou qui contient une manœuvre, pas les autres', () => {
+    const bridged = vmgBridgedHoles(holes([[10, 15], [30, 35]]), [{ entryIndex: 12, exitIndex: 13 }]);
+    expect([...bridged].flatMap((v, k) => (v ? [k] : []))).toEqual([10, 11, 12, 13, 14, 15]);
+  });
+
+  it('ni au tout début ni à la toute fin : il manque un bord pour relier', () => {
+    const bridged = vmgBridgedHoles(holes([[0, 5], [45, 49]]), [{ entryIndex: 2, exitIndex: 3 }, { entryIndex: 47, exitIndex: 48 }]);
+    expect(bridged.every((v) => v === 0)).toBe(true);
+  });
+
+  it("une manœuvre dans une seule ligne compte (règle 10), sans manœuvre rien n'est franchi", () => {
+    expect([...vmgBridgedHoles(holes([[10, 12]]), [{ entryIndex: 11, exitIndex: 11 }])].filter(Boolean)).toHaveLength(3);
+    expect(vmgBridgedHoles(holes([[10, 12]]), []).every((v) => v === 0)).toBe(true);
   });
 });

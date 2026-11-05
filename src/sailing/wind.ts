@@ -8,6 +8,8 @@ import {
   MANEUVER_MIN_ENTRY_SPEED_KN,
   ORIENTATION_MAX_CONSERVATION,
   ORIENTATION_MIN_VOTE_WEIGHT,
+  POLAR_TACK_FACE_WIND_DEG,
+  POLAR_TACK_FACE_WIND_MAX_S,
   TURN_EXTENSION_MAX_WINDOWS,
   TURN_STRIDE_MIN_S,
   WIND_CONFIDENCE_MIN,
@@ -55,14 +57,54 @@ export interface PolarBin {
 /** Largeur d'une case de la polaire, en degrés. */
 const POLAR_BIN_DEG = 10;
 
+/** Manœuvre vue par la polaire : son type et sa rotation, en indices de la trace (`ManeuverLocation`). */
+export interface PolarManeuver {
+  type: string;
+  entryIndex: number;
+  rotationEndIndex: number;
+}
+
+/**
+ * Points écartés de la polaire au vent `windDeg` : les rotations des virements
+ * passées moins de `maxS` à moins de `sectorDeg` du vent, seulement du début à
+ * la fin de la rotation. La relance reste comptée, c'est de la vraie vitesse sur
+ * le nouveau bord, comme les empannages, qui ne passent pas face au vent. Temps
+ * lu en secondes sur les intervalles (règle 2), chacun au cap de son point
+ * d'arrivée, un pas de reprise de pause pesant zéro.
+ */
+export const polarExcludedPoints = (
+  track: readonly PointData[],
+  maneuvers: readonly PolarManeuver[],
+  windDeg: number,
+  sectorDeg: number = POLAR_TACK_FACE_WIND_DEG,
+  maxS: number = POLAR_TACK_FACE_WIND_MAX_S
+): Uint8Array => {
+  const excluded = new Uint8Array(track.length);
+  for (const { type, entryIndex, rotationEndIndex } of maneuvers) {
+    if (type !== 'tack') continue;
+    let faceWindS = 0;
+    for (let k = entryIndex + 1; k <= rotationEndIndex && k < track.length; k++) {
+      if (track[k].segmentStart || Math.abs(angleDiff(track[k].bearing, windDeg)) > sectorDeg) continue;
+      faceWindS += (track[k].timeMs - track[k - 1].timeMs) / 1000;
+    }
+    if (faceWindS >= maxS) continue;
+    for (let k = Math.max(0, entryIndex); k <= rotationEndIndex && k < track.length; k++) excluded[k] = 1;
+  }
+  return excluded;
+};
+
 /**
  * Polaire de vitesse : la vitesse filtrée la plus haute dans chaque case
  * d'angle au vent `windDeg`, au-dessus de `minSpeedKn`. Pure, pour suivre le
- * vent pendant qu'on le règle sur la carte.
+ * vent pendant qu'on le règle sur la carte. `excluded` : points à ne pas lire
+ * (`polarExcludedPoints`), tous lus sans lui. L'estimation du vent n'en dépend
+ * pas : elle a son propre étage (`prepareWindPolar`).
  */
-export const speedPolar = (track: readonly PointData[], windDeg: number, minSpeedKn: number): PolarBin[] => {
+export const speedPolar = (track: readonly PointData[], windDeg: number, minSpeedKn: number, excluded?: ArrayLike<number>): PolarBin[] => {
   const bins = new Array<number>(360 / POLAR_BIN_DEG).fill(0);
-  for (const p of track) {
+  for (let k = 0; k < track.length; k++) {
+    if (excluded?.[k] === 1) continue;
+    const p = track[k];
     if (p.smoothedSpeed <= minSpeedKn) continue;
     const binIdx = Math.floor(normalizeAngle(p.bearing - windDeg) / POLAR_BIN_DEG);
     if (p.smoothedSpeed > bins[binIdx]) bins[binIdx] = p.smoothedSpeed;

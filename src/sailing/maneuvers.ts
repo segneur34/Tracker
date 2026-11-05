@@ -202,6 +202,12 @@ export interface ManeuverLocation {
   entryIndex: number;
   exitIndex: number;
   /**
+   * Indice de la fin de la rotation (premier point au cap de sortie), avant la
+   * relance : la VMG n'écarte que la rotation (décidé le 05/11), la relance
+   * pouvant durer jusqu'à une minute sans être encore la manœuvre.
+   */
+  rotationEndIndex: number;
+  /**
    * Caps instantanés au début et à la fin du virage détecté. Bruités, donc
    * impropres à mesurer un angle fin, mais définis pour toutes les manœuvres,
    * y compris celles sans cap stabilisé : ils servent à juger la symétrie du
@@ -1820,6 +1826,7 @@ export const classifyManeuvers = (
         apexIndex: measure.apexIndex,
         entryIndex: measure.entryIndex,
         exitIndex: measure.exitIndex,
+        rotationEndIndex: measure.rotationEndIndex,
         entryHeading: points[turnStart].bearing,
         exitHeading: points[turnEnd].bearing,
         path: points

@@ -390,6 +390,7 @@ const fakeManeuver = (overrides: Partial<ManeuverLocation>): ManeuverLocation =>
   apexIndex: 0,
   entryIndex: 0,
   exitIndex: 0,
+  rotationEndIndex: 0,
   entryHeading: 135,
   exitHeading: 225,
   path: [],

@@ -255,6 +255,16 @@ export const suggestSpeedRangeMs = (
   };
 };
 
+/**
+ * Polaire affichée : un virement qui passe moins de `POLAR_TACK_FACE_WIND_MAX_S`
+ * à moins de `POLAR_TACK_FACE_WIND_DEG` du vent en est écarté : sa vitesse près
+ * du vent n'est que l'élan du virage. Plus long, c'est une vraie remontée, en
+ * pumping par exemple (décidé le 05/11 ; sur 80 virements réels en wing : 2 s en
+ * médiane, 4 s au plus).
+ */
+export const POLAR_TACK_FACE_WIND_DEG = 30;
+export const POLAR_TACK_FACE_WIND_MAX_S = 3;
+
 /** Fenêtre de moyennage de la VMG, en secondes. */
 export const VMG_WINDOW_S = 10;
 

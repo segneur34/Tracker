@@ -35,9 +35,9 @@ import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatSpeedValue, formatTimeOfDay,
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
-import { speedPolar, type PolarBin } from '../sailing/wind';
+import { polarExcludedPoints, speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_LOST_FLIGHT_S, VMG_WINDOW_S } from '../sailing/sailingConfig';
-import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, vmgChartRows, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type VmgGraphPoint, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, vmgBridgedHoles, vmgChartRows, vmgManeuverSpans, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type VmgGraphPoint, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import type { ManeuverLocation } from '../sailing/maneuvers';
 import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
@@ -564,12 +564,14 @@ function SailingModule() {
     () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, windIndicesAt(view)) : [])),
     [windStats, trackData, windIndicesAt]
   );
-  /** Lignes de la VMG : ses points suivent sa propre courbe, ses extrêmes restent ; toute manœuvre y reste un trou (`vmgChartRows`). */
+  /** Trous de la VMG que le trait franchit : ceux des rotations ; un arrêt reste un trou (`vmgBridgedHoles`). */
+  const vmgBridged = useMemo(() => vmgBridgedHoles(vmgSeries, vmgManeuverSpans(maneuverStats?.locations ?? [])), [vmgSeries, maneuverStats]);
+  /** Lignes de la VMG : ses points suivent sa propre courbe, ses extrêmes restent (`vmgChartRows`). */
   const vmgRowsAt = useMemo(() => lastByRange((view) => {
     const visibleRange = visibleRangeAt(view);
     const indices = visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, vmgSeries) : [];
-    return vmgChartRows(vmgSeries, trackMinutes, indices, (kn) => knotsToChartValue(kn, speedUnit));
-  }), [visibleRangeAt, vmgSeries, trackMinutes, speedUnit]);
+    return vmgChartRows(vmgSeries, trackMinutes, indices, (kn) => knotsToChartValue(kn, speedUnit), vmgBridged);
+  }), [visibleRangeAt, vmgSeries, trackMinutes, speedUnit, vmgBridged]);
   /** La courbe de VMG a au moins une valeur sur la session ; sinon, une phrase à sa place. */
   const vmgChartShown = useMemo(() => vmgSeries.some((v) => v !== null), [vmgSeries]);
   /**
@@ -735,9 +737,9 @@ function SailingModule() {
   /** Polaire à un vent donné, dans l'unité : elle suit la flèche pendant qu'on règle le vent. */
   const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
   const polarAt = useCallback((deg: number): PolarBin[] => {
-    const bins = speedPolar(trackData, deg, polarMinSpeedKn);
+    const bins = speedPolar(trackData, deg, polarMinSpeedKn, polarExcludedPoints(trackData, maneuverStats?.locations ?? [], deg));
     return speedUnit === 'kn' ? bins : bins.map((p) => ({ ...p, vitesse: knotsToChartValue(p.vitesse, speedUnit) }));
-  }, [trackData, polarMinSpeedKn, speedUnit]);
+  }, [trackData, polarMinSpeedKn, speedUnit, maneuverStats]);
 
   /**
    * Onglet ouvert sans rien à montrer : sans vent, les manœuvres, la VMG et le vent ne se calculent pas ;
@@ -758,7 +760,7 @@ function SailingModule() {
       <PanelHeading label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} helpKey="voile:vmg" />
       <HelpText helpKey="voile:vmg" note>
         La VMG est la vitesse utile vers le vent, moyennée sur {VMG_WINDOW_S} s : sur la courbe, au-dessus de zéro au près, en dessous au portant.
-        Les manœuvres, du début de la rotation à la relance, sont écartées des chiffres (moyennes, max, tops) comme de la courbe, où elles laissent un trou ; de même les passages sous le seuil d'activité. {zoomText}
+        Les manœuvres, le temps de la rotation, sont écartées des chiffres (moyennes, max, tops) comme de la courbe, qui les franchit d'un trait droit. Un arrêt ou un passage sous le seuil d'activité y laisse un trou. {zoomText}
       </HelpText>
       <table className="ui-table" style={{ textAlign: 'center' }}>
         <thead>
