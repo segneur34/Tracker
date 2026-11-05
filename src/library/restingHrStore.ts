@@ -1,4 +1,4 @@
-import { finiteOr, isFiniteNumber, roundTo } from '../core/basics';
+import { finiteOr, isFiniteNumber, isObject, parseJson, roundTo, stringifyJson } from '../core/basics';
 import type { RestingHrProtocol } from '../recording/restingHrTest';
 import type { RestingHrResult } from '../running/restingHrResults';
 
@@ -50,6 +50,44 @@ export const readStoredRestingResults = (raw: unknown): StoredRestingResult[] =>
     .filter((r): r is StoredRestingResult => r !== null)
     .sort((a, b) => b.startedAtMs - a.startedAtMs)
     .slice(0, MAX_STORED_RESTING_RESULTS);
+
+/** Clé de l'appareil où la liste est gardée. */
+export const RESTING_HR_KEY = 'tracker.restingHr';
+
+/**
+ * Union de deux listes par `startedAtMs` (un même départ est un même test : celui de `a`, l'appareil, est gardé),
+ * du plus récent au plus ancien, au plus `MAX_STORED_RESTING_RESULTS`.
+ *
+ * Limite assumée : la fusion est une union, sans mémoire des retraits. Un test retiré sur un appareil revient
+ * depuis un autre appareil du dossier qui l'a encore.
+ */
+export const mergeRestingResults = (a: readonly StoredRestingResult[], b: readonly StoredRestingResult[]): StoredRestingResult[] => {
+  const byStart = new Map<number, StoredRestingResult>();
+  for (const r of [...a, ...b]) if (!byStart.has(r.startedAtMs)) byStart.set(r.startedAtMs, r);
+  return [...byStart.values()].sort((x, y) => y.startedAtMs - x.startedAtMs).slice(0, MAX_STORED_RESTING_RESULTS);
+};
+
+/** Deux listes disent-elles la même chose ? */
+export const sameRestingResults = (a: readonly StoredRestingResult[], b: readonly StoredRestingResult[]): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+const FILE_FORMAT = 'tracker-fc-repos';
+const FILE_VERSION = 1;
+
+/** Texte du fichier `fc-repos.json` du dossier mémoire. */
+export const restingHrFileText = (results: readonly StoredRestingResult[]): string =>
+  `${stringifyJson({ format: FILE_FORMAT, version: FILE_VERSION, results })}\n`;
+
+/**
+ * Relecture tolérante du fichier : `[]` s'il est absent (`text` nul), les tests bien formés sinon, `null` s'il ne
+ * se lit pas (abîmé, d'un autre format) : l'appelant n'écrit alors rien par-dessus.
+ */
+export const parseRestingHrFile = (text: string | null): StoredRestingResult[] | null => {
+  if (text === null) return [];
+  const file = parseJson(text);
+  if (!isObject(file) || file.format !== FILE_FORMAT || !Array.isArray(file.results)) return null;
+  return readStoredRestingResults(file.results);
+};
 
 /** Résultat à garder : `null` si aucune fenêtre n'a pu être mesurée. */
 export const toStoredRestingResult = (result: RestingHrResult, startedAtMs: number, protocol: RestingHrProtocol): StoredRestingResult | null =>

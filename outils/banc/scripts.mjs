@@ -111,6 +111,7 @@ export const SCRIPTS = [
   { nom: 'tailles', args: ['{port}', '{travail}', '{captures?}'],
     pages: ['voile', 'course', 'velo', 'surf', 'fractionne', 'enregistrer', 'bibliotheque', 'planification', 'statistiques', 'profil', 'reglages', 'accueil'],
     sansCache: true, releve: ['rapport.md'], delaiMin: 20 },
+  { nom: 'fc-repos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },
   { nom: 'test-fcmax', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true, dev: true, accelerable: true },
   { nom: 'test-fcrepos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },
   { nom: 'timer', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true },

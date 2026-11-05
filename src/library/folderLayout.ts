@@ -10,6 +10,8 @@ import { isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basi
  *                        (`settingsFile.ts`) ; avant le point 90, un seul
  *                        reglages.json à la racine
  *       LISEZMOI.txt     ce qu'est ce dossier, pour qui l'ouvre à la main
+ *       fc-repos.json    les tests de FC repos, fusionnés entre appareils
+ *                        (`restingHrStore.ts`)
  *       sessions/        un GPX et sa fiche JSON par session (`record.ts`), et
  *                        ses capteurs `.imu` si les sauts ont été mesurés
  *                        (`core/imuFile.ts`)
@@ -24,6 +26,8 @@ export const SETTINGS_DIR = 'reglages';
 /** Ancien fichier unique des réglages, à la racine : relu une fois, puis retiré. */
 export const SETTINGS_FILE = 'reglages.json';
 export const README_FILE = 'LISEZMOI.txt';
+/** Tests de FC repos, à la racine (`restingHrStore.ts`) : pas dans `reglages/`, dont chaque fichier est lu comme un réglage. */
+export const RESTING_HR_FILE = 'fc-repos.json';
 
 export const MEMORY_FORMAT = 'tracker-memoire';
 export const MEMORY_VERSION = 1;
@@ -65,6 +69,8 @@ export const readmeText = (): string =>
     '  pratiquant. Chaque appareil écrit le sien. Pour reprendre ceux d\'un autre',
     '  appareil, ou de quelqu\'un d\'autre : déposez son fichier ici, puis dans',
     '  Réglages > Mémoire, « Mettre à jour » et « Reprendre ».',
+    '- fc-repos.json : vos tests de FC repos. Chaque appareil y ajoute les siens et',
+    '  reprend ceux des autres à l\'ouverture du dossier.',
     '- tracker.json : permet à l\'application de reconnaître ce dossier.',
     '',
     'Sauvegarder ou changer d\'appareil : copiez le dossier Tracker entier.',

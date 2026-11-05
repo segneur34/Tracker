@@ -10,6 +10,7 @@ import type { MemoryFolder } from '../../platform/memoryFolder';
 import { isNativeApp } from '../../platform/runtime';
 import { jsonStore, storageStartupFailure } from '../../platform/storage';
 import { subscribeStoredSettings } from '../useSportSettings';
+import { syncRestingHrFile } from '../restingHrFile';
 import { errorMessage, finiteOr, newId } from '../../core/basics';
 import { libraryState, reportError, setState } from './store';
 import { lib, unwritten } from './memory';
@@ -294,6 +295,9 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
 
 /** `syncSettings`, dont l'échec est dit sans empêcher d'ouvrir ni de relire le dossier. */
 export const syncSettingsSafely = async (f: MemoryFolder): Promise<boolean> => {
+  // Tests de FC repos (`fc-repos.json`) : leur échec est dit, sans empêcher les réglages ni l'ouverture.
+  await syncRestingHrFile(f).catch((err: unknown) =>
+    reportError(`Tests de FC repos du dossier non relus : ${errorMessage(err, 'erreur inconnue')}`));
   try {
     return await syncSettings(f);
   } catch (err) {

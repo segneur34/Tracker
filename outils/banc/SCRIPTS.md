@@ -352,6 +352,11 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - à 390 et 320 px : les pages sans débordement.
 
   `innerText` rend les titres et boutons en capitales : les contrôles de texte sont insensibles à la casse. La ceinture elle-même (prise à l'ouverture de la page, bips écran allumé) ne se prouve qu'avec l'APK.
+- `fc-repos.mjs <port> [<dossier des captures>]` : tests de FC repos recopiés dans le dossier mémoire (lot 173), sur un profil neuf, sans réseau, environ 40 s, FC d'exemple à ×30. Script à verdict, jamais encore joué. Il vérifie :
+  - un test mené à son terme est écrit dans `fc-repos.json` à la racine, et le LISEZMOI le cite ;
+  - la clé `tracker.restingHr` vidée, la page rouverte : le test revient dans la clé et sur la page, le fichier est inchangé ;
+  - un test posé seulement dans le fichier (autre appareil) est repris, le fichier garde les deux ; « Retirer » réécrit le fichier ;
+  - fichier abîmé : la liste de l'appareil reste, le fichier n'est pas écrasé, un test s'enregistre quand même sur l'appareil.
 - `general.mjs <port> [<dossier des captures>]` : onglet « général » complet et rangée « avancé » (demande du 22/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une wing (la trace de `make-gpx.mjs`), une course et une sortie à vélo en côte, et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
   - la première rangée « général · avancé », « avancé » fermé au départ, les chiffres du nouveau général dans chaque module (voile : distance en vol, manœuvres réussies, top 2 s et 100 m ; à pied et à vélo : meilleurs segments et profil d'altitude compact ; surf : chiffres réduits) ;
   - « avancé » qui déplie les onglets, puis, refermé, replie rangée et panneaux, rendus à la réouverture ; la flèche qui cache la barre sans toucher aux panneaux ;
