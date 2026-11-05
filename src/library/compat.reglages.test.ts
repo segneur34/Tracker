@@ -42,8 +42,8 @@ describe('réglages, compatibilité (c) __proto__', () => {
 });
 
 describe('réglages, compatibilité : BOM, CRLF', () => {
-  it('BOM : fichier ignoré ; CRLF : lu', () => {
-    expect(parseSettingsFile('﻿' + file())).toBeNull();
+  it('BOM : retiré ; CRLF : lu', () => {
+    expect(parseSettingsFile('﻿' + file())).not.toBeNull();
     expect(parseSettingsFile(serializeSettingsFile(parseSettingsFile(file())!).replace(/\n/g, '\r\n'))).not.toBeNull();
   });
 });

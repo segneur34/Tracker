@@ -34,8 +34,9 @@ export const parseDecimal = (text: string): number => parseFloat(text.replace(',
 /** Entier sur deux chiffres, « 05 ». */
 export const pad2 = (n: number): string => String(n).padStart(2, '0');
 
-/** Minutes décimales en `m:ss`, avec le report de 60 s (5,999 donne « 6:00 »). */
+/** Minutes décimales en `m:ss`, avec le report de 60 s (5,999 donne « 6:00 ») ; « - » si `NaN` ou infinie (un écart négatif s'écrit « -2:30 »). */
 export const minutesSeconds = (totalMinutes: number): string => {
+  if (!isFinite(totalMinutes)) return '-';
   const min = Math.floor(totalMinutes);
   const sec = Math.round((totalMinutes - min) * 60);
   return sec === 60 ? `${min + 1}:00` : `${min}:${pad2(sec)}`;
@@ -305,6 +306,7 @@ export const formatClockMinutes = (minutes: number): string => formatClock(minut
  * s'accroche aux secondes (les dixièmes d'un chronomètre).
  */
 export const formatMinSecHours = (totalSeconds: number, secondSuffix = ''): string => {
+  if (!isFinite(totalSeconds) || totalSeconds < 0) return '-';
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor(totalSeconds / 60) % 60;
   const s = `${pad2(totalSeconds % 60)}${secondSuffix}`;
@@ -324,6 +326,7 @@ export const formatMinSec = (s: number): string => {
 /** Heure locale `hh:mm:ss` d'un instant, pour désigner un moment de la session. */
 export const formatTimeOfDay = (ms: number): string => {
   const date = new Date(ms);
+  if (isNaN(date.getTime())) return '-';
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 };
 
@@ -332,5 +335,6 @@ const WEEKDAYS_FR = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
 /** Date et heure de départ d'une session, en heure locale : « mer. 14/10/2026 · 10:02 ». */
 export const formatSessionDate = (ms: number): string => {
   const date = new Date(ms);
+  if (isNaN(date.getTime())) return '-';
   return `${WEEKDAYS_FR[date.getDay()]} ${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} · ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };

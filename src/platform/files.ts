@@ -189,8 +189,29 @@ export const saveToDownloads = async (fileName: string, content: string): Promis
   await downloads.saveText({ name: fileName, text: content });
 };
 
-/** Nom de fichier sans les caractères refusés par Windows ou Android, espaces resserrées. */
-export const safeFileName = (name: string): string => name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+/** Noms que Windows réserve à ses périphériques, avec ou sans extension, quelle que soit la casse. */
+const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+
+/** Caractères refusés par Windows ou Android dans un nom (les caractères de contrôle s'y ajoutent). */
+const FORBIDDEN_NAME_CHARS = String.raw`\/:*?"<>|`;
+
+/** Longueur maximale d'un nom, en caractères : laisse la place de l'extension sous les 255 octets des systèmes de fichiers. */
+const FILE_NAME_MAX_LENGTH = 100;
+
+/**
+ * Nom de fichier sûr, pour un nom neuf (téléchargement, partage) : sans les
+ * caractères refusés par Windows ou Android ni les caractères de contrôle,
+ * espaces resserrées, sans point en tête ni en fin, un nom réservé de Windows
+ * suivi de « _ », borné à `FILE_NAME_MAX_LENGTH` caractères. Les noms de la
+ * mémoire ne passent pas par ici.
+ */
+export const safeFileName = (name: string): string => {
+  const replaced = Array.from(name, (c) => (FORBIDDEN_NAME_CHARS.includes(c) || c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? ' ' : c)).join('');
+  const cleaned = replaced.replace(/\s+/g, ' ').trim();
+  const bounded = Array.from(cleaned).slice(0, FILE_NAME_MAX_LENGTH).join('');
+  const plain = bounded.replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  return WINDOWS_RESERVED_NAME.test(plain.split('.')[0].trim()) ? `${plain}_` : plain;
+};
 
 /** Contenu texte d'un fichier choisi par l'utilisateur. */
 export const readPickedFile = (file: File): Promise<string> => file.text();

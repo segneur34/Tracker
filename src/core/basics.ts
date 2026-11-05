@@ -21,10 +21,13 @@ export const inRange = (value: unknown, min: number, max: number): value is numb
 /** Le nombre s'il est fini, sinon `fallback` (`null`, `undefined` ou une valeur par défaut). */
 export const finiteOr = <T>(value: unknown, fallback: T): number | T => (isFiniteNumber(value) ? value : fallback);
 
-/** Texte JSON lu ; `undefined` s'il est illisible (jamais d'exception). */
+/** Marque d'ordre des octets que certains éditeurs Windows posent en tête d'un fichier UTF-8. */
+const BYTE_ORDER_MARK = '﻿';
+
+/** Texte JSON lu (marque d'ordre des octets en tête retirée) ; `undefined` s'il est illisible (jamais d'exception). */
 export const parseJson = (text: string): unknown => {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text);
   } catch {
     return undefined;
   }

@@ -125,8 +125,8 @@ describe('fiche, compatibilité (e) aller-retour sur une fiche complète', () =>
 
 describe('fiche, compatibilité : BOM, CRLF, tronqué, vide', () => {
   const text = serializeRecord(sessionRecord({ name: 'Sortie' }));
-  it('BOM en tête : fiche illisible', () => {
-    expect(parseRecordWithRaw('﻿' + text)).toBeNull();
+  it('BOM en tête : retiré, fiche lue', () => {
+    expect(parseRecordWithRaw('﻿' + text)?.parts.name).toBe('Sortie');
   });
   it('CRLF : lue', () => {
     expect(parseRecord(text.replace(/\n/g, '\r\n'))?.name).toBe('Sortie');

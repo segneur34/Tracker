@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PACE_MIN_SPEED_MS, commaDecimal, formatDecimal, formatDuration, formatShortDuration, parseDecimal, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
-  editSpeedUnit, formatClock, formatClockMinutes, formatDistance, formatMinSec, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedFromText, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
+  editSpeedUnit, formatClock, formatTimeOfDay, formatClockMinutes, formatDistance, formatMinSec, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedFromText, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -327,5 +327,24 @@ describe('speedFromText (lot 157)', () => {
     expect(speedFromText('-3', 'kn', 'ms')).toBeNull();
     expect(speedFromText('12a', 'kn', 'ms')).toBeNull();
     expect(speedFromText('abc', 'kn', 'ms')).toBeNull();
+  });
+});
+
+describe('formateurs sans valeur (lot 160)', () => {
+  it('rendent « - » pour NaN, l infini et le négatif sans sens', () => {
+    expect(minutesSeconds(NaN)).toBe('-');
+    expect(minutesSeconds(-1)).toBe('-1:00');
+    expect(minutesSeconds(5.999)).toBe('6:00');
+    expect(formatMinSecHours(NaN)).toBe('-');
+    expect(formatMinSecHours(Infinity)).toBe('-');
+    expect(formatMinSecHours(-5)).toBe('-');
+    expect(formatMinSecHours(3725)).toBe('1:02:05');
+    expect(formatTimeOfDay(NaN)).toBe('-');
+    expect(formatSessionDate(NaN)).toBe('-');
+  });
+  it('gardent une valeur négative légitime', () => {
+    expect(formatDecimal(-2.5, 1)).toBe('-2,5');
+    expect(formatMeters(-12)).toBe('-12 m');
+    expect(formatSpeed(-1, 'ms')).toBe('-1,00 m/s');
   });
 });

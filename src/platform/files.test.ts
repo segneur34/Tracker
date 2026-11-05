@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryFile, filesystem, setAsideName } from './files';
+import { createMemoryFile, filesystem, safeFileName, setAsideName } from './files';
 
 describe('fichier mis de côté (lot 143, 123a)', () => {
   const at = Date.UTC(2026, 10, 3, 14, 25, 1, 123);
@@ -22,5 +22,25 @@ describe('fichier mis de côté (lot 143, 123a)', () => {
 describe('greffon de fichiers', () => {
   it('chargé une seule fois : écran éteint, un nouvel import() ne rend plus la main', () => {
     expect(filesystem()).toBe(filesystem());
+  });
+});
+
+describe('safeFileName (lot 160)', () => {
+  it('garde un nom ordinaire tel quel', () => {
+    expect(safeFileName('2026-10-10 Wingfoil - Carnon')).toBe('2026-10-10 Wingfoil - Carnon');
+  });
+  it('retire caractères refusés et de contrôle, points en tête et en fin', () => {
+    expect(safeFileName(String.raw`x\y`)).toBe('x y');
+    expect(safeFileName(`a${String.fromCharCode(1)}b`)).toBe('a b');
+    expect(safeFileName('a/b:cd	e')).toBe('a b c d e');
+    expect(safeFileName('..cache. ')).toBe('cache');
+  });
+  it('suffixe les noms réservés de Windows', () => {
+    expect(safeFileName('CON')).toBe('CON_');
+    expect(safeFileName('lpt1.txt')).toBe('lpt1.txt_');
+    expect(safeFileName('Console')).toBe('Console');
+  });
+  it('borne la longueur', () => {
+    expect(Array.from(safeFileName('x'.repeat(500))).length).toBe(100);
   });
 });

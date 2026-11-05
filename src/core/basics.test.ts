@@ -79,6 +79,7 @@ describe('basics', () => {
   it('lit un JSON sans exception', () => {
     expect(parseJson('{"a":1}')).toEqual({ a: 1 });
     expect(parseJson('[1,2]')).toEqual([1, 2]);
+    expect(parseJson('﻿{"a":1}')).toEqual({ a: 1 });
     expect(parseJson('null')).toBeNull();
     expect(parseJson('{abc')).toBeUndefined();
     expect(parseJson('')).toBeUndefined();

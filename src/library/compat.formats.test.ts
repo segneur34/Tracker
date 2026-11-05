@@ -29,8 +29,8 @@ describe('itinéraire, compatibilité', () => {
       { name: 'Tour', activityId: null, createdAt: 'a', updatedAt: 'c' }, r);
     expect((again.legs[0] as unknown as Record<string, unknown>).futurTroncon).toBeUndefined();
   });
-  it('BOM : ignorée ; CRLF : lue', () => {
-    expect(parseRouteRecord('﻿' + route())).toBeNull();
+  it('BOM : retiré ; CRLF : lue', () => {
+    expect(parseRouteRecord('﻿' + route())).not.toBeNull();
     expect(parseRouteRecord(route().replace(/,/g, ',\r\n'))).not.toBeNull();
   });
 });
@@ -46,10 +46,10 @@ describe('journal, compatibilité', () => {
     const j = parseJournal(`${header}\n["2000",43,3]\n[3000,43.1,3.1]\n[4000,43.2`);
     expect(j.fixes.map((f) => f.timeMs)).toEqual([3000]);
   });
-  it('CRLF lu ; BOM : en-tête perdu, positions gardées', () => {
+  it('CRLF lu ; BOM : retiré, en-tête gardé', () => {
     expect(parseJournal(`${header}\r\n[2000,43,3]\r\n`).fixes.length).toBe(1);
     const b = parseJournal(`﻿${header}\n[2000,43,3]\n`);
-    expect(b.header).toBeNull();
+    expect(b.header).not.toBeNull();
     expect(b.fixes.length).toBe(1);
   });
   it('(c) __proto__ dans une note : sans pollution', () => {

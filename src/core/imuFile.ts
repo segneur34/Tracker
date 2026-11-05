@@ -149,6 +149,8 @@ const INFLATE_BATCH = 32;
 
 const readHeader = (json: unknown): ImuHeader | null => {
   if (!isObject(json) || json.format !== IMU_FORMAT || typeof json.version !== 'number') return null;
+  // Fichier d'une version plus récente que celle connue : refusé, jamais lu de travers (l'appelant le laisse tel quel).
+  if (json.version > IMU_VERSION) return null;
   if (typeof json.startedAtMs !== 'number' || !isObject(json.clock) || !Array.isArray(json.streams)) return null;
   const { elapsedUs, wallMs } = json.clock;
   if (typeof elapsedUs !== 'number' || typeof wallMs !== 'number') return null;

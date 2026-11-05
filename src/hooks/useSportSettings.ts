@@ -283,9 +283,6 @@ const visibility = createJsonSelector<Visibility>(
   (a, b) => sameJson([a.activities, a.hiddenFamilies], [b.activities, b.hiddenFamilies])
 );
 
-/** Ce qui est visible, hors composant. */
-export const readVisibility = (): Visibility => visibility.get();
-
 /** Ce qui est visible, suivi en direct : la barre change dès que Réglages cache ou ré-affiche. */
 export const useVisibility = (): Visibility => useSyncExternalStore(visibility.subscribe, visibility.get);
 

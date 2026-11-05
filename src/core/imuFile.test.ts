@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, decodeImu, encodeImu, imuCaptureStats, selectImuWindows, type ImuHeader, type ImuSeries, type ImuStreamInfo,
+  IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, decodeImu, decodeImuHeader, encodeImu, imuCaptureStats, selectImuWindows, type ImuHeader, type ImuSeries, type ImuStreamInfo,
 } from './imuFile';
 import { sameData } from '../test/sameData';
 
@@ -62,7 +62,7 @@ describe('fichier des capteurs', () => {
   });
 
   it('borne les valeurs hors plage et franchit les grands écarts', async () => {
-    // De −40 g à +40 g d'une mesure à l'autre : l'entier est borné, son écart passe modulo 2^16.
+    // De −40 g à +40 g d une mesure à l'autre : l'entier est borné, son écart passe modulo 2^16.
     const s = series('accel', 100, 1, (t) => (Math.round(t * 100) % 2 === 0 ? 400 : -400));
     const read = (await decodeImu(await encodeImu(HEADER, [s])))!;
     const r = read.series.find((x) => x.info.kind === 'accel')!;
@@ -180,5 +180,14 @@ describe('fichier des capteurs', () => {
     const bad = { ...HEADER, windows: [[2, 1]] } as unknown as typeof HEADER;
     const read = (await decodeImu(await encodeImu(bad, [accel()])))!;
     expect(read.header.windows).toBeUndefined();
+  });
+});
+
+describe('version du fichier (lot 160)', () => {
+  it('refuse un fichier d une version plus récente, sans le lire de travers', async () => {
+    const recent = await encodeImu({ ...HEADER, version: IMU_VERSION + 1 }, [], 1);
+    expect(decodeImuHeader(recent)).toBeNull();
+    expect(await decodeImu(recent)).toBeNull();
+    expect(decodeImuHeader(await encodeImu(HEADER, [], 1))?.version).toBe(IMU_VERSION);
   });
 });
