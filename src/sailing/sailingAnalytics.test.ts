@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
-import { calculateVmgStats, calculateWindStats, windInputWarning, type VmgStats } from './sailingAnalytics';
+import { calculateVmgStats, calculateWindStats, vmgChartRows, vmgSeries, windInputWarning, type VmgStats } from './sailingAnalytics';
 
 /** Forme des copies gelées : cases en chaînes `toFixed(1)`, comme avant le lot 79. */
 type FrozenVmgStats = Omit<VmgStats, 'upStbd' | 'upPort' | 'downStbd' | 'downPort'> & Record<'upStbd' | 'upPort' | 'downStbd' | 'downPort', { max: string; avg: string }>;
@@ -438,5 +438,168 @@ describe('windInputWarning (lot 149, C1-3)', () => {
     expect(windInputWarning({ manualDeg: 65, autoWind: auto, stats: stats(1, 22) })).toBeNull();
     expect(windInputWarning({ manualDeg: 80, autoWind: auto, stats: stats(22, 22) })).toBeNull();
     expect(windInputWarning({ manualDeg: 80, autoWind: auto, stats: null })).toBeNull();
+  });
+});
+
+describe('VMG sans les manœuvres (lot 167)', () => {
+  /** Vent du nord : près tribord à 315° pendant 120 s, virement de 8 s, près bâbord à 45°, à 12 nœuds ; la vitesse tombe à 6 dans le virement. */
+  const TURN_S = 120;
+  const tackSession = (stepS: number) => {
+    const bearingAt = (t: number) => (t < TURN_S ? 315 : t < TURN_S + 8 ? 315 + 90 * ((t - TURN_S) / 8) : 45);
+    const track = buildTrackAt(regularTimes(240, stepS), bearingAt, (t) => (t <= TURN_S || t >= TURN_S + 8 ? 12 : 6));
+    const indexAt = (t: number) => Math.round(t / stepS);
+    return { track, maneuvers: [{ entryIndex: indexAt(TURN_S), exitIndex: indexAt(TURN_S + 8) }], indexAt };
+  };
+  const UP = 12 * Math.cos(Math.PI / 4);
+
+  it('une fenêtre qui touche une manœuvre sort des moyennes, des max et des podiums', () => {
+    const { track, maneuvers } = tackSession(1);
+    const without = calculateVmgStats(track, 0, MIN_KN, undefined, undefined, maneuvers)!;
+    const within = calculateVmgStats(track, 0, MIN_KN)!;
+    // Avec le virement, le creux tire la moyenne vers le bas ; sans lui, chaque bord reste à la VMG du bord.
+    expect(within.upPort.avg).toBeLessThan(UP);
+    expect(without.upStbd.avg).toBeCloseTo(UP, 6);
+    expect(without.upPort.avg).toBeCloseTo(UP, 6);
+    expect(without.upStbd.max).toBeCloseTo(UP, 6);
+    // Aucun podium ne passe par le virement.
+    const turnLons = new Set(track.slice(maneuvers[0].entryIndex + 1, maneuvers[0].exitIndex).map((p) => p.lon));
+    for (const top of without.topsUpwind) expect(top.path.some(([, lon]) => turnLons.has(lon))).toBe(false);
+  });
+
+  it('une manœuvre tenue dans un seul intervalle, ou en un seul point, est écartée aussi (règle 10)', () => {
+    // Le cap bascule d'un bord à l'autre en un pas.
+    const track = buildTrackAt(regularTimes(120, 1), (t) => (t < 60 ? 315 : 45), () => 12);
+    for (const maneuvers of [[{ entryIndex: 59, exitIndex: 60 }], [{ entryIndex: 60, exitIndex: 60 }]]) {
+      const series = vmgSeries(track, 0, MIN_KN, maneuvers);
+      expect(series[60]).toBeNull();
+      expect(series[50]).toBeCloseTo(UP, 6);
+      expect(series[70]).toBeCloseTo(UP, 6);
+      // À cheval, la fenêtre compterait un bord pour moitié dans la bonne case et un max faux dans le podium : plus aucune.
+      const v = calculateVmgStats(track, 0, MIN_KN, undefined, undefined, maneuvers)!;
+      const crossing = track.slice(55, 66).map((p) => p.lon);
+      for (const top of v.topsUpwind) {
+        const lons = top.path.map(([, lon]) => lon);
+        expect(lons.includes(crossing[0]) && lons.includes(crossing[10])).toBe(false);
+      }
+    }
+  });
+
+  it('une fenêtre voisine de la manœuvre, sans la toucher, reste comptée', () => {
+    const { track, maneuvers, indexAt } = tackSession(1);
+    const series = vmgSeries(track, 0, MIN_KN, maneuvers);
+    // Fenêtre de 10 s centrée : se termine au début de la rotation, ou commence à la relance.
+    expect(series[indexAt(TURN_S - 5)]).toBeCloseTo(UP, 6);
+    expect(series[indexAt(TURN_S - 4)]).toBeNull();
+    expect(series[indexAt(TURN_S + 12)]).toBeNull();
+    expect(series[indexAt(TURN_S + 13)]).toBeCloseTo(UP, 6);
+  });
+
+  it("sans manœuvre, le résultat est celui d'avant", () => {
+    const session = legSession();
+    const track = buildTrackAt(regularTimes(session.durationS, 1), session.bearingAt, session.speedAt);
+    expect(calculateVmgStats(track, 0, MIN_KN, undefined, undefined, [])).toEqual(calculateVmgStats(track, 0, MIN_KN));
+    expect(asFrozen(calculateVmgStats(track, 0, MIN_KN)!)).toEqual(frozenVmgStats(track, 0, MIN_KN));
+  });
+
+  it('la courbe est positive au près, négative au portant, en nœuds', () => {
+    const track = buildTrackAt(regularTimes(120, 1), (t) => (t < 60 ? 315 : 135), () => 12);
+    const series = vmgSeries(track, 0, MIN_KN, [{ entryIndex: 59, exitIndex: 62 }]);
+    expect(series).toHaveLength(track.length);
+    expect(series[30]).toBeCloseTo(UP, 6);
+    expect(series[90]).toBeCloseTo(-UP, 6);
+  });
+
+  it('la courbe donne le même résultat à 1 Hz et à 5 Hz, au même instant', () => {
+    const at1 = tackSession(1);
+    const at5 = tackSession(0.2);
+    const s1 = vmgSeries(at1.track, 0, MIN_KN, at1.maneuvers);
+    const s5 = vmgSeries(at5.track, 0, MIN_KN, at5.maneuvers);
+    for (let t = 0; t <= 240; t++) {
+      const a = s1[at1.indexAt(t)];
+      const b = s5[at5.indexAt(t)];
+      expect(a === null, `instant ${t} s`).toBe(b === null);
+      if (a !== null && b !== null) expect(Math.abs(a - b), `instant ${t} s`).toBeLessThan(0.05);
+    }
+  });
+
+  it('rejoint les chiffres : le max de la courbe est celui du tableau', () => {
+    const { track, maneuvers } = tackSession(1);
+    const v = calculateVmgStats(track, 0, MIN_KN, undefined, undefined, maneuvers)!;
+    const series = vmgSeries(track, 0, MIN_KN, maneuvers).filter((x): x is number => x !== null);
+    expect(Math.max(...series)).toBeCloseTo(Math.max(v.upStbd.max, v.upPort.max), 6);
+  });
+
+  it('un trou de la trace coupe la courbe, sans fenêtre à travers lui, à 1 Hz et à 5 Hz', () => {
+    for (const stepS of [1, 0.2]) {
+      // 60 s, un silence de 30 s, puis 60 s.
+      const times = [...regularTimes(60, stepS), ...regularTimes(60, stepS).map((t) => t + 90)];
+      const track = buildTrackAt(times, () => 315, () => 12);
+      const resume = track.findIndex((p, k) => k > 0 && p.timeMs - track[k - 1].timeMs > 10_000);
+      const series = vmgSeries(track, 0, MIN_KN);
+      const at = (k: number) => series[Math.round(k / stepS)];
+      expect(at(40)).toBeCloseTo(UP, 6);
+      expect(at(58)).toBeNull();
+      expect(series[resume]).toBeNull();
+      expect(series[resume + Math.round(2 / stepS)]).toBeNull();
+      expect(series[resume + Math.round(10 / stepS)]).toBeCloseTo(UP, 6);
+      // Même avec une fenêtre plus large que le trou : elle ne le traverse pas.
+      expect(vmgSeries(track, 0, MIN_KN, [], 120).every((x) => x === null)).toBe(true);
+    }
+  });
+
+  it('une reprise de pause pèse zéro, et une pause longue coupe la courbe', () => {
+    const short = [...regularTimes(30, 1), ...regularTimes(30, 1).map((t) => t + 34)];
+    const series = vmgSeries(buildTrackAt(short, () => 315, () => 12, [34]), 0, MIN_KN);
+    expect(series[29]).toBeCloseTo(UP, 6);
+    const long = [...regularTimes(30, 1), ...regularTimes(30, 1).map((t) => t + 90)];
+    const cut = vmgSeries(buildTrackAt(long, () => 315, () => 12, [90]), 0, MIN_KN);
+    expect(cut[30]).toBeNull();
+    expect(cut[31]).toBeNull();
+  });
+
+  it("sous le seuil d'activité, la courbe est un trou", () => {
+    const track = buildTrackAt(regularTimes(120, 1), () => 315, (t) => (t < 60 ? 12 : 2));
+    const series = vmgSeries(track, 0, MIN_KN);
+    expect(series[30]).toBeCloseTo(UP, 6);
+    expect(series[90]).toBeNull();
+  });
+
+  it('cadence économique (règle 10) : un point garde ses voisins, comme les chiffres', () => {
+    const track = buildTrackAt(regularTimes(180, 9), () => 315, () => 12);
+    expect(vmgSeries(track, 0, MIN_KN)[5]).toBeCloseTo(UP, 6);
+    expect(calculateVmgStats(track, 0, MIN_KN)!.upStbd.avg).toBeCloseTo(UP, 6);
+  });
+
+  it('rend vide sans trace ou sans vent', () => {
+    expect(vmgSeries([], 0, MIN_KN)).toEqual([]);
+    expect(vmgSeries(buildTrackAt(regularTimes(30, 1), () => 315, () => 12), null, MIN_KN)).toEqual([]);
+  });
+});
+
+describe('vmgChartRows (lot 167)', () => {
+  const minutes = Array.from({ length: 100 }, (_, k) => k / 60);
+  const toChart = (kn: number) => kn * 2;
+
+  it("garde l'indice de la trace, le temps, et passe à l'unité du graphe", () => {
+    const rows = vmgChartRows(minutes.map(() => 5), minutes, [0, 50, 99], toChart);
+    expect(rows.map((r) => r.index)).toEqual([0, 50, 99]);
+    expect(rows[1].minutes).toBeCloseTo(50 / 60);
+    expect(rows[1].vmg).toBe(10);
+  });
+
+  it('une manœuvre entre deux lignes reste un trou', () => {
+    const series = minutes.map((_, k): number | null => (k >= 20 && k <= 25 ? null : 5));
+    expect(vmgChartRows(series, minutes, [0, 10, 30, 40], toChart).map((r) => r.vmg)).toEqual([10, 10, null, 10]);
+  });
+
+  it('un morceau réduit à une ligne reçoit son point, les autres non', () => {
+    const series = minutes.map((_, k): number | null => (k === 20 || k === 40 ? null : 5));
+    const rows = vmgChartRows(series, minutes, [0, 5, 25, 30, 45, 50, 55], toChart);
+    expect(rows.map((r) => r.vmg)).toEqual([10, 10, null, 10, null, 10, 10]);
+    expect(rows.map((r) => r.alone)).toEqual([false, false, false, true, false, false, false]);
+  });
+
+  it('sans série, aucune ligne', () => {
+    expect(vmgChartRows([], minutes, [0, 1], toChart)).toEqual([]);
   });
 });

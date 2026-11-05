@@ -508,42 +508,44 @@ export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): Maneuve
   };
 };
 
+/** Bornes d'une manœuvre, tous types confondus, en indices de la trace (`ManeuverLocation`). */
+export type ManeuverSpan = Pick<ManeuverLocation, 'entryIndex' | 'exitIndex'>;
+
 /**
- * VMG par allure et par bord, sur fenêtre temporelle glissante.
+ * Sommes cumulées de la VMG, sur les intervalles : l'intervalle k arrive au
+ * point k (k ≥ 1). Un seul passage lit chaque point une fois (durée du pas,
+ * vitesse, VMG, bord, sous le minimum), et chaque fenêtre se lit ensuite en
+ * O(1) : à 5 Hz sur 3 h, le vent local n'est plus relu 51 fois par point. Un
+ * pas de reprise de pause (`segmentStart`) pèse zéro. Pour les chiffres
+ * (`calculateVmgStats`) et la courbe (`vmgSeries`).
  *
- * Un seul passage lit chaque point une fois (durée du pas, vitesse, VMG,
- * bord, sous le minimum), puis des sommes cumulées rendent chaque fenêtre en
- * O(1) : à 5 Hz sur 3 h, le vent local n'est plus relu 51 fois par point.
- * La fenêtre `[i, j]` couvre les intervalles `i+1..j`, chacun pesant sa durée
- * (règle 2 : une portion dense de points ne pèse pas plus qu'une portion
- * creuse de même durée ; le point `i` apportait le cap de l'intervalle
- * d'avant la fenêtre). Un pas de reprise de pause (`segmentStart`) pèse zéro.
+ * Le temps en manœuvre et les trous se comptent en intervalles, non en
+ * secondes : un pas de reprise de pause, qui pèse zéro, y compte quand même.
  */
-export const calculateVmgStats = (
-  trackData: PointData[],
-  wind: WindReference | null,
-  /** Vitesse minimale, en nœuds, pour qu'une fenêtre compte dans la VMG. */
-  minSpeedKn: number = getDefaultThresholdKn(),
-  windowSeconds: number = VMG_WINDOW_S,
-  /** Un pas plus long est un trou de la trace (règle 6) : il pèse par sa distance, pas par la vitesse lissée du point de reprise. */
-  maxGapS: number = MAX_GAP_S
-): VmgStats | null => {
-  if (trackData.length === 0 || wind === null) return null;
-
-  const windowMs = windowSeconds * 1000;
+const vmgSums = (trackData: PointData[], wind: WindReference, minSpeedKn: number, maxGapS: number, maneuvers: readonly ManeuverSpan[]) => {
   const n = trackData.length;
-
-  // Sommes cumulées sur les intervalles : l'intervalle k arrive au point k (k ≥ 1).
   const cumDt = new Float64Array(n);
   const cumSpeedDt = new Float64Array(n);
   const cumVmgDt = new Float64Array(n);
   const cumStbdDt = new Float64Array(n);
   // Nombre de points sous le minimum parmi les points 0..k.
   const cumBelow = new Int32Array(n);
+  // Nombre d'intervalles en manœuvre, et d'intervalles plus longs que `maxGapS`, parmi les intervalles 1..k.
+  const cumManeuver = new Int32Array(n);
+  const cumGap = new Int32Array(n);
+  const inManeuver = new Uint8Array(n);
+  for (const { entryIndex, exitIndex } of maneuvers) {
+    // Du début de la rotation à la relance : les intervalles entry+1..exit. Tenue en un point (règle 10), l'intervalle
+    // qui y arrive porte le virage : une fenêtre qui passe par ce point ne le manque pas.
+    const from = exitIndex > entryIndex ? entryIndex + 1 : Math.max(1, entryIndex);
+    const to = Math.min(n - 1, Math.max(from, exitIndex));
+    for (let k = from; k <= to; k++) inManeuver[k] = 1;
+  }
   cumBelow[0] = trackData[0].smoothedSpeed < minSpeedKn ? 1 : 0;
   for (let k = 1; k < n; k++) {
     const p = trackData[k];
-    const dt = p.segmentStart ? 0 : Math.max(0, (p.timeMs - trackData[k - 1].timeMs) / 1000);
+    const stepS = (p.timeMs - trackData[k - 1].timeMs) / 1000;
+    const dt = p.segmentStart ? 0 : Math.max(0, stepS);
     const diff = angleDiff(p.bearing, windAt(wind, p.timeMs));
     // Trou de trace (règle 6, comme les manœuvres au lot 79) : vitesse moyenne du pas = distance retenue (bornée par
     // la corde, nulle si immobile) / durée. Hors trou, la vitesse lissée du point, inchangée.
@@ -554,7 +556,36 @@ export const calculateVmgStats = (
     cumVmgDt[k] = cumVmgDt[k - 1] + vmg * dt;
     cumStbdDt[k] = cumStbdDt[k - 1] + (diff < 0 ? dt : 0);
     cumBelow[k] = cumBelow[k - 1] + (p.smoothedSpeed < minSpeedKn ? 1 : 0);
+    cumManeuver[k] = cumManeuver[k - 1] + inManeuver[k];
+    cumGap[k] = cumGap[k - 1] + (stepS > maxGapS ? 1 : 0);
   }
+  return { cumDt, cumSpeedDt, cumVmgDt, cumStbdDt, cumBelow, cumManeuver, cumGap };
+};
+
+/**
+ * VMG par allure et par bord, sur fenêtre temporelle glissante, en sommes
+ * cumulées (`vmgSums`). La fenêtre `[i, j]` couvre les intervalles `i+1..j`,
+ * chacun pesant sa durée (règle 2 : une portion dense de points ne pèse pas
+ * plus qu'une portion creuse de même durée ; le point `i` apportait le cap de
+ * l'intervalle d'avant la fenêtre). Une fenêtre qui touche une manœuvre ne
+ * compte ni dans les moyennes, ni dans les max, ni dans les podiums.
+ */
+export const calculateVmgStats = (
+  trackData: PointData[],
+  wind: WindReference | null,
+  /** Vitesse minimale, en nœuds, pour qu'une fenêtre compte dans la VMG. */
+  minSpeedKn: number = getDefaultThresholdKn(),
+  windowSeconds: number = VMG_WINDOW_S,
+  /** Un pas plus long est un trou de la trace (règle 6) : il pèse par sa distance, pas par la vitesse lissée du point de reprise. */
+  maxGapS: number = MAX_GAP_S,
+  /** Manœuvres de la session, écartées des chiffres. */
+  maneuvers: readonly ManeuverSpan[] = []
+): VmgStats | null => {
+  if (trackData.length === 0 || wind === null) return null;
+
+  const windowMs = windowSeconds * 1000;
+  const n = trackData.length;
+  const { cumDt, cumSpeedDt, cumVmgDt, cumStbdDt, cumBelow, cumManeuver } = vmgSums(trackData, wind, minSpeedKn, maxGapS, maneuvers);
 
   let maxUpStbd = 0, maxUpPort = 0, maxDownStbd = 0, maxDownPort = 0;
   let sumUpStbd = 0, sumUpPort = 0, sumDownStbd = 0, sumDownPort = 0;
@@ -575,6 +606,7 @@ export const calculateVmgStats = (
       continue;
     }
 
+    if (cumManeuver[j] - cumManeuver[i] > 0) continue;
     const durationS = cumDt[j] - cumDt[i];
     if (durationS <= 0) continue;
     const avgSpeed = (cumSpeedDt[j] - cumSpeedDt[i]) / durationS;
@@ -624,4 +656,86 @@ export const calculateVmgStats = (
     topsUpwind: getTopVmg(true),
     topsDownwind: getTopVmg(false),
   };
+};
+
+/**
+ * Courbe de la VMG, en nœuds par point de la trace : positive au près, négative
+ * au portant, moyennée sur `windowSeconds` centrées sur le point (règle 2 : les
+ * sommes cumulées des chiffres, `vmgSums`), `null` là où les chiffres ne
+ * comptent pas : fenêtre qui touche une manœuvre, allure moyenne sous le
+ * minimum, fenêtre trop courte (bouts de la trace). Pas de fenêtre à travers
+ * un trou : elle ne dirait rien de ce qui s'y est passé.
+ *
+ * La fenêtre est la plus petite suite de points qui couvre l'intervalle centré :
+ * sur une trace économique (règle 10), un point garde ses deux voisins plutôt
+ * que de rester seul dans sa fenêtre.
+ */
+export const vmgSeries = (
+  trackData: PointData[],
+  wind: WindReference | null,
+  /** Vitesse minimale, en nœuds, de la moyenne de la fenêtre. */
+  minSpeedKn: number = getDefaultThresholdKn(),
+  /** Manœuvres de la session : un trou dans la courbe. */
+  maneuvers: readonly ManeuverSpan[] = [],
+  windowSeconds: number = VMG_WINDOW_S,
+  maxGapS: number = MAX_GAP_S
+): (number | null)[] => {
+  if (trackData.length === 0 || wind === null) return [];
+
+  const windowMs = windowSeconds * 1000;
+  const n = trackData.length;
+  const { cumDt, cumSpeedDt, cumVmgDt, cumManeuver, cumGap } = vmgSums(trackData, wind, minSpeedKn, maxGapS, maneuvers);
+  const series = new Array<number | null>(n).fill(null);
+  let i = 0;
+  let j = 0;
+  for (let c = 0; c < n; c++) {
+    const timeMs = trackData[c].timeMs;
+    while (i + 1 < n && trackData[i + 1].timeMs <= timeMs - windowMs / 2) i++;
+    while (j + 1 < n && trackData[j].timeMs < timeMs + windowMs / 2) j++;
+    if (trackData[j].timeMs - trackData[i].timeMs < windowMs * VMG_MIN_WINDOW_RATIO) continue;
+    if (cumManeuver[j] - cumManeuver[i] > 0 || cumGap[j] - cumGap[i] > 0) continue;
+    const durationS = cumDt[j] - cumDt[i];
+    if (durationS <= 0 || !((cumSpeedDt[j] - cumSpeedDt[i]) / durationS >= minSpeedKn)) continue;
+    const avgVmg = (cumVmgDt[j] - cumVmgDt[i]) / durationS;
+    if (Number.isFinite(avgVmg)) series[c] = avgVmg;
+  }
+  return series;
+};
+
+/** Ligne du graphe de la VMG. */
+export interface VmgGraphPoint {
+  /** Point de la trace. */
+  index: number;
+  /** Temps écoulé depuis le début de la trace, en minutes : l'axe des graphes et de leur zoom. */
+  minutes: number;
+  /** VMG dans l'unité du graphe, `null` dans un trou. */
+  vmg: number | null;
+  /** Morceau de courbe réduit à cette ligne : le trait ne la montrerait pas, elle reçoit un point. */
+  alone: boolean;
+}
+
+/**
+ * Lignes du graphe de la VMG aux points `indices` de la trace (croissants, ceux
+ * de la plage visible). Une ligne représente aussi les points sautés depuis la
+ * précédente : l'un d'eux dans un trou, elle est un trou. Sans cela, une
+ * manœuvre tomberait entre deux lignes sur une longue session et la courbe
+ * passerait dessus sans la montrer.
+ */
+export const vmgChartRows = (
+  series: readonly (number | null)[],
+  minutes: ArrayLike<number>,
+  indices: readonly number[],
+  /** Nœuds vers l'unité du graphe. */
+  toChartValue: (kn: number) => number
+): VmgGraphPoint[] => {
+  if (series.length === 0) return [];
+  const rows = indices.map((index, k): VmgGraphPoint => {
+    let vmg = series[index];
+    for (let p = k > 0 ? indices[k - 1] + 1 : index; p < index && vmg !== null; p++) if (series[p] === null) vmg = null;
+    return { index, minutes: minutes[index], vmg: vmg === null ? null : toChartValue(vmg), alone: false };
+  });
+  rows.forEach((row, k) => {
+    row.alone = row.vmg !== null && (rows[k - 1]?.vmg ?? null) === null && (rows[k + 1]?.vmg ?? null) === null;
+  });
+  return rows;
 };

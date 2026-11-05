@@ -127,7 +127,7 @@ export const useSailingSession = ({
 
   // Ce qui dépend du vent retenu et du seuil : manœuvres en deux passes, variations du vent, VMG.
   const wind = useMemo(() => analyzeSailingWind(prepared, atThreshold, windDeg), [prepared, atThreshold, windDeg]);
-  const { autoWind, currentWindValue, windInputRequired, maneuverStats, maneuverSummary, windStats, vmgStats } = wind;
+  const { autoWind, currentWindValue, windInputRequired, maneuverStats, maneuverSummary, windStats, vmgStats, vmgSeries } = wind;
   // La polaire ne suit que le vent retenu : le seuil qui bouge ne la refait pas (ni ne redessine le graphe).
   const polarGraphData = useMemo(() => sailingPolarGraph(prepared, currentWindValue), [prepared, currentWindValue]);
   const { suggestedSpeedRangeMs, maneuverThresholds } = prepared;
@@ -155,6 +155,8 @@ export const useSailingSession = ({
     maneuverStats,
     maneuverSummary,
     vmgStats,
+    /** Courbe de la VMG, en nœuds par point de la trace ; vide sans vent. */
+    vmgSeries,
     windStats,
     polarGraphData,
     // Réglages de l'activité

@@ -19,6 +19,7 @@ import {
   calculateVmgStats,
   calculateWindStats,
   summarizeManeuvers,
+  vmgSeries,
   type ManeuverSummary,
   type VmgStats,
   type WindStats,
@@ -176,6 +177,8 @@ export interface SailingWindAnalysis {
   maneuverSummary: ManeuverSummary;
   windStats: WindStats | null;
   vmgStats: VmgStats | null;
+  /** Courbe de la VMG, en nœuds par point de la trace (`vmgSeries` de `sailingAnalytics`) ; vide sans vent. */
+  vmgSeries: (number | null)[];
 }
 
 /**
@@ -214,6 +217,8 @@ export const analyzeSailingWind = (
   // Vent de référence de la VMG : le vent local interpolé entre manœuvres quand il existe, le vent global sinon.
   const windAt =
     currentWindValue === null ? null : windStats ? (timeMs: number) => windStats.windAt(timeMs) ?? currentWindValue : currentWindValue;
+  // Les manœuvres, tous types confondus, sont écartées des chiffres et de la courbe de la VMG.
+  const maneuvers = maneuverStats?.locations ?? [];
 
   return {
     autoWind: windEstimate?.direction ?? null,
@@ -222,7 +227,8 @@ export const analyzeSailingWind = (
     maneuverStats,
     maneuverSummary: summarizeManeuvers(maneuverStats),
     windStats,
-    vmgStats: calculateVmgStats(trackData, windAt, computeThresholdKn),
+    vmgStats: calculateVmgStats(trackData, windAt, computeThresholdKn, undefined, undefined, maneuvers),
+    vmgSeries: vmgSeries(trackData, windAt, computeThresholdKn, maneuvers),
   };
 };
 

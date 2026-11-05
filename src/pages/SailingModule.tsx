@@ -5,7 +5,7 @@ import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { CircleMarker, Popup } from 'react-leaflet';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
-import type { DotItemDotProps } from 'recharts';
+import { ReferenceLine, type DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { carriedSettings } from '../library/record';
@@ -36,8 +36,8 @@ import {
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
-import { MANEUVER_LOST_FLIGHT_S } from '../sailing/sailingConfig';
-import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LOST_FLIGHT_S, VMG_WINDOW_S } from '../sailing/sailingConfig';
+import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, vmgChartRows, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type VmgGraphPoint, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import type { ManeuverLocation } from '../sailing/maneuvers';
 import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
@@ -131,6 +131,16 @@ const maneuverDot = (props: DotItemDotProps): ReactNode => {
   return <circle cx={props.cx} cy={props.cy} r={3} fill={WIND_COLOR} stroke="var(--surface)" strokeWidth={1} />;
 };
 
+/** Courbe de la VMG. */
+const VMG_COLOR = '#00838f';
+/** Point d'un morceau de la courbe de VMG réduit à une ligne, que le trait ne montre pas (longue session, vue entière). */
+const vmgAloneDot = (props: DotItemDotProps): ReactNode => {
+  // Recharts ne type pas la ligne derrière le point : c'est un `VmgGraphPoint`.
+  const point: VmgGraphPoint | undefined = props.payload;
+  if (!point?.alone) return null;
+  return <circle cx={props.cx} cy={props.cy} r={1.5} fill={VMG_COLOR} />;
+};
+
 /** Curseur commun aux graphes de vitesse et de FC (Q38) : leurs lignes viennent des mêmes points. */
 const SAILING_SYNC_ID = 'sailing';
 /** Graduations des axes de la voile : encre grasse, sans unité. */
@@ -147,6 +157,11 @@ const WIND_AXES: TrackYAxis[] = [{
 }];
 const WIND_SERIES: TrackSeries<WindGraphPoint>[] = [
   { kind: 'line', key: 'angle', name: 'angle', color: WIND_COLOR, width: 2, activeDotR: 6, dot: maneuverDot },
+];
+/** Axe de la VMG, de part et d'autre de zéro : le trait à 0 (`ifOverflow="extendDomain"`) le garde dans l'axe. */
+const VMG_AXES: TrackYAxis[] = [{ color: VMG_COLOR, domain: ['auto', 'auto'], width: 40, tick: SAILING_TICK, tickFormatter: commaDecimal }];
+const VMG_SERIES: TrackSeries<VmgGraphPoint>[] = [
+  { kind: 'line', key: 'vmg', name: 'VMG', color: VMG_COLOR, width: 2, activeDotR: 4, dot: vmgAloneDot },
 ];
 
 function SailingModule() {
@@ -189,6 +204,7 @@ function SailingModule() {
     maneuverStats,
     maneuverSummary,
     vmgStats,
+    vmgSeries,
     windStats,
     polarGraphData,
     windEstimate,
@@ -548,6 +564,14 @@ function SailingModule() {
     () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, windIndicesAt(view)) : [])),
     [windStats, trackData, windIndicesAt]
   );
+  /** Lignes de la VMG : ses points suivent sa propre courbe, ses extrêmes restent ; toute manœuvre y reste un trou (`vmgChartRows`). */
+  const vmgRowsAt = useMemo(() => lastByRange((view) => {
+    const visibleRange = visibleRangeAt(view);
+    const indices = visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, vmgSeries) : [];
+    return vmgChartRows(vmgSeries, trackMinutes, indices, (kn) => knotsToChartValue(kn, speedUnit));
+  }), [visibleRangeAt, vmgSeries, trackMinutes, speedUnit]);
+  /** La courbe de VMG a au moins une valeur sur la session ; sinon, une phrase à sa place. */
+  const vmgChartShown = useMemo(() => vmgSeries.some((v) => v !== null), [vmgSeries]);
   /**
    * La courbe de FC a des lignes, quelle que soit la plage : avec la FC et au moins deux points, la plage zoomée en
    * garde toujours deux (`visibleIndexRange` prend un voisin de chaque côté). Lu hors des blocs du zoom.
@@ -562,6 +586,7 @@ function SailingModule() {
     charts: {
       graphiques: { zoom: chartZoom, axis: trackMinutes },
       vent: { zoom: chartZoom, axis: trackMinutes },
+      vmg: { zoom: chartZoom, axis: trackMinutes },
       cardio: { zoom: cardioZoom, axis: trackMinutes },
     },
     narrow,
@@ -585,6 +610,15 @@ function SailingModule() {
     const direction = windStats.windAt(trackData[i].timeMs);
     return { values: [{ text: direction === null ? '—' : `${normalizeDeg(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
   };
+  /** VMG du point survolé : la valeur, et de quel côté du vent. */
+  const readVmg = (z: ChartZoom) => (i: number): Readout | null => {
+    if (!timeChart.readable(z, i)) return null;
+    const vmg = vmgSeries[i] ?? null;
+    return {
+      values: [{ text: vmg === null ? '—' : `${vmg < 0 ? 'portant' : 'près'} ${showKn(Math.abs(vmg))} ${speedSymbol}`, color: VMG_COLOR }],
+      at: readAt(i),
+    };
+  };
   const zoomText = zoomHint(narrow);
 
   /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
@@ -598,6 +632,14 @@ function SailingModule() {
   const windChart = (z: ChartZoom, style: CSSProperties) => (
     <TrackChart rows={windRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={WIND_AXES} series={WIND_SERIES}
       onShowOnMap={() => zoomOnMap.show('vent')} style={style}>
+      {markLines}
+    </TrackChart>
+  );
+  /** Graphe de la VMG : dans l'onglet « vmg », et sous la carte en plein écran. */
+  const vmgChart = (z: ChartZoom, style: CSSProperties) => (
+    <TrackChart rows={vmgRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={VMG_AXES} series={VMG_SERIES}
+      onShowOnMap={() => zoomOnMap.show('vmg')} style={style}>
+      <ReferenceLine y={0} stroke="var(--ink)" strokeWidth={1} ifOverflow="extendDomain" />
       {markLines}
     </TrackChart>
   );
@@ -639,6 +681,17 @@ function SailingModule() {
               <>
                 <HoverReadout line read={windReadout(z)} label="Vent" color={WIND_COLOR} />
                 {windChart(z, COMPANION_CHART_STYLE)}
+              </>
+            )}
+          </ZoomView>
+        ) : null;
+      case 'vmg':
+        return vmgChartShown ? (
+          <ZoomView zoom={chartZoom}>
+            {(z) => (
+              <>
+                <HoverReadout line read={readVmg(z)} label="VMG" color={VMG_COLOR} />
+                {vmgChart(z, COMPANION_CHART_STYLE)}
               </>
             )}
           </ZoomView>
@@ -702,7 +755,11 @@ function SailingModule() {
   /** Panneaux VMG et manœuvres, parmi les onglets sous la carte. */
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id="sailing.carte.vmg" style={PANEL_BLOCK_STYLE}>
-      <PanelHeading label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} />
+      <PanelHeading label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} helpKey="voile:vmg" />
+      <HelpText helpKey="voile:vmg" note>
+        La VMG est la vitesse utile vers le vent, moyennée sur {VMG_WINDOW_S} s : sur la courbe, au-dessus de zéro au près, en dessous au portant.
+        Les manœuvres, du début de la rotation à la relance, sont écartées des chiffres (moyennes, max, tops) comme de la courbe, où elles laissent un trou ; de même les passages sous le seuil d'activité. {zoomText}
+      </HelpText>
       <table className="ui-table" style={{ textAlign: 'center' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
@@ -732,6 +789,27 @@ function SailingModule() {
           {renderTop3('vmg', "Tops Portant (10s)", "vmgDownwind", v.topsDownwind)}
         </div>
       </div>
+      {vmgChartShown ? (
+        <ResizablePanel id="sailing.graph.vmg" defaultHeight={250} minWidth={250} minHeight={180} style={{ marginTop: '10px', width: '100%', boxSizing: 'border-box', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
+          {/* Le graphe seul suit le zoom : ni le tableau ni les podiums ne se redessinent. */}
+          <ZoomView zoom={chartZoom}>
+            {(z) => (
+              <>
+                <div className="chart-head" style={{ marginBottom: '10px' }}>
+                  <HoverReadout read={readVmg(z)} label="VMG" color={VMG_COLOR} />
+                </div>
+                <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
+                  {vmgChart(z, FILL_STYLE)}
+                </div>
+              </>
+            )}
+          </ZoomView>
+        </ResizablePanel>
+      ) : (
+        <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+          Pas de courbe : aucun passage de {VMG_WINDOW_S} s au-dessus du seuil d'activité, hors des manœuvres.
+        </p>
+      )}
     </ResizablePanel>
   );
 

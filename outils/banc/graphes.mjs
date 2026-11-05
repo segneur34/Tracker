@@ -403,6 +403,27 @@ const windTitle = await evaluate(`(() => { const e = [...document.querySelectorA
 console.log(`  voile, nom du vent : ${windTitle}`);
 check('voile : nom du vent, casse non comptée', windTitle.startsWith('évolution du vent ('));
 await clickTab('vent', true);
+// Lot 167 : courbe de la VMG dans son onglet, sous le tableau et les podiums, tracée, avec zéro dans son axe.
+console.log('  vmg :', await clickTab('vmg'));
+await settle({ max: 1500 });
+const vmgDrawn = await evaluate(`(() => { const s = ${SCOPE('Analyse VMG')}; const d = s?.querySelector('.recharts-line-curve')?.getAttribute('d') ?? ''; return { lines: s ? s.querySelectorAll('.recharts-line').length : -1, drawn: d.length > 0 }; })()`);
+check(`voile : courbe de la VMG tracée (${vmgDrawn.lines} ligne, tracé ${vmgDrawn.drawn})`, vmgDrawn.lines === 1 && vmgDrawn.drawn);
+const vmgOrder = await evaluate(`(() => { const s = ${SCOPE('Analyse VMG')}; const t = s?.querySelector('table'); const c = s?.querySelector('.zoom-chart'); return !!t && !!c && t.getBoundingClientRect().bottom <= c.getBoundingClientRect().top; })()`);
+check('voile : la courbe de la VMG vient sous le tableau', vmgOrder === true);
+const vmgTicks = await ticks('Analyse VMG', 0, 'yAxis');
+check(`voile : zéro dans l'axe de la VMG (${vmgTicks})`, vmgTicks.split(' | ').includes('0'));
+const vmgShot = async (name) => {
+  await evaluate(`${SCOPE('Analyse VMG')}?.scrollIntoView({ block: 'start' })`);
+  await settle({ max: 800 });
+  await shoot(name);
+};
+await vmgShot('vmg');
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await settle({ max: 1500 });
+await vmgShot('vmg-tel');
+await send('Emulation.clearDeviceMetricsOverride');
+await settle({ max: 800 });
+await clickTab('vmg', true);
 
 await go(paths.surf, 6000);
 await clickTab('graphiques');

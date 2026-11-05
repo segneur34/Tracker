@@ -228,6 +228,20 @@ describe('analyzeSailingSession : les trois étapes', () => {
     expect(sailingPolarGraph(prepared, b.currentWindValue)).not.toEqual(sailingPolarGraph(prepared, a.currentWindValue));
   });
 
+  it('VMG : les manœuvres sont écartées des chiffres et font un trou dans la courbe (lot 167)', () => {
+    const a = analyze(fast);
+    const locations = a.maneuverStats!.locations;
+    expect(locations.length).toBeGreaterThan(0);
+    expect(a.vmgSeries).toHaveLength(a.trackData.length);
+    for (const m of locations) expect(a.vmgSeries[Math.round((m.entryIndex + m.exitIndex) / 2)]).toBeNull();
+    expect(a.vmgSeries.some((v) => v !== null && v > 0)).toBe(true);
+    expect(a.vmgSeries.some((v) => v !== null && v < 0)).toBe(true);
+    // Sans vent : ni chiffres ni courbe.
+    const noWind = analyze(sailTrack({ windDeg: WIND, legs: [{ twa: 45, durationS: 600 }, { twa: 135, durationS: 600 }], hz: 1, seed: 5 }));
+    expect(noWind.vmgStats).toBeNull();
+    expect(noWind.vmgSeries).toEqual([]);
+  });
+
   it('la polaire ne dépend pas du seuil d’activité, seulement du vent retenu', () => {
     const prepared = prepareSailingTrack(fast.track, settingsOf(fast));
     const at6 = analyzeSailingWind(prepared, analyzeSailingAtThreshold(prepared, 6), WIND);
