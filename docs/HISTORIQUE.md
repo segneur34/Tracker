@@ -1350,3 +1350,18 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : rien ne change dans l'application. Un plafond de 300 extrêmes par série, des lignes par graphe en voile et un tracé linéaire ont été essayés puis retirés, gain sous le bruit de mesure (code gardé dans `docs/backlog/164-plafond-voile-retire.patch`). La mesure du zoom est étendue (cinq variantes, vrai pincement, largeur de téléphone) et passe aussi sur la version compilée (`outils/banc/fluidite-compile.mjs`).
     - **Pourquoi** : version compilée à ×6, image la plus longue : course-pc 0,42 s, course-tel 0,55 s, bruit-tel 0,80 s, surf-tel 0,70 s, voile-tel 1,23 s ; seul le cas extrême (voile 3 h à 5 Hz, 4 graphes ouverts) dépasse 1 s. Pincement du graphe au téléphone : pas ou très peu de saccades.
     - **Piège** : une mesure de rapidité se fait d'abord sur la version compilée, le serveur de développement allonge les durées de 3 à 9 fois et le 1,5 s qui avait motivé le lot en venait ; le « 1 700 lignes » de la fiche n'apparaît nulle part (963 au plus). Le lot a coûté 1 h 50 pour cette raison.
+
+281. Voile et analyses : quitter le plein écran carte + graphes retire le tronçon violet (lot 166, validé le 05/11).
+    - **Décision** : sortir du plein écran carte + graphes (bouton, retour d'Android, fin du réglage du vent) retire aussi la surbrillance, par `closeCompanion` de `useZoomOnMap` ; le zoom du graphe reste, et une carte agrandie sans graphes garde sa surbrillance.
+    - **Pourquoi** : le violet restait sur la carte de la page après la sortie, alors qu'il n'avait de sens que dans la vue à graphes.
+    - **Piège** : `endWindAdjust` de `SailingModule` fermait le plein écran sans passer par `onExpandedChange`, donc sans appeler `closeCompanion` ; toute nouvelle voie de fermeture doit l'appeler.
+
+282. Enregistrer : « Analyser » plus court (lot 161, validé le 05/11, essai 124 reporté).
+    - **Décision** : `addGpx` calcule la session par le worker (job `summarize`), un seul chemin pour l'enregistrement et les imports. Le rangement en cours est tenu par le module (`RecorderState.analyzing`) : un second « Analyser » rend la même promesse, « Jeter » est ignoré, les boutons restent inactifs même après un aller-retour sur la page.
+    - **Pourquoi** : le calcul bloquait l'écran. À ×6, version compilée : voile 3 h, blocage avant l'écriture 0,99 → 0,12 s, chiffres 2,76 → 2,05 s ; course 2 h, 0,53 → 0,16 s et 1,90 → 1,29 s.
+    - **Piège** : le ralenti du banc semble ne pas toucher le worker, le temps total est donc flatté (la libération de l'écran, elle, est juste) ; capteurs et écriture du téléphone ne se mesurent pas au banc. Plusieurs scripts du banc lisaient le dossier avant la première écriture, désormais plus tardive : rendus patients. Un matériel choisi après le clic sur « Analyser » n'est pas écrit, il se refait dans l'onglet de l'analyse.
+
+283. Nettoyage du paquet A et leçon de vérification (lot 160, première passe, validé le 05/11).
+    - **Décision** : sans rien de visible, les renvois de l'atelier dans les commentaires deviennent « HISTORIQUE, point N », les couleurs bâbord et tribord vont dans `highlightColors.ts`, les styles de `renderVmgPanel` passent en classes `an-vmg-*` aux mêmes valeurs. La liste à piocher reste. La limite de temps des tests passe à 30 s (`vite.config.ts`).
+    - **Pourquoi** : des tests sans lien dépassaient leur limite, sur un test différent à chaque passage, quand le poste est occupé.
+    - **Piège** : ne jamais enchaîner `git commit` à `npm run verif` sans lire son résultat : le commit du lot 161 est parti sur une vérification en échec, le code étant bon.
