@@ -78,7 +78,8 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 console.log('— 1. cache allégé');
 await go('/velo');
 await importFiles([firstPath], 'input[type=file][accept=".gpx"][multiple]');
-await waitFor(async () => (await listOpfs('sessions')).some((n) => n.endsWith('.json')), { timeout: 3000, label: 'fiche' });
+// Le dossier n'existe qu'à la première écriture, après le calcul dans le worker (lot 161) : `listOpfs` ne rend pas de liste avant.
+await waitFor(async () => { const names = await listOpfs('sessions'); return Array.isArray(names) && names.some((n) => n.endsWith('.json')); }, { timeout: 10000, label: 'fiche' });
 await settle({ max: 3000, label: 'import' });
 const gpx = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
 const base = await fiche(gpx);

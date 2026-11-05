@@ -31,7 +31,11 @@
 //     sous le profileur ;
 //  6. démarrage : du chargement de `/` à l'accueil rendu, puis au premier répit d'une seconde sans tâche longue
 //     (« interactif »), tâches longues et modules chargés sur 12 s ; avec le préchargement des pages
-//     (`preloadPages` d'`App.tsx`), puis sans (`requestIdleCallback` neutralisé depuis le script, rien dans `src/`).
+//     (`preloadPages` d'`App.tsx`), puis sans (`requestIdleCallback` neutralisé depuis le script, rien dans `src/`) ;
+//  7. « Analyser » (lot 161), hors de la liste par défaut, `FLUIDITE_MESURES=analyser` : enregistrement rejoué à ×600
+//     (voile 3 h et course 2 h à 1 Hz), ralenti posé juste avant le clic ; clic → « Rangement… » peint, calcul au worker,
+//     première écriture, écritures, navigation, titre, trace, chiffres, tâches longues par phase ; puis la voile avec une
+//     capture de 3 h (serveur de développement seulement), dont l'élagage se lit à la taille du `.imu` rangé.
 // Fin : un tableau des médianes (PC ×1 et ×6), à recopier dans le relevé du lot.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -812,11 +816,199 @@ if (MESURES.includes('demarrage')) {
   await throttle(1);
 }
 
+// --- 7. « Analyser » à la fin d'un enregistrement (lot 161) ---
+if (MESURES.includes('analyser')) {
+  console.log('\n== « Analyser » : enregistrement rejoué à ×600, rangement, ouverture de l\'analyse ==');
+  // Sondes de cette mesure : calculs envoyés au worker, écritures de la mémoire (OPFS), navigation vers l'analyse.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    const s = { events: [] };
+    Object.defineProperty(window, '__analyser', { value: s, enumerable: false });
+    const log = (what, detail) => s.events.push({ what, detail, at: performance.now() });
+    const W = window.Worker;
+    window.Worker = class extends W {
+      constructor(...args) { super(...args); this.addEventListener('message', () => log('workerAnswer')); }
+      postMessage(m, ...rest) { log('workerPost', m?.kind); return super.postMessage(m, ...rest); }
+    };
+    const create = FileSystemFileHandle.prototype.createWritable;
+    FileSystemFileHandle.prototype.createWritable = function (...a) { log('write', this.name); return create.apply(this, a); };
+    const end = FileSystemWritableFileStream.prototype.close;
+    FileSystemWritableFileStream.prototype.close = function (...a) { return end.apply(this, a).then((v) => { log('written'); return v; }); };
+    const push = history.pushState;
+    history.pushState = function (...a) { log('push', String(a[2] ?? '')); return push.apply(this, a); };
+  })();` });
+  await throttle(1);
+  await go('/enregistrer', 5000);
+
+  const CAS = [
+    { nom: 'voile 3 h 1 Hz', famille: 'Voile', secondes: 3 * 3600, gpx: (startMs) => sailGpx({ hz: 1, seconds: 3 * 3600, startMs, name: 'Voile rejouée' }).text },
+    { nom: 'course 2 h 1 Hz', famille: 'À pied', activite: 'Course', secondes: 7200, gpx: (startMs) => runGpx({ seconds: 7200, startMs }) },
+  ];
+  const choose = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('[role=radiogroup] button[role=radio]')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
+  // Un GPX par prise, parti d'un autre jour : la même heure de départ serait un doublon.
+  let prise = 0;
+  /** Enregistrement rejoué jusqu'à la carte « Analyser / Jeter » : le geste du téléphone, à ×600 (`bench.mjs`). */
+  const recordReplay = async (cas) => {
+    prise += 1;
+    const path = join(workDir, `fluidite-analyser-${prise}.gpx`);
+    writeFileSync(path, cas.gpx(Date.UTC(2026, 0, 1, 8, 0, 0) + prise * 86_400_000));
+    await waitFor(`document.querySelectorAll('input[type=radio]').length >= 2`, { timeout: 10000, label: 'page Enregistrer' });
+    await choose(cas.famille);
+    if (cas.activite) await choose(cas.activite);
+    await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
+    await wait(300);
+    await importFiles(path, 'input[type=file]');
+    await settle({ max: 3000, label: 'trace rejouée chargée' });
+    await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+    await wait(100);
+    await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.includes('Démarrer')).click(); 'ok'`);
+    await wait((cas.secondes / 600) * 1000 + 2000); // rejeu en temps réel : un vrai délai
+    // « Arrêter » se tient 2 s.
+    await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+    await wait(2300);
+    await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+    await waitFor(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Analyser')`, { timeout: 60000, every: 100, label: 'carte Analyser' });
+    await settle({ max: 3000, label: 'carte Analyser' });
+    console.log(`prise ${prise}, ${cas.nom} :`, await evaluate(`document.body.innerText.match(/[\\d\\s]+ points/)?.[0]?.trim() ?? '(points non lus)'`));
+  };
+  /**
+   * Clic sur « Analyser » jusqu'aux chiffres de l'analyse. « Rangement… » est peint à la seconde image qui le voit (une
+   * image attend que le fil soit libre). Le journal, en mémoire vive sur le banc, ne se mesure pas : l'écart entre la
+   * dernière écriture et la navigation le comprend sur le téléphone seulement.
+   */
+  const analyze = async ({ profile = false } = {}) => {
+    if (profile) await profileStart();
+    const out = await evaluate(`new Promise((resolve) => {
+      const t0 = performance.now();
+      const out = { t0, peint: null, titre: null, trace: null, chiffres: null };
+      const paint = () => requestAnimationFrame(() => {
+        if ([...document.querySelectorAll('button')].some((x) => x.textContent.includes('Rangement'))) requestAnimationFrame(() => { out.peint = performance.now() - t0; });
+        else if (!location.search.includes('session=')) paint();
+      });
+      paint();
+      [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Analyser').click();
+      const tick = () => {
+        const now = performance.now();
+        if (out.titre === null && document.querySelector('.an-page h1')?.textContent.trim()) out.titre = now - t0;
+        if (out.trace === null && document.querySelector('.an-map-frame .leaflet-trace-pane canvas')) out.trace = now - t0;
+        if (out.chiffres === null && [...document.querySelectorAll('.an-sheet__stats .an-sheet__stat-value')].filter((x) => /\\d/.test(x.textContent)).length >= 3) out.chiffres = now - t0;
+        if ((out.titre !== null && out.trace !== null && out.chiffres !== null) || now - t0 > 120000) resolve(out);
+        else setTimeout(tick, 16);
+      };
+      tick();
+    })`);
+    await settle({ max: 8000, quiet: 300, label: 'analyse ouverte' });
+    await wait(1000);
+    const tEnd = await evaluate('performance.now()');
+    const prof = profile ? await profileStop() : null;
+    const events = JSON.parse(await evaluate(`JSON.stringify(window.__analyser.events.filter((e) => e.at >= ${out.t0}))`));
+    const pushEvent = events.find((e) => e.what === 'push' && e.detail.includes('session='));
+    const push = pushEvent?.at ?? tEnd;
+    const firstWrite = events.find((e) => e.what === 'write')?.at ?? push;
+    const lastWrite = events.filter((e) => e.what === 'written' && e.at <= push).pop()?.at ?? firstWrite;
+    const post = events.find((e) => e.what === 'workerPost' && e.detail === 'summarize');
+    const answer = post ? events.find((e) => e.what === 'workerAnswer' && e.at > post.at) : null;
+    const [calcul, ecritures, ouverture] = await Promise.all([longTasks(out.t0, firstWrite), longTasks(firstWrite, push), longTasks(push, tEnd)]);
+    const session = pushEvent ? new URLSearchParams(pushEvent.detail.split('?')[1]).get('session') : null;
+    const imu = session === null ? null : await evaluate(`(async () => { try {
+      const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
+      return (await (await dir.getFileHandle(${JSON.stringify((session ?? '').replace(/\.gpx$/, '.imu'))})).getFile()).size;
+    } catch { return null; } })()`);
+    return {
+      peint: out.peint, worker: answer ? answer.at - post.at : null, premiereEcriture: firstWrite - out.t0, ecritures: lastWrite - firstWrite, navigation: push - out.t0,
+      titre: out.titre, trace: out.trace, chiffres: out.chiffres,
+      calculMax: calcul.max, calculBloque: calcul.total, ecrituresMax: ecritures.max, ecrituresBloque: ecritures.total, ouvertureMax: ouverture.max, ouvertureBloque: ouverture.total,
+      imu, prof,
+    };
+  };
+  const analyzeText = (r) => `« Rangement… » peint ${sec(r.peint)} | worker ${sec(r.worker)} | 1re écriture ${sec(r.premiereEcriture)} | écritures ${sec(r.ecritures)} | navigation ${sec(r.navigation)} | titre ${sec(r.titre)} | trace ${sec(r.trace)} | chiffres ${sec(r.chiffres)}`
+    + ` | avant écriture : tâche max ${sec(r.calculMax)}, bloqué ${sec(r.calculBloque)} | écritures : ${sec(r.ecrituresMax)}, ${sec(r.ecrituresBloque)} | ouverture : ${sec(r.ouvertureMax)}, ${sec(r.ouvertureBloque)}${r.imu === null ? '' : ` | .imu rangé ${(r.imu / 1e6).toFixed(1).replace('.', ',')} Mo`}`;
+  const backToRecording = async () => {
+    await throttle(1);
+    await evaluate(`${SPA_GO('/enregistrer')} 'ok'`);
+    await settle({ max: 5000, label: 'retour à Enregistrer' });
+  };
+
+  /**
+   * Capture de 3 h à 100 Hz (`sauts.mjs` : deux sauts, bruit pour qu'elle ne se comprime pas trop), posée sur la session
+   * en attente. Par les modules de `/src` : serveur de développement seulement, `null` sur la version compilée. Lecture
+   * native, pont et SAF restent hors de portée : le base64 de la capture est minuté à part, comme borne basse.
+   */
+  const putCapture = () => evaluate(`(async () => { try {
+    const { getRecorderState } = await import('/src/hooks/useRecorder.ts');
+    if (!window.__imuBanc) {
+      const { encodeImu, PHONE_STREAMS, IMU_FORMAT, IMU_VERSION } = await import('/src/core/imuFile.ts');
+      const start = ${Date.UTC(2026, 0, 1, 8, 0, 0)};
+      const t = Float64Array.from({ length: 3 * 3600 * 100 }, (_, i) => i * 10000);
+      const jump = (ti) => { const s = ti / 1e6; for (const at of [1200, 7200]) { if (s >= at - 0.3 && s < at) return 27.81; if (s >= at && s < at + 1.3) return 0; if (s >= at + 1.3 && s < at + 1.6) return 27.81; } return null; };
+      const accel = { info: PHONE_STREAMS[0], t, values: [0, 1, 2].map((a) => Float32Array.from(t, (ti) => { const z = jump(ti); return z !== null ? (a === 2 ? z : 0) : (a === 2 ? 9.81 : 0) + 0.3 * (Math.random() - 0.5); })) };
+      const gyro = { info: PHONE_STREAMS[1], t, values: [0, 1, 2].map((a) => Float32Array.from(t, () => 0.2 * (Math.random() - 0.5))) };
+      window.__imuBanc = await encodeImu({ format: IMU_FORMAT, version: IMU_VERSION, startedAtMs: start, clock: { elapsedUs: 1e9, wallMs: start }, setup: { placement: 'bras', foil: false }, streams: PHONE_STREAMS.slice(0, 2) }, [accel, gyro]);
+    }
+    const pending = getRecorderState().pending;
+    pending.motion = { path: 'banc.imu', bytes: window.__imuBanc.length, durationS: 3 * 3600, samples: 3 * 3600 * 100, longestGapS: 0.01 };
+    pending.motionBytes = window.__imuBanc;
+    return window.__imuBanc.length;
+  } catch { return null; } })()`);
+  const base64Time = () => evaluate(`(async () => {
+    const { bytesToBase64, base64ToBytes } = await import('/src/core/base64.ts');
+    const t0 = performance.now();
+    const text = bytesToBase64(window.__imuBanc);
+    const t1 = performance.now();
+    base64ToBytes(text);
+    return JSON.stringify({ versBase64: t1 - t0, depuisBase64: performance.now() - t1 });
+  })()`);
+
+  const FIELDS = ['peint', 'worker', 'premiereEcriture', 'ecritures', 'navigation', 'titre', 'trace', 'chiffres', 'calculMax', 'calculBloque', 'ecrituresMax', 'ecrituresBloque', 'ouvertureMax', 'ouvertureBloque', 'imu'];
+  const measures = {};
+  /** Trois prises par ralenti, plus une sous le profileur à ×6 ; `withCapture` : capture posée avant chaque clic. */
+  const measureCase = async (label, cas, withCapture = false) => {
+    measures[label] = {};
+    for (const rate of RATES) {
+      const runs = [];
+      for (let k = 0; k <= REPS; k++) {
+        const profile = k === REPS;
+        if (profile && rate !== 6) break;
+        await recordReplay(cas);
+        const size = withCapture ? await putCapture() : null;
+        if (withCapture && size === null) return false;
+        if (withCapture && k === 0) console.log(`capture posée : ${(size / 1e6).toFixed(1).replace('.', ',')} Mo`);
+        await throttle(rate);
+        if (withCapture && k === 0) console.log(`×${rate} base64 de la capture (borne basse) : ${await base64Time()}`);
+        const r = await analyze({ profile });
+        await backToRecording();
+        console.log(`${label} ×${rate} ${profile ? 'sous le profileur' : `essai ${k + 1}`} : ${analyzeText(r)}`);
+        if (profile) { if (r.prof) console.log(profileSummary(r.prof)); }
+        else runs.push(r);
+      }
+      measures[label][rate] = Object.fromEntries(FIELDS.map((f) => [f, median(runs.map((r) => r[f]))]));
+      console.log(`${label} ×${rate} médiane : ${analyzeText(measures[label][rate])}`);
+    }
+    return true;
+  };
+
+  // Chauffe : modules de l'analyse chargés, comme au téléphone après le préchargement des pages.
+  await recordReplay(CAS[1]);
+  await analyze();
+  await backToRecording();
+  for (const cas of CAS) await measureCase(cas.nom, cas);
+  if (!(await measureCase('voile 3 h avec capture', CAS[0], true))) {
+    delete measures['voile 3 h avec capture'];
+    console.log('capture non posée (modules de /src absents : version compilée) : mesure sans capture seulement');
+  }
+  results.analyser = Object.entries(measures).flatMap(([label, m]) => [
+    [`Analyser ${label} : « Rangement… » peint / 1re écriture / navigation / chiffres`, (r) => `${sec(m[r].peint)} / ${sec(m[r].premiereEcriture)} / ${sec(m[r].navigation)} / ${sec(m[r].chiffres)}`],
+    [`Analyser ${label} : avant écriture, tâche max / bloqué`, (r) => `${sec(m[r].calculMax)} / ${sec(m[r].calculBloque)}`],
+    [`Analyser ${label} : écritures, durée / tâche max / bloqué`, (r) => `${sec(m[r].ecritures)} / ${sec(m[r].ecrituresMax)} / ${sec(m[r].ecrituresBloque)}`],
+    [`Analyser ${label} : ouverture, tâche max / bloqué`, (r) => `${sec(m[r].ouvertureMax)} / ${sec(m[r].ouvertureBloque)}`],
+  ]);
+}
+
 // --- Tableau des médianes ---
 console.log('\n== Tableau des médianes (PC) ==');
 console.log('| Mesure | ×1 | ×6 |');
 console.log('|---|---|---|');
 const row = (label, f) => console.log(`| ${label} | ${f(1)} | ${f(6)} |`);
+for (const [label, f] of results.analyser ?? []) row(label, f);
 if (results.ouverture) {
   const o = results.ouverture;
   row('Ouverture voile 3 h 5 Hz : titre / trace / chiffres', (r) => `${sec(o[r].titre)} / ${sec(o[r].trace)} / ${sec(o[r].chiffres)}`);

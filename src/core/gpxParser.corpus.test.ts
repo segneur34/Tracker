@@ -139,6 +139,9 @@ describe('fichier tronqué : même issue que la copie gelée, coupé tous les 37
     }
   }
 
+  // Des centaines de lectures par fichier, en double : au-delà des 5 s par défaut quand toute la suite tourne en parallèle.
+  const TRUNCATED_TIMEOUT_MS = 30_000;
+
   it.each(['Garmin Connect (ns3:, FC et cadence)', 'commentaires', 'Tracker (buildGpx), deux segments'])('%s', (nom) => {
     const texte = ENTRIES.find((e) => e.nom === nom)!.texte;
     vi.stubGlobal('DOMParser', QuietXmlDom);
@@ -152,7 +155,7 @@ describe('fichier tronqué : même issue que la copie gelée, coupé tous les 37
     } finally {
       vi.stubGlobal('DOMParser', XmlDomParser);
     }
-  });
+  }, TRUNCATED_TIMEOUT_MS);
 });
 
 describe('corpus des éditeurs : chiffres attendus par construction', () => {

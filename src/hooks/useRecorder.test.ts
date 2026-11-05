@@ -126,12 +126,17 @@ vi.mock('../platform/motion', async (importOriginal) => {
   };
 });
 
-/** Rangement simulé : les capteurs reçus par la bibliothèque, dans l'ordre. */
-const library = vi.hoisted(() => ({ motions: [] as (Uint8Array | null)[] }));
+/**
+ * Rangement simulé : les capteurs reçus par la bibliothèque, dans l'ordre. `gate` : le rangement attend cette
+ * promesse ; `fails` : il échoue ensuite, comme une écriture refusée.
+ */
+const library = vi.hoisted(() => ({ motions: [] as (Uint8Array | null)[], gate: null as Promise<void> | null, fails: false }));
 vi.mock('./useSessionLibrary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useSessionLibrary')>()),
   saveRecordedSession: async (_text: string, _sport: unknown, _activityId: unknown, _intervals: unknown, motion: Uint8Array | null) => {
     library.motions.push(motion);
+    if (library.gate) await library.gate;
+    if (library.fails) throw new Error('écriture refusée');
     return { file: 'rangee.gpx', location: 'ici' };
   },
 }));
@@ -205,6 +210,8 @@ beforeEach(() => {
   sensors.read = null;
   sensors.removed = [];
   library.motions = [];
+  library.gate = null;
+  library.fails = false;
   privateFs.fake = null;
 });
 afterEach(async () => {
@@ -792,6 +799,107 @@ describe('capture à « Analyser » (lot 148, T2-1)', () => {
     expect(sensors.removed).toEqual([capture.path]);
     expect(recorder.getRecorderState().motionUnreadable).toBe(false);
     expect(recorder.getRecorderState().error).toBeNull();
+  });
+
+  it('illisible : le drapeau du rangement retombe aussi', async () => {
+    await stopped();
+    sensors.read = unreadable;
+    const run = recorder.analyzePendingSession();
+    expect(recorder.getRecorderState().analyzing).toBe(true);
+    expect(await run).toBeNull();
+    expect(recorder.getRecorderState().analyzing).toBe(false);
+    expect(recorder.getRecorderState().motionUnreadable).toBe(true);
+  });
+});
+
+describe('rangement en cours, état du module (lot 161)', () => {
+  /** Session arrêtée, en attente, dont le rangement attend `open()`. */
+  const held = async (): Promise<() => void> => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+    let open: () => void = () => undefined;
+    library.gate = new Promise((resolve) => {
+      open = resolve;
+    });
+    return () => open();
+  };
+
+  it('un second appel rend la même promesse, même avec un autre paramètre : un seul rangement ; le drapeau retombe après', async () => {
+    const open = await held();
+    expect(recorder.getRecorderState().analyzing).toBe(false);
+    const first = recorder.analyzePendingSession();
+    // Levé dès l'appel : la page qui le lit peint « Rangement… » avant le calcul.
+    expect(recorder.getRecorderState().analyzing).toBe(true);
+    expect(recorder.analyzePendingSession()).toBe(first);
+    expect(recorder.analyzePendingSession(true)).toBe(first);
+    open();
+    expect((await first)?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toHaveLength(1);
+    const state = recorder.getRecorderState();
+    expect(state.analyzing).toBe(false);
+    expect(state.pending).toBeNull();
+    // La page rouverte entre-temps trouve la session rangée.
+    expect(state.saved?.libraryFile).toBe('rangee.gpx');
+    expect(await recorder.analyzePendingSession()).toBeNull();
+    expect(library.motions).toHaveLength(1);
+  });
+
+  it('« Jeter » pendant le rangement ne fait rien : ni journal effacé, ni session retirée', async () => {
+    const open = await held();
+    const run = recorder.analyzePendingSession();
+    const pending = recorder.getRecorderState().pending;
+    await recorder.discardPendingSession();
+    expect(journal.text).not.toBeNull();
+    expect(recorder.getRecorderState().pending).toBe(pending);
+    expect(recorder.getRecorderState().analyzing).toBe(true);
+    open();
+    expect((await run)?.libraryFile).toBe('rangee.gpx');
+    expect(recorder.getRecorderState().saved?.libraryFile).toBe('rangee.gpx');
+    expect(journal.text).toBeNull();
+  });
+
+  it('écriture en échec : le drapeau retombe, la session reste en attente et un nouvel essai est possible', async () => {
+    const open = await held();
+    library.fails = true;
+    const failed = recorder.analyzePendingSession();
+    open();
+    expect(await failed).toBeNull();
+    let state = recorder.getRecorderState();
+    expect(state.analyzing).toBe(false);
+    expect(state.pending).not.toBeNull();
+    expect(state.error).toMatch(/écriture refusée/);
+    expect(journal.text).not.toBeNull();
+
+    library.fails = false;
+    const retry = recorder.analyzePendingSession();
+    expect(retry).not.toBe(failed);
+    expect((await retry)?.libraryFile).toBe('rangee.gpx');
+    expect(library.motions).toHaveLength(2);
+    state = recorder.getRecorderState();
+    expect(state.analyzing).toBe(false);
+    expect(state.pending).toBeNull();
+    expect(journal.text).toBeNull();
+  });
+
+  it('« Jeter » après un échec reprend son effet', async () => {
+    const open = await held();
+    library.fails = true;
+    const failed = recorder.analyzePendingSession();
+    open();
+    await failed;
+    await recorder.discardPendingSession();
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(journal.text).toBeNull();
+  });
+
+  it('sans session en attente : rien à ranger, drapeau baissé', async () => {
+    expect(await recorder.analyzePendingSession()).toBeNull();
+    expect(recorder.getRecorderState().analyzing).toBe(false);
+    expect(library.motions).toEqual([]);
   });
 });
 

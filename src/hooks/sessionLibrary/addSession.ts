@@ -14,7 +14,9 @@ import {
   type SessionAnalysis, type SessionSource,
 } from '../../library/record';
 import { surfRides } from '../../library/summary';
-import { analyzeGpx, summaryOptions, withSummary, type AnalyzedGpx } from '../../library/summaryOptions';
+import { summarizeGpxOptions } from '../../library/summarizeGpx';
+import { summaryOptions, withSummary, type AnalyzedGpx } from '../../library/summaryOptions';
+import { runInWorker } from '../../library/trackWorkerClient';
 import { pendingFolder } from '../../platform/memoryFolder';
 import { sessionFileName } from '../../recording/session';
 import { effectivePumping } from '../useSportSettings';
@@ -129,7 +131,9 @@ export const addGpx = async (text: string, source: SessionSource, options: AddOp
   try {
     const sport = options.sport !== undefined ? options.sport : from?.sport ?? undefined;
     const fields = options.test ? { ...from, test: options.test } : from;
-    analyzed = analyzeGpx(text, sport, from?.analysis, sessionSummarySettings(from, options.activityId ?? from?.activityId), fields);
+    // Hors du fil de l'affichage (lot 161) : « Rangement… » se peint et la page répond pendant le calcul. Réglages lus
+    // avant l'envoi ; le GPX seul part, jamais les capteurs ; mêmes chiffres et mêmes erreurs qu'en ligne (`runTrackJob`).
+    analyzed = await runInWorker('summarize', text, summarizeGpxOptions({ ...fields, sport }, sessionSummarySettings(from, options.activityId ?? from?.activityId)));
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }

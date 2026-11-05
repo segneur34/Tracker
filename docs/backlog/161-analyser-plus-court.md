@@ -45,3 +45,22 @@ Essai au téléphone, un seul : « Analyser » après une vraie sortie.
 **Tests.** `src/hooks/sessionLibrary/addSession.test.ts` à créer : fiche et résumé identiques en ligne et par le worker (`FakeWorker`), sport imposé, deviné et `null`, avec `test` ; GPX illisible ; écriture en échec ; élagage en échec. Banc : `FLUIDITE_MESURES=analyser node outils/banc/passe.mjs fluidite` avant et après ; `bench`, `activite`, `compteur-course`, `materiel-fin`, `donnees`, `sauts`, `pumping`, `library`.
 
 **Tranché par l'orchestrateur.** Un seul chemin pour tous les `addGpx` ; cadence à l'arrêt hors lot ; aucun chrono dans `src/` ; si le banc ne montre aucune étape lourde, rien de plus que B1 s'il pèse, et l'essai au téléphone tranche. Aucune question pour l'utilisateur avant les chiffres.
+
+## Relevés (05/11)
+
+Version compilée (`outils/banc/fluidite-compile.mjs`, `FLUIDITE_MESURES=analyser`, 3 prises, médiane), enregistrement rejoué, sans capture. Du clic sur « Analyser » :
+
+| Mesure | Voile 3 h, ×6, avant → après | Course 2 h, ×6, avant → après |
+|---|---|---|
+| « Rangement… » peint | 1,02 s → 0,17 s | 0,55 s → 0,19 s |
+| Bloqué avant l'écriture | 0,99 s → 0,12 s | 0,53 s → 0,16 s |
+| Chiffres de l'analyse à l'écran | 2,76 s → 2,05 s | 1,90 s → 1,29 s |
+| Ouverture, tâche max | 0,93 s → 0,84 s | 0,78 s → 0,42 s |
+
+À ×1, voile : chiffres 0,48 s → 0,34 s ; « Rangement… » 0,17 s → 0,01 s.
+
+**Décision (orchestrateur, d'après la règle du plan).** B1 gardée : le blocage d'avant l'écriture dépassait 0,5 s. B2, B3 et B4 non faits : après B1, plus aucune étape du rangement ne pèse au banc ; ce qui reste vient de l'ouverture de l'analyse (une à deux secondes à ×6), commune à toute analyse, hors lot.
+
+**Limites.** `Emulation.setCPUThrottlingRate` semble ne pas ralentir le worker (lecture : 0,07 s à ×6 en voile) : le temps total à ×6 est donc flatté, pas la libération de l'écran. Le cas avec capture de capteurs ne se mesure pas sur la version compilée, et le banc ne voit ni la lecture native, ni le pont, ni l'écriture dans le dossier du téléphone : l'essai au téléphone dira ce qu'il reste. Un worker qui se tairait sans erreur laisserait « Rangement… » affiché, journal gardé, repris au relancement : risque déjà présent pour la file des résumés, non traité.
+
+**Garde (orchestrateur).** La page répondant pendant le calcul, un rangement en cours devient un état du module (`RecorderState.analyzing`) : second « Analyser » = même promesse, « Jeter » ignoré, boutons inactifs même après un aller-retour sur la page. Reste, non traité, faute de place à l'écran pour le dire : un matériel choisi après le clic sur « Analyser » n'est pas écrit (fenêtre d'une fraction de seconde), il se refait dans l'onglet de l'analyse ; et une page quittée pendant le rangement ramène sur l'analyse à la fin, comme avant.

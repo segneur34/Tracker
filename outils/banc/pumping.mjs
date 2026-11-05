@@ -188,7 +188,8 @@ const imported = await evaluate(`(async () => {
 })()`);
 console.log('import :', JSON.stringify(imported));
 const startMs = imported?.start;
-const record = await waitFor(() => recordAt(startMs), { timeout: 6000, label: 'fiche' });
+// Le dossier n'existe qu'à la première écriture, après le calcul dans le worker (lot 161) : l'erreur de lecture rendue avant n'est pas une fiche.
+const record = await waitFor(async () => { const r = await recordAt(startMs); return r && typeof r === 'object' ? r : null; }, { timeout: 20000, label: 'fiche' });
 await settle({ max: 2000, label: 'import' });
 check('session rangée', record !== null, record ? `${record.gpx}, activité ${record.activityId}` : '');
 const path = `/surf/analyse?session=${encodeURIComponent(record?.gpx ?? '')}`;

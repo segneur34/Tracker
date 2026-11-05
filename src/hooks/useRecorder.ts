@@ -188,6 +188,8 @@ export interface RecorderState {
   pending: PendingSession | null;
   /** La capture de cette session existe mais n'a pas pu être lue à « Analyser » : `analyzePendingSession(true)` la laisse de côté. */
   motionUnreadable: boolean;
+  /** Vrai pendant le rangement de la session en attente (`analyzePendingSession`) : « Rangement… », boutons de sa carte inactifs. */
+  analyzing: boolean;
   saved: SavedSession | null;
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
@@ -215,6 +217,7 @@ const INITIAL_STATE: RecorderState = {
   stats: EMPTY_RECORDING_STATS,
   pending: null,
   motionUnreadable: false,
+  analyzing: false,
   saved: null,
   error: null,
   gpsLost: false,
@@ -593,9 +596,7 @@ const MOTION_UNREADABLE_MESSAGE = 'Les mesures des capteurs de cette session n\'
  * (`motionUnreadable`). `withoutMotion` (« Analyser sans les capteurs », après
  * cet échec) : la session est rangée sans la capture, qui reste sur l'appareil.
  */
-export const analyzePendingSession = async (withoutMotion = false): Promise<SavedSession | null> => {
-  const pending = state.pending;
-  if (!pending) return null;
+const rangePendingSession = async (pending: PendingSession, withoutMotion: boolean): Promise<SavedSession | null> => {
   let motion: Uint8Array | null = null;
   if (pending.motion && !withoutMotion) {
     try {
@@ -623,9 +624,30 @@ export const analyzePendingSession = async (withoutMotion = false): Promise<Save
   }
 };
 
-/** « Jeter » : abandonne la session en attente et efface son journal. */
+/** Rangement en cours (`RecorderState.analyzing`), rendu à qui le redemande ; `null` sinon. */
+let ranging: Promise<SavedSession | null> | null = null;
+
+/**
+ * Lance le rangement de la session en attente (`rangePendingSession`). Il appartient au module, pas à la page, qu'on
+ * peut quitter et rouvrir pendant le calcul (lot 161) : un second appel pendant qu'il tourne rend la même promesse,
+ * sans en lancer un autre, même avec un autre `withoutMotion`. `analyzing` retombe à sa fin, réussie ou non.
+ */
+export const analyzePendingSession = (withoutMotion = false): Promise<SavedSession | null> => {
+  if (ranging) return ranging;
+  const pending = state.pending;
+  if (!pending) return Promise.resolve(null);
+  setState({ analyzing: true });
+  const run = rangePendingSession(pending, withoutMotion).finally(() => {
+    ranging = null;
+    setState({ analyzing: false });
+  });
+  ranging = run;
+  return run;
+};
+
+/** « Jeter » : abandonne la session en attente et efface son journal ; sans effet pendant son rangement. */
 export const discardPendingSession = async (): Promise<void> => {
-  if (!state.pending) return;
+  if (!state.pending || ranging) return;
   await recordingJournal.remove();
   if (state.pending.motion) await removeMotionCapture(state.pending.motion.path);
   setState({ pending: null, motionUnreadable: false, error: null });

@@ -25,11 +25,12 @@ const ALL_SPORTS = Object.keys(SPORT_PROFILES) as SportType[];
 
 /**
  * Options du résumé d'une session (`summarizeGpx`) : le calcul, l'analyse et l'altitude de sa fiche
- * (`record`, absente pour un GPX neuf : calcul deviné) ; les réglages de son activité lus par `activityOf` pour
- * le calcul de la fiche, ou pour chacun des onze si le calcul est à deviner.
+ * (`record`, absente pour un GPX neuf : calcul deviné ; `addGpx` y passe le calcul qu'il impose, `undefined` s'il
+ * est à deviner) ; les réglages de son activité lus par `activityOf` pour le calcul de la fiche, ou pour chacun
+ * des onze si le calcul est à deviner.
  */
 export const summarizeGpxOptions = (
-  record: Pick<RecordWithoutSummary, 'sport' | 'analysis' | 'terrainElevation' | 'elevationSource' | 'test'> | null | undefined,
+  record: (Partial<Pick<RecordWithoutSummary, 'analysis' | 'terrainElevation' | 'elevationSource' | 'test'>> & { sport: SportType | null | undefined }) | null | undefined,
   activityOf: (sport: SportType) => ActivitySummarySettings
 ): SummarizeGpxOptions => {
   const sport = record ? record.sport : undefined;

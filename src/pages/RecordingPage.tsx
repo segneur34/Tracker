@@ -739,7 +739,7 @@ function RecordingScreen() {
   const beltWarmup = useBeltWarmup(belt, (heartOnly || (native && sourceChoice === 'device')) && measureHeartRate && !busy && pending === null);
   const beltLive = useBeltLive();
   const missingPermissions = useMissingPermissions();
-  const [analyzing, setAnalyzing] = useState(false);
+  const analyzing = useRecorderSelector((s) => s.analyzing);
   // Matériel choisi à la fin de la session, vide d'office : remis à zéro pour chaque session en attente (lot 143, 131).
   const [endGear, setEndGear] = useState<GearChoice[] | null>(null);
   const [endGearOf, setEndGearOf] = useState(pending);
@@ -843,9 +843,7 @@ function RecordingScreen() {
       + `Elle aura l'onglet fractionné ; sinon elle reste en « ${pending.activity.name} », sans cet onglet.`
     );
     const gear = endGear;
-    setAnalyzing(true);
     const result = await analyzePendingSession(withoutMotion);
-    setAnalyzing(false);
     // Le matériel choisi va dans la fiche, comme le reste ; s'il n'y entre pas, il se refait dans l'onglet de l'analyse.
     const gearWritten = result && gear ? writeEndGear(result.libraryFile, gear) : true;
     setGearNotWritten(!gearWritten);

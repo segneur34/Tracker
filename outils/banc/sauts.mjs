@@ -167,7 +167,8 @@ console.log('import :', await evaluate(`(async () => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok, ' + imu.length + ' octets';
 })()`));
-await waitFor(async () => { const f = await sessionFiles(); return f.some((n) => n.endsWith('.imu')) && f.some((n) => n.endsWith('.json')) && f.some((n) => n.endsWith('.gpx')); }, { timeout: 6000, label: 'fichiers rangés' });
+// Le dossier n'existe qu'à la première écriture, après le calcul dans le worker (lot 161) : pas de liste avant.
+await waitFor(async () => { const f = await sessionFiles(); return Array.isArray(f) && f.some((n) => n.endsWith('.imu')) && f.some((n) => n.endsWith('.json')) && f.some((n) => n.endsWith('.gpx')); }, { timeout: 6000, label: 'fichiers rangés' });
 await settle({ max: 2000, label: 'import' });
 let files = await sessionFiles();
 // La session importée, par l'instant de son premier point (le profil peut en compter d'autres).
