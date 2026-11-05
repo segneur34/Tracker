@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ACTIVITIES } from '../core/activities';
+import { DEFAULT_ACTIVITIES, type Activity } from '../core/activities';
+import { analysisTabs, isTabShown, toggleTabChoice } from '../core/analysisTabs';
 import { getSportProfile, hasActiveThreshold, TERRAIN_STEP_CHOICES_M } from '../core/sportProfiles';
 import { isValidGradeRange } from '../core/grade';
 import { knotsToMs } from '../core/units';
@@ -10,7 +11,7 @@ import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
   defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride,
-  SETTING_FIELDS, effectiveHrZoneLines, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
+  SETTING_FIELDS, defaultTabsOf, effectiveHrZoneLines, settingsView, tabsAfterJumpsChange, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
 describe('pré-réglages du bateau (21/10)', () => {
@@ -189,6 +190,106 @@ describe('sauts mesurés par défaut (05/11)', () => {
     expect(resolveJumps({}, byId('surf'))).toBeNull();
     // Le réglage enregistré prime.
     expect(resolveJumps({ jumps: { 'a-vtt': { enabled: false, placement: 'taille', minHeightM: 0.5 } } }, byId('a-vtt'))?.enabled).toBe(false);
+  });
+});
+
+describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
+  const byId = (id: string) => DEFAULT_ACTIVITIES.find((a) => a.id === id)!;
+  const run = byId('running');
+  const vtt = byId('a-vtt');
+  const route = byId('cycling');
+  const tabOf = (activity: Activity, key: string) => analysisTabs(getSportProfile(activity.base)).find((t) => t.key === key)!;
+  /** Un toucher sur le bouton d'un onglet, tel que le fait Réglages : relit la vue, écrit le choix. */
+  const touch = (stored: StoredSettings, activity: Activity, key: string): StoredSettings =>
+    withSetting(stored, activity.id, 'tabs', toggleTabChoice(settingsView(stored, activity).tabs, tabOf(activity, key), defaultTabsOf(activity)))!;
+  const shown = (stored: StoredSettings, activity: Activity, key: string) => isTabShown(tabOf(activity, key), settingsView(stored, activity).tabs);
+  /** La case telle que la coche Réglages : réglages des sauts, puis onglets s'il y a lieu. */
+  const setCase = (stored: StoredSettings, activity: Activity, enabled: boolean): StoredSettings => {
+    const view = settingsView(stored, activity);
+    const next = { ...view.jumps!, enabled };
+    const tabs = tabsAfterJumpsChange(view, next);
+    const written = withSetting(stored, activity.id, 'jumps', next)!;
+    return tabs === undefined ? written : withSetting(written, activity.id, 'tabs', tabs)!;
+  };
+
+  it('Course et VTT : un onglet caché par le pré-réglage répond au premier toucher, aller-retour, et la marque « défaut » suit', () => {
+    for (const [activity, key] of [[run, 'sauts'], [vtt, 'tops']] as const) {
+      expect(shown({}, activity, key)).toBe(false);
+      expect(settingsView({}, activity).isTabsOverridden).toBe(false);
+      const once = touch({}, activity, key);
+      expect(shown(once, activity, key)).toBe(true);
+      expect(settingsView(once, activity).isTabsOverridden).toBe(true);
+      expect(isActivityOverridden(settingsView(once, activity))).toBe(true);
+      const twice = touch(once, activity, key);
+      expect(shown(twice, activity, key)).toBe(false);
+      expect(settingsView(twice, activity).isTabsOverridden).toBe(false);
+      expect(isActivityOverridden(settingsView(twice, activity))).toBe(false);
+    }
+  });
+
+  it('un autre onglet changé puis remis rend la marque « défaut » et laisse l\'onglet du pré-réglage caché', () => {
+    const back = touch(touch({}, run, 'cardio'), run, 'cardio');
+    expect(settingsView(back, run).isTabsOverridden).toBe(false);
+    expect(shown(back, run, 'sauts')).toBe(false);
+  });
+
+  it('un pré-réglage d\'onglets s\'écarte toujours du défaut du module (`toggleTabChoice`)', () => {
+    for (const activity of DEFAULT_ACTIVITIES) {
+      for (const [key, value] of Object.entries(defaultTabsOf(activity) ?? {})) {
+        expect(isTabShown(tabOf(activity, key), null), `${activity.id} ${key}`).toBe(!value);
+      }
+    }
+    expect(defaultTabsOf(run)).toEqual({ sauts: false });
+    expect(defaultTabsOf(vtt)).toEqual({ tops: false });
+  });
+
+  it('Course : cocher la case montre l\'onglet, en écrivant le choix en clair', () => {
+    const view = settingsView({}, run);
+    expect(view.jumps?.enabled).toBe(false);
+    expect(tabsAfterJumpsChange(view, { ...view.jumps!, enabled: true })).toEqual({ sauts: true });
+    const checked = setCase({}, run, true);
+    expect(shown(checked, run, 'sauts')).toBe(true);
+    expect(settingsView(checked, run).jumps?.enabled).toBe(true);
+    expect(settingsView(checked, run).isTabsOverridden).toBe(true);
+  });
+
+  it('rien à écrire si l\'onglet est déjà montré : VTT, Route, Voile', () => {
+    for (const activity of [vtt, route, byId('wingfoil')]) {
+      const view = settingsView({ jumps: { [activity.id]: { enabled: false, placement: 'poitrine', minHeightM: 0.5 } } }, activity);
+      expect(tabsAfterJumpsChange(view, { ...view.jumps!, enabled: true }), activity.id).toBeUndefined();
+    }
+  });
+
+  it('seul le passage de décochée à cochée compte : décocher et changer une sous-option n\'écrivent rien', () => {
+    const checked = settingsView(setCase({}, run, true), run);
+    expect(tabsAfterJumpsChange(checked, { ...checked.jumps!, enabled: false })).toBeUndefined();
+    expect(tabsAfterJumpsChange(checked, { ...checked.jumps!, placement: 'bras' })).toBeUndefined();
+    const unchecked = settingsView({}, run);
+    expect(tabsAfterJumpsChange(unchecked, { ...unchecked.jumps!, placement: 'bras' })).toBeUndefined();
+  });
+
+  it('un calcul sans sauts n\'écrit rien', () => {
+    const view = settingsView({}, byId('surf'));
+    expect(view.jumps).toBeNull();
+    expect(tabsAfterJumpsChange(view, { enabled: true, placement: 'poitrine', minHeightM: 0.5 })).toBeUndefined();
+  });
+
+  it('décocher garde le choix ; l\'onglet se décoche seul, la case cochée ; recocher la case le remontre', () => {
+    const on = setCase({}, run, true);
+    const off = setCase(on, run, false);
+    expect(settingsView(off, run).tabs).toEqual({ sauts: true });
+    expect(settingsView(off, run).jumps?.enabled).toBe(false);
+    const alone = touch(on, run, 'sauts');
+    expect(shown(alone, run, 'sauts')).toBe(false);
+    expect(settingsView(alone, run).jumps?.enabled).toBe(true);
+    expect(shown(setCase(setCase(alone, run, false), run, true), run, 'sauts')).toBe(true);
+  });
+
+  it('un choix rangé sans pré-réglage qui cache l\'onglet s\'efface en le montrant', () => {
+    const stored: StoredSettings = { tabs: { [route.id]: { sauts: false } } };
+    const next = setCase(stored, route, true);
+    expect(shown(next, route, 'sauts')).toBe(true);
+    expect(settingsView(next, route).isTabsOverridden).toBe(false);
   });
 });
 

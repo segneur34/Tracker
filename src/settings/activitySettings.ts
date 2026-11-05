@@ -7,7 +7,7 @@ import {
   LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, hasActiveThreshold, hasPositions,
   type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
-import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
+import { analysisTabs, isTabShown, sanitizeTabChoices, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
@@ -114,6 +114,21 @@ export const defaultTerrainStepOf = (activity: Activity): number | null => {
 
 /** Onglets à défaut de réglage : ceux du pré-réglage, `null` : ceux du module. */
 export const defaultTabsOf = (activity: Activity): TabChoices | null => sanitizeTabChoices(presetOf(activity).tabs);
+
+/**
+ * Onglets à écrire avec les réglages des sauts `next` : cocher la case
+ * (décochée vers cochée seulement) montre l'onglet « sauts » s'il ne l'était
+ * pas. `undefined` : rien à écrire ; décocher, ou changer l'emplacement et la
+ * hauteur, ne touche pas au choix d'onglets, qui se décoche aussi seul ensuite.
+ */
+export const tabsAfterJumpsChange = (
+  view: Pick<SportSettingsView, 'activity' | 'jumps' | 'tabs'>, next: JumpSettings
+): TabChoices | null | undefined => {
+  if (view.jumps === null || view.jumps.enabled || !next.enabled) return undefined;
+  const tab = analysisTabs(getSportProfile(view.activity.base)).find((t) => t.key === 'sauts');
+  if (!tab || isTabShown(tab, view.tabs)) return undefined;
+  return toggleTabChoice(view.tabs, tab, defaultTabsOf(view.activity));
+};
 
 /**
  * Réglages par activité (`core/activities.ts`) : unité, seuil d'activité,

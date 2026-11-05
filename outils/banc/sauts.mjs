@@ -12,7 +12,10 @@
 //  3 bis. l'onglet « sauts » : les deux sauts de la capture (vol libre de 1,3 s, 2,07 m, au-dessus de la hauteur minimale de 1,5 m réglée en 1), podium, tableau, courbe,
 //     « Voir », sauts rangés dans la fiche ; captures sur ordinateur et à 390×844 ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer les sauts » (téléphone seulement) ;
-//  5. la suppression de la session : GPX, fiche et `.imu` effacés.
+//  5. la suppression de la session : GPX, fiche et `.imu` effacés ;
+//  6. à pied et au VTT (n° 174) : Course par défaut, case « Sauts » et onglet décochés, onglet absent d'une analyse à capture ;
+//     cocher la case enfonce le bouton et montre l'onglet sous « avancé » ; chaque clic sur le bouton (souris, puis toucher à
+//     390 px) change son état, la marque « défaut » revenant avec le pré-réglage ; décocher la case garde le choix ; « tops » du VTT répond.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
 
@@ -37,8 +40,8 @@ const check = (label, ok, detail = '') => console.log(`${ok ? 'ok ' : 'ÉCHEC'} 
 
 // --- 1. Réglages ---
 await go('/parametres', 4000);
-/** Ouvre la carte de l'activité « Voile » (et le bloc Activités s'il est replié). */
-const openVoile = () => evaluate(`(() => {
+/** Ouvre la carte d'une activité (et le bloc Activités s'il est replié). */
+const openCard = (name) => evaluate(`(() => {
   if (!document.querySelector('.settings-activity')) {
     const title = [...document.querySelectorAll('[role=button], button')].find((b) => b.textContent.trim() === 'Activités');
     title?.click();
@@ -47,7 +50,7 @@ const openVoile = () => evaluate(`(() => {
     // Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
     document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click());
     setTimeout(() => {
-      const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile');
+      const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === ${JSON.stringify(name)});
       if (!card) return r('carte absente');
       if (card.querySelector('.settings-activity__toggle').getAttribute('aria-expanded') !== 'true') card.querySelector('.settings-activity__toggle').click();
       // Parties de la carte (affichage, onglet analyse…) repliées au départ (21/10) : toutes ouvertes.
@@ -58,6 +61,7 @@ const openVoile = () => evaluate(`(() => {
     }, 300);
   }, 300));
 })()`);
+const openVoile = () => openCard('Voile');
 const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile' && c.querySelector('.settings-activity__body'))`;
 /** Lignes de la carte ouverte : libellé, état de la case éventuelle, sous-option. */
 const rows = () => evaluate(`(() => {
@@ -322,6 +326,179 @@ console.log('supprimer :', await evaluate(`(async () => {
 await waitFor(async () => !(await sessionFiles()).some((f) => f.startsWith((gpxName ?? '').slice(0, -4))), { timeout: 1000, label: 'fichiers effacés' });
 files = await sessionFiles();
 check('GPX, fiche et .imu effacés', !files.some((f) => f.startsWith((gpxName ?? '').replace(/\.gpx$/, ''))), files.join(', ') || '(vide)');
+
+// --- 6. À pied et VTT : la case « Sauts » montre l'onglet, chaque clic change le bouton (n° 174) ---
+const cardOf = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === ${JSON.stringify(name)} && c.querySelector('.settings-activity__body'))`;
+const tabButton = (name, label) => `[...((${cardOf(name)})?.querySelectorAll('[aria-label^="Onglets des analyses"] .ui-tab') ?? [])].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
+const jumpsBox = (name) => `[...((${cardOf(name)})?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent.trim() === 'Sauts')?.querySelector('input[type=checkbox]')`;
+/** État du bouton d'un onglet dans Réglages : 'true', 'false', ou 'absent'. */
+const tabPressed = (name, label) => evaluate(`${tabButton(name, label)}?.getAttribute('aria-pressed') ?? 'absent'`);
+/** Vrai si la ligne « Onglets » porte la marque « défaut ». */
+const tabsAtDefault = (name) => evaluate(`[...((${cardOf(name)})?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent.trim() === 'Onglets')?.querySelector('.settings-sports__mark')?.textContent.trim() === 'défaut'`);
+const jumpsChecked = (name) => evaluate(`${jumpsBox(name)}?.checked ?? 'absent'`);
+const tabsStored = (id) => evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').tabs?.[${JSON.stringify(id)}] ?? null`);
+const buttonCentre = (name, label) => evaluate(`(async () => {
+  const b = ${tabButton(name, label)};
+  if (!b) return null;
+  b.scrollIntoView({ block: 'center' });
+  await new Promise((r) => setTimeout(r, 200));
+  const r = b.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`);
+/** Un vrai clic de souris au centre du bouton, passé par le test de ce qui se trouve sous le pointeur. */
+const mouseClick = async (name, label) => {
+  const at = await buttonCentre(name, label);
+  if (!at) return;
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+  await wait(150);
+};
+/**
+ * Un toucher du doigt au centre du bouton. Par `dispatchTouchEvent`, qui suit jusqu'au clic :
+ * `Input.synthesizeTapGesture`, essayé, s'arrête à `touchend` en Chrome sans fenêtre, sans `click` (05/11).
+ */
+const tapButton = async (name, label) => {
+  const at = await buttonCentre(name, label);
+  if (!at) return;
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y }] });
+  await wait(60);
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await wait(200);
+};
+/** `count` gestes de suite : la suite d'états relevée après chacun, 'true' et 'false' en alternance si chacun a porté. */
+const pressesInARow = async (gesture, name, label, count) => {
+  const states = [await tabPressed(name, label)];
+  for (let i = 0; i < count; i++) {
+    await gesture(name, label);
+    states.push(await tabPressed(name, label));
+  }
+  return states;
+};
+const alternates = (states) => states.every((v, i) => (v === 'true' || v === 'false') && (i === 0 || v !== states[i - 1]));
+
+// Une course de 5 min avec ses capteurs : l'onglet ne dépend plus que du choix de l'activité.
+const courseStartMs = startMs + 86_400_000;
+await go('/course', 4000);
+console.log('import course :', await evaluate(`(async () => {
+  const { encodeImu, PHONE_STREAMS, IMU_FORMAT, IMU_VERSION } = await import('/src/core/imuFile.ts');
+  const start = ${courseStartMs};
+  const pts = [];
+  for (let i = 0; i < 300; i++) {
+    pts.push('<trkpt lat="' + (43.5 + i * 0.00002).toFixed(6) + '" lon="3.9"><time>' + new Date(start + i * 1000).toISOString() + '</time><extensions><speed>3</speed></extensions></trkpt>');
+  }
+  const gpx = '<?xml version="1.0"?><gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course</name><type>running</type><trkseg>' + pts.join('') + '</trkseg></trk></gpx>';
+  const t = Float64Array.from({ length: 15000 }, (_, i) => i * 20000);
+  const accel = { info: PHONE_STREAMS[0], t, values: [0, 1, 2].map((a) => Float32Array.from(t, (ti) => (a === 2 ? 9.81 : 0) + 0.3 * Math.sin(ti / 1e5 + a))) };
+  const gyro = { info: PHONE_STREAMS[1], t, values: [0, 1, 2].map((a) => Float32Array.from(t, (ti) => 0.2 * Math.cos(ti / 2e5 + a))) };
+  const header = { format: IMU_FORMAT, version: IMU_VERSION, startedAtMs: start, clock: { elapsedUs: 1e9, wallMs: start }, setup: { placement: 'poitrine', foil: false }, streams: PHONE_STREAMS.slice(0, 2) };
+  const imu = await encodeImu(header, [accel, gyro]);
+  const input = [...document.querySelectorAll('input[type=file]')].find((i) => !i.accept);
+  if (!input) return 'champ absent';
+  const dt = new DataTransfer();
+  dt.items.add(new File([gpx], 'course.gpx', { type: 'application/gpx+xml' }));
+  dt.items.add(new File([imu], 'course.imu'));
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`));
+const findCourseGpx = () => evaluate(`(async () => {
+  for await (const [name, h] of ${sessionsDir}.entries()) {
+    if (!name.endsWith('.json')) continue;
+    const r = JSON.parse(await (await h.getFile()).text());
+    if (r.summary?.startMs === ${courseStartMs}) return r.gpx;
+  }
+  return null;
+})()`);
+await waitFor(async () => { const name = await findCourseGpx(); return name && (await sessionFiles()).includes(name.replace(/\.gpx$/, '.imu')); }, { timeout: 6000, label: 'course rangée' });
+await settle({ max: 2000, label: 'import course' });
+const courseGpx = await findCourseGpx();
+const courseAnalyse = `/course/analyse?session=${encodeURIComponent(courseGpx ?? '')}`;
+/** Libellés de la rangée « avancé » de l'analyse de la course, une fois affichée. */
+const courseAdvancedRow = async () => {
+  await go(courseAnalyse, 5000);
+  const row = () => evaluate(`[...(document.querySelectorAll('.an-tabs > .ui-tabs')[1]?.querySelectorAll('.ui-tab') ?? [])].map((t) => t.textContent.trim())`);
+  await waitFor(async () => (await row()).includes('réglages'), { timeout: 4000, label: 'rangée avancé' });
+  await settle({ max: 800 });
+  return row();
+};
+const openCourseSettings = async () => {
+  await go('/parametres', 4000);
+  await openCard('Course');
+  await wait(500);
+};
+
+await openCourseSettings();
+check('Course par défaut : case « Sauts » décochée', (await jumpsChecked('Course')) === false);
+check('Course par défaut : pas de bouton « sauts », la case décochée', (await tabPressed('Course', 'sauts')) === 'absent');
+check('Course par défaut : marque « défaut » sur les onglets', await tabsAtDefault('Course'));
+check('Course par défaut : rien de rangé pour les onglets', (await tabsStored('running')) === null);
+let advanced = await courseAdvancedRow();
+check('Course par défaut : pas d\'onglet « sauts » malgré la capture', advanced.length > 0 && !advanced.includes('sauts'), advanced.join(' | '));
+
+await openCourseSettings();
+await evaluate(`${jumpsBox('Course')}.click()`);
+await wait(300);
+check('case cochée : bouton « sauts » enfoncé', (await tabPressed('Course', 'sauts')) === 'true', await tabPressed('Course', 'sauts'));
+let storedTabs = await tabsStored('running');
+check('case cochée : l\'onglet écrit en clair, la marque « défaut » retirée', JSON.stringify(storedTabs) === '{"sauts":true}' && !(await tabsAtDefault('Course')), JSON.stringify(storedTabs));
+const storedJumps = await evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').jumps?.running ?? null`);
+check('case cochée : les deux écritures gardées', storedJumps?.enabled === true, JSON.stringify(storedJumps));
+advanced = await courseAdvancedRow();
+check('case cochée : onglet « sauts » sous « avancé »', advanced.includes('sauts'), advanced.join(' | '));
+
+await openCourseSettings();
+const byMouse = await pressesInARow(mouseClick, 'Course', 'sauts', 6);
+check('Course : chaque clic de souris change le bouton', alternates(byMouse), byMouse.join(' '));
+await mouseClick('Course', 'sauts');
+check('Course : bouton relâché, retour au pré-réglage et à la marque « défaut »', (await tabPressed('Course', 'sauts')) === 'false' && (await tabsStored('running')) === null && await tabsAtDefault('Course'));
+await mouseClick('Course', 'sauts');
+check('Course : bouton enfoncé, sans marque « défaut »', (await tabPressed('Course', 'sauts')) === 'true' && !(await tabsAtDefault('Course')));
+
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+await settle({ max: 800 });
+const byTouch = await pressesInARow(tapButton, 'Course', 'sauts', 6);
+check('Course à 390 px : chaque toucher change le bouton', alternates(byTouch), byTouch.join(' '));
+await shoot('sauts-course-onglets');
+await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+await send('Emulation.clearDeviceMetricsOverride');
+await settle({ max: 800 });
+
+// Décocher la case garde le choix ; le bouton disparaît ; recocher, déjà montré, n'écrit rien.
+await evaluate(`${jumpsBox('Course')}.click()`);
+await wait(300);
+check('case décochée : bouton disparu, choix gardé', (await tabPressed('Course', 'sauts')) === 'absent' && JSON.stringify(await tabsStored('running')) === '{"sauts":true}', JSON.stringify(await tabsStored('running')));
+advanced = await courseAdvancedRow();
+check('case décochée : la session garde son onglet', advanced.includes('sauts'), advanced.join(' | '));
+await openCourseSettings();
+await evaluate(`${jumpsBox('Course')}.click()`);
+await wait(300);
+check('case recochée, onglet déjà montré : choix inchangé', JSON.stringify(await tabsStored('running')) === '{"sauts":true}', JSON.stringify(await tabsStored('running')));
+// L'onglet se décoche seul, la case cochée : le choix est respecté.
+await mouseClick('Course', 'sauts');
+advanced = await courseAdvancedRow();
+check('case cochée, onglet décoché : pas d\'onglet', !advanced.includes('sauts'), advanced.join(' | '));
+
+// VTT : même défaut, sur « tops ».
+await go('/parametres', 4000);
+await openCard('VTT');
+await wait(500);
+check('VTT par défaut : « tops » relâché, « sauts » enfoncé, marque « défaut »', (await tabPressed('VTT', 'tops')) === 'false' && (await tabPressed('VTT', 'sauts')) === 'true' && await tabsAtDefault('VTT'));
+const vttTops = await pressesInARow(mouseClick, 'VTT', 'tops', 4);
+check('VTT : chaque clic change « tops »', alternates(vttTops), vttTops.join(' '));
+check('VTT : retour au pré-réglage et à la marque « défaut »', (await tabsStored('a-vtt')) === null && await tabsAtDefault('VTT'));
+await evaluate(`${jumpsBox('VTT')}.click()`);
+await wait(200);
+await evaluate(`${jumpsBox('VTT')}.click()`);
+await wait(200);
+check('VTT : case décochée puis recochée, « sauts » déjà montré, rien d\'écrit aux onglets', (await tabsStored('a-vtt')) === null, JSON.stringify(await tabsStored('a-vtt')));
+
+await go('/course', 4000);
+await evaluate(`(async () => {
+  const { removeSession } = await import('/src/hooks/useSessionLibrary.ts');
+  await removeSession(${JSON.stringify(courseGpx ?? '')});
+})()`);
 
 console.log('--- console (erreurs, avertissements) ---');
 for (const line of logs) console.log(line);

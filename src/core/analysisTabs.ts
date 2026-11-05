@@ -128,9 +128,12 @@ export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
 /**
  * Onglets d'une activité proposés dans Réglages › Onglets : ceux de son calcul
  * (`analysisTabs`), « vols » et « pumping » sur foil seulement, « sauts » si
- * l'activité mesure les sauts (case de Réglages, 05/11). Dans une analyse,
- * « sauts » suit la capture de la session (`useShownJumps`, `visible`), même
- * l'option décochée depuis.
+ * l'activité mesure les sauts (case de Réglages, 05/11). Cocher cette case
+ * montre l'onglet (`tabsAfterJumpsChange`). Dans une analyse, « sauts » paraît
+ * si la session a sa capture (`useShownJumps`, `visible`) et que le choix
+ * d'onglets de l'activité le montre : ce choix prime, la case décochée depuis
+ * ne le change pas (un pré-réglage qui cache l'onglet, comme à la course, le
+ * cache donc même sur une session à capture).
  */
 export const activityTabs = (profile: SportProfile, options: { foil: boolean; jumps: boolean }): readonly AnalysisTab[] =>
   analysisTabs(profile).filter((tab) => ((tab.key !== 'vols' && tab.key !== 'pumping') || options.foil) && (tab.key !== 'sauts' || options.jumps));
@@ -175,13 +178,29 @@ export const sanitizeTabChoices = (value: unknown): TabChoices | null => {
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 };
 
-/** Montre ou cache un onglet ; un choix revenu au défaut s'efface, `null` quand il n'en reste aucun. */
-export const toggleTabChoice = (choices: TabChoices | null, tab: AnalysisTab): TabChoices | null => {
+/** Mêmes choix, clé par clé, dans n'importe quel ordre. */
+const sameTabChoices = (a: TabChoices, b: TabChoices): boolean => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key]);
+};
+
+/**
+ * Montre ou cache un onglet ; `null` quand il ne reste rien à ranger. Un choix
+ * rangé remplace tout entier le pré-réglage de l'activité (`preset`), qui revient
+ * dès qu'il n'y a plus de choix (`resolveTabChoices`) : un onglet du pré-réglage
+ * s'écrit donc toujours en clair, un choix égal au pré-réglage s'efface, et un
+ * choix vidé qui le ramènerait à tort écrit ses onglets à leur défaut du module
+ * (un pré-réglage s'en écarte toujours, c'est sa raison d'être ; testé).
+ */
+export const toggleTabChoice = (choices: TabChoices | null, tab: AnalysisTab, preset: TabChoices | null): TabChoices | null => {
   const shown = !isTabShown(tab, choices);
   const next: Record<string, boolean> = { ...choices };
-  if (shown === (tab.generic !== true)) delete next[tab.key];
+  if (shown === (tab.generic !== true) && !(preset && Object.hasOwn(preset, tab.key))) delete next[tab.key];
   else next[tab.key] = shown;
-  return Object.keys(next).length > 0 ? next : null;
+  if (preset && sameTabChoices(next, preset)) return null;
+  if (Object.keys(next).length > 0) return next;
+  if (!preset) return null;
+  return Object.fromEntries(Object.entries(preset).map(([key, value]) => [key, !value]));
 };
 
 /**

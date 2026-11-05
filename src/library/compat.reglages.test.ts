@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSettingsFile, parseSettingsFile, serializeSettingsFile } from './settingsFile';
 import { ACTIVITIES_VERSION } from '../core/activities';
-import { PRESETS_VERSION, resetStoredPresets, withVisibility } from '../settings/activitySettings';
+import { PRESETS_VERSION, resetStoredPresets, withSetting, withVisibility } from '../settings/activitySettings';
 import { readStoredSettings, updateStoredSettings, upgradeStoredPresets } from '../hooks/useSportSettings';
 import { jsonStore } from '../platform/storage';
 
@@ -45,6 +45,17 @@ describe('réglages, compatibilité : BOM, CRLF', () => {
   it('BOM : fichier ignoré ; CRLF : lu', () => {
     expect(parseSettingsFile('﻿' + file())).toBeNull();
     expect(parseSettingsFile(serializeSettingsFile(parseSettingsFile(file())!).replace(/\n/g, '\r\n'))).not.toBeNull();
+  });
+});
+
+describe('réglages : deux écritures de suite (n° 174, case « Sauts » puis onglet)', () => {
+  it('la seconde relit la première au lieu de l\'écraser', () => {
+    jsonStore.write('tracker.sportSettings', {});
+    const jumps = { enabled: true, placement: 'poitrine' as const, minHeightM: 0.3 };
+    updateStoredSettings((s) => withSetting(s, 'running', 'jumps', jumps));
+    updateStoredSettings((s) => withSetting(s, 'running', 'tabs', { sauts: true }));
+    expect(readStoredSettings().jumps).toEqual({ running: jumps });
+    expect(readStoredSettings().tabs).toEqual({ running: { sauts: true } });
   });
 });
 

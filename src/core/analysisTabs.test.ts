@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, generalOpenAfterAdvanced, initialTabsState, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
+  type TabChoices,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -139,21 +140,90 @@ describe('sanitizeTabChoices', () => {
 describe('toggleTabChoice', () => {
   it('coche un onglet générique, puis revient au défaut', () => {
     const tops = tab(SURF_TABS, 'tops');
-    const once = toggleTabChoice(null, tops);
+    const once = toggleTabChoice(null, tops, null);
     expect(once).toEqual({ tops: true });
-    expect(toggleTabChoice(once, tops)).toBeNull();
+    expect(toggleTabChoice(once, tops, null)).toBeNull();
   });
 
   it('cache un onglet du module, les autres choix gardés', () => {
-    const next = toggleTabChoice({ tops: true }, tab(SURF_TABS, 'vagues'));
+    const next = toggleTabChoice({ tops: true }, tab(SURF_TABS, 'vagues'), null);
     expect(next).toEqual({ tops: true, vagues: false });
-    expect(toggleTabChoice(next, tab(SURF_TABS, 'vagues'))).toEqual({ tops: true });
+    expect(toggleTabChoice(next, tab(SURF_TABS, 'vagues'), null)).toEqual({ tops: true });
   });
 
   it('tout se cache, « général » et « réglages » compris', () => {
     let choices = null as ReturnType<typeof toggleTabChoice>;
-    for (const t of SAILING_TABS) choices = toggleTabChoice(choices, t);
+    for (const t of SAILING_TABS) choices = toggleTabChoice(choices, t, null);
     expect(shownTabs(SAILING_TABS, choices)).toEqual([]);
+  });
+});
+
+describe('toggleTabChoice : activité à pré-réglage (n° 174)', () => {
+  /** Ce que lit l'application (`resolveTabChoices`) : le choix rangé, sinon le pré-réglage tout entier. */
+  const resolved = (choices: TabChoices | null, preset: TabChoices | null) => sanitizeTabChoices(choices) ?? preset;
+  const sauts = tab(LAND_TABS.course, 'sauts');
+  const cardio = tab(LAND_TABS.course, 'cardio');
+  const topsCourse = tab(LAND_TABS.course, 'tops');
+  const topsVelo = tab(LAND_TABS.velo, 'tops');
+  const COURSE = { sauts: false };
+  const VTT = { tops: false };
+
+  it('Course : un toucher montre « sauts », un second revient au pré-réglage', () => {
+    const once = toggleTabChoice(COURSE, sauts, COURSE);
+    expect(isTabShown(sauts, resolved(once, COURSE))).toBe(true);
+    expect(once).toEqual({ sauts: true });
+    expect(toggleTabChoice(once, sauts, COURSE)).toBeNull();
+  });
+
+  it('VTT : un toucher montre « tops », un second revient au pré-réglage', () => {
+    const once = toggleTabChoice(VTT, topsVelo, VTT);
+    expect(isTabShown(topsVelo, resolved(once, VTT))).toBe(true);
+    expect(once).toEqual({ tops: true });
+    expect(toggleTabChoice(once, topsVelo, VTT)).toBeNull();
+  });
+
+  it('chaque toucher change le bouton, dix fois de suite', () => {
+    let stored: TabChoices | null = null;
+    let shown = false;
+    for (let i = 0; i < 10; i++) {
+      stored = toggleTabChoice(resolved(stored, COURSE), sauts, COURSE);
+      shown = !shown;
+      expect(isTabShown(sauts, resolved(stored, COURSE)), `toucher ${i + 1}`).toBe(shown);
+    }
+  });
+
+  it("un autre onglet changé puis remis ne change pas « sauts » et rend la marque « défaut »", () => {
+    const changed = toggleTabChoice(COURSE, cardio, COURSE);
+    expect(changed).toEqual({ sauts: false, cardio: false });
+    expect(toggleTabChoice(changed, cardio, COURSE)).toBeNull();
+  });
+
+  it("« sauts » montré reste montré quand un autre onglet revient à son défaut", () => {
+    const withTops = toggleTabChoice(toggleTabChoice(COURSE, topsCourse, COURSE), sauts, COURSE);
+    expect(withTops).toEqual({ sauts: true, tops: true });
+    const back = toggleTabChoice(withTops, topsCourse, COURSE);
+    expect(back).toEqual({ sauts: true });
+    expect(isTabShown(sauts, resolved(back, COURSE))).toBe(true);
+  });
+
+  it("un choix ancien, sans la clé du pré-réglage, ne retombe pas sur lui en se vidant", () => {
+    // Rangé avant le n° 174 : « sauts » y est montré parce qu'absent.
+    const old = { cardio: false };
+    expect(isTabShown(sauts, old)).toBe(true);
+    const back = toggleTabChoice(old, cardio, COURSE);
+    expect(back).toEqual({ sauts: true });
+    expect(isTabShown(sauts, resolved(back, COURSE))).toBe(true);
+    expect(isTabShown(cardio, resolved(back, COURSE))).toBe(true);
+  });
+
+  it("un choix égal au pré-réglage s'efface, quel que soit l'ordre de ses clés", () => {
+    const preset = { sauts: false, cardio: false };
+    expect(toggleTabChoice({ cardio: false, sauts: true }, sauts, preset)).toBeNull();
+  });
+
+  it('sans pré-réglage, un choix revenu au défaut du module s\'efface', () => {
+    expect(toggleTabChoice({ sauts: false }, sauts, null)).toBeNull();
+    expect(toggleTabChoice(null, topsCourse, null)).toEqual({ tops: true });
   });
 });
 

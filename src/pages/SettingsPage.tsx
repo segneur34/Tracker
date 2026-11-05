@@ -34,7 +34,7 @@ import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import { DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, sanitizeGearLabels } from '../settings/gear';
 import {
-  HR_OFFSET_RANGE, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily, rangeFollowsPace, thresholdFollowsPace, type SportSettingsView,
+  HR_OFFSET_RANGE, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultTabsOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily, rangeFollowsPace, tabsAfterJumpsChange, thresholdFollowsPace, type SportSettingsView,
 } from '../settings/activitySettings';
 import { useAllSportSettings } from '../hooks/useSportSettings';
 import { sameJson } from '../hooks/createStore';
@@ -150,7 +150,8 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
  * Onglets des analyses de l'activité : enfoncé, montré. Ceux du module le sont
  * d'office, un onglet générique (« tops » à pied et en surf) ne l'est qu'une
  * fois coché ; tous se cachent. « vols » et « pumping » ne sont proposés que sur foil,
- * « sauts » que si l'activité les mesure (`activityTabs`).
+ * « sauts » que si l'activité les mesure (`activityTabs`). Un pré-réglage (« sauts » à la
+ * course, « tops » au VTT) change ce point de départ : `toggleTabChoice` le reçoit.
  */
 function AnalysisTabsSetting({ view, profile, onChange }: {
   view: SportSettingsView;
@@ -166,7 +167,7 @@ function AnalysisTabsSetting({ view, profile, onChange }: {
           style={{ '--tab-accent': FAMILY_ACCENT[activityFamily(view.activity)] } as CSSProperties}>
           {tabs.map((tab) => (
             <button key={tab.key} type="button" className="ui-tab" aria-pressed={isTabShown(tab, view.tabs)}
-              onClick={() => onChange(toggleTabChoice(view.tabs, tab))}>
+              onClick={() => onChange(toggleTabChoice(view.tabs, tab, defaultTabsOf(view.activity)))}>
               {tab.label}
             </button>
           ))}
@@ -668,7 +669,11 @@ const ActivityCard = memo(function ActivityCard({
               defaults={defaultLiveFieldsFor(activity)} max={MAX_LIVE_FIELDS}
               onChange={(fields) => setFor(id, 'liveFields', fields)} />}
             {s.jumps !== null && (
-              <JumpsSetting id={id} jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
+              <JumpsSetting id={id} jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => {
+                const tabs = tabsAfterJumpsChange(s, next);
+                setFor(id, 'jumps', next);
+                if (tabs !== undefined) setFor(id, 'tabs', tabs);
+              }} />
             )}
             {positions ? (
               <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
