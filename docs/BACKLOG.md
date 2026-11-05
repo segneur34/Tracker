@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.80 construite le 05/11 (versionCode 4080, paquet « Nouveautés à l'écran » entier : lots 165, 145, 147, 146), pas installée (décision du 05/11 : construire seulement) ; 0.4.79 (lots 165 et 145 seuls) construite aussi ; 0.4.78 installée. Essais 113 à 121 sur la 0.4.80.
+APK 0.4.80 construite le 05/11 (versionCode 4080, paquet « Nouveautés à l'écran » entier : lots 165, 145, 147, 146), pas installée (décision du 05/11 : construire seulement ; `android/app/build/outputs/apk/release/Tracker-0.4.80.apk`, la 0.4.79 intermédiaire a été remplacée) ; 0.4.78 installée. Essais 113 à 121 sur la 0.4.80.
 
 - 165 · [bogue] Retouches d'analyses, en un seul lot : « + carte » après un zoom ouvre toujours le plein écran carte + graphes au téléphone (bogue du 05/11, décision du 25/10 renversée ; banc `zoom-carte` remis d'accord, ex-n° 163), liste des manœuvres de voile repliée sous « Tous les virements (n) », sauts proposés (Enregistrer, onglet « sauts » de Réglages) seulement si la case de l'activité est cochée, défaut coché wing, planche, kite et VTT (pré-réglages version 4, case des sauts du kite et du VTT effacée une fois), appréciations en cinq visages à la place des emoji (ex-n° 41), tranches par kilomètre (ou par mille) repliées dans « tops » en course et à vélo (ex-n° 97) · noté 05/11 · petit · Opus/medium · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/165-retouches-analyses.md
   - essai 113 : zoomer un graphe de course puis « + carte », carte entière à l'écran ou non → le plein écran carte + graphes s'ouvre, tronçon violet cadré
