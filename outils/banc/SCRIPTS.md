@@ -336,7 +336,7 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
   - les onglets cardio, énergie et zones de pente ;
   - le profil d'altitude de « général » (lot 2 du 24/10) : nom et lecture, double-clic, « Sur la carte », zoom à part de « graphiques » ; boutons du zoom à 24 px ; titres à 13 px et noms des graphes à 10 px ;
-  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue (depuis « graphiques » et depuis « général »), cadrage sur place sinon.
+  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue (depuis « graphiques » et depuis « général »), et de même quand elle est entière à l'écran, tronçon allumé (05/11, lot 165 : plus de cadrage sur place au téléphone) ; lecture du profil au format à virgule (« 2,7 km »).
 - `test-fcmax.mjs <port> [<dossier des captures>]` : accéléré (`TEMPS=10`) ; test de FC max de l'Entraînement (lot B du chantier du 24/10), sur un profil neuf (un second passage sur le même profil échoue : la FC max retenue change les zones), sans réseau. Il vérifie :
   - la tuile « Tests », la liste des tests, la page du protocole (déroulé, bips, graphique annoté à deux graphes, réglages) ; l'échauffement réglé à 3 min, retenu après rechargement ;
   - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ; la case « FC repos » qui mène à sa page ;

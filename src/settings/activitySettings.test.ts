@@ -9,7 +9,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveRecordingProfile, resolveThresholdOverride,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride,
   SETTING_FIELDS, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
@@ -159,7 +159,36 @@ describe('pré-réglages des activités (21/10)', () => {
     const next = resetStoredPresets(stored);
     expect(next.thresholds).toEqual({ running: 2, kite: 12 });
     expect(next.speedRanges).toBe(stored.speedRanges);
-    expect(PRESETS_VERSION).toBe(3);
+    expect(PRESETS_VERSION).toBe(4);
+  });
+
+  it('efface une fois la case des sauts du kite et du VTT (version 3 → 4), garde celle des autres', () => {
+    const kiteCree = { id: 'a-kite', name: 'Kite', base: 'kite' as const, color: '#5b87f2' };
+    const off = { enabled: false, placement: 'poitrine' as const, minHeightM: 1 };
+    const stored: StoredSettings = {
+      activities: [...DEFAULT_ACTIVITIES, kiteCree],
+      presetsVersion: 3,
+      jumps: { kite: off, [kiteCree.id]: off, 'a-vtt': off, cycling: off, wingfoil: off },
+      thresholds: { kite: 12 },
+    };
+    const next = resetStoredPresets(stored);
+    expect(next.jumps).toEqual({ cycling: off, wingfoil: off });
+    expect(next.thresholds).toBe(stored.thresholds);
+  });
+});
+
+describe('sauts mesurés par défaut (05/11)', () => {
+  it('cochés en voile et au VTT, décochés ailleurs ; ni bateau ni surf', () => {
+    const byId = (id: string) => DEFAULT_ACTIVITIES.find((a) => a.id === id)!;
+    const kiteCree = { id: 'a-kite', name: 'Kite', base: 'kite' as const, color: '#5b87f2' };
+    expect(resolveJumps({}, byId('wingfoil'))?.enabled).toBe(true);
+    expect(resolveJumps({}, kiteCree)).toEqual({ enabled: true, placement: 'poitrine', minHeightM: 1 });
+    expect(resolveJumps({}, byId('a-vtt'))?.enabled).toBe(true);
+    for (const id of ['running', 'a-marche', 'cycling', 'a-gravel']) expect(resolveJumps({}, byId(id))?.enabled).toBe(false);
+    expect(resolveJumps({}, { id: 'a-voilier', name: 'Voilier', base: 'bateau', color: '#014e86' })).toBeNull();
+    expect(resolveJumps({}, byId('surf'))).toBeNull();
+    // Le réglage enregistré prime.
+    expect(resolveJumps({ jumps: { 'a-vtt': { enabled: false, placement: 'taille', minHeightM: 0.5 } } }, byId('a-vtt'))?.enabled).toBe(false);
   });
 });
 

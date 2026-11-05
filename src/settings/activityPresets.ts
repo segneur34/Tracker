@@ -82,6 +82,8 @@ const WING: ActivityPreset = {
 const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
   wingfoil: WING,
   windsurf: WING,
+  // Sauts mesurés d'office en voile (05/11), à la hauteur du calcul ; le reste du kite suit son calcul.
+  kite: { jumps: { enabled: true, placement: 'poitrine', minHeightM: 1 } },
   running: {
     threshold: 0,
     speedUnit: 'kmh',
@@ -158,6 +160,8 @@ const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
     bikeType: 'vtt',
     terrainStepM: 5,
     tabs: { tops: false },
+    // Seule activité hors voile à mesurer les sauts d'office (05/11), à la hauteur du calcul.
+    jumps: { enabled: true, placement: 'poitrine', minHeightM: 0.3 },
   },
 };
 

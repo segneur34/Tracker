@@ -14,7 +14,7 @@
 //     titres à 13 px et noms des graphes à 10 px ;
 //  4. voile (vitesse, vent) et surf : lecture, double-clic, « +carte » ;
 //  5. à 390×844, au doigt : double toucher qui zoome ; carte hors de vue : « +carte » ouvre le plein écran
-//     carte + graphes, × le ferme ; de même depuis le profil de « général » ; carte entière à l'écran (« général » replié) : elle se cadre sur place ;
+//     carte + graphes, × le ferme ; de même depuis le profil de « général » ; carte entière à l'écran (« général » replié) : « +carte » ouvre quand même le plein écran, tronçon allumé ;
 //  6. à 390×844 (25/10) : « +carte » seul sur un graphe non zoomé ; il ouvre carte + graphes de l'onglet, sans violet ;
 //     le retour d'Android (`window.trackerBack`, en développement) referme le plein écran et rend la page au même
 //     défilement, zoom compris ; de même zoomé, et pour la carte seule ouverte d'un toucher ;
@@ -236,7 +236,7 @@ for (const [tab, title] of [['cardio', 'Cardio'], ['énergie', 'Énergie'], ['zo
 check(`général : graduations de départ (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '0 km | 2 km | 4 km');
 await hover('Général', 0, 0.5);
 const generalRead = await readouts('Général');
-check(`général : nom et lecture au-dessus du profil (${generalRead})`, /^Altitude\d+ m, pente -?\d+ % · [\d.]+ km$/.test(generalRead));
+check(`général : nom et lecture au-dessus du profil (${generalRead})`, /^Altitude\d+ m, pente -?\d+ % · [\d,]+ km$/.test(generalRead));
 check(`général : aucune bulle (« ${await tooltipText()} »)`, (await tooltipText()) === '');
 await doubleClick('Général', 0, 0.25);
 check(`général : zoom ×2 autour du point visé (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '1 km | 2 km | 3 km');
@@ -347,7 +347,8 @@ await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
 await settle({ max: 800 });
 await clickZoomButton('Général', 0, 'Tout voir');
 await wait(600);
-// Tout replié sauf « graphiques », en haut de page : la carte est à l'écran, elle se cadre sur place.
+// Tout replié sauf « graphiques », en haut de page : la carte est à l'écran, « +carte » ouvre quand même le plein
+// écran carte + graphes, tronçon allumé (05/11, à la place du cadrage sur place du 25/10).
 await clickTab('général', true);
 await evaluate(`window.scrollTo(0, 0)`);
 await settle({ max: 800 });
@@ -356,8 +357,10 @@ const buttonsVisible = await evaluate(`(() => { const b = document.querySelector
 console.log(`  carte à l'écran : ${onScreen}, bouton à l'écran : ${buttonsVisible}`);
 await evaluate(`document.querySelector('.zoom-chart__map')?.click()`);
 await settle({ max: 1500 });
-check(`390 px : carte à l'écran, cadrée sur place sans plein écran (${onScreen})`, onScreen === true && (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === false && (await violet()).count >= 1);
-await shoot('zoom-sur-place');
+check(`390 px : carte à l'écran, « +carte » ouvre le plein écran carte + graphes, tronçon allumé (${onScreen})`, onScreen === true && (await evaluate(`Boolean(document.querySelector('.an-map-overlay--charts'))`)) === true && (await violet('.an-map-overlay')).count >= 1);
+await shoot('zoom-carte-a-l-ecran');
+await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
+await settle({ max: 800 });
 
 // --- 6. Sans zoom, et retour d'Android (25/10) ---
 const back = () => evaluate(`window.trackerBack ? window.trackerBack() : 'absent'`);

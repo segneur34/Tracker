@@ -55,11 +55,12 @@ export interface ZoomOnMap<P extends string> {
  * la trace. Le bouton cadre la carte sur le tronçon ; un second clic sur la
  * même plage le retire, le zoom et le plein écran restent. Sur ordinateur, la
  * page remonte juste assez pour montrer la carte si elle n'est pas entière à
- * l'écran. Dans la page du téléphone, « +carte » ouvre la carte en plein
- * écran avec les graphes de l'onglet dessous (`companionPanel`), sur toute la
- * trace ; zoomé, il allume aussi le tronçon, et une carte entière à l'écran
- * (tout replié) se cadre sur place. Le retour d'Android referme le plein
- * écran (`AnalysisMap`).
+ * l'écran, et une carte à l'écran se cadre sur place. Dans la page du
+ * téléphone, « +carte » ouvre toujours la carte en plein écran avec les
+ * graphes de l'onglet dessous (`companionPanel`), zoomé ou non, carte à
+ * l'écran ou non (05/11, à la place du cadrage sur place du 25/10) : sur
+ * toute la trace sans zoom ; zoomé, il allume aussi le tronçon et la carte se
+ * cadre dessus. Le retour d'Android referme le plein écran (`AnalysisMap`).
  */
 export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Record<never, never>>({
   highlight, points, charts, narrow, mapAnchorId, mapExpanded, openMap,
@@ -134,8 +135,8 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
     const shown = view ?? c.zoom.full;
     if (!shown) return;
     const isWhole = view === null;
-    // Second clic sur la même plage : le tronçon se retire.
-    if (panel === target && focus && focus.whole === isWhole && focus.range.min === shown.min && focus.range.max === shown.max) {
+    // Second clic sur la même plage : le tronçon se retire (pas dans la page du téléphone, où le bouton ouvre le plein écran).
+    if (!inPage && panel === target && focus && focus.whole === isWhole && focus.range.min === shown.min && focus.range.max === shown.max) {
       highlight.show(target, null);
       setFocus(null);
       return;
@@ -146,14 +147,14 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
     setFocus({ bounds, range: shown, whole: isWhole });
     // Plein écran déjà ouvert : sa carte se recadre, rien de plus.
     if (mapExpanded) return;
-    if (mapOnScreen()) return;
-    if (narrow) {
+    // Page du téléphone : toujours le plein écran carte + graphes, même carte entière à l'écran (05/11).
+    if (inPage) {
       setCompanionPanel(target);
       openMap();
-    } else {
-      scrollToMap();
+      return;
     }
-  }, [mapOnScreen, scrollToMap]);
+    scrollToMap();
+  }, [scrollToMap]);
   const closeCompanion = useCallback(() => setCompanionPanel(null), []);
 
   const shownFocus = panel !== null ? focus : null;

@@ -16,7 +16,9 @@
 //     en mouvement de la pause ne sont comptés (bug du 17/10), dans le résumé comme dans l'analyse ;
 //  5. un réglage du bateau fait après la mise à jour reste au rechargement ;
 //  6. mise à jour des pré-réglages 2 → 3 (28/10) : le seuil de 0,5 km/h rangé pour la Marche est effacé, celui
-//     de la Course gardé.
+//     de la Course gardé ; version rangée 4 (05/11) ;
+//  7. mise à jour 3 → 4 (05/11) : la case des sauts du kite et du VTT s'efface (cochée d'office), celle de la Route
+//     et les autres réglages restent.
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -73,7 +75,7 @@ check('bateau : couleurs, seuil, pause et chiffres d\'avant effacés',
 check('Voile et Course : couleurs et seuil d\'avant effacés', !after?.speedRanges?.wingfoil && !after?.thresholds?.wingfoil && !after?.thresholds?.running);
 check('kite : couleurs et seuil gardés', after?.speedRanges?.kite?.maxMs === 12 && after?.thresholds?.kite === 9);
 check('bateau : unité gardée', after?.speedUnits?.['a-voilier'] === 'kmh');
-check('presetsVersion rangée', after?.presetsVersion === 3, String(after?.presetsVersion));
+check('presetsVersion rangée', after?.presetsVersion === 4, String(after?.presetsVersion));
 await go('/');
 check('rechargée : rien ne bouge', JSON.stringify(await stored()) === JSON.stringify(after));
 // L'unité remise aux nœuds pour lire les bornes en nœuds.
@@ -281,7 +283,23 @@ await evaluate(`(() => {
 await go('/');
 const v3 = await stored();
 check('mise à jour 2 → 3 : seuil de la Marche effacé, celui de la Course gardé',
-  v3?.thresholds?.['a-marche'] === undefined && v3?.thresholds?.running === 3 && v3?.presetsVersion === 3, JSON.stringify(v3?.thresholds));
+  v3?.thresholds?.['a-marche'] === undefined && v3?.thresholds?.running === 3 && v3?.presetsVersion === 4, JSON.stringify(v3?.thresholds));
+
+// 7. Réglages de la version 3 (05/11) : la case des sauts du kite et du VTT décochée s'efface (retour au défaut,
+// cochée), celle de la Route reste, comme le seuil du kite.
+await evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings'));
+  const off = { enabled: false, placement: 'poitrine', minHeightM: 0.5 };
+  s.presetsVersion = 3;
+  s.jumps = { ...s.jumps, kite: off, 'a-vtt': off, cycling: off };
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return 'ok';
+})()`);
+await go('/');
+const v4 = await stored();
+check('mise à jour 3 → 4 : sauts du kite et du VTT revenus au défaut, ceux de la Route et le seuil du kite gardés',
+  v4?.jumps?.kite === undefined && v4?.jumps?.['a-vtt'] === undefined && v4?.jumps?.cycling?.enabled === false
+    && v4?.thresholds?.kite === 9 && v4?.thresholds?.running === 3 && v4?.presetsVersion === 4, JSON.stringify(v4?.jumps));
 
 const errors = logs.filter((l) => !l.startsWith('warning'));
 console.log(errors.length ? `--- console ---\n${errors.join('\n')}` : 'console : rien');

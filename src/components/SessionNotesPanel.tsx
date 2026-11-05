@@ -4,6 +4,7 @@ import type { GearGroup } from '../library/notes';
 import type { EditedPart } from '../library/sessionEdits';
 import { RATINGS, WATER_STATES, WIND_LEVELS, type GearChoice, type SailingSessionNotes } from '../library/notes';
 import GearPicker from './GearPicker';
+import { IconFace } from './icons';
 import type { GearField } from './gearFields';
 import { HelpText } from './Help';
 import { PanelHeading } from './PanelTitle';
@@ -143,8 +144,9 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
           {RATINGS.map((r) => (
             <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
               title={r.label} aria-label={r.label}
-              style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? `2px solid ${accent}` : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? accentSoft : 'var(--surface)', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
-              {r.emoji}
+              aria-pressed={notes.rating === r.value}
+              style={{ display: 'inline-flex', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? `2px solid ${accent}` : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? accentSoft : 'var(--surface)', color: notes.rating === r.value ? accent : 'var(--muted)' }}>
+              <IconFace mood={r.face} size={28} />
             </button>
           ))}
         </div>

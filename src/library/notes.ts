@@ -81,10 +81,11 @@ export const WATER_STATES: { value: WaterState; label: string }[] = [
   { value: 'vagues', label: 'Vagues' },
 ];
 
-export const RATINGS: { value: Rating; label: string; emoji: string }[] = [
-  { value: 1, label: 'Nul', emoji: '😞' },
-  { value: 2, label: 'Bof', emoji: '😕' },
-  { value: 3, label: 'Moyen', emoji: '😐' },
-  { value: 4, label: 'Bien', emoji: '🙂' },
-  { value: 5, label: 'Très bien', emoji: '😄' },
+/** Appréciation, du plus triste au plus content : son visage (`IconFace` de `components/icons.tsx`), sans emoji. */
+export const RATINGS: { value: Rating; label: string; face: 'triste' | 'decu' | 'neutre' | 'content' | 'ravi' }[] = [
+  { value: 1, label: 'Nul', face: 'triste' },
+  { value: 2, label: 'Bof', face: 'decu' },
+  { value: 3, label: 'Moyen', face: 'neutre' },
+  { value: 4, label: 'Bien', face: 'content' },
+  { value: 5, label: 'Très bien', face: 'ravi' },
 ];

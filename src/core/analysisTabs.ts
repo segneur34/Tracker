@@ -126,6 +126,16 @@ export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
     && (tab.key !== 'fractionne' || isIntervalSport(profile.id)) && (tab.key !== 'test' || isTestSport(profile.id)));
 
 /**
+ * Onglets d'une activité proposés dans Réglages › Onglets : ceux de son calcul
+ * (`analysisTabs`), « vols » et « pumping » sur foil seulement, « sauts » si
+ * l'activité mesure les sauts (case de Réglages, 05/11). Dans une analyse,
+ * « sauts » suit la capture de la session (`useShownJumps`, `visible`), même
+ * l'option décochée depuis.
+ */
+export const activityTabs = (profile: SportProfile, options: { foil: boolean; jumps: boolean }): readonly AnalysisTab[] =>
+  analysisTabs(profile).filter((tab) => ((tab.key !== 'vols' && tab.key !== 'pumping') || options.foil) && (tab.key !== 'sauts' || options.jumps));
+
+/**
  * Onglets ouverts à la première visite d'un module : ceux de la première rangée
  * (`primary`), tous les autres fermés. Plusieurs listes pour un module qui en
  * change avec l'activité (course et vélo : « cadence » n'est qu'à pied) ; le

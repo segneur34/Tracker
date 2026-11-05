@@ -483,3 +483,24 @@ export const IconClose = ({ size = 20, ...props }: IconProps) => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
+
+/** Humeur d'un visage, du plus triste au plus content : appréciation d'une séance (`RATINGS`). */
+export type FaceMood = 'triste' | 'decu' | 'neutre' | 'content' | 'ravi';
+
+const FACE_MOUTHS: Record<FaceMood, string> = {
+  triste: 'M8 16.5c1.5-2 6.5-2 8 0',
+  decu: 'M8.5 16c1.8-.9 5.2-.9 7 0',
+  neutre: 'M8.5 15.5h7',
+  content: 'M8.5 14.5c1.8 1.3 5.2 1.3 7 0',
+  ravi: 'M7.5 13.5h9c-.5 3-2.3 4.5-4.5 4.5s-4-1.5-4.5-4.5z',
+};
+
+/** Visage stylisé : rond, deux yeux, une bouche selon l'humeur. */
+export const IconFace = ({ mood, size = 24, ...props }: IconProps & { mood: FaceMood }) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+    <path d={FACE_MOUTHS[mood]} />
+  </svg>
+);

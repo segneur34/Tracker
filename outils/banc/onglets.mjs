@@ -6,7 +6,7 @@
 //     `x-surf.txt` et `x-voile.txt` ; avec `RELEVE_SEUL=1`, il s'arrête là (pour la version d'avant le lot) ;
 //  2. dans Réglages, partie Onglet analyse : la ligne « Onglets » de Voile, Course, Route, Fractionné à pied, Surf et
 //     Surf foil, ses défauts (« tops » coché à vélo et en voile, pas à pied ni en surf ; « vols » et « pumping » sur foil seulement ;
-//     pas de « sauts » en fractionné) ;
+//     pas de « sauts » en fractionné ni en Course, qui ne les mesure pas d'office) ;
 //  3. « tops » coché et « vagues » caché en surf, « tops » coché en course, « vmg » caché en voile, rangés ;
 //  4. le surf : « tops » entre « rame » et « graphiques », « vagues » absent même laissé ouvert, le tableau,
 //     « Voir » puis « Masquer », surbrillance effacée quand l'onglet se ferme ; la course : « tops » et ses
@@ -180,8 +180,8 @@ for (const name of Object.keys(CARDS)) {
   console.log(`${name} :`, shown[name], '·', await rowMark(name));
 }
 check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts vols pumping vent matos et conditions réglages');
-// « sauts » caché d'office en Course par son pré-réglage (point 130).
-check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes('(sauts)'));
+// « sauts » absent de la ligne en Course : la Course ne mesure pas les sauts d'office (lot 165, 05/11).
+check('Course : « tops » relâché, pas de « sauts »', shown.Course.includes('(tops)') && !shown.Course.includes('sauts'));
 check('Route : « tops » enfoncé', / tops /.test(` ${shown.Route} `) && !shown.Route.includes('(tops)'));
 check('Fractionné à pied : pas de « sauts »', !shown['Fractionné à pied'].includes('sauts') && shown['Fractionné à pied'].includes('fractionné'));
 check('Surf : « tops » relâché, ni « vols » ni « pumping »', shown.Surf.includes('(tops)') && !shown.Surf.includes('vols') && !shown.Surf.includes('pumping'));

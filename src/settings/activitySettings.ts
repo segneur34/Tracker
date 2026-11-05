@@ -1,5 +1,5 @@
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  ACTIVITIES_VERSION, FAMILY_BASE, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   readActivities, visibleFamilies, type Activity,
 } from '../core/activities';
 import { PRESET_BASES, presetOf } from './activityPresets';
@@ -358,9 +358,10 @@ export const withVisibility = (stored: StoredSettings, activities: Activity[], h
  * Version des pré-réglages. 1 (21/10) : bateau (couleurs de 1 à 15 nœuds,
  * sans seuil d'activité, pause sous 0,2 km/h, chiffres du direct). 2 (21/10) :
  * wing, planche, à pied, vélo et fractionné (`settings/activityPresets.ts`).
- * 3 (28/10) : la Marche sans seuil d'activité.
+ * 3 (28/10) : la Marche sans seuil d'activité. 4 (05/11) : sauts mesurés
+ * d'office au kite et au VTT.
  */
-export const PRESETS_VERSION = 3;
+export const PRESETS_VERSION = 4;
 
 /**
  * Réglages effacés une fois, à la mise à jour, pour que les pré-réglages
@@ -373,7 +374,8 @@ const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys
   { version: 1, bases: ['bateau'], keys: ['speedRanges', 'autoPause', 'liveFields', 'notificationFields', 'thresholds'] },
   {
     version: 2,
-    bases: PRESET_BASES,
+    // Calculs pré-réglés au 21/10 : le kite, pré-réglé au 05/11 pour ses sauts seulement, n'y entre pas.
+    bases: PRESET_BASES.filter((base) => base !== 'kite'),
     keys: [
       'thresholds', 'speedUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'liveFields', 'notificationFields', 'markGuide', 'jumps',
       'heartRate', 'bikeTypes', 'bikeWeights', 'wayTypes', 'terrainSteps', 'tabs', 'paceLevels', 'customFlatSpeeds',
@@ -381,6 +383,8 @@ const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys
   },
   // Le seuil de 0,5 km/h de la Marche, rangé tel quel par d'anciens réglages ; celui de la Course reste.
   { version: 3, bases: [], ids: [MARCHE_ACTIVITY.id], keys: ['thresholds'] },
+  // Sauts d'office au kite et au VTT : leur ancienne case (décochée par défaut) s'efface une fois.
+  { version: 4, bases: ['kite'], ids: [VTT_ACTIVITY.id], keys: ['jumps'] },
 ];
 
 /**

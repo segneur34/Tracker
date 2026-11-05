@@ -45,6 +45,8 @@ import SurfaceBar from '../components/SurfaceBar';
 import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
+import KilometerSplitsTable from '../components/KilometerSplitsTable';
+import { kilometerSplits } from '../running/kilometerSplits';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import { zoomHint } from '../components/zoomHint';
 import { inChartView } from '../components/chartHover';
@@ -65,7 +67,7 @@ import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   editSpeedUnit, CHART_PACE_MIN_SPEED_MS,
   DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatLandSpeed, formatSpeedValue, fromDisplaySpeed,
-  isInverseUnit, toDisplayDistance, toDisplaySpeed, commaDecimal
+  isInverseUnit, METERS_PER_DISTANCE_UNIT, toDisplayDistance, toDisplaySpeed, commaDecimal
 } from '../core/units';
 import { useChartZoomSource, type ChartZoom } from '../hooks/useChartZoom';
 import ZoomView from '../components/ZoomView';
@@ -476,6 +478,18 @@ function LandModule({ family }: { family: LandFamily }) {
       ? computeAllTopSegments(gpx.track, cumulative, profile.topTargets, (ms) => toDisplaySpeed(ms, topUnit), { decimals: 1 })
       : null),
     [profile.topTargets, gpx.track, cumulative, open.tops, topUnit]
+  );
+  /** Tranches d'un kilomètre, ou d'un mille, sous les tops ; à pied et à vélo, pas en Entraînement (05/11). */
+  const splits = useMemo(
+    () => (family !== 'fractionne' && open.tops && gpx.track.length > 1
+      ? kilometerSplits(gpx.track, {
+        splitM: METERS_PER_DISTANCE_UNIT[distanceUnit],
+        elevation: stats?.hasElevation ? elevation.smoothed : null,
+        minGainM: elevationProfile.minGainM,
+        active: activityMask,
+      })
+      : null),
+    [family, open.tops, gpx.track, distanceUnit, stats?.hasElevation, elevation.smoothed, elevationProfile.minGainM, activityMask]
   );
 
   /** Meilleurs segments de l'onglet « général », en m/s : ceux de `OVERVIEW_TOP_KEYS`, onglet « tops » caché compris. */
@@ -1116,7 +1130,9 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.tops && tops && (
               <ResizablePanel id={panelId('tops')} style={ANALYSIS_PANEL_STYLE}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
-                  accent={page.accent} open={open.tops} onToggle={toggleOf('tops')} />
+                  accent={page.accent} open={open.tops} onToggle={toggleOf('tops')}>
+                  {splits && <KilometerSplitsTable splits={splits} speedUnit={speedUnit} distanceUnit={distanceUnit} />}
+                </TopsPanel>
               </ResizablePanel>
             )}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -75,6 +75,23 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     for (const profile of Object.values(SPORT_PROFILES)) {
       if (keys(analysisTabs(profile)).includes('tops')) expect(profile.topTargets.length, profile.id).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("activityTabs : onglets de Réglages selon les options de l'activité (05/11)", () => {
+  it("« sauts » seulement si l'activité mesure les sauts", () => {
+    const wing = SPORT_PROFILES.wingfoil;
+    expect(keys(activityTabs(wing, { foil: true, jumps: true }))).toContain('sauts');
+    expect(keys(activityTabs(wing, { foil: true, jumps: false }))).not.toContain('sauts');
+    expect(keys(activityTabs(SPORT_PROFILES.cycling, { foil: false, jumps: true }))).toContain('sauts');
+    expect(keys(activityTabs(SPORT_PROFILES.running, { foil: false, jumps: false }))).not.toContain('sauts');
+  });
+
+  it('un calcul sans sauts ne les propose pas, même coché ; « vols » et « pumping » suivent le foil', () => {
+    expect(keys(activityTabs(SPORT_PROFILES.bateau, { foil: false, jumps: true }))).not.toContain('sauts');
+    const wing = SPORT_PROFILES.wingfoil;
+    expect(keys(activityTabs(wing, { foil: false, jumps: true }))).not.toContain('vols');
+    expect(keys(activityTabs(wing, { foil: true, jumps: true }))).toEqual(keys(analysisTabs(wing)));
   });
 });
 

@@ -32,9 +32,20 @@ describe('presetOf', () => {
   });
 
   it('un calcul sans pré-réglage rend un objet vide, toujours le même', () => {
-    const a = presetOf({ id: 'a-kite', base: 'kite' });
+    const a = presetOf({ id: 'a-surf-2', base: 'surf' });
     expect(a).toEqual({});
-    expect(presetOf({ id: 'autre', base: 'kite' })).toBe(a);
+    expect(presetOf({ id: 'autre', base: 'surf' })).toBe(a);
+  });
+
+  it("sauts mesurés d'office en voile (wing, planche, kite) et au VTT, pas ailleurs (05/11)", () => {
+    for (const base of ['wingfoil', 'windsurf', 'kite'] as const) {
+      expect(presetOf({ id: `a-${base}-2`, base }).jumps?.enabled).toBe(true);
+    }
+    expect(presetOf({ id: 'a-kite', base: 'kite' }).jumps).toEqual({ enabled: true, placement: 'poitrine', minHeightM: 1 });
+    expect(presetOf(VTT_ACTIVITY).jumps).toEqual({ enabled: true, placement: 'poitrine', minHeightM: 0.3 });
+    for (const activity of DEFAULT_ACTIVITIES.filter((a) => a.id !== VTT_ACTIVITY.id && a.base !== 'wingfoil')) {
+      expect(presetOf(activity).jumps?.enabled ?? false).toBe(false);
+    }
   });
 
   it('chaque pré-réglage de calcul porte des bornes de couleur croissantes et des unités connues', () => {
@@ -73,9 +84,9 @@ describe("notification de l'Entraînement (26/10)", () => {
 });
 
 describe('PRESET_BASES', () => {
-  it('liste les calculs qui ont un pré-réglage, voile à la planche comprise', () => {
-    expect(PRESET_BASES).toEqual(expect.arrayContaining(['wingfoil', 'windsurf', 'running', 'cycling', 'run-intervals', 'run-test', 'bike-intervals']));
-    expect(PRESET_BASES).not.toContain('kite');
+  it('liste les calculs qui ont un pré-réglage, voile à la planche comprise, le kite pour ses sauts (05/11)', () => {
+    expect(PRESET_BASES).toEqual(expect.arrayContaining(['wingfoil', 'windsurf', 'kite', 'running', 'cycling', 'run-intervals', 'run-test', 'bike-intervals']));
+    expect(PRESET_BASES).not.toContain('bateau');
   });
 });
 

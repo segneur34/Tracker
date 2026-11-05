@@ -655,10 +655,12 @@ function RecordingScreen() {
     changeRecordingActivity(activity);
     pickActivity(activity);
   };
-  // Sauts : proposés par l'activité (Réglages), sur le téléphone seulement ; la case vaut pour cet enregistrement.
-  const jumpSettings = chosen ? effectiveJumpSettings(chosen) : null;
+  // Sauts : proposés seulement si l'activité les mesure (case de Réglages, 05/11), cochés d'office alors, sur le
+  // téléphone seulement ; la case vaut pour cet enregistrement.
+  const activityJumps = chosen ? effectiveJumpSettings(chosen) : null;
+  const jumpSettings = activityJumps?.enabled === true ? activityJumps : null;
   const chosenActivityId = chosen?.id ?? null;
-  const [jumpPicked, setJumpPicked] = usePerActivityChoice(chosenActivityId, jumpSettings?.enabled ?? false);
+  const [jumpPicked, setJumpPicked] = usePerActivityChoice(chosenActivityId, true);
   const measureJumps = chosen !== null && jumpSettings !== null && jumpPicked;
   // Pumping foil : proposé par l'activité de surf ou de voile (foil et pumping cochés dans Réglages), coché d'office ; la case vaut pour cet enregistrement.
   const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
@@ -803,7 +805,8 @@ function RecordingScreen() {
     const what: string[] = [];
     const treatment = liveActivity ? sportTreatment(liveActivity.base) : null;
     const pumpingToo = treatment === 'voile' && setup?.foil === true && liveActivity !== null && effectivePumping(liveActivity) === true;
-    if (setup?.jumps !== false) what.push(treatment === 'surf' ? 'Pumping' : pumpingToo ? 'Sauts et pumping' : 'Sauts');
+    // Pumping seul en voile : les sauts n'ont pas été mesurés (case de Réglages ou de l'enregistrement décochée).
+    if (setup?.jumps !== false) what.push(treatment === 'surf' ? 'Pumping' : pumpingToo ? (measureJumps ? 'Sauts et pumping' : 'Pumping') : 'Sauts');
     if (setup?.cadence) what.push(what.length > 0 ? 'cadence' : 'Cadence');
     return what.join(' et ');
   })();
@@ -837,7 +840,7 @@ function RecordingScreen() {
       : capture && measurePumping
         ? { placement: 'poitrine' as const, foil: true, jumps: true, cadence: false }
         : cadence
-          ? { placement: jumpSettings?.placement ?? ('taille' as const), foil: false, jumps: false, cadence: true }
+          ? { placement: activityJumps?.placement ?? ('taille' as const), foil: false, jumps: false, cadence: true }
           : null;
     const heartRate = native && sourceChoice === 'device' && measureHeartRate ? belt : null;
     void beltWarmup.handOver(() => startRecording(chosen, source, { motion, heartRate }));

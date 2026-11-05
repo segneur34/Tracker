@@ -366,6 +366,8 @@ function SailingModule() {
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
   const [showUndecidedOnMap, setShowUndecidedOnMap] = useState<boolean>(false);
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
+  /** Liste de toutes les manœuvres d'un type, sous « Détails » : repliée d'office, non mémorisée (05/11). */
+  const [allManeuversOpen, setAllManeuversOpen] = useState<Record<'tack' | 'jibe', boolean>>({ tack: false, jibe: false });
   /** Genre montré dans le tableau par amure (note 135) : virements ou empannages. */
   const [tackTableType, setTackTableType] = useState<'tack' | 'jibe'>('tack');
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
@@ -903,9 +905,12 @@ function SailingModule() {
       {showManeuverDetails && (
       <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '12px' }}>
         {([
-          ['tack', 'Virements', maneuverSummary.tack],
-          ['jibe', 'Empannages', maneuverSummary.jibe],
-        ] as const).map(([type, title, summary]) => (
+          ['tack', 'Virements', 'virements', maneuverSummary.tack],
+          ['jibe', 'Empannages', 'empannages', maneuverSummary.jibe],
+        ] as const).map(([type, title, noun, summary]) => {
+          const ofType = m.locations.filter((loc) => loc.type === type);
+          const listOpen = allManeuversOpen[type];
+          return (
           <div key={type} className="an-man-detail" style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
               <strong className="ui-subtitle">{title}</strong>
@@ -967,9 +972,15 @@ function SailingModule() {
                 </tbody>
               </table>
             )}
-            {summary && (
+            {summary && ofType.length > 0 && (
+              <Button size="s" style={{ marginTop: '8px' }} aria-expanded={listOpen}
+                onClick={() => setAllManeuversOpen((prev) => ({ ...prev, [type]: !prev[type] }))}>
+                {listOpen ? `Replier les ${noun} ▲` : `Tous les ${noun} (${ofType.length}) ▼`}
+              </Button>
+            )}
+            {summary && listOpen && ofType.length > 0 && (
               <ul style={{ margin: '8px 0 0', paddingLeft: '18px', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                {m.locations.filter((loc) => loc.type === type).map((loc) => (
+                {ofType.map((loc) => (
                   <li key={loc.timeMs}>
                     {formatTimeOfDay(loc.timeMs)}{' · '}
                     <span style={{ color: loc.success ? 'var(--success)' : 'var(--danger)' }}>{loc.success ? 'réussi' : 'raté'}</span>
@@ -980,7 +991,8 @@ function SailingModule() {
               </ul>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
       )}
     </ResizablePanel>
