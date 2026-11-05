@@ -53,7 +53,7 @@ const parcourir = (dossier) => {
 for (const d of ['src', 'outils', 'docs', 'android', 'public', 'assets', '.github', '.claude']) parcourir(path.join(racine, d))
 for (const f of fs.readdirSync(racine)) if (fs.statSync(path.join(racine, f)).isFile()) fichiers.push(f)
 
-const EXT_CODE = /\.(ts|tsx|css|java|kt|mjs|js|xml|json|gradle|html)$/
+const EXT_CODE = /\.(ts|tsx|css|java|kt|mjs|js|xml|json|gradle|html|yml)$/
 const code = fichiers.filter((f) => EXT_CODE.test(f) && !f.startsWith('docs/')).map((f) => fs.readFileSync(path.join(racine, f), 'utf8'))
 const vuDansLeCode = (nom) => {
   const re = new RegExp(`\\b${nom}\\b`)

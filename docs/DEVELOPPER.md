@@ -15,7 +15,7 @@ npm run verif                     lint (sans avertissement toléré), tous les t
 node outils/verif.mjs --rapide    typecheck, lint, tests des fichiers modifiés
 ```
 
-`npm run verif` vérifie aussi les renvois des documents (`outils/docs-cites.mjs`, `outils/docs-inventaire.mjs`) : un fichier cité qui n'existe plus fait échouer. La même commande tourne à chaque envoi vers `main` (`.github/workflows/verif.yml`), suivie de `./gradlew --version` pour s'assurer que le projet Android s'ouvre.
+`npm run verif` vérifie aussi les renvois des documents (`outils/docs-cites.mjs`, `outils/docs-inventaire.mjs`) : un fichier cité qui n'existe plus fait échouer. La même commande tourne à chaque envoi vers `main` (`.github/workflows/verif.yml`), suivie de `npx cap sync android` puis du test JUnit du format `.imu` (`./gradlew testDebugUnitTest`). Ce test ne fait pas partie de `npm run verif` en local.
 
 ## Web
 
