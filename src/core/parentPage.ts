@@ -9,7 +9,8 @@ const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).i
  * bibliothèque de sa famille, comme le lien « ← » de son en-tête, et une page
  * de l'Entraînement (séances du fractionné ou du Timer et leur édition, tests) à la page au-dessus d'elle,
  * un test à « Fractionné et tests » (`/fractionne/seances`, où sont ses tuiles depuis le lot I) ;
- * Enregistrer en mode Timer (`?minuterie`) renvoie à la liste du Timer ; les
+ * Enregistrer en mode Timer (`?minuterie`) renvoie à la liste du Timer ; une
+ * leçon des tutoriels à leur liste, et celle-ci à Réglages ; les
  * Statistiques remontent d'un cran (activité, famille, vue d'ensemble), la
  * période gardée ; toute autre page renvoie à l'accueil. `null` à l'accueil :
  * rien au-dessus.
@@ -26,6 +27,8 @@ export const parentPage = (pathname: string, search: string): string | null => {
   // Pages de l'Entraînement (séances du fractionné, Timer) : un cran plus haut, jusqu'à sa bibliothèque.
   if (parts[0] === 'fractionne' && ['seances', 'timer', 'tests'].includes(parts[1])) return `/${parts.slice(0, -1).join('/')}`;
   if (path === '/enregistrer' && new URLSearchParams(search).has('minuterie')) return '/fractionne/timer';
+  // Tutoriels (lot 147) : une leçon remonte à la liste, d'où qu'on l'ait ouverte (carte de l'accueil comprise), la liste à Réglages.
+  if (parts[0] === 'tutoriels') return parts.length > 1 ? '/tutoriels' : '/parametres';
   if (path === '/statistiques') {
     const params = new URLSearchParams(search);
     const next = new URLSearchParams();

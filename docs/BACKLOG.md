@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 166, essai 120, question Q58.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 166, essai 122, question Q58.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -22,10 +22,13 @@ APK 0.4.79 construite le 05/11 (versionCode 4079, paquet « Nouveautés à l'éc
   - essai 117 : pincer la carte d'une analyse → les flèches de sens se raréfient en dézoomant, se densifient en zoomant, sans saccade
   - essai 118 : rouvrir une analyse → « général » seul, « avancé » fermé ; « tout fermer » replie tout
 
+- 147 · [idée] Profil et découverte, en un seul lot : 136 fleur à 6 étapes (papillon qui entre à 4 fois l'objectif, à côté de la fleur à 4,6, posé à 5 ; étapes 4, 5 et 6 nommées dans la bulle), 142 tutoriels (14 leçons, une par nouveau jour d'ouverture, carte « Aujourd'hui » en haut de l'accueil, pages /tutoriels, bloc « Tutoriels » de Réglages) · noté 03/11 · gros · Opus/high · à valider (commit du 05/11, version 0.4.80) · détail : docs/backlog/147-lot.md
+  - essai 120 : accueil → la carte « Aujourd'hui : Enregistrer une session » (absente si la carte des autorisations ou le pop-up du profil est montré) ; « Lire » ouvre la leçon ; le lendemain, « Lire une analyse »
+  - essai 121 : Profil, une semaine à plus de 4 fois l'objectif → le papillon (en vol, puis posé au-delà de 5 fois) et la bulle qui l'annonce, en clair et en sombre
+
 ## Ensuite
 
 1. 146 · [idée] Statistiques, en un seul lot : 132 matériel croisé sur plusieurs lignes à boutons glissants, 141 niveau sportif comparé à un tableau de référence (sources cherchées par la conversation d'abord) · noté 03/11 · gros · Opus/high · en cours (05/11, briefé, worktree) · détail : docs/backlog/146-lot.md
-2. 147 · [idée] Profil et découverte, en un seul lot : 136 fleur à 6 étapes (papillon dans le champ de vision à 4 fois l'objectif, posé sur la fleur à 5, décidé le 03/11) puis 142 tutoriels (un par nouveau jour, carte « Aujourd'hui » en haut de l'accueil, accès dans Réglages : décidé le 05/11) · noté 03/11 · gros · Opus/high · en cours (05/11, briefé, worktree) · détail : docs/backlog/147-lot.md
 ## Ça attend une occasion
 
 **Une vraie sortie d'au moins 2 h, écran éteint et capteurs actifs (lot 156, APK 0.4.69)**

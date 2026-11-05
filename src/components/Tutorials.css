@@ -1,0 +1,141 @@
+/* Tutoriels (lot 147) : carte du jour de l'accueil, liste des leçons, page d'une leçon. */
+
+.tutorial-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--voile);
+  color: var(--on-accent);
+}
+
+/* --- Carte du jour --- */
+
+.tutorial-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tutorial-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tutorial-card__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.tutorial-card__close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tutorial-card__hook {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-m);
+}
+
+.tutorial-card__read {
+  align-self: flex-start;
+}
+
+/* --- Liste --- */
+
+.tutorial-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tutorial-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tutorial-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tutorial-row__title {
+  font-size: var(--text-m);
+  font-weight: 600;
+}
+
+.tutorial-row__hook {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.tutorial-row__read {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.tutorial-row__go {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* --- Page d'une leçon --- */
+
+.tutorial-lesson {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tutorial-lesson__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tutorial-lesson p {
+  margin: 0;
+  font-size: var(--text-m);
+  line-height: 1.5;
+}
+
+.tutorial-lesson__try {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+}
+
+.tutorial-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+}

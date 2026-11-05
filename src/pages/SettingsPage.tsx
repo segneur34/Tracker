@@ -17,6 +17,8 @@ import {
 } from '../core/units';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { useTutorials } from '../hooks/useTutorials';
+import { Link } from 'react-router-dom';
 import { useTileCache } from '../hooks/useTileCache';
 import { useThemedShade, useThemeSettings } from '../hooks/useTheme';
 import { THEME_CHOICES } from '../theme/theme';
@@ -192,10 +194,10 @@ function ActivityPart({ label, open, onToggle, children }: { label: string; open
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'affichage' | 'cartes' | 'coureur';
+type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'affichage' | 'cartes' | 'coureur' | 'tutoriels';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
   memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, affichage: false, cartes: false,
-  coureur: false,
+  coureur: false, tutoriels: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -971,6 +973,11 @@ function SettingsPage() {
           </div>
         )}
       </div>
+
+      <div style={cardStyle}>
+        <PanelTitle label="Tutoriels" open={open.tutoriels} onToggle={() => toggle('tutoriels')} />
+        {open.tutoriels && <div className="settings-block__body"><TutorialsSettings /></div>}
+      </div>
     </div>
     </SettingsScope>
   );
@@ -1009,6 +1016,18 @@ function CollapseAllButton({ onCollapse }: { onCollapse: () => void }) {
 }
 
 /** Titre d'un bloc de la page, avec son « ? » une fois le bloc ouvert, et l'aide dépliée dessous. */
+/** Bloc « Tutoriels » (lot 147) : le compte des leçons lues et le lien vers toutes les leçons. */
+function TutorialsSettings() {
+  const { state, lessons } = useTutorials();
+  const readCount = lessons.filter((l) => state.read.includes(l.id)).length;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 'var(--text-s)' }}>{readCount} {readCount >= 2 ? 'leçons lues' : 'leçon lue'} sur {lessons.length}</span>
+      <Link to="/tutoriels" className="ui-btn ui-btn--secondary ui-btn--s">Voir tous les tutoriels</Link>
+    </div>
+  );
+}
+
 function BlockTitle({ label, open, onToggle, helpKey, help }: {
   label: string;
   open: boolean;

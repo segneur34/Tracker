@@ -504,3 +504,36 @@ export const IconFace = ({ mood, size = 24, ...props }: IconProps & { mood: Face
     <path d={FACE_MOUTHS[mood]} />
   </svg>
 );
+
+/** Coche : fait, lu (tutoriels). */
+export const IconCheck = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M5 12.5l4.5 4.5L19 7" />
+  </svg>
+);
+
+/** Livre ouvert : les tutoriels. */
+export const IconBook = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 6.5C10 5 7 4.5 3 5v13c4-.5 7 0 9 1.5" />
+    <path d="M12 6.5C14 5 17 4.5 21 5v13c-4-.5-7 0-9 1.5" />
+    <path d="M12 6.5v13" />
+  </svg>
+);
+
+/** Carte pliée en trois : la carte d'une analyse (tutoriel). */
+export const IconMap = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" />
+    <path d="M9 4v14" />
+    <path d="M15 6v14" />
+  </svg>
+);
+
+/** Crayon sur une feuille : notes d'une session (tutoriel). */
+export const IconNote = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
+    <path d="M18.5 3.5a2.1 2.1 0 0 1 3 3L13 15l-4 1 1-4z" />
+  </svg>
+);

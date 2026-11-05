@@ -33,6 +33,12 @@ describe('parentPage', () => {
     expect(parentPage('/course/seances', '')).toBe('/');
   });
 
+  it('une leçon des tutoriels remonte à leur liste, la liste à Réglages (lot 147)', () => {
+    expect(parentPage('/tutoriels/enregistrer', '')).toBe('/tutoriels');
+    expect(parentPage('/tutoriels/voile/', '')).toBe('/tutoriels');
+    expect(parentPage('/tutoriels', '')).toBe('/parametres');
+  });
+
   it('Enregistrer en mode Timer renvoie à la liste du Timer', () => {
     expect(parentPage('/enregistrer', '?minuterie=1')).toBe('/fractionne/timer');
     expect(parentPage('/enregistrer', '?activite=a-course')).toBe('/');

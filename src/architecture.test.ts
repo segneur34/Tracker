@@ -45,11 +45,13 @@ const ALLOWED: Record<string, readonly string[]> = {
   recording: ['core', 'platform', 'sailing', 'surfing', 'running', 'cycling', 'planning'],
   library: ['core', 'platform', ...DOMAINS],
   settings: ['core', ...DOMAINS],
+  // Programme des tutoriels (lot 147), calcul pur : le noyau seul ; lu par les hooks, les composants et les pages.
+  tutorials: ['core'],
   platform: ['core'],
   theme: ['core'],
-  hooks: ['core', 'platform', 'theme', ...DOMAINS, 'settings'],
-  components: ['core', 'platform', 'theme', ...DOMAINS, 'settings', 'hooks'],
-  pages: ['core', 'platform', 'theme', ...DOMAINS, 'settings', 'hooks', 'components', 'assets'],
+  hooks: ['core', 'platform', 'theme', ...DOMAINS, 'settings', 'tutorials'],
+  components: ['core', 'platform', 'theme', ...DOMAINS, 'settings', 'tutorials', 'hooks'],
+  pages: ['core', 'platform', 'theme', ...DOMAINS, 'settings', 'tutorials', 'hooks', 'components', 'assets'],
 };
 
 /** Fichiers à la racine de `src/` (`main.tsx`, `App.tsx`) : ils assemblent tout, sans règle. */

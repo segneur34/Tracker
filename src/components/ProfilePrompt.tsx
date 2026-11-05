@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HelpText, HelpToggle } from './Help';
 import Button from './ui/Button';
@@ -40,9 +40,10 @@ const draftOf = (profile: RunnerProfile): Draft => ({
  * (pseudo, année de naissance, sexe, poids, taille : `missingProfileFields`), il
  * s'ouvre une fois par lancement. Posé par l'accueil une fois la mémoire et la
  * carte des autorisations décidées, il tranche à son arrivée ; `otherCardShown` :
- * l'une d'elles est à l'écran, et il attend le lancement suivant.
+ * l'une d'elles est à l'écran, et il attend le lancement suivant. `onDecided`
+ * apprend une fois s'il s'ouvre (la carte du jour des tutoriels attend alors).
  */
-function ProfilePrompt({ otherCardShown }: { otherCardShown: boolean }) {
+function ProfilePrompt({ otherCardShown, onDecided }: { otherCardShown: boolean; onDecided?: (shown: boolean) => void }) {
   const { setName, setNumber, setSex } = useRunnerProfile();
   // Le profil du hook est vide au premier rendu (il se relit dans un effet) : la décision lit le stockage.
   const [stored] = useState(readRunnerProfile);
@@ -53,6 +54,13 @@ function ProfilePrompt({ otherCardShown }: { otherCardShown: boolean }) {
     askedThisLaunch = true;
     return open;
   });
+  const onDecidedRef = useRef(onDecided);
+  useEffect(() => {
+    onDecidedRef.current = onDecided;
+  });
+  useEffect(() => {
+    onDecidedRef.current?.(shown);
+  }, [shown]);
   const [closed, setClosed] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftOf(stored));
 

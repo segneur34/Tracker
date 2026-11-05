@@ -3,12 +3,14 @@
 // Usage : node racine.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script écrit un historique de courses de 45 min, le lundi, sur les semaines 0 à 29,
 // 33 et 34 (la semaine 0 commence 50 semaines avant celle d'aujourd'hui), trois de 15 min les mardi, mercredi et jeudi
-// de la semaine 35, puis trois de 45 min les vendredi, samedi et dimanche (2, 3 et 4 fois l'objectif) ; il les importe par
+// de la semaine 35, puis trois de 45 min les vendredi, samedi et dimanche (2, 3 et 4 fois l'objectif) et deux de plus le
+// dimanche, de 27 min à 13 h et de 18 min à 15 h (4,6 et 5 fois : le papillon, lot 147) ; il les importe par
 // la page Course. Puis il ouvre le Profil à des dates choisies, l'heure de la page décalée par un script posé avant son
 // chargement (`Date` remplacé), et vérifie :
 //  1. le niveau : semaines 1, 6, 13, 26, 30 ; 1, 2, 3 semaines manquées (27, 21, 0), la reprise (1, puis 2) ;
 //  2. la bulle : recul de 3, « de 6 de plus », « revient à sa graine », feuilles tombées, temps de la semaine et radicelles ;
-//     la fleur de la semaine 35 (`data-fleur`, multiples de l'objectif) : rien, bouton, ouverte, puis étapes 2, 3 et 4 sur 4 ;
+//     la fleur de la semaine 35 (`data-fleur`, multiples de l'objectif) : rien, bouton, ouverte, étapes 2 et 3,
+//     épanouie, le papillon qui entre (étape 4 sur 6, dimanche 12 h à 4 fois), à côté (5 sur 6, 14 h à 4,6 fois), posé (6 sur 6, 16 h à 5 fois) ;
 //  3. Réglages, « Pratiquant » : une seule ligne « Objectif par semaine » ; à 60 min, plus rien de tenu ; vidée, 45 ;
 //  4. un état vu d'avant la règle (sans version) est ignoré ; le rejeu d'un recul de 9 (30 → 21) à l'ouverture ;
 //  5. à 390 et 320 px : rien ne déborde, le carré et la bulle restent dans l'écran.
@@ -53,9 +55,10 @@ const files = [];
 for (const w of [...Array.from({ length: 30 }, (_, k) => k), 33, 34]) files.push([`course-s${w}.gpx`, gpxOf(dayAt(w, 0, 10), 45, `course s${w}`)]);
 for (const d of [1, 2, 3]) files.push([`course-s35-${d}.gpx`, gpxOf(dayAt(35, d, 10), 15, `course s35 j${d}`)]);
 for (const d of [4, 5, 6]) files.push([`course-s35-${d}.gpx`, gpxOf(dayAt(35, d, 10), 45, `course s35 j${d}`)]);
+for (const [h, min] of [[13, 27], [15, 18]]) files.push([`course-s35-6-${h}h.gpx`, gpxOf(dayAt(35, 6, h), min, `course s35 j6 ${h} h`)]);
 
 const slotText = () => evaluate(`document.querySelector('.profile-root-slot')?.textContent ?? null`);
-/** Étape de la fleur dessinée, en multiples de l'objectif (0 à 4). */
+/** Étape de la fleur dessinée, en multiples de l'objectif (0 à 5, papillon posé). */
 const flowerDrawn = () => evaluate(`Number(document.querySelector('canvas.profile-root')?.dataset.fleur ?? NaN)`);
 /** Texte de la bulle, espaces insécables (entre un nombre et son mot) ramenées à des espaces. */
 const bubbleText = () => evaluate(`document.querySelector('.profile-root__bubble')?.textContent.replace(/\\u00a0/g, ' ') ?? null`);
@@ -144,14 +147,17 @@ const states = [
   { w: 35, d: 0, level: '2étapes', fleur: 0, label: 'Semaine 35, lundi : 0 min, pas de fleur', bubble: ['Cette semaine : 0 min sur 45 min', 'Pas encore de fleur : elle paraît à la première minute.'] },
   { w: 35, d: 1, level: '2étapes', fleur: 1 / 3, label: 'Mardi : 15 min, bouton', bubble: ['Cette semaine : 15 min sur 45 min · 3 radicelles', "Fleur en bouton ; elle s'ouvre à 45 min."] },
   { w: 35, d: 2, level: '2étapes', fleur: 2 / 3, label: 'Mercredi : 30 min, bouton plus gros', bubble: ['Cette semaine : 30 min sur 45 min · 6 radicelles'] },
-  { w: 35, d: 3, level: '2étapes', fleur: 1, label: 'Jeudi : 45 min, fleur ouverte', bubble: ["Cette semaine : 45 min sur 45 min · 1 fois l'objectif · 9 radicelles", "Fleur à l'étape 1 sur 4 ; la suivante à 1 h 30.", 'Objectif tenu : la racine gagne une étape dimanche soir.'] },
-  { w: 35, d: 4, level: '2étapes', fleur: 2, label: 'Vendredi : 1 h 30, pétales plus longs', bubble: ["Cette semaine : 1 h 30 sur 45 min · 2 fois l'objectif · 18 radicelles", "Fleur à l'étape 2 sur 4 ; la suivante à 2 h 15."] },
-  { w: 35, d: 5, level: '2étapes', fleur: 3, label: 'Samedi : 2 h 15, second rang de pétales', bubble: ["Cette semaine : 2 h 15 sur 45 min · 3 fois l'objectif", "Fleur à l'étape 3 sur 4 ; la suivante à 3 h 00."] },
-  { w: 35, d: 6, level: '2étapes', fleur: 4, label: 'Dimanche : 3 h 00, fleur épanouie', bubble: ["Cette semaine : 3 h 00 sur 45 min · 4 fois l'objectif", 'Fleur épanouie : étape 4 sur 4.'] },
+  { w: 35, d: 3, level: '2étapes', fleur: 1, label: 'Jeudi : 45 min, fleur ouverte', bubble: ["Cette semaine : 45 min sur 45 min · 1 fois l'objectif · 9 radicelles", "Fleur à l'étape 1 sur 6 ; la suivante à 1 h 30.", 'Objectif tenu : la racine gagne une étape dimanche soir.'] },
+  { w: 35, d: 4, level: '2étapes', fleur: 2, label: 'Vendredi : 1 h 30, pétales plus longs', bubble: ["Cette semaine : 1 h 30 sur 45 min · 2 fois l'objectif · 18 radicelles", "Fleur à l'étape 2 sur 6 ; la suivante à 2 h 15."] },
+  { w: 35, d: 5, level: '2étapes', fleur: 3, label: 'Samedi : 2 h 15, second rang de pétales', bubble: ["Cette semaine : 2 h 15 sur 45 min · 3 fois l'objectif", "Fleur à l'étape 3 sur 6 ; la suivante à 3 h 00."] },
+  { w: 35, d: 6, level: '2étapes', fleur: 4, label: 'Dimanche : 3 h 00, fleur épanouie', bubble: ["Cette semaine : 3 h 00 sur 45 min · 4 fois l'objectif", 'Fleur épanouie : étape 4 sur 6 ; un papillon approche, il se pose à 3 h 45.'] },
+  // Lot 147 : deux sessions de plus le dimanche après-midi, le papillon à côté de la fleur (4,6 fois), puis posé (5 fois).
+  { w: 35, d: 6, h: 14, level: '2étapes', fleur: 4.6, label: 'Dimanche 14 h : 3 h 27, le papillon à côté', bubble: ["Cette semaine : 3 h 27 sur 45 min · 4,6 fois l'objectif", 'Le papillon est là : étape 5 sur 6 ; il se pose à 3 h 45.'] },
+  { w: 35, d: 6, h: 16, level: '2étapes', fleur: 5, label: 'Dimanche 16 h : 3 h 45, papillon posé', bubble: ["Cette semaine : 3 h 45 sur 45 min · 5 fois l'objectif", 'Papillon posé : étape 6 sur 6.'] },
 ];
 for (const st of states) {
-  await profileAt(dayAt(st.w, st.d ?? 0, st.d ? 12 : 8));
-  const tag = `s${st.w}${st.d ? `-j${st.d}` : ''}`;
+  await profileAt(dayAt(st.w, st.d ?? 0, st.h ?? (st.d ? 12 : 8)));
+  const tag = `s${st.w}${st.d ? `-j${st.d}` : ''}${st.h ? `-${st.h}h` : ''}`;
   check(`${st.label} : ${st.level}`, (await slotText()) === st.level, await slotText());
   if (st.fleur !== undefined) {
     const f = await flowerDrawn();

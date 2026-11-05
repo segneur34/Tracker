@@ -112,6 +112,8 @@ export const SCRIPTS = [
   { nom: 'test-fcmax', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true, dev: true, accelerable: true },
   { nom: 'test-fcrepos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },
   { nom: 'timer', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true },
+  // Tutoriels (lot 147) : carte du jour de l'accueil, leçon, liste, bloc de Réglages ; jours changés par l'heure de la page.
+  { nom: 'tutoriels', args: ['{port}', '{captures?}'], pages: ['accueil', 'reglages'] },
   // Mesure (lot 74) : 150 vignettes défilées (cartes vivantes, DOM, tas, tuiles), mention d'OSM, captures par thème et largeur, list() à 10 000 tuiles.
   { nom: 'vignettes', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course'], sansCache: true, dev: true, delaiMin: 20 },
   // Mesure (lot 118) : vignettes gardées d'un lancement à l'autre ; temps jusqu'aux vignettes visibles à la relance, processeur

@@ -4,7 +4,7 @@ Journal des scripts de `outils/banc/` : ce que chacun éprouve, ses arguments, s
 
 ## Verdict ou neutralité
 
-Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 47 des 73 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159).
+Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 48 des 74 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147).
 
 | Sans verdict aujourd'hui | Scripts |
 |---|---|
@@ -362,13 +362,22 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - au doigt, la même chose dans l'autre sens, sans que la page défile de côté ;
   - un toucher sur un autre choix le prend toujours ; un appui qui bouge à peine ne change rien ; un glisser parti d'un autre choix ne déplace pas la case ;
   - Statistiques : l'adresse ne change qu'au lâcher, la vue est retenue au rechargement.
-- `racine.mjs <port> [<dossier des captures>]` : la racine du Profil (22/10), sur un profil neuf, sans réseau. Le script écrit lui-même cinq courses de 20 min sur les six derniers jours, un jour manqué, et une sixième aujourd'hui s'il est plus de 0 h 40, importées par la page Course ; il suppose les valeurs d'essai (une période par jour, 15 min, tour en 15, tout perdu en 30). Il vérifie :
-  - le carré à droite du pseudo (4,5 étapes) et le canevas dessiné sur toute la page ; la bulle du carré, qu'Échap ferme ;
-  - Réglages › Pratiquant : un recul plus fort, la partie sèche, une période de 7 jours (« Cette semaine »), le retour aux valeurs d'essai une fois les champs vidés ;
-  - le rejeu à l'ouverture depuis une visite d'hier retenue sur l'appareil, puis rien qui bouge sans changement ;
+- `racine.mjs <port> [<dossier des captures>]` : la racine du Profil, règle à la semaine (25/10), sur un profil neuf, sans réseau. Le script écrit lui-même un historique de courses (une de 45 min le lundi des semaines 0 à 29, 33 et 34 ; la semaine 35 : 15 min les mardi, mercredi et jeudi, 45 min les vendredi, samedi et dimanche, et deux de plus le dimanche, 27 min à 13 h et 18 min à 15 h), l'importe par la page Course, puis ouvre le Profil à des dates choisies (`Date` remplacé). Il vérifie (détail en tête du script) :
+  - le niveau semaine après semaine, reculs et reprise compris, et la bulle du carré ;
+  - la fleur de la semaine 35 (`data-fleur`) : rien, bouton, ouverte, étapes 2 et 3, puis le papillon qui entre à 4 fois (« étape 4 sur 6 », dimanche 12 h), à côté de la fleur à 4,6 fois (« étape 5 sur 6 », 14 h) et posé à 5 fois (« étape 6 sur 6 », 16 h, tout figé au-delà), depuis le lot 147 ;
+  - Réglages › Pratiquant (« Objectif par semaine »), un état vu d'avant la règle ignoré, le rejeu d'un recul à l'ouverture ;
   - à 390 et 320 px : rien ne déborde, carré et bulle dans l'écran.
 
-  Les valeurs de la racine remises à la semaine, ses chiffres attendus seront à reprendre.
+  Avec un dossier, une planche (`planche.html`) des gros plans de la pousse, papillon compris. Il finit par « Tout est passé. » ou le nombre d'échecs.
+- `tutoriels.mjs <port> [<dossier des captures>]` : les tutoriels (lot 147), sur un profil neuf, sans réseau ni session, environ 30 s, l'heure de la page décalée d'un jour à l'autre (`Date` remplacé). Il vérifie :
+  - jour 1 : la carte « Aujourd'hui : Enregistrer une session » sur l'accueil, avant les familles, son accroche, « Lire » et la croix ; le jour rangé (`tracker.tutoriels`) ;
+  - « Lire » : la leçon (« Leçon 1 sur 14 », « Essayer » vers Enregistrer, « Leçon suivante » seule), marquée lue ; le retour d'Android (`trackerBack`) mène à la liste, puis à Réglages ;
+  - la liste : quatorze leçons, la première seule cochée, « 1 lue sur 14 » ; l'accueil du même jour, leçon lue : plus de carte ;
+  - jour 2 : « Lire une analyse », fermée par la croix pour la journée (rechargement compris), un seul jour compté pour deux chargements ; jour 3 : « La carte » ;
+  - Réglages : le bloc « Tutoriels », replié, puis « 1 leçon lue sur 14 » et « Voir tous les tutoriels » vers la liste ; la voile cachée par son œil : treize leçons, sans « La voile » ;
+  - à 390×844 : l'accueil avec la carte, et une leçon, sans débordement.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs.
 - `racine-periodes.mjs <port> [<dossier des captures>]` : la racine du Profil ne dépend pas de la période (demande du 26/10, lot B), sur un profil neuf, sans réseau, environ 2 min. Treize courses d'un lundi chacune, page à la semaine 13 ; le Profil aux cinq périodes, à 390×844 et 1400×1000 : niveau, longueur visible de la racine mère (`data-longueur` du canevas), hauteurs de la page et des cadres, débordement. Il vérifie que la longueur est la même aux cinq périodes. Avec un dossier, une capture réduite (échelle 0,35) par période et par taille.
 - `tailles.mjs <port> <dossier de travail> [<dossier des captures>]` : relevé de toutes les pages à toutes les tailles de téléphone, droit et tourné (point 139 ; mode d'emploi détaillé en tête du fichier), sur un profil neuf, sans réseau, 8 à 12 min. Il importe une session de chaque famille, passe chaque page par douze tailles d'écran (dont 375×834 et 834×375, le téléphone de l'utilisateur) et trois tailles de texte (100, 115, 130 %), et relève : page plus large que l'écran, élément qui en sort, texte coupé, rangée qui défile, cibles qui se recouvrent ; pour information, cibles de moins de 40 px et surface prise par les barres. Une analyse tournée s'ouvre sur sa carte en plein écran : le script la referme avant de mesurer. Il écrit `rapport.md` et `rapport.json`, et la capture de la pire combinaison de chaque page. `SIZES`, `FONTS` et `PAGES` restreignent le relevé.
 - `aides.mjs <port> [<dossier des captures>]` : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10, point 148), sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une wing et une course. Il vérifie :

@@ -5,7 +5,7 @@ import { usePrefersReducedMotion } from '../hooks/useNarrowScreen';
 import { useAppliedTheme } from '../hooks/useTheme';
 import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
-import { BLOOM_STEPS, drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
+import { BLOOM_BESIDE, BLOOM_MAX, BLOOM_STEPS, drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
 import './ProfileRoot.css';
 import { formatDecimal, formatDuration } from '../core/units';
 
@@ -16,7 +16,8 @@ import { formatDecimal, formatDuration } from '../core/units';
  * manquées (−3, −6, puis la graine), la partie perdue restant dessinée sèche.
  * Le temps de la semaine fait pousser des radicelles et la pousse au-dessus du
  * sol, dont la fleur paraît à la première minute, s'ouvre à l'objectif et
- * continue d'évoluer jusqu'à 4 fois l'objectif (quatre étapes, maquette du 31/10) ;
+ * continue d'évoluer jusqu'à 4 fois l'objectif (maquette du 31/10), puis un
+ * papillon approche et se pose sur elle à 5 fois (six étapes, lot 147) ;
  * après une semaine manquée, ses feuilles tombent et restent mortes au sol, de
  * nouvelles repoussant avec le temps fait.
  *
@@ -55,20 +56,24 @@ const count = (n: number, word: string): string => `${levelText(n)} ${plural(n,
 const minutesText = (min: number): string => formatDuration(Math.round(min) * 60_000);
 const ease = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 /** Étape de la fleur pour des minutes de la semaine, en multiples de l'objectif, plafonnée à la dernière. */
-const bloomOf = (minutes: number, goalMin: number): number => Math.min(BLOOM_STEPS, minutes / Math.max(1, goalMin));
+const bloomOf = (minutes: number, goalMin: number): number => Math.min(BLOOM_MAX, minutes / Math.max(1, goalMin));
 /** Multiple de l'objectif arrondi au dixième par défaut (on ne dit pas « 2 fois » avant d'y être) : « 2 », « 1,5 ». */
 const timesText = (goalTimes: number): string => {
   const tenth = Math.floor(goalTimes * 10 + 1e-9) / 10;
   return Number.isInteger(tenth) ? String(tenth) : formatDecimal(tenth, 1);
 };
 
-/** Où en est la fleur, en clair (textes de la maquette du 31/10). */
+/** Où en est la fleur, en clair (textes de la maquette du 31/10 ; le papillon des étapes 5 et 6, lot 147). */
 const flowerText = (growth: RootGrowth, goalMin: number): string => {
   if (growth.minutes <= 0) return 'Pas encore de fleur : elle paraît à la première minute.';
-  const reached = Math.min(BLOOM_STEPS, Math.floor(growth.goalTimes + 1e-9));
+  const reached = Math.min(BLOOM_MAX, Math.floor(growth.goalTimes + 1e-9));
+  const at = (times: number) => minutesText(times * goalMin);
   if (reached <= 0) return `Fleur en bouton ; elle s'ouvre à ${minutesText(goalMin)}.`;
-  if (reached >= BLOOM_STEPS) return `Fleur épanouie : étape ${BLOOM_STEPS} sur ${BLOOM_STEPS}.`;
-  return `Fleur à l'étape ${reached} sur ${BLOOM_STEPS} ; la suivante à ${minutesText((reached + 1) * goalMin)}.`;
+  // Le papillon entre à 4 fois (4e étape), est à côté de la fleur à 4,6 (5e), posé à 5 fois (6e), tout figé au-delà.
+  if (reached >= BLOOM_MAX) return `Papillon posé : étape ${BLOOM_STEPS} sur ${BLOOM_STEPS}.`;
+  if (growth.goalTimes + 1e-9 >= BLOOM_BESIDE) return `Le papillon est là : étape ${BLOOM_STEPS - 1} sur ${BLOOM_STEPS} ; il se pose à ${at(BLOOM_MAX)}.`;
+  if (reached === BLOOM_MAX - 1) return `Fleur épanouie : étape ${reached} sur ${BLOOM_STEPS} ; un papillon approche, il se pose à ${at(BLOOM_MAX)}.`;
+  return `Fleur à l'étape ${reached} sur ${BLOOM_STEPS} ; la suivante à ${at(reached + 1)}.`;
 };
 
 /** Carré à droite du pseudo : le niveau de la racine ; le toucher ouvre le détail. */
@@ -172,7 +177,7 @@ const canvasDensity = (width: number, height: number): number => {
 /** Ce qui se dessine hors animation. */
 const restFrame = (growth: RootGrowth): RootFrame => ({
   level: growth.level, maxLevel: growth.maxLevel, growthSteps: growth.growthSteps,
-  minutes: growth.minutes, wither: 0, progress: growth.progress, bloom: Math.min(BLOOM_STEPS, growth.goalTimes),
+  minutes: growth.minutes, wither: 0, progress: growth.progress, bloom: Math.min(BLOOM_MAX, growth.goalTimes),
   fallen: growth.losing ? 1 : 0,
 });
 

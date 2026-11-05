@@ -32,6 +32,8 @@ const loaders = {
   TestsPage: () => import('./pages/TestsPage'),
   FitnessTestPage: () => import('./pages/FitnessTestPage'),
   RestingHrTestPage: () => import('./pages/RestingHrTestPage'),
+  TutorialsPage: () => import('./pages/TutorialsPage'),
+  TutorialPage: () => import('./pages/TutorialPage'),
 };
 
 const SessionLibrary = lazy(loaders.SessionLibrary);
@@ -50,6 +52,8 @@ const TrainingSessionEditPage = lazy(loaders.TrainingSessionEditPage);
 const TestsPage = lazy(loaders.TestsPage);
 const FitnessTestPage = lazy(loaders.FitnessTestPage);
 const RestingHrTestPage = lazy(loaders.RestingHrTestPage);
+const TutorialsPage = lazy(loaders.TutorialsPage);
+const TutorialPage = lazy(loaders.TutorialPage);
 
 /** Délai avant le préchargement quand le navigateur n'a pas `requestIdleCallback`. */
 const PRELOAD_FALLBACK_MS = 1500;
@@ -65,7 +69,7 @@ const preloadPages = (): (() => void) => {
   const order: (keyof typeof loaders)[] = [
     'RecordingPage', 'SessionLibrary', 'LandModule', 'SailingModule', 'SurfModule', 'MuscuModule', 'StatisticsPage', 'ProfilePage',
     'SettingsPage', 'PlanningPage', 'RoutesPage', 'TrainingSessionsPage', 'TrainingSessionEditPage', 'TestsPage',
-    'FitnessTestPage', 'RestingHrTestPage',
+    'FitnessTestPage', 'RestingHrTestPage', 'TutorialPage', 'TutorialsPage',
   ];
   let cancelled = false;
   let handle: number | null = null;
@@ -145,6 +149,9 @@ function App() {
           <Route path="/statistiques" element={<StatisticsPage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/parametres" element={<SettingsPage />} />
+          {/* Tutoriels (lot 147) : la liste, sous Réglages, et chaque leçon. */}
+          <Route path="/tutoriels" element={<TutorialsPage />} />
+          <Route path="/tutoriels/:id" element={<TutorialPage />} />
           {/* Développement seulement : une page qui lève au rendu, pour essayer la limite d'erreur au banc. */}
           {import.meta.env.DEV && <Route path="/essai/erreur" element={<DevThrow />} />}
         </Route>

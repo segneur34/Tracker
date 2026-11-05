@@ -10,6 +10,7 @@ import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import { PermissionsPrompt } from '../components/PermissionsStatus';
 import ProfilePrompt from '../components/ProfilePrompt';
+import TutorialOfDay from '../components/TutorialOfDay';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconFlag, IconRoute } from '../components/icons';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
@@ -23,12 +24,15 @@ import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeShown';
+import { tutorialCardGate } from '../tutorials/tutorials';
 import './Home.css';
 
 /**
  * Accueil, sur la maquette du 22/10 : en-tête photo avec le logo, la version
  * et le salut au pseudo ; une carte par famille visible, ses activités visibles
- * en sous-titre et sa photo fondue dans sa couleur ; puis créer un parcours et
+ * en sous-titre et sa photo fondue dans sa couleur (après les cartes de la
+ * mémoire, des autorisations, le pop-up du profil et la leçon du jour des
+ * tutoriels, chacune s'il y a lieu) ; puis créer un parcours et
  * la liste des itinéraires planifiés (leur nombre dès que la mémoire est prête),
  * sur un fond de courbes de niveau. Enregistrer est le bouton rond de la barre
  * du bas. Une famille cachée dans Réglages n'y a pas sa carte, une activité
@@ -57,6 +61,9 @@ function Home() {
   /** La carte des autorisations paraît-elle ? `null` tant qu'elle n'a pas lu les autorisations. */
   const [permissionsShown, setPermissionsShown] = useState<boolean | null>(null);
   const gate = profilePromptGate({ memoryNeedsAction, memoryReady: status === 'ready', permissionsShown });
+  /** Le pop-up du profil s'ouvre-t-il ? `null` tant qu'il n'a pas tranché. */
+  const [profileShown, setProfileShown] = useState<boolean | null>(null);
+  const tutorialGate = tutorialCardGate({ memoryNeedsAction, memoryReady: status === 'ready', permissionsShown, profileShown });
 
   return (
     <div className="ui-page ui-page--backdrop home">
@@ -70,7 +77,9 @@ function Home() {
       {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
       {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt onDecided={setPermissionsShown} />}
       {/* Puis le profil, s'il manque un champ, une fois par lancement ; jamais par-dessus ces deux cartes. */}
-      {gate.mount && <ProfilePrompt otherCardShown={gate.otherCardShown} />}
+      {gate.mount && <ProfilePrompt otherCardShown={gate.otherCardShown} onDecided={setProfileShown} />}
+      {/* Puis la leçon du jour des tutoriels, jamais par-dessus l'une d'elles (elle attend alors le lancement suivant). */}
+      <TutorialOfDay gate={tutorialGate} />
 
       <nav className="home-families" aria-label="Sports">
         {families.map((family) => {
