@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 
 const [port, rawGpxPath] = process.argv.slice(2);
 if (!port || !rawGpxPath) {
@@ -26,7 +27,7 @@ writeFileSync(gpxPath, readFileSync(rawGpxPath, 'utf8').replace('<name>Synthéti
 const { send, evaluate, go, settle, waitFor, blockNetwork, importFiles, records, clickText, check, finish, logs, onMessage } = await connect({ port, width: 1400, height: 1000 });
 await blockNetwork();
 // Rangée « avancé » des analyses ouverte d'office, avec « général » : tous les onglets restent dans la barre.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 
 // Les confirmations de la page sont acceptées d'office par la bibliothèque ; pour en refuser une, `confirm` répond
 // non (et note son message), le temps d'y renoncer.

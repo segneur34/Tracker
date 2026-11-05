@@ -18,6 +18,7 @@ import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { getRecorderState, isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, reportStartupError, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
+import { forgetFormerAnalysisTabs } from './hooks/useOpenSections';
 import { startTheme } from './hooks/useTheme';
 import { installBackButton } from './platform/backButton';
 import { isRecordingSession } from './recording/session';
@@ -59,6 +60,11 @@ void initStorage()
     const activitiesUpgraded = upgrade(upgradeStoredActivities);
     const presetsUpgraded = upgrade(upgradeStoredPresets);
     if (activitiesUpgraded || presetsUpgraded) void settingsUpgraded();
+    // Onglets ouverts que les analyses retenaient avant le 05/11 : effacés une fois.
+    upgrade(() => {
+      forgetFormerAnalysisTabs();
+      return false;
+    });
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
         <ErrorBoundary>

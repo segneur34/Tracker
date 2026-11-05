@@ -19,7 +19,7 @@ const HR_AXIS: TrackYAxis[] = [{ id: 'hr', color: HEART_RATE_COLOR, unit: 'bpm',
  * graphes des trois modules.
  */
 export default function HeartRateChart<R extends { index: number; hr: number | null }>({
-  data, zoom, x, zones, thresholds, onShowOnMap, syncId, showReset, style, children,
+  data, zoom, x, zones, thresholds, zoneLines = false, onShowOnMap, syncId, showReset, style, children,
 }: {
   data: R[];
   zoom: ChartZoom;
@@ -29,6 +29,8 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   zones: readonly number[] | null;
   /** Seuils aérobie (S1) et anaérobie (S2), traits noirs ; `null` sans zones. */
   thresholds?: { s1: number; s2: number } | null;
+  /** Limites des zones en traits fins pointillés, en plus des bandes (case « Zones » de l'onglet cardio, 05/11). */
+  zoneLines?: boolean;
   /** « Afficher » ou « +carte », zoomé ou non (voir `ZoomableChart`). */
   onShowOnMap?: () => void;
   syncId?: string;
@@ -45,6 +47,10 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
       {zones?.map((lower, k) => (
         <ReferenceArea key={k} yAxisId="hr" y1={lower} y2={zones[k + 1] ?? TOP_BPM} fill={HEART_ZONE_COLORS[k + 1]} fillOpacity={0.12}
           stroke="none" ifOverflow="hidden" />
+      ))}
+      {zoneLines && zones?.map((lower, k) => (
+        <ReferenceLine key={`limite-${k}`} yAxisId="hr" y={lower} stroke={HEART_ZONE_COLORS[k + 1]} strokeWidth={1} strokeDasharray="4 3"
+          ifOverflow="hidden" />
       ))}
       {thresholds && ([['S1', thresholds.s1], ['S2', thresholds.s2]] as const).map(([name, bpm]) => (
         <ReferenceLine key={name} yAxisId="hr" y={bpm} stroke="var(--ink)" strokeWidth={1.5} ifOverflow="hidden"

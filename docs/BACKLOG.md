@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 166, essai 116, question Q58.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 166, essai 120, question Q58.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -11,13 +11,16 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.78 installée le 05/11 (versionCode 4078) ; l'APK 0.4.79 (paquet « Nouveautés à l'écran », partie 1 : lots 165 et 145) sera construite, pas installée (décision du 05/11), après le commit du 145.
+APK 0.4.79 construite le 05/11 (versionCode 4079, paquet « Nouveautés à l'écran », partie 1 : lots 165 et 145), pas installée (décision du 05/11 : construire seulement) ; 0.4.78 installée. Essais 113 à 118 sur la 0.4.79.
 
 - 165 · [bogue] Retouches d'analyses, en un seul lot : « + carte » après un zoom ouvre toujours le plein écran carte + graphes au téléphone (bogue du 05/11, décision du 25/10 renversée ; banc `zoom-carte` remis d'accord, ex-n° 163), liste des manœuvres de voile repliée sous « Tous les virements (n) », sauts proposés (Enregistrer, onglet « sauts » de Réglages) seulement si la case de l'activité est cochée, défaut coché wing, planche, kite et VTT (pré-réglages version 4, case des sauts du kite et du VTT effacée une fois), appréciations en cinq visages à la place des emoji (ex-n° 41), tranches par kilomètre (ou par mille) repliées dans « tops » en course et à vélo (ex-n° 97) · noté 05/11 · petit · Opus/medium · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/165-retouches-analyses.md
   - essai 113 : zoomer un graphe de course puis « + carte », carte entière à l'écran ou non → le plein écran carte + graphes s'ouvre, tronçon violet cadré
   - essai 114 : Enregistrer en course → pas de case « Mesurer les sauts » ; en wing et en VTT → la case est là, cochée
   - essai 115 : une activité kite ou VTT réglée avant l'APK → sa case « Mesurer les sauts » de Réglages est revenue cochée, ses autres réglages gardés
-- 145 · [idée] Analyses, en un seul lot : 137 bouton « tout fermer », 138 ouverture sur « général » seul, plus de mémoire des onglets avancés (décidé le 03/11), 133 flèches de sens selon le zoom, 139 partage en image (liste entière décidée le 05/11), 134 limites des zones de BPM : tracées sur le graphe cardio de la course, et mode « course à bornes » dans Entraînement (Q54) · noté 03/11 · gros · Opus/high · en cours (05/11, plan dans docs/backlog/145-plan.md) · détail : docs/backlog/145-lot.md
+- 145 · [idée] Analyses, en un seul lot : 137 bouton « tout fermer », 138 ouverture sur « général » seul, plus de mémoire des onglets avancés (décidé le 03/11), 133 flèches de sens selon le zoom, 139 partage en image (liste entière décidée le 05/11), 134 limites des zones de BPM : tracées sur le graphe cardio de la course, et mode « course à bornes » dans Entraînement (Q54) · noté 03/11 · gros · Opus/high · à valider (commit du 05/11, version 0.4.79) · détail : docs/backlog/145-lot.md
+  - essai 116 : image de partage d'une séance de voile sur foil → lignes « Manœuvres réussies », « Pumping », « Vent », « Appréciation » lisibles, sans emoji
+  - essai 117 : pincer la carte d'une analyse → les flèches de sens se raréfient en dézoomant, se densifient en zoomant, sans saccade
+  - essai 118 : rouvrir une analyse → « général » seul, « avancé » fermé ; « tout fermer » replie tout
 
 ## Ensuite
 
@@ -41,6 +44,9 @@ APK 0.4.78 installée le 05/11 (versionCode 4078) ; l'APK 0.4.79 (paquet « Nouv
   - essai 81 : pendant un enregistrement avec la ceinture, couper puis rallumer le Bluetooth → la FC revient seule.
 - 88 · [bogue] Bips doubles et triples (trop vite, trop lent) plus brefs : un « bip-bip » plus court et plus serré, pour le compteur, les balises et les tests ; durées dans core/beepDurations.ts, version native dans TonePlayer.java · noté 29/10 · petit · Sonnet/medium · à valider (commit « Lot 88 », version 0.4.17) ; essais reportés par l'utilisateur le 30/10 · détail : docs/backlog/88-bips-brefs.md
   - essai 79 : Tests › FC max d'exemple, attendre un « trop vite » et un « trop lent » → un bip-bip (deux, puis trois bips) net, nettement plus court et plus serré qu'avant, vibreur compris ; le compteur et les balises sonnent comme avant.
+
+**Une course en famille Entraînement avec la ceinture cardio, APK 0.4.79 ou plus (lot 145)**
+- essai 119 : Enregistrer, ceinture reliée, « Guidage cardio : bornes », mini Z2 et maxi Z4 → bips au-dessus et en dessous des bornes comme pour la zone visée, « Modifier » change les bornes en cours de route.
 
 **Une sortie voile avec la ceinture cardio**
 - essai 75 : onglet graphiques, glisser un doigt sur la vitesse → le curseur suit aussi sur la FC (graphe commun du lot 61 ; le reste du geste a été validé le 30/10 sans ceinture).

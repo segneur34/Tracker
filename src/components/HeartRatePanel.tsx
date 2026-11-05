@@ -61,6 +61,8 @@ interface Props {
   onShowOnMap?: () => void;
   /** Session sans trace (muscu) : ni colonne « Carte » des zones, ni mention de la carte. */
   mapless?: boolean;
+  /** Case « Zones » (course, vélo, fractionné, 05/11) : limites des zones tracées sur la courbe, rangée pour l'activité ; absente : pas de case. */
+  zoneLines?: { on: boolean; onChange: (on: boolean) => void };
   open: boolean;
   onToggle: () => void;
 }
@@ -75,13 +77,15 @@ const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
  * des éléments au graphe (bandes des phases, traits des repères). Elle suit
  * son zoom elle-même : zoomer ne redessine qu'elle (lot 127).
  */
-export function CardioCurve({ minutes, smoothed, zoom: source, zones, thresholds, onShowOnMap, style, children }: {
+export function CardioCurve({ minutes, smoothed, zoom: source, zones, thresholds, zoneLines = false, onShowOnMap, style, children }: {
   minutes: readonly number[];
   smoothed: readonly (number | null)[];
   zoom: ChartZoomSource;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
   thresholds?: { s1: number; s2: number } | null;
+  /** Limites des zones en traits fins (`HeartRateChart`). */
+  zoneLines?: boolean;
   onShowOnMap?: () => void;
   style?: CSSProperties;
   children?: ReactNode;
@@ -105,7 +109,7 @@ export function CardioCurve({ minutes, smoothed, zoom: source, zones, thresholds
   return (
     <>
       <HoverReadout read={read} label="FC" color={HEART_RATE_COLOR} line />
-      <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onShowOnMap={onShowOnMap}
+      <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} zoneLines={zoneLines} onShowOnMap={onShowOnMap}
         style={style} x={elapsedX()}>
         {children}
       </HeartRateChart>
@@ -117,18 +121,20 @@ export function CardioCurve({ minutes, smoothed, zoom: source, zones, thresholds
  * Courbe de FC qui accompagne les graphes de la voile, du surf et de la
  * course : rien sans FC, zones et seuils du pratiquant s'il en a.
  */
-export function CardioCompanion({ minutes, heart, zoom, zones, onShowOnMap, style }: {
+export function CardioCompanion({ minutes, heart, zoom, zones, zoneLines = false, onShowOnMap, style }: {
   minutes: readonly number[];
   heart: SessionHeartRate;
   zoom: ChartZoomSource;
   zones: HeartRateZones | null;
+  /** Limites des zones en traits fins (case « Zones » de l'onglet cardio). */
+  zoneLines?: boolean;
   onShowOnMap?: () => void;
   style?: CSSProperties;
 }) {
   if (!heart.present) return null;
   return (
     <CardioCurve minutes={minutes} smoothed={heart.smoothed} zoom={zoom} zones={zones?.bounds ?? null}
-      thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null} onShowOnMap={onShowOnMap} style={style} />
+      thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null} zoneLines={zoneLines} onShowOnMap={onShowOnMap} style={style} />
   );
 }
 
@@ -140,7 +146,7 @@ export function CardioCompanion({ minutes, heart, zoom, zones, onShowOnMap, styl
  */
 function HeartRatePanel({
   track, minutes, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
-  zoom, onShowOnMap, mapless = false, open, onToggle,
+  zoom, onShowOnMap, mapless = false, zoneLines, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
 
@@ -198,9 +204,15 @@ function HeartRatePanel({
         </div>
       )}
 
+      {zones && zoneLines && (
+        <label className="an-cardio__zone-lines" title="Limites des zones Z1 à Z5 sur la courbe, en traits fins ; retenu pour l'activité.">
+          <input type="checkbox" checked={zoneLines.on} onChange={(e) => zoneLines.onChange(e.target.checked)} />
+          Zones
+        </label>
+      )}
       <div style={{ marginTop: '6px' }}>
         <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
-          onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
+          zoneLines={zones !== null && zoneLines?.on === true} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
       </div>
 
       {zones && zoneTimes ? (

@@ -1,3 +1,5 @@
+import { haversineDistance } from './geo';
+
 /**
  * Constantes d'affichage communes aux modules. Elles ne concernent pas les
  * calculs, seulement la quantité de données envoyée aux graphes et à la
@@ -45,25 +47,53 @@ export const trackBounds = (points: ReadonlyArray<{ lat: number; lon: number }>)
   return south === Infinity ? null : [[south, west], [north, east]];
 };
 
-/** Écart entre deux flèches de cap sur la carte de la voile, en secondes. */
-export const ARROW_EVERY_S = 40;
+/** Écart à l'écran entre deux flèches de sens sur la carte d'une analyse, en pixels (05/11). */
+export const ARROW_SPACING_PX = 80;
+
+/** Flèches de sens au plus sur la carte d'une analyse, quel que soit le zoom. */
+export const ARROW_MAX = 400;
+
+/** Rayon équatorial de la projection des tuiles (Web Mercator, WGS 84), en mètres. */
+const WEB_MERCATOR_RADIUS_M = 6_378_137;
+
+/** Mètres par pixel d'une carte en tuiles de 256 px (Web Mercator) au zoom `zoom`, à la latitude `latDeg`. */
+export const metersPerPixel = (zoom: number, latDeg: number): number =>
+  (2 * Math.PI * WEB_MERCATOR_RADIUS_M * Math.cos((latDeg * Math.PI) / 180)) / (256 * 2 ** zoom);
 
 /**
- * Points qui portent une flèche de cap : le premier point à `everyS`,
- * 2 × `everyS`… secondes du départ, si bien qu'une trace à 1 Hz et à 5 Hz a
- * ses flèches aux mêmes instants (règle 2). Après un trou plus long que
- * l'écart, une seule flèche, au point qui le suit.
+ * Points qui portent une flèche de sens : une flèche dès que la corde depuis la
+ * précédente (le départ pour la première) atteint `spacingM` mètres, si bien
+ * que leur écart à l'écran reste le même à tout zoom. Le dépassement d'un pas
+ * est repris sur l'écart suivant (sans descendre sous la moitié de `spacingM`) :
+ * une trace à 1 Hz et à 5 Hz a ses flèches aux mêmes endroits, à un pas près,
+ * sans que l'écart ne dérive avec la cadence (règle 2). Une
+ * reprise après une pause (`segmentStart`) repart de son point, sans flèche
+ * sur le pas qui l'enjambe. Au-delà de `maxCount`, `maxCount` flèches sont
+ * gardées, également réparties.
  */
-export const arrowIndices = (track: ReadonlyArray<{ timeMs: number }>, everyS: number): number[] => {
-  if (track.length === 0 || !(everyS > 0)) return [];
-  const stepMs = everyS * 1000;
-  const startMs = track[0].timeMs;
+export const arrowIndicesBySpacing = (
+  track: ReadonlyArray<{ lat: number; lon: number; segmentStart?: true }>,
+  spacingM: number,
+  maxCount: number
+): number[] => {
+  if (track.length < 2 || !(spacingM > 0) || !(maxCount >= 1)) return [];
   const indices: number[] = [];
-  let nextMs = startMs + stepMs;
+  let anchor = track[0];
+  let need = spacingM;
   for (let i = 1; i < track.length; i++) {
-    if (track[i].timeMs < nextMs) continue;
+    const point = track[i];
+    if (point.segmentStart) {
+      anchor = point;
+      need = spacingM;
+      continue;
+    }
+    const chordM = haversineDistance(anchor.lat, anchor.lon, point.lat, point.lon);
+    if (chordM < need) continue;
     indices.push(i);
-    nextMs = startMs + (Math.floor((track[i].timeMs - startMs) / stepMs) + 1) * stepMs;
+    anchor = point;
+    need = Math.max(spacingM - (chordM - need), spacingM / 2);
   }
-  return indices;
+  if (indices.length <= maxCount) return indices;
+  const count = Math.floor(maxCount);
+  return Array.from({ length: count }, (_, k) => indices[Math.floor(((k + 1) * indices.length) / count) - 1]);
 };

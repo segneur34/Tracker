@@ -216,10 +216,11 @@ export const settingsActivityCount = (file: SettingsFile): number => {
 /**
  * Choix retenus d'une fois sur l'autre, qui ne sont pas des réglages : le
  * support ou l'activité du module (`sport`, l'ancienne clé, et
- * `moduleActivity`), l'activité proposée à l'enregistrement et la dernière
- * séance lancée au compteur, du fractionné comme du Timer.
+ * `moduleActivity`), l'activité proposée à l'enregistrement, la dernière
+ * séance lancée au compteur, du fractionné comme du Timer, et les dernières
+ * bornes de la course à bornes.
  */
-const REMEMBERED_CHOICES = ['sport', 'moduleActivity', 'recordActivity', 'lastIntervalWorkout', 'lastTimerWorkout'];
+const REMEMBERED_CHOICES = ['sport', 'moduleActivity', 'recordActivity', 'lastIntervalWorkout', 'lastTimerWorkout', 'heartBands'];
 
 /**
  * Empreinte des réglages qui voyagent, sans les choix retenus : ouvrir une

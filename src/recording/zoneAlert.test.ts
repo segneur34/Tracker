@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { startZoneAlert, stepZoneAlert, zoneAlertParams, type ZoneAlertParams, type ZoneSignal, type ZoneTarget } from './zoneAlert';
+import {
+  armableBand, bandLabel, boundBpm, outOfRangePick, picksBand, sanitizeBand, sanitizeBandPicks, startZoneAlert, stepZoneAlert, validBand, zoneAlertParams, zoneBand,
+  type HeartBand, type ZoneAlertParams, type ZoneSignal, type ZoneTarget,
+} from './zoneAlert';
 
 // Z1 dès 100, Z2 dès 120, Z3 dès 140, Z4 dès 160, Z5 dès 180.
 const BOUNDS = [100, 120, 140, 160, 180];
@@ -118,5 +121,136 @@ describe('stepZoneAlert', () => {
   it('délais surchargés', () => {
     const params = zoneAlertParams({ smoothS: 5, gapS: 10 }, { firstDelayS: 5, secondDelayS: 20, repeatEveryS: 30, repeatCount: 1 });
     expect(times(run(every(1, 0, 300, () => 175), 3, params))).toEqual([8, 28, 58]);
+  });
+});
+
+/** Joue une suite de mesures sur une bande (course à bornes) ; `changes` remplace la bande à l'heure donnée, compte remis à zéro. */
+const runBand = (samples: Sample[], band: HeartBand, changes: { t: number; band: HeartBand }[] = []): { t: number; signal: ZoneSignal }[] => {
+  let state = startZoneAlert();
+  let current = band;
+  const out: { t: number; signal: ZoneSignal }[] = [];
+  for (const s of samples) {
+    const change = changes.find((c) => c.t === s.t);
+    if (change) {
+      current = change.band;
+      state = { ...startZoneAlert(), lastSignalMs: state.lastSignalMs };
+    }
+    const next = stepZoneAlert(state, { timeMs: s.t * 1000, bpm: s.bpm, active: s.active ?? true }, { band: current, params: PARAMS });
+    state = next.state;
+    if (next.signal) out.push({ t: s.t, signal: next.signal });
+  }
+  return out;
+};
+
+describe('course à bornes (05/11)', () => {
+  it('une zone visée est la bande de son bas à son haut : mêmes signaux', () => {
+    expect(zoneBand(3, BOUNDS)).toEqual({ minBpm: 140, maxBpm: 159 });
+    expect(zoneBand(5, BOUNDS)).toEqual({ minBpm: 180, maxBpm: null });
+    expect(zoneBand(0, BOUNDS)).toBeNull();
+    for (const bpm of [139, 140, 159, 160, 175]) {
+      expect(runBand(every(1, 0, 300, () => bpm), zoneBand(3, BOUNDS)!)).toEqual(run(every(1, 0, 300, () => bpm), 3));
+    }
+  });
+
+  it('mini seul : trop bas seulement', () => {
+    expect(times(runBand(every(1, 0, 600, () => 130), { minBpm: 140, maxBpm: null }))).toEqual([13, 53, 113, 173, 233]);
+    expect(runBand(every(1, 0, 600, () => 210), { minBpm: 140, maxBpm: null })).toEqual([]);
+    expect(runBand(every(1, 0, 60, () => 130), { minBpm: 140, maxBpm: null })[0].signal).toBe('accelere');
+  });
+
+  it('maxi seul : trop haut seulement', () => {
+    expect(runBand(every(1, 0, 60, () => 170), { minBpm: null, maxBpm: 160 })[0].signal).toBe('trop');
+    expect(runBand(every(1, 0, 600, () => 60), { minBpm: null, maxBpm: 160 })).toEqual([]);
+    // Borne comprise : 160 n'est pas au-dessus.
+    expect(runBand(every(1, 0, 600, () => 160), { minBpm: null, maxBpm: 160 })).toEqual([]);
+  });
+
+  it('mini au-dessus du maxi, ou aucune borne : refusée, aucun signal', () => {
+    expect(validBand({ minBpm: 160, maxBpm: 140 })).toBe(false);
+    expect(validBand({ minBpm: null, maxBpm: null })).toBe(false);
+    expect(validBand({ minBpm: 150, maxBpm: 150 })).toBe(true);
+    expect(validBand({ minBpm: 10, maxBpm: null })).toBe(false);
+    expect(runBand(every(1, 0, 300, () => 220), { minBpm: 160, maxBpm: 140 })).toEqual([]);
+  });
+
+  it('boundBpm : bord d’une zone, seuil, BPM saisi', () => {
+    const zones = { bounds: BOUNDS, s1: 148, s2: 171 };
+    expect(boundBpm('2', 'min', zones)).toBe(120);
+    expect(boundBpm('2', 'max', zones)).toBe(139);
+    expect(boundBpm('5', 'max', zones)).toBeNull();
+    expect(boundBpm('s1', 'min', zones)).toBe(148);
+    expect(boundBpm('s2', 'max', zones)).toBe(171);
+    expect(boundBpm('bpm', 'max', zones, 152.4)).toBe(152);
+    expect(boundBpm('bpm', 'max', null, 152)).toBe(152);
+    // Hors plage : gardé tel quel, pour que la bande soit refusée (pas effacé sans un mot).
+    expect(boundBpm('bpm', 'min', zones, 400)).toBe(400);
+    expect(boundBpm('bpm', 'min', zones, null)).toBeNull();
+    expect(boundBpm('aucune', 'min', zones)).toBeNull();
+    expect(boundBpm('3', 'min', null)).toBeNull();
+  });
+
+  it('bande changée en direct : le compte repart de zéro', () => {
+    // Trop haut dès 3 s sous 150 ; à 20 s, maxi relevé à 160 (rien) puis, à 30 s, ramené à 150 : la sortie repart de
+    // zéro, premier signal vers 43 s (FC relissée), deuxième 40 s après, pas le rappel de 60 s d'avant.
+    const signals = runBand(every(1, 0, 120, () => 155), { minBpm: null, maxBpm: 150 }, [
+      { t: 20, band: { minBpm: null, maxBpm: 160 } },
+      { t: 30, band: { minBpm: null, maxBpm: 150 } },
+    ]);
+    expect(signals.map((s) => s.signal)).toEqual(['trop', 'trop', 'trop']);
+    expect(signals[0].t).toBe(13);
+    expect(signals[1].t).toBeGreaterThanOrEqual(40);
+    expect(signals[1].t).toBeLessThanOrEqual(43);
+    expect(signals[2].t - signals[1].t).toBe(40);
+  });
+
+  it('bande relue et dite en clair', () => {
+    expect(sanitizeBand({ minBpm: 140, maxBpm: 160 })).toEqual({ minBpm: 140, maxBpm: 160 });
+    expect(sanitizeBand({ maxBpm: 160 })).toEqual({ minBpm: null, maxBpm: 160 });
+    expect(sanitizeBand({ minBpm: '140' })).toBeNull();
+    expect(sanitizeBand(3)).toBeNull();
+    expect(bandLabel({ minBpm: 140, maxBpm: 160 })).toBe('140–160 bpm');
+    expect(bandLabel({ minBpm: 140, maxBpm: null })).toBe('140 bpm et plus');
+    expect(bandLabel({ minBpm: null, maxBpm: 160 })).toBe('160 bpm au plus');
+  });
+});
+
+describe('choix des bornes retenus (05/11)', () => {
+  const zones = { bounds: BOUNDS, s1: 148, s2: 171 };
+
+  it('bande des choix : zone, seuil, BPM saisi ; une zone suit le pratiquant', () => {
+    expect(picksBand({ min: { choice: '2', bpm: 999 }, max: { choice: 's2', bpm: null } }, zones)).toEqual({ minBpm: 120, maxBpm: 171 });
+    expect(picksBand({ min: { choice: 'aucune', bpm: null }, max: { choice: 'bpm', bpm: 155 } }, null)).toEqual({ minBpm: null, maxBpm: 155 });
+    expect(picksBand({ min: { choice: '2', bpm: 120 }, max: { choice: 'aucune', bpm: null } }, { ...zones, bounds: [105, 125, 145, 165, 185] }).minBpm).toBe(125);
+  });
+
+  it('choix relus contrôlés', () => {
+    expect(sanitizeBandPicks({ min: { choice: '3', bpm: 140 }, max: { choice: 'bpm', bpm: 160 } })).toEqual({ min: { choice: '3', bpm: 140 }, max: { choice: 'bpm', bpm: 160 } });
+    // Pas de maxi « Z5 » : la borne illisible vaut « aucune ».
+    expect(sanitizeBandPicks({ min: { choice: 's1', bpm: 'x' }, max: { choice: '5', bpm: 1 } })).toEqual({ min: { choice: 's1', bpm: null }, max: { choice: 'aucune', bpm: null } });
+    expect(sanitizeBandPicks({})).toBeNull();
+    expect(sanitizeBandPicks('140')).toBeNull();
+  });
+});
+
+describe('bande armée des choix (05/11)', () => {
+  const zones = { bounds: BOUNDS, s1: 148, s2: 171 };
+
+  it('un BPM saisi hors de 25 à 250 est signalé et la bande n’est pas armée', () => {
+    const picks = { min: { choice: 'bpm' as const, bpm: 300 }, max: { choice: 'bpm' as const, bpm: 160 } };
+    expect(outOfRangePick(picks.min)).toBe(true);
+    expect(outOfRangePick(picks.max)).toBe(false);
+    expect(armableBand(picks, zones)).toBeNull();
+    expect(armableBand({ ...picks, min: { choice: 'bpm', bpm: 20 } }, zones)).toBeNull();
+  });
+
+  it('un « BPM » laissé vide n’arme pas l’autre borne seule', () => {
+    expect(armableBand({ min: { choice: 'bpm', bpm: null }, max: { choice: 'bpm', bpm: 160 } }, zones)).toBeNull();
+  });
+
+  it('mini au-dessus du maxi refusé ; une bande juste est armée', () => {
+    expect(armableBand({ min: { choice: 'bpm', bpm: 170 }, max: { choice: 'bpm', bpm: 160 } }, zones)).toBeNull();
+    expect(armableBand({ min: { choice: '3', bpm: null }, max: { choice: 'bpm', bpm: 160 } }, zones)).toEqual({ minBpm: 140, maxBpm: 160 });
+    expect(armableBand({ min: { choice: 'aucune', bpm: null }, max: { choice: 's2', bpm: null } }, zones)).toEqual({ minBpm: null, maxBpm: 171 });
+    expect(armableBand({ min: { choice: 'aucune', bpm: null }, max: { choice: 'aucune', bpm: null } }, zones)).toBeNull();
   });
 });

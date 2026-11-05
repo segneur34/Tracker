@@ -25,6 +25,24 @@ const START_MS = Date.parse('2026-09-20T10:00:00Z');
 const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): RawTrackPoint[] => phasesTrack(phases, hz, { startMs: START_MS, climbPerS });
 
 describe('summarizeSession', () => {
+  it('range le meilleur kilomètre à pied et les meilleures 5 min à vélo (version 17), à 1 Hz comme à 5 Hz', () => {
+    for (const hz of [1, 5]) {
+      // Course : 10 min à 3 m/s, dont 200 s à 4 m/s (800 m) ; le meilleur kilomètre : 800 m à 4 m/s et 200 m à 3 m/s.
+      const run = summarizeSession(buildTrack([[200, 3], [200, 4], [200, 3]], hz), 'running')!;
+      expect(run.best1kmS).toBeCloseTo(200 + 200 / 3, 0);
+      expect(run.best5minMs).toBeUndefined();
+      // Vélo : 10 min à 7 m/s, dont 5 min à 9 m/s.
+      const ride = summarizeSession(buildTrack([[150, 7], [300, 9], [150, 7]], hz), 'cycling')!;
+      expect(ride.best5minMs).toBeCloseTo(9, 1);
+      expect(ride.best1kmS).toBeUndefined();
+    }
+    // Moins d'un kilomètre, moins de 5 min : rien.
+    expect(summarizeSession(buildTrack([[200, 3]]), 'running')!.best1kmS).toBeUndefined();
+    expect(summarizeSession(buildTrack([[200, 7]]), 'cycling')!.best5minMs).toBeUndefined();
+    // Ni en voile ni en surf.
+    expect(summarizeSession(buildTrack([[600, 6]]), 'wingfoil')!.best1kmS).toBeUndefined();
+  });
+
   it('range la FC de la session, rien sans FC', () => {
     const points = buildTrack([[600, 3]]).map((p, i) => ({ ...p, hr: 140 + (i % 20) }));
     const hr = summarizeSession(points, 'running')!.heartRate!;

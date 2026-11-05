@@ -1,18 +1,17 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Activity } from '../core/activities';
-import { maskAdvancedTabs, maskHiddenTabs, shownTabs, type AnalysisTab } from '../core/analysisTabs';
-import { useAdvancedTabs } from './useAdvancedTabs';
+import {
+  closeAllTabs, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
+  type AnalysisTab, type AnalysisTabsState,
+} from '../core/analysisTabs';
 import { useResetChartHover } from './useChartHover';
 import { useMapHighlight, type HighlightKeys } from './useMapHighlight';
-import { useOpenSections } from './useOpenSections';
 import { effectiveTabChoices } from './useSportSettings';
 
 export interface AnalysisTabsInput<K extends string> {
-  /** Clé des onglets ouverts mémorisés (`tracker.sections`) : ne pas la renommer. */
-  storageId: string;
   /** Onglets du module, dans l'ordre de sa barre ; ils peuvent changer avec l'activité (course et vélo). */
   tabs: readonly AnalysisTab<K>[];
-  /** Onglets ouverts à la première visite (`tabDefaults`) : une constante du module. */
+  /** Onglets ouverts à chaque ouverture (`tabDefaults`) : une constante du module. */
   defaults: Record<K, boolean>;
   activity: Activity;
   /** Trace affichée : une autre session s'ouvre sur « général », et le point survolé s'efface. */
@@ -21,25 +20,44 @@ export interface AnalysisTabsInput<K extends string> {
 
 /**
  * Onglets d'un module d'analyse, les mêmes pour les quatre : sections ouvertes
- * mémorisées (`useOpenSections`), celles cachées par l'activité dans Réglages
- * fermées (`maskHiddenTabs`), celles de la rangée « avancé » repliées tant
- * qu'elle est fermée (`maskAdvancedTabs`, `useAdvancedTabs`) ; la surbrillance
- * unique de la carte, rattachée aux onglets ouverts (`useMapHighlight`) ; le
- * point survolé des graphes effacé à chaque session (`useResetChartHover`).
+ * en mémoire vive, rendues aux défauts (« général » seul, « avancé » fermé) à
+ * chaque ouverture d'une analyse et à chaque autre session (05/11,
+ * `tabsStateFor`) ; celles cachées par l'activité dans Réglages fermées
+ * (`maskHiddenTabs`), celles de la rangée « avancé » repliées tant qu'elle est
+ * fermée (`maskAdvancedTabs`) ; la surbrillance unique de la carte, rattachée
+ * aux onglets ouverts (`useMapHighlight`) ; le point survolé des graphes effacé
+ * à chaque session (`useResetChartHover`).
  * `T` donne le type des clés de surbrillance d'un onglet (`zones` : une zone de pente).
  */
-export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = Record<never, never>>({ storageId, tabs, defaults, activity, sessionKey }: AnalysisTabsInput<K>) => {
-  const { open: storedOpen, toggle, set } = useOpenSections<K>(storageId, defaults);
+export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = Record<never, never>>({ tabs, defaults, activity, sessionKey }: AnalysisTabsInput<K>) => {
+  const [stored, setStored] = useState<AnalysisTabsState<K>>(() => initialTabsState(defaults, sessionKey));
+  // Une autre session est reconnue dès le rendu où sa clé change : « général » seul, sans monter d'abord les
+  // panneaux de l'ancienne ; l'état rangé suit au premier geste (`change`).
+  const state = tabsStateFor(stored, defaults, sessionKey);
+  /** Modifie l'état de la trace affichée (celui d'une autre trace repart des défauts). */
+  const change = useCallback(
+    (next: (current: AnalysisTabsState<K>) => AnalysisTabsState<K>) => setStored((current) => next(tabsStateFor(current, defaults, sessionKey))),
+    // `defaults` est une constante de module chez tous les appelants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionKey]
+  );
+  const toggle = useCallback((key: K) => change((s) => ({ ...s, open: { ...s.open, [key]: !s.open[key] } })), [change]);
+  /** Ouvrir ou fermer des clés données, sans les basculer. */
+  const set = useCallback((patch: Partial<Record<K, boolean>>) => change((s) => ({ ...s, open: { ...s.open, ...patch } })), [change]);
+  /** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » reste comme il est. */
+  const closeAll = useCallback(() => change((s) => ({ ...s, open: closeAllTabs(s.open) })), [change]);
+
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const setGeneral = useCallback((shown: boolean) => set({ general: shown } as Partial<Record<K, boolean>>), [set]);
-  const advanced = useAdvancedTabs(sessionKey, setGeneral);
-  // Nouvelle session : « général » ouvert dès ce rendu, avant que l'effet de `useAdvancedTabs` ne l'écrive.
-  const fresh = advanced.fresh;
+  /** Rangée « avancé » : l'ouvrir ferme « général », la refermer le rouvre ; refermée, ses onglets et leurs panneaux se replient, gardés pour sa réouverture. */
+  const toggleAdvanced = useCallback(
+    () => change((s) => ({ ...s, advanced: !s.advanced, open: { ...s.open, general: generalOpenAfterAdvanced(!s.advanced) } })),
+    [change]
+  );
+  const advanced = useMemo(() => ({ open: state.advanced, toggle: toggleAdvanced }), [state.advanced, toggleAdvanced]);
   const open = useMemo(
-    () => maskAdvancedTabs(maskHiddenTabs(fresh ? { ...storedOpen, general: true } : storedOpen, tabs, tabChoices), tabs, advanced.open),
-    [storedOpen, tabs, tabChoices, advanced.open, fresh]
+    () => maskAdvancedTabs(maskHiddenTabs(state.open, tabs, tabChoices), tabs, state.advanced),
+    [state.open, tabs, tabChoices, state.advanced]
   );
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme. */
   const highlight = useMapHighlight<K, T>(open);
@@ -61,5 +79,5 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
     [tabs, tabChoices]
   );
 
-  return { open, toggle, toggleOf, set, tabChoices, advanced, shown, highlight };
+  return { open, toggle, toggleOf, set, closeAll, tabChoices, advanced, shown, highlight };
 };

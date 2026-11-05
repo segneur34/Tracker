@@ -30,9 +30,8 @@ const b = await connect({ port, width: 1400, height: 1000, shotDir });
 const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importFiles, records, shoot, close, logs } = b;
 const tiles = await fakeTiles(b, { delayMs: 400 });
 
-// Rangée « avancé » ouverte d'office, comme `survol.mjs` ; crochet des cartes de Leaflet.
+// Crochet des cartes de Leaflet (la rangée « avancé », qu'on croyait ouverte ici, se refermait à chaque session neuve depuis le 23/10).
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `
-  try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}
   (() => {
     let stored;
     window.__cartes = [];

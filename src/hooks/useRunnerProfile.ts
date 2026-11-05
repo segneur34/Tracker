@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { Activity } from '../core/activities';
-import { isValidThresholds } from '../core/heartRate';
+import { isValidThresholds, type HeartRateZones } from '../core/heartRate';
 import { getSportProfile } from '../core/sportProfiles';
 import { validProfileNumber } from '../library/profilePrompt';
 import { ROOT_GOAL } from '../library/rootGrowth';
@@ -28,9 +28,12 @@ const readStored = (raw: unknown): RunnerProfile => storedRunnerProfile(raw, ROO
 /** Profil du pratiquant, hors composant (statistiques du direct). */
 export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE, readStored);
 
+/** Zones et seuils cardiaques du pratiquant pour une activité (décalage compris), hors composant. */
+export const readHeartRateZones = (activity: Activity): HeartRateZones | null =>
+  runnerHeartRateZones(readRunnerProfile(), getSportProfile(activity.base).heartRate, effectiveHrOffset(activity));
+
 /** Bornes des zones cardiaques du pratiquant pour une activité, hors composant (chiffres du direct). */
-export const readHeartRateZoneBounds = (activity: Activity): number[] | null =>
-  runnerHeartRateZones(readRunnerProfile(), getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))?.bounds ?? null;
+export const readHeartRateZoneBounds = (activity: Activity): number[] | null => readHeartRateZones(activity)?.bounds ?? null;
 
 export const useRunnerProfile = () => {
   const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE, readStored);

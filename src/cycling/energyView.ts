@@ -82,6 +82,7 @@ export const cyclingEnergyView = ({ track, grades, gradeZones, activityMask, run
       { key: 'effort', label: 'Énergie de pédalage', value: `${kcal(energy.netJ)} kcal`, detail: kj(energy.netJ) },
       { key: 'total', label: TOTAL_ENERGY_LABEL, value: `${kcal(energy.totalJ)} kcal`, detail: kj(energy.totalJ) },
     ],
+    avgPowerW: energy.movingTimeS > 0 ? energy.mechanicalJ / energy.movingTimeS : null,
     zones: energy.zones.map((z) => ({
       zone: z.zone,
       energy: `${kcal(z.netJ)} kcal`,

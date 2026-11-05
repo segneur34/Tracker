@@ -31,6 +31,7 @@ import HeartRateChart from '../components/HeartRateChart';
 import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
+import TrackArrows from '../components/TrackArrows';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import TrackChart, { type TrackSeries } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
@@ -69,6 +70,7 @@ import { SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
 import ZoomView from '../components/ZoomView';
 import type { ChartZoom } from '../hooks/useChartZoom';
+import { shareExtraStats } from '../library/shareStats';
 
 /**
  * Analyse d'une session de surf (§10, point 97), selon le patron commun
@@ -175,8 +177,8 @@ function SurfModule() {
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
   // Onglets de l'activité, rangée « avancé », surbrillance unique de la carte, point survolé effacé à chaque session.
-  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
-    storageId: STORAGE_ID, tabs: SURF_TABS, defaults: SURF_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
+  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs({
+    tabs: SURF_TABS, defaults: SURF_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
@@ -246,6 +248,8 @@ function SurfModule() {
     ] : []),
     { key: 'distance', label: 'Distance totale', value: formatDistance(totalDistanceM, distanceUnit) },
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
+    // Appréciation (05/11), comme le résumé d'une fiche.
+    ...shareExtraStats('surf', { rating: draft.edits.notes.rating }),
   ] : [];
 
   /**
@@ -445,6 +449,7 @@ function SurfModule() {
     <AnalysisBaseLayers family="surf" track={track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
+      <TrackArrows track={track} />
       <TrackSpanLayer track={track} spans={shownSpans} />
       <TopsHighlight tops={tops} selected={topShown} />
     </AnalysisBaseLayers>
@@ -476,7 +481,7 @@ function SurfModule() {
         legend: track.length === 0 ? null : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel="rame et attente" />,
       }}
       tabs={summary && analysis && surfProfile ? {
-        sections, open, onToggle: toggle, advanced, accent: ACCENT, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: ACCENT, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>

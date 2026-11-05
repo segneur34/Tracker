@@ -11,12 +11,13 @@ import {
   computeActiveTimeMs,
   thresholdActivityMask,
 } from '../core/sessionStats';
-import { bestWindowSpeedMs } from '../core/topSegments';
+import { bestWindowSpeedMs, computeAllTopSegments } from '../core/topSegments';
 import {
   SAILING_SPORTS,
   defaultActiveThresholdOf,
   getSportProfile,
   hasActiveThreshold,
+  sportTreatment,
   type ElevationProfile,
   type HeartRateProfile,
 } from '../core/sportProfiles';
@@ -195,6 +196,7 @@ export const summarizeSession = (
   const cadenceParams = sport ? getSportProfile(sport).cadence : null;
   const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;
   const test = options.test ? summaryOfTest(fitnessTestResults(track, options.test, FITNESS_TESTS[options.test.protocol])) : null;
+  const tops = summaryTops(analyzed.track, cum, sport);
 
   return {
     calcVersion: SUMMARY_CALC_VERSION,
@@ -212,7 +214,28 @@ export const summarizeSession = (
     ...(heartRate ? { heartRate } : {}),
     ...(cadence ? { cadence } : {}),
     ...(test ? { test } : {}),
+    ...tops,
   };
+};
+
+/**
+ * Meilleur kilomètre en temps (à pied) et meilleures 5 min en vitesse (à vélo)
+ * du résumé, les tops de « général » de l'analyse (`computeAllTopSegments`, sur
+ * la distance retenue, règle 6), pour l'image de partage (version 17) ; rien
+ * ailleurs, ni s'ils ne sont pas atteints.
+ */
+const summaryTops = (
+  track: TrackPoint[],
+  cum: ReturnType<typeof buildCumulativeTrack>,
+  sport: SportType | null
+): Pick<SessionSummary, 'best1kmS' | 'best5minMs'> => {
+  const treatment = sport ? sportTreatment(sport) : null;
+  const key = treatment === 'course' ? 'd1km' : treatment === 'velo' ? 't5min' : null;
+  const target = key && sport ? getSportProfile(sport).topTargets.find((t) => t.key === key) : undefined;
+  if (!key || !target) return {};
+  const speed = computeAllTopSegments(track, cum, [target], (ms) => ms, { count: 1, decimals: 3 })[key]?.[0]?.speed ?? null;
+  if (speed === null || !(speed > 0)) return {};
+  return key === 'd1km' ? { best1kmS: target.value / speed } : { best5minMs: speed };
 };
 
 /**

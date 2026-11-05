@@ -9,7 +9,8 @@ const savedCount = (n: number) => `${n} séance${n > 1 ? 's' : ''} gardée${n > 
 /**
  * Tuiles de la page Entraînement, sous son bandeau, chacune vers sa page
  * (lot I du 25/10, deux tuiles) : « Fractionné et tests » (séances du
- * compteur d'intervalles, et les tests FC max et FC repos sous elles),
+ * compteur d'intervalles, la course à bornes de BPM, guidée sur Enregistrer,
+ * et les tests FC max et FC repos sous elles),
  * « Muscu et timer » (séances du Timer, lancées seules ou en muscu, avec la
  * ceinture). La liste des sessions suit, inchangée.
  */
@@ -23,7 +24,7 @@ function TrainingHub() {
         <span className="train-tile__text">
           <span className="ui-subtitle">{WORKOUT_LISTS.fractionne.title}</span>
           <span className="train-tile__sub">
-            Compteur d'intervalles : {savedCount(presets.length)} ; FC max, FC repos
+            Compteur d'intervalles : {savedCount(presets.length)} ; course à bornes de BPM ; FC max, FC repos
           </span>
         </span>
         <IconChevronRight size={14} className="train-tile__go" />

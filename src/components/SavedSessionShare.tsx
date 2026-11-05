@@ -68,7 +68,10 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
           title: labels.title,
           subtitle: labels.subtitle,
           fileName: safeFileName(labels.baseName),
-          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units, hasActiveThreshold(getSportProfile(sport)), foil)),
+          // Appréciation et force du vent des notes, vent saisi de la fiche (lot 145).
+          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units, hasActiveThreshold(getSportProfile(sport)), foil, {
+            rating: record?.notes?.rating ?? null, windLevel: record?.notes?.windLevel ?? null, windDeg: record?.analysis?.windDeg ?? null,
+          })),
         },
       });
     } catch (err) {

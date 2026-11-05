@@ -877,6 +877,33 @@ describe('zone visée', () => {
     expect(againZone.getZoneAlertTarget()).toBe(0);
     await again.stopRecording();
   });
+
+  it('course à bornes : la bande, changée en direct, est reprise après une chute (05/11)', async () => {
+    const zone = await import('./useZoneAlert');
+    zone.startZoneAlertGuide();
+    zone.armHeartBand({ minBpm: 140, maxBpm: 160 });
+    const live = fakeSource();
+    await recorder.startRecording(activity, live);
+    run(live.emit, 0, 5, 1);
+    await settle();
+    expect(zone.getHeartGuide()).toEqual({ minBpm: 140, maxBpm: 160 });
+    zone.setLiveBand({ minBpm: null, maxBpm: 150 });
+    expect(zone.getHeartGuide()).toEqual({ minBpm: null, maxBpm: 150 });
+    // Mini au-dessus du maxi : ignorée.
+    zone.setLiveBand({ minBpm: 170, maxBpm: 150 });
+    expect(zone.getHeartGuide()).toEqual({ minBpm: null, maxBpm: 150 });
+
+    services.gps = true;
+    const fresh = await reload();
+    const freshZone = await import('./useZoneAlert');
+    freshZone.startZoneAlertGuide();
+    expect(freshZone.getHeartGuide()).toBe(0);
+    await fresh.recoverInterruptedRecording();
+    expect(freshZone.getHeartGuide()).toEqual({ minBpm: null, maxBpm: 150 });
+    expect(freshZone.getZoneAlertTarget()).toBe(0);
+    await fresh.stopRecording();
+    expect(freshZone.getHeartGuide()).toBe(0);
+  });
 });
 
 describe('guidages rejoués en silence', () => {

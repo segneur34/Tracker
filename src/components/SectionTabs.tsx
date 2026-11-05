@@ -30,6 +30,7 @@ function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var
           key={section.key}
           type="button"
           className="ui-tab"
+          data-tab={section.key}
           onClick={() => onToggle(section.key)}
           aria-pressed={open[section.key]}>
           {section.label}

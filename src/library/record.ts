@@ -90,8 +90,12 @@ export const RECORD_VERSION = 1;
  * reste dans un vol ou une glisse (Q56 : vols du surf dans le résumé) ; le
  * lecteur GPX écarte un point à la date illisible ou qui recule (tops, temps
  * actif) ; le point qui suit un trou prend le cap du pas suivant (vent).
+ *
+ * 17 (5 novembre 2026, lot 145) : meilleur kilomètre en temps à pied
+ * (`best1kmS`) et meilleures 5 min en vitesse à vélo (`best5minMs`), pour
+ * l'image de partage d'une session dont l'analyse n'est pas ouverte.
  */
-export const SUMMARY_CALC_VERSION = 16;
+export const SUMMARY_CALC_VERSION = 17;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -140,6 +144,16 @@ export interface SessionSummary {
   cadence?: SummaryCadence;
   /** Test guidé de la fiche (`test`) : FC max et dernier palier tenu ; absent sans test. */
   test?: SummaryTest;
+  /** À pied (traitement course) : temps du meilleur kilomètre, en secondes (tops, `d1km`) ; absent s'il n'est pas couru (version 17). */
+  best1kmS?: number;
+  /** À vélo : vitesse des meilleures 5 min, en m/s (tops, `t5min`) ; absente si la session est plus courte (version 17). */
+  best5minMs?: number;
+  /** Voile sur foil, posé par l'analyse (capteurs du `.imu`) : part du vol pompée, de 0 à 1 (lot 145). */
+  pumpingShare?: number;
+  /** Voile, posé par l'analyse : direction du vent retenue (saisie, sinon estimée fiable), en degrés (lot 145). */
+  windDirDeg?: number;
+  /** Vélo, posé par l'analyse : puissance mécanique moyenne en mouvement, en watts, d'après le poids du pratiquant (lot 145). */
+  avgPowerW?: number;
   /**
    * Empreinte des réglages qui ont produit ce résumé (`summaryOptionsKey` : seuil, allure imposée,
    * foil et seuil de vague en surf), lot 37. Une empreinte qui ne correspond plus aux réglages
@@ -209,6 +223,20 @@ const readManeuverResults = (raw: unknown): ManeuverResults | null => {
   if (!counts.every((n) => isFiniteNumber(n) && Number.isInteger(n) && n >= 0)) return null;
   return { tackSuccess, tackFail, jibeSuccess, jibeFail } as ManeuverResults;
 };
+
+/**
+ * Chiffres du résumé posés par l'analyse ouverte, pas par le calcul du GPX : ils
+ * survivent à un résumé refait (`withSummary`) et se fondent à part (`recordMerge`).
+ */
+export const ANALYSIS_SUMMARY_FIELDS = ['maneuverCount', 'maneuverResults', 'pumpingShare', 'windDirDeg', 'avgPowerW'] as const;
+
+/**
+ * Chiffres du partage contrôlés à la relecture, posés par l'analyse ou par le calcul (version 17) : hors de sa
+ * plage, le champ est écarté. Meilleur kilomètre de 1 min à 1 h ; meilleures 5 min de 0,5 à 40 m/s.
+ */
+const SHARE_NUMBER_RANGES = {
+  pumpingShare: [0, 1], windDirDeg: [0, 360], avgPowerW: [0, 3000], best1kmS: [60, 3600], best5minMs: [0.5, 40],
+} as const;
 
 export const sameManeuverResults = (a: ManeuverResults | undefined, b: ManeuverResults | undefined): boolean =>
   a === b || (a !== undefined && b !== undefined && a.tackSuccess === b.tackSuccess && a.tackFail === b.tackFail
@@ -451,6 +479,10 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const test = readSummaryTest(raw.test);
   if (test) summary.test = test;
   else delete summary.test;
+  for (const [field, [min, max]] of Object.entries(SHARE_NUMBER_RANGES) as [keyof typeof SHARE_NUMBER_RANGES, readonly [number, number]][]) {
+    const value = raw[field];
+    if (!isFiniteNumber(value) || value < min || value > max) delete summary[field];
+  }
   if (typeof raw.optionsKey !== 'string') delete summary.optionsKey;
   const activitySettings = readActivitySettings(raw.activitySettings);
   if (activitySettings) summary.activitySettings = activitySettings;
@@ -1061,6 +1093,12 @@ export interface RecordPatch {
   analysis?: SessionAnalysis | null;
   maneuverCount?: number;
   maneuverResults?: ManeuverResults;
+  /** Part du vol pompée (voile sur foil), posée par l'analyse ; `null` la retire. */
+  pumpingShare?: number | null;
+  /** Vent retenu par l'analyse (voile), en degrés ; `null` le retire. */
+  windDirDeg?: number | null;
+  /** Puissance moyenne en mouvement (vélo), posée par l'analyse ; `null` la retire. */
+  avgPowerW?: number | null;
   /** Voies trouvées pour la trace ; `null` les retire. */
   surfaces?: SessionSurfaces | null;
   /** Altitude du terrain ; `null` la retire. */
@@ -1134,6 +1172,12 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   }
   if (patch.maneuverResults !== undefined && !sameManeuverResults(patch.maneuverResults, next.summary.maneuverResults)) {
     next = { ...next, summary: { ...next.summary, maneuverResults: patch.maneuverResults } };
+  }
+  for (const field of ['pumpingShare', 'windDirDeg', 'avgPowerW'] as const) {
+    const value = patch[field];
+    if (value === undefined || value === (next.summary[field] ?? null)) continue;
+    const { [field]: _previous, ...others } = next.summary;
+    next = { ...next, summary: value === null ? others : { ...others, [field]: value } };
   }
   const activityChanged = patch.activityId !== undefined && patch.activityId !== next.activityId;
   if (activityChanged) next = { ...next, activityId: patch.activityId ?? null };

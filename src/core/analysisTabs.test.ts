@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, generalOpenAfterAdvanced, initialTabsState, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -208,17 +208,41 @@ describe('« avancé » et « général »', () => {
     expect(generalOpenAfterAdvanced(true)).toBe(false);
     expect(generalOpenAfterAdvanced(false)).toBe(true);
   });
+});
 
-  it('une autre session est neuve, la même ne l’est pas', () => {
-    expect(isNewAnalysisSession('a|1', 'b|2')).toBe(true);
-    expect(isNewAnalysisSession(undefined, 'a|1')).toBe(true);
-    expect(isNewAnalysisSession(null, 'a|1')).toBe(true);
-    expect(isNewAnalysisSession('a|1', 'a|1')).toBe(false);
+describe('état des onglets : « général » seul à chaque ouverture (05/11)', () => {
+  const defaults = tabDefaults(SURF_TABS);
+
+  it('part des défauts, « avancé » fermé, sans partager l’objet des défauts', () => {
+    const state = initialTabsState(defaults, 'a|1');
+    expect(state).toEqual({ key: 'a|1', open: defaults, advanced: false });
+    expect(state.open).not.toBe(defaults);
+    expect(Object.entries(state.open).filter(([, v]) => v).map(([k]) => k)).toEqual(['general']);
   });
 
-  it('une trace pas encore lue ne compte pas', () => {
-    expect(isNewAnalysisSession('a|1', null)).toBe(false);
-    expect(isNewAnalysisSession(undefined, null)).toBe(false);
+  it('une autre session repart des défauts', () => {
+    const state = { key: 'a|1', open: { ...defaults, general: false, vagues: true }, advanced: true };
+    expect(tabsStateFor(state, defaults, 'b|2')).toEqual(initialTabsState(defaults, 'b|2'));
+  });
+
+  it('la même session, ou une trace pas encore lue, garde l’état', () => {
+    const state = { key: 'a|1', open: { ...defaults, vagues: true }, advanced: true };
+    expect(tabsStateFor(state, defaults, 'a|1')).toBe(state);
+    expect(tabsStateFor(state, defaults, null)).toBe(state);
+  });
+
+  it('une première trace lue repart des défauts', () => {
+    const state = initialTabsState(defaults, null);
+    expect(tabsStateFor(state, defaults, 'a|1')).toEqual(initialTabsState(defaults, 'a|1'));
+  });
+});
+
+describe('closeAllTabs : « tout fermer »', () => {
+  it('ferme chaque onglet, « général » compris', () => {
+    const open = { ...tabDefaults(LAND_TABS.course), tops: true, cardio: true };
+    const closed = closeAllTabs(open);
+    expect(Object.keys(closed)).toEqual(Object.keys(open));
+    expect(Object.values(closed).every((v) => v === false)).toBe(true);
   });
 });
 

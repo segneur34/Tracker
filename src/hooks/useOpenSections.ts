@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { jsonStore } from '../platform/storage';
 import { useStoredRecord } from './useStoredRecord';
 
 /**
@@ -25,4 +26,20 @@ export const useOpenSections = <K extends string>(moduleId: string, defaults: Re
   );
 
   return { open: value, toggle, set, closeAll };
+};
+
+/** Clés de `tracker.sections` où les onglets ouverts des analyses étaient retenus jusqu'au 05/11 (`useOpenSections`, « avancé »). */
+const FORMER_TAB_KEYS = ['analyses-avance', 'sailing-onglets', 'running', 'cycling', 'intervals', 'muscu', 'surf'];
+
+/**
+ * Efface au démarrage les onglets ouverts que les analyses retenaient avant le
+ * 05/11 : ces clés-là seulement, les replis des graphes (`running.graphes`…), la
+ * barre cachée (`analyses-barre`) et les tailles des panneaux restent. Rien
+ * n'est écrit quand elles sont déjà parties : le nettoyage ne se fait qu'une fois.
+ */
+export const forgetFormerAnalysisTabs = (): void => {
+  const sections = jsonStore.read<Record<string, unknown>>('tracker.sections');
+  if (!sections || typeof sections !== 'object' || !FORMER_TAB_KEYS.some((key) => Object.hasOwn(sections, key))) return;
+  const kept = Object.fromEntries(Object.entries(sections).filter(([key]) => !FORMER_TAB_KEYS.includes(key)));
+  jsonStore.write('tracker.sections', kept);
 };

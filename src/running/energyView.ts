@@ -65,6 +65,8 @@ export interface EnergyViewData {
   warning: EnergyWarning | null;
   /** Rappel du modèle, sous le panneau. */
   note: string;
+  /** Vélo : puissance mécanique moyenne en mouvement, en watts (image de partage, lot 145) ; absente sinon ou sans poids. */
+  avgPowerW?: number | null;
 }
 
 /** Ce que le calcul retient du pratiquant (`RunnerProfile`). */

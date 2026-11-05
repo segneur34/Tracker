@@ -8,6 +8,7 @@
 //  3. FC max et FC de repos saisies : le tableau des zones calées sur S1 et S2 (réserve cardiaque), « Voir » qui trace les passages
 //     d'une zone sur la carte, effacés à la fermeture de l'onglet ; dérive et nuage FC / vitesse en course ;
 //     un profil repris d'ailleurs, FC de repos écrite en texte (lot 150) : écartée, des zones plausibles ;
+//     case « Zones » du panneau (05/11) : décochée par défaut, cochée des limites de plus (au plus cinq), retenue au rechargement ;
 //  4. la courbe de FC dans l'onglet des graphes des trois modules ;
 //  5. Réglages : « Seuils cardio » (S1 et S2, zones, Personnaliser, Revenir au calcul), la ligne « Seuils cardio »
 //     de la carte d'une activité (−8 en voile), la case « Ceinture cardio » en voile et en surf, les chiffres
@@ -21,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
@@ -65,8 +67,8 @@ const clickButton = (scopeTitle, label, nth = 0) => evaluate(`(() => {
 const setRunner = (profile) => evaluate(`(() => { localStorage.setItem('tracker.runnerProfile', ${JSON.stringify(JSON.stringify({ me: profile }))}); return 'ok'; })()`);
 const runner = () => evaluate(`JSON.parse(localStorage.getItem('tracker.runnerProfile') ?? '{}').me ?? null`);
 
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+// Rangée « avancé » des analyses ouverte d'office, onglets posés dans `tracker.sections` rejoués à chaque analyse (`lib/onglets.mjs`, 05/11) ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 // --- Sessions synthétiques ---
@@ -214,6 +216,25 @@ check('course : surbrillance effacée à la fermeture', (await violetPaths()) ==
 console.log('  rouvre cardio :', await clickTab('cardio'));
 await settle({ max: 800 });
 check('course : surbrillance pas ramenée', (await violetPaths()) === violetBefore);
+
+// --- 3 bis. Limites des zones sur la courbe (case « Zones », 05/11) ---
+const CARDIO_SCOPE = `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Cardio'))?.closest('.an-carte-panels > *')`;
+const zoneBox = () => evaluate(`(() => { const b = ${CARDIO_SCOPE}?.querySelector('.an-cardio__zone-lines input'); return b ? b.checked : null; })()`);
+const refLines = () => evaluate(`${CARDIO_SCOPE}?.querySelectorAll('.recharts-reference-line').length ?? -1`);
+const linesOff = await refLines();
+check(`course : case « Zones » décochée par défaut (${await zoneBox()})`, (await zoneBox()) === false);
+await evaluate(`(() => { ${CARDIO_SCOPE}?.querySelector('.an-cardio__zone-lines input')?.click(); return 'ok'; })()`);
+await settle({ max: 800 });
+const linesOn = await refLines();
+// Une limite hors de la plage de la courbe n'est pas tracée : au plus cinq de plus.
+check(`course : « Zones » cochée, des limites de plus (${linesOff} → ${linesOn})`, linesOn > linesOff && linesOn <= linesOff + 5);
+await go(paths.course, 6000);
+await clickTab('cardio');
+await settle({ max: 1000 });
+check(`course : « Zones » retenue au rechargement (${await zoneBox()}, ${await refLines()} traits)`, (await zoneBox()) === true && (await refLines()) === linesOn);
+await evaluate(`(() => { ${CARDIO_SCOPE}?.querySelector('.an-cardio__zone-lines input')?.click(); return 'ok'; })()`);
+await settle({ max: 800 });
+check('course : « Zones » décochée de nouveau', (await zoneBox()) === false && (await refLines()) === linesOff);
 
 // --- 4. Courbe dans les graphes ---
 await go(paths.course, 6000);

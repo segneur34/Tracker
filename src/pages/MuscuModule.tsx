@@ -38,6 +38,7 @@ import { useSportSettings } from '../hooks/useSportSettings';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import { SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
+import { shareExtraStats } from '../library/shareStats';
 
 /**
  * Analyse d'une session sans trace (muscu, lot I du 25/10) : la page
@@ -104,8 +105,8 @@ function MuscuModule() {
   );
 
   // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC. Le point survolé s'efface à chaque session.
-  const { open, toggle, toggleOf, advanced, shown } = useAnalysisTabs({
-    storageId: PAGE.storageId, tabs: MUSCU_TABS, defaults: MUSCU_SECTION_DEFAULTS, activity, sessionKey,
+  const { open, toggle, toggleOf, closeAll, advanced, shown } = useAnalysisTabs({
+    tabs: MUSCU_TABS, defaults: MUSCU_SECTION_DEFAULTS, activity, sessionKey,
   });
   const sections = useMemo(() => shown((s) => s.key !== 'cardio' || heart.present), [shown, heart.present]);
 
@@ -120,6 +121,7 @@ function MuscuModule() {
   const smoothed = analysis?.smoothed;
   const phaseKinds = useMemo(() => [...new Set(analysis?.phases.map((p) => p.kind) ?? [])], [analysis]);
 
+  const rating = draft.edits.notes.rating;
   /** Chiffres de « général », repris par l'image de partage (mêmes clés que `summaryShareStats`). */
   const generalStats: ShareStat[] = useMemo(() => {
     if (!analysis) return [];
@@ -130,8 +132,10 @@ function MuscuModule() {
       { key: 'heartRate', label: 'FC moyenne', value: stats ? `${Math.round(stats.avgBpm)} bpm` : '—' },
       { key: 'heartRateMax', label: 'FC max', value: stats ? `${stats.maxBpm} bpm` : '—' },
       { key: 'reps', label: 'Répétitions', value: analysis.reps > 0 ? String(analysis.reps) : '—' },
+      // Appréciation (05/11), comme le résumé d'une fiche.
+      ...shareExtraStats('muscu', { rating }),
     ];
-  }, [analysis]);
+  }, [analysis, rating]);
 
   return (
     <AnalysisShell title={PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
@@ -141,7 +145,7 @@ function MuscuModule() {
       )}
       // Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={analysis ? {
-        sections, open, onToggle: toggle, advanced, accent: PAGE.accent, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: PAGE.accent, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>

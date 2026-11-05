@@ -449,7 +449,7 @@ if (MESURES.includes('seuil')) {
 if (MESURES.includes('zoom')) {
   console.log('\n== Zoom d\'un graphe (double-clic) de la course de 2 h avec FC, onglets graphiques et cardio ouverts ==');
   await throttle(1);
-  await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); s['analyses-avance'] = { ouvert: true }; s.running = { ...(s.running ?? {}), general: true, graphiques: true, cardio: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); return 'ok'; })()`);
+  await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); s.running = { ...(s.running ?? {}), general: true, graphiques: true, cardio: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); return 'ok'; })()`);
   await go(runUrl, 30000);
   await waitFor(`document.querySelectorAll('.an-sheet__stats .an-sheet__stat-value').length >= 3`, { timeout: 60000, label: 'analyse course' });
   console.log('onglets ouverts       :', await openTabs(['général', 'graphiques', 'cardio']));

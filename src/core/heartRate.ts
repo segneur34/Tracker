@@ -18,8 +18,8 @@ export interface HeartRatePoint {
 }
 
 /** FC plausible d'une mesure ; au-delà, un défaut de la ceinture ou du fichier. */
-const MIN_PLAUSIBLE_BPM = 25;
-const MAX_PLAUSIBLE_BPM = 250;
+export const MIN_PLAUSIBLE_BPM = 25;
+export const MAX_PLAUSIBLE_BPM = 250;
 
 const validBpm = (hr: number | undefined): hr is number =>
   hr !== undefined && isFinite(hr) && hr >= MIN_PLAUSIBLE_BPM && hr <= MAX_PLAUSIBLE_BPM;

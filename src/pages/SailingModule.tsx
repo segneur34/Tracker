@@ -3,9 +3,8 @@ import { plural, roundTo } from '../core/basics';
 import { useCallback, useEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
-import { Marker, CircleMarker, Popup } from 'react-leaflet';
+import { CircleMarker, Popup } from 'react-leaflet';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
-import L from 'leaflet';
 import type { DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
@@ -14,6 +13,7 @@ import { carriedThresholdNote } from '../library/summaryOptions';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
+import { shareExtraStats } from '../library/shareStats';
 import { effectiveHrOffset, useSportSettings } from '../hooks/useSportSettings';
 import { useShownJumps } from '../hooks/useSessionJumps';
 import { useFlightPumping, useSessionPumping } from '../hooks/useSessionPumping';
@@ -21,7 +21,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
-import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
+import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { SAILING_TABS, tabDefaults, type SailingTab } from '../core/analysisTabs';
 import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { nearestIndexAtTime } from '../core/search';
@@ -77,6 +77,7 @@ import type { ShareStat } from '../core/shareImage';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
+import TrackArrows from '../components/TrackArrows';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import Button from '../components/ui/Button';
@@ -147,25 +148,6 @@ const WIND_AXES: TrackYAxis[] = [{
 const WIND_SERIES: TrackSeries<WindGraphPoint>[] = [
   { kind: 'line', key: 'angle', name: 'angle', color: WIND_COLOR, width: 2, activeDotR: 6, dot: maneuverDot },
 ];
-
-/** Icônes de flèche de cap, une par degré, faites une fois pour toutes les traces. */
-const arrowIcons = new Map<number, L.DivIcon>();
-const createArrowIcon = (bearing: number) => {
-  const deg = Math.round(bearing) % 360;
-  let icon = arrowIcons.get(deg);
-  if (!icon) {
-    icon = L.divIcon({
-      className: 'custom-arrow',
-      html: `<svg width="12" height="12" viewBox="0 0 24 24" style="transform: rotate(${deg}deg); display: block;">
-               <path d="M12 0L24 24L12 18L0 24Z" fill="#222" stroke="#fff" stroke-width="2"/>
-             </svg>`,
-      iconSize: [12, 12],
-      iconAnchor: [6, 6]
-    });
-    arrowIcons.set(deg, icon);
-  }
-  return icon;
-};
 
 function SailingModule() {
   /** Réglages de l'activité de voile, lus une fois ici et passés à `useSailingSession`. */
@@ -296,8 +278,8 @@ function SailingModule() {
   const { runner, retainHr, heart, hrZones } = useAnalysisHeart(track, profile.heartRate, effectiveHrOffset(activity));
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session ; une seule surbrillance
   // sur la carte, effacée quand son onglet se ferme (`useMapHighlight`).
-  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
-    storageId: 'sailing-onglets', tabs: SAILING_TABS, defaults: SAILING_PANEL_DEFAULTS, activity, sessionKey,
+  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs({
+    tabs: SAILING_TABS, defaults: SAILING_PANEL_DEFAULTS, activity, sessionKey,
   });
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
   const jumps = useShownJumps({
@@ -343,6 +325,17 @@ function SailingModule() {
   const {
     byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
   } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
+  /** Part du vol pompée (capteurs du `.imu`), sur foil avec le pumping mesuré : image de partage et résumé de la fiche (lot 145). */
+  const sharedPumpingShare = foil && pumpSummary ? pumpSummary.pumpShare : null;
+  // Part du vol pompée et vent retenu recopiés dans le résumé, pour le partage d'une session dont l'analyse n'est pas
+  // ouverte ; mêmes conditions que les manœuvres (fiche de ce fichier, pas de brouillon, seuil rejoint).
+  useEffect(() => {
+    if (!loadedFromMemory || !sessionFile || dirty || thresholdPending) return;
+    updateSessionRecord(sessionFile, {
+      pumpingShare: sharedPumpingShare === null ? null : Math.round(sharedPumpingShare * 1000) / 1000,
+      windDirDeg: currentWindValue === null ? null : Math.round(normalizeDeg(currentWindValue)),
+    });
+  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, sharedPumpingShare, currentWindValue]);
   /** Vol ou série montrés sur la carte (onglets « vols » et « pumping »), ou l'un des deux podiums (`PumpingHighlightKey`). */
   const flightShown = highlight.shownIn('vols');
   const pumpingShown = highlight.shownIn('pumping');
@@ -421,6 +414,16 @@ function SailingModule() {
       { key: 'activeAverage', label: `Moyenne active (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
     ] : []),
     ...heartRateStat,
+    // Lignes ajoutées le 05/11 (lot 145), les mêmes que celles du résumé d'une fiche (`summaryShareStats`).
+    ...shareExtraStats('voile', {
+      maneuvers: maneuverStats
+        ? { success: maneuverStats.tackSuccess + maneuverStats.jibeSuccess, total: maneuverStats.tackSuccess + maneuverStats.tackFail + maneuverStats.jibeSuccess + maneuverStats.jibeFail }
+        : null,
+      pumpingShare: sharedPumpingShare,
+      windDeg: currentWindValue,
+      windLevel: edits.notes.windLevel,
+      rating: edits.notes.rating,
+    }, { foil, units: { speed: speedUnit, distance: distanceUnit } }),
   ] : [];
   /** Virements ou empannages réussis sur le total, et leur part ; « — » sans vent connu. */
   const maneuverRate = (summary: { success: number; fail: number } | null): string => {
@@ -453,14 +456,6 @@ function SailingModule() {
     { key: 'jibes', label: 'Empannages réussis', value: maneuverRate(maneuverSummary.jibe) },
     ...heartRateStat,
   ] : [];
-  const arrowLayers = useMemo(
-    () => arrowIndices(trackData, ARROW_EVERY_S).map((index, idx) => {
-      const point = trackData[index];
-      return <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />;
-    }),
-    [trackData]
-  );
-
   /** Podiums montrables sur la carte : les tops de vitesse, puis ceux de VMG (près, portant), par clé de cible. */
   const mapTops = useMemo(
     () => ({ ...stats?.tops, ...(vmgStats ? { vmgUpwind: vmgStats.topsUpwind, vmgDownwind: vmgStats.topsDownwind } : {}) }),
@@ -1006,7 +1001,7 @@ function SailingModule() {
     <AnalysisBaseLayers family="voile" track={trackData} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} family={'voile'} />}
-      {arrowLayers}
+      {trackData.length > 0 && <TrackArrows track={trackData} />}
       {staticMapLayers}
       <JumpMapLayer track={trackData} jumps={jumps.jumps} shownJump={jumps.shownJump} podiumShown={jumps.podiumShown} />
       <TrackSpanLayer track={track} spans={shownFlightSpans} />
@@ -1070,7 +1065,7 @@ function SailingModule() {
       }}
       // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={stats ? {
-        sections: sailingPanels, open, onToggle: toggle, advanced, panels: (
+        sections: sailingPanels, open, onToggle: toggle, onCloseAll: closeAll, advanced, panels: (
           <>
             {open.general && (
               <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>

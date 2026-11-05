@@ -10,7 +10,9 @@
 //  3. « tops » coché et « vagues » caché en surf, « tops » coché en course, « vmg » caché en voile, rangés ;
 //  4. le surf : « tops » entre « rame » et « graphiques », « vagues » absent même laissé ouvert, le tableau,
 //     « Voir » puis « Masquer », surbrillance effacée quand l'onglet se ferme ; la course : « tops » et ses
-//     distances ; la voile : ni onglet ni panneau VMG ;
+//     distances, « tout fermer » après la flèche (tout fermé, « avancé » tel quel), puis la même course rouverte
+//     sans `lib/onglets.mjs` : « général » seul, « avancé » fermé, anciens onglets retenus effacés (05/11) ; la voile :
+//     ni onglet ni panneau VMG ;
 //  5. à 390×844 : Réglages et l'analyse de surf sans débordement ;
 //  6. « Par défaut » (menu « … ») de la carte Surf : choix effacés, « tops » de nouveau caché.
 import { execFileSync } from 'node:child_process';
@@ -19,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
@@ -58,8 +61,8 @@ const panel = (title) => evaluate(`(() => {
 })()`);
 
 // Le blocage par hôte ne vaut qu'avec `Network.enable` (fait par `connect`) : sans lui, Overpass répond parfois (504), et le relevé change.
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+// Rangée « avancé » des analyses ouverte d'office, onglets posés dans `tracker.sections` rejoués à chaque analyse (`lib/onglets.mjs`, 05/11) ; `general.mjs` éprouve la rangée fermée.
+let ongletsId = (await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS })).result.identifier;
 await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 // --- Sessions synthétiques ---
@@ -205,7 +208,8 @@ await go(paths.surf, 6000);
 const surfTabs = await tabLabels();
 console.log('\nsurf, onglets :', surfTabs);
 check('surf : « tops » entre « rame » et « graphiques », sans « vagues »', /rame \| tops \| graphiques/.test(surfTabs) && !/vagues/.test(surfTabs));
-const memorized = await evaluate(`JSON.parse(localStorage.getItem('tracker.sections') ?? '{}').surf?.vagues`);
+// Ouvert au relevé du point 1 : l'application ne le retient plus (05/11), le banc le rejoue (`lib/onglets.mjs`).
+const memorized = await evaluate(`JSON.parse(localStorage.getItem('banc.onglets') ?? '{}').surf?.vagues`);
 check(`« vagues » laissé ouvert (${memorized}), son panneau absent`, memorized === true && (await panel('Vagues')) === '(absent)');
 console.log('tops :', await clickTab('tops'));
 await settle({ max: 1500 });
@@ -240,6 +244,36 @@ await settle({ max: 1500 });
 const runTops = await panel('Meilleurs segments');
 console.log('panneau :', runTops.slice(0, 500));
 check('course : 400 m vers 18 km/h, semi et marathon', /400 m\s+18[.,]0/.test(runTops) && /semi/.test(runTops) && /marathon/.test(runTops));
+
+// « tout fermer » (05/11) : après la flèche qui cache la barre ; ferme chaque onglet, « général » compris, « avancé » tel quel.
+const firstRow = () => evaluate(`[...(document.querySelector('.an-tabs > .ui-tabs')?.children ?? [])].map((b) => b.classList.contains('an-tabs-hide') ? '(flèche)' : b.textContent.trim()).join(' | ')`);
+const pressedTabs = () => evaluate(`[...document.querySelectorAll('.an-tabs [aria-pressed="true"]')].map((t) => t.textContent.trim()).join(', ')`);
+const advancedState = () => evaluate(`document.querySelector('.an-tabs-advanced-toggle')?.getAttribute('aria-expanded') ?? '(absent)'`);
+const row1 = await firstRow();
+console.log('première rangée :', row1, '· ouverts :', await pressedTabs());
+check('« tout fermer » juste après la flèche', /^général \| avancé \| \(flèche\) \| tout fermer$/.test(row1), row1);
+const advancedBefore = await advancedState();
+console.log('tout fermer :', await evaluate(`(() => { const b = document.querySelector('.an-tabs-close-all'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await settle({ max: 1000 });
+check('« tout fermer » : plus aucun onglet ouvert', (await pressedTabs()) === '', await pressedTabs());
+check('« tout fermer » : aucun panneau', (await evaluate(`document.querySelectorAll('.an-carte-panels > *').length`)) === 0);
+check(`« tout fermer » : « avancé » inchangé (${advancedBefore})`, (await advancedState()) === advancedBefore);
+// Réouverture de la même session sans le banc qui rejoue les onglets : « général » seul, « avancé » fermé (05/11),
+// et plus rien des onglets d'avant dans `tracker.sections` (effacés au démarrage).
+await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: ongletsId });
+await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); s.running = { tops: true, cardio: true }; s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); return 'ok'; })()`);
+await go(paths.course, 6000);
+check('réouverture : « général » seul', (await pressedTabs()) === 'général', await pressedTabs());
+check('réouverture : « avancé » fermé', (await advancedState()) === 'false', await advancedState());
+const former = await evaluate(`Object.keys(JSON.parse(localStorage.getItem('tracker.sections') ?? '{}')).filter((k) => k === 'running' || k === 'analyses-avance').join(', ')`);
+check('anciens onglets retenus effacés au démarrage', former === '', former);
+await evaluate(`(() => { document.querySelector('.an-tabs-advanced-toggle')?.click(); return 'ok'; })()`);
+await settle({ max: 500 });
+console.log('tops (avancé ouvert) :', await clickTab('tops'));
+await settle({ max: 800 });
+await go(paths.course, 6000);
+check('même session rouverte après « tops » : « général » seul', (await pressedTabs()) === 'général', await pressedTabs());
+ongletsId = (await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS })).result.identifier;
 
 await go(paths.voile, 7000);
 const sailTabs = await tabLabels();

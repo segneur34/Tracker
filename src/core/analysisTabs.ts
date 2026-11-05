@@ -139,7 +139,7 @@ export const activityTabs = (profile: SportProfile, options: { foil: boolean; ju
  * Onglets ouverts à la première visite d'un module : ceux de la première rangée
  * (`primary`), tous les autres fermés. Plusieurs listes pour un module qui en
  * change avec l'activité (course et vélo : « cadence » n'est qu'à pied) ; le
- * résultat sert de défauts fixes aux sections mémorisées (`useOpenSections`).
+ * résultat sert de défauts fixes à l'état des onglets (`initialTabsState`).
  */
 export const tabDefaults = <K extends string>(...lists: readonly (readonly AnalysisTab<K>[])[]): Record<K, boolean> => {
   const defaults = {} as Record<K, boolean>;
@@ -185,7 +185,7 @@ export const toggleTabChoice = (choices: TabChoices | null, tab: AnalysisTab): T
 };
 
 /**
- * Sections ouvertes mémorisées, les onglets cachés fermés : un onglet caché
+ * Sections ouvertes, les onglets cachés fermés : un onglet caché
  * n'affiche pas son panneau, même laissé ouvert, et sa surbrillance s'efface.
  * Rend l'objet reçu tel quel quand rien n'est caché.
  */
@@ -206,7 +206,7 @@ export const maskHiddenTabs = <K extends string>(
 
 /**
  * Sections ouvertes, celles de la rangée « avancé » fermées tant qu'elle l'est :
- * refermer « avancé » replie ses onglets et leurs panneaux, mémorisés pour sa
+ * refermer « avancé » replie ses onglets et leurs panneaux, gardés pour sa
  * réouverture (demande du 22/10). Rend l'objet reçu tel quel quand rien ne change.
  */
 export const maskAdvancedTabs = <K extends string>(
@@ -229,8 +229,30 @@ export const maskAdvancedTabs = <K extends string>(
 export const generalOpenAfterAdvanced = (advancedOpen: boolean): boolean => !advancedOpen;
 
 /**
- * Session autre que la dernière analysée (`sessionKey` de la trace) : elle s'ouvre
- * sur « général », « avancé » fermé (23/10). Une trace pas encore lue n'en est pas une.
+ * Onglets d'une analyse ouverte, en mémoire vive (05/11) : toute ouverture
+ * d'une analyse rend « général » seul ouvert, « avancé » fermé ; rien n'est
+ * retenu d'une session à l'autre ni d'une visite à l'autre. `key` est la trace
+ * dont l'état vient (`sessionKey`).
  */
-export const isNewAnalysisSession = (last: string | null | undefined, key: string | null): boolean =>
-  key !== null && key !== (last ?? null);
+export interface AnalysisTabsState<K extends string> {
+  key: string | null;
+  open: Record<K, boolean>;
+  advanced: boolean;
+}
+
+/** État d'ouverture : les défauts du module (`tabDefaults`), « avancé » fermé. */
+export const initialTabsState = <K extends string>(defaults: Record<K, boolean>, key: string | null): AnalysisTabsState<K> => ({
+  key, open: { ...defaults }, advanced: false,
+});
+
+/**
+ * État valable pour la trace `key` : celui reçu s'il en vient, sinon les défauts
+ * (une autre session s'ouvre sur « général » seul). Une trace pas encore lue
+ * (`null`) garde l'état reçu. Rend l'objet reçu tel quel quand rien ne change.
+ */
+export const tabsStateFor = <K extends string>(state: AnalysisTabsState<K>, defaults: Record<K, boolean>, key: string | null): AnalysisTabsState<K> =>
+  key !== null && key !== state.key ? initialTabsState(defaults, key) : state;
+
+/** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » ne change pas (05/11). */
+export const closeAllTabs = <K extends string>(open: Record<K, boolean>): Record<K, boolean> =>
+  Object.fromEntries(Object.keys(open).map((key) => [key, false])) as Record<K, boolean>;

@@ -1,5 +1,5 @@
 import { roundTo, toFixedNumber } from '../core/basics';
-import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import GradeLegendRow from '../components/GradeLegendRow';
@@ -47,6 +47,7 @@ import SurfaceLayer from '../components/SurfaceLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import KilometerSplitsTable from '../components/KilometerSplitsTable';
 import { kilometerSplits } from '../running/kilometerSplits';
+import TrackArrows from '../components/TrackArrows';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import { zoomHint } from '../components/zoomHint';
 import { inChartView } from '../components/chartHover';
@@ -79,7 +80,8 @@ import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
-import { useLibrarySession } from '../hooks/useSessionLibrary';
+import { updateSessionRecord, useLibrarySession } from '../hooks/useSessionLibrary';
+import { shareExtraStats } from '../library/shareStats';
 import { useShownJumps } from '../hooks/useSessionJumps';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
@@ -231,11 +233,14 @@ function LandModule({ family }: { family: LandFamily }) {
     profile, thresholdOverride, terrainStepM,
     speedUnit, distanceUnit,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, energyModel, gearLabels, gearGroups, hrOffsetBpm,
+    hrZoneLines, setHrZoneLines,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const gpx = useGpxSession({ profile });
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
   const { runner, age, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
+  /** Case « Zones » de l'onglet cardio : limites des zones sur ses courbes de FC, rangée pour l'activité (05/11). */
+  const zoneLinesChoice = useMemo(() => ({ on: hrZoneLines, onChange: setHrZoneLines }), [hrZoneLines, setHrZoneLines]);
   /** Cadence à pied (`cad` du GPX : capteurs du téléphone, montre) : sa courbe dans les graphes et l'onglet « cadence ». */
   const cadenceParams = profile.cadence;
   const cadence = useMemo(
@@ -274,8 +279,8 @@ function LandModule({ family }: { family: LandFamily }) {
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session. Une seule surbrillance
   // sur la carte : un top, une zone de pente, une répétition ou un revêtement ; choisir l'une retire les
   // autres, fermer son onglet l'efface.
-  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
-    storageId: page.storageId, tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
+  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
+    tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
@@ -398,12 +403,12 @@ function LandModule({ family }: { family: LandFamily }) {
     () => (open.zones && zoneStats.length > 0 ? ungradedMovingS(gpx.track, grades, activityMask, profile.grade) : 0),
     [open.zones, zoneStats, gpx.track, grades, activityMask, profile.grade]
   );
-  /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
+  /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive ; sa moyenne va aussi à l'image de partage, onglets fermés compris. */
   const cadenceAnalysis = useMemo(
-    () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
+    () => (cadencePresent && cadenceParams && cadence
       ? analyzeCadence(gpx.track, cadence.spm, activityMask, grades.length > 0 ? { values: grades, zones: profile.grade } : null, cadenceParams)
       : null),
-    [open.cadence, open.general, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades, profile.grade]
+    [cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades, profile.grade]
   );
   /** Passages de la tranche de cadence choisie, tracés sur la carte tant que l'onglet « cadence » est ouvert. */
   const cadencePaths = useMemo(
@@ -492,16 +497,16 @@ function LandModule({ family }: { family: LandFamily }) {
     [family, open.tops, gpx.track, distanceUnit, stats?.hasElevation, elevation.smoothed, elevationProfile.minGainM, activityMask]
   );
 
-  /** Meilleurs segments de l'onglet « général », en m/s : ceux de `OVERVIEW_TOP_KEYS`, onglet « tops » caché compris. */
+  /** Meilleurs segments de l'onglet « général », en m/s : ceux de `OVERVIEW_TOP_KEYS`, onglet « tops » caché compris ; l'image de partage les reprend, « général » fermé compris. */
   const overviewTargets = useMemo(
     () => profile.topTargets.filter((t) => OVERVIEW_TOP_KEYS[model.treatment].includes(t.key)),
     [profile.topTargets, model.treatment]
   );
   const overviewTops = useMemo(
-    () => (open.general && overviewTargets.length > 0 && gpx.track.length > 1
+    () => (overviewTargets.length > 0 && gpx.track.length > 1
       ? computeAllTopSegments(gpx.track, cumulative, overviewTargets, (ms) => ms, { decimals: 3 })
       : null),
-    [open.general, overviewTargets, gpx.track, cumulative]
+    [overviewTargets, gpx.track, cumulative]
   );
 
   /**
@@ -693,7 +698,25 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
+    // Cadence à pied (05/11), sous la clé du résumé (`summaryShareStats`).
+    ...(cadenceAnalysis ? [{ key: 'cadence', label: 'Cadence', value: `${Math.round(cadenceAnalysis.averageSpm)} pas/min` }] : []),
+    // Lignes ajoutées le 05/11 (lot 145), les mêmes que celles du résumé d'une fiche.
+    ...shareExtraStats(model.treatment, {
+      best1kmS: (() => { const s = overviewTops?.d1km?.[0]?.speed ?? null; return s !== null && s > 0 ? 1000 / s : null; })(),
+      best5minMs: overviewTops?.t5min?.[0]?.speed ?? null,
+      avgPowerW: energy?.avgPowerW ?? null,
+      rating: draft.edits.notes.rating,
+    }, { foil: false, units: { speed: speedUnit, distance: distanceUnit } }),
   ] : [];
+
+  // Puissance moyenne (vélo) recopiée dans le résumé de la fiche, pour l'image de partage d'une session dont
+  // l'analyse n'est pas ouverte ; pas pendant un brouillon (poids du vélo non enregistré), ni sans poids.
+  const avgPowerW = model.treatment === 'velo' ? energy?.avgPowerW ?? null : null;
+  const powerFile = shownFile !== null && gpx.fileName === shownFile && !draft.dirty ? shownFile : null;
+  useEffect(() => {
+    if (powerFile === null || model.treatment !== 'velo' || energy === null) return;
+    updateSessionRecord(powerFile, { avgPowerW: avgPowerW === null ? null : Math.round(avgPowerW) });
+  }, [powerFile, model.treatment, energy, avgPowerW]);
 
   /**
    * Chiffres de l'onglet « général » (22/10) : l'essentiel, le détail restant dans « avancé ».
@@ -877,7 +900,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'fc':
         return (
           <HeartRateChart data={v.rows} zoom={v.z} x={distX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
+            zoneLines={hrZoneLines} syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
             style={chartBox(CHART_HEIGHT_PX)}>
             {markLines('hr')}
           </HeartRateChart>
@@ -1023,7 +1046,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'energie':
         return energyChart;
       case 'cardio':
-        return <CardioCompanion minutes={trackMinutes} heart={heart} zoom={cardioZoom} zones={hrZones} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />;
+        return <CardioCompanion minutes={trackMinutes} heart={heart} zoom={cardioZoom} zones={hrZones} zoneLines={hrZoneLines} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />;
       case 'test':
         return sessionTest ? (
           <FitnessTestCurves track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
@@ -1041,6 +1064,7 @@ function LandModule({ family }: { family: LandFamily }) {
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       {/* Pente : ses tronçons colorés sur le même canevas que la vitesse, pas en milliers de traits SVG (27/10). */}
       {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : <TrackSegmentsLayer segments={gradeMapPaths ?? mapSegments} weight={5} family={family} />}
+      <TrackArrows track={gpx.track} />
       {/* Surbrillances : une seule à la fois (`useMapHighlight`), leur ordre ne se voit pas. */}
       {zonePaths.map((path, idx) => (
         <HighlightPath key={`zone-${selectedZone}-${idx}`} positions={path} color={HIGHLIGHT_SHOWN_COLOR} />
@@ -1081,7 +1105,7 @@ function LandModule({ family }: { family: LandFamily }) {
       }}
       // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={stats ? {
-        sections, open, onToggle: toggle, advanced, accent: page.accent, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: page.accent, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
@@ -1159,7 +1183,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.cardio && heart.present && (
               <CardioTab id={panelId('cardio')} track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} runner={runner}
                 onRetainHrMax={retainSessionHrMax} zone={hrZone}
-                efficiency={heartEfficiency}
+                efficiency={heartEfficiency} zoneLines={zoneLinesChoice}
                 zoom={cardioZoom} onShowOnMap={showCardioOnMap}
                 open={open.cardio} onToggle={toggleOf('cardio')} />
             )}

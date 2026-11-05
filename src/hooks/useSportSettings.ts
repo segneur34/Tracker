@@ -19,6 +19,7 @@ import {
   type IntervalPreset, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import type { LiveFieldKey } from '../recording/liveFields';
+import { sanitizeBandPicks, type HeartBandPicks } from '../recording/zoneAlert';
 import type { MarkGuideSettings } from '../recording/markGuide';
 import type { JumpSettings } from '../recording/jumpSettings';
 import type { BikeType } from '../cycling/energy';
@@ -30,7 +31,7 @@ import type { WayType } from '../planning/brouterProfile';
 import type { GradeRange } from '../core/grade';
 import { resolveGearGroups, resolveGearLabels, sanitizeGearGroups, withGearItem } from '../settings/gear';
 import {
-  DEFAULT_LONG_PRESS_MS, DEFAULT_STOP_HOLD_MS, PRESETS_VERSION, defaultSpeedRangeOf, durationSettingsOf, isValidLongPress, isValidStopHold,
+  DEFAULT_LONG_PRESS_MS, DEFAULT_STOP_HOLD_MS, PRESETS_VERSION, defaultSpeedRangeOf, durationSettingsOf, effectiveHrZoneLines, isValidLongPress, isValidStopHold,
   moduleActivity, readHiddenFamilies, resetOverrides, resetStoredPresets, resolveActivityPace, resolveBikeKg, resolveBikeType, resolveCadence,
   resolveDistanceUnit, resolveEnergyModel, resolveFoil, resolveGradeRange, resolveHeartRate, resolveHrOffset, resolveJumps, resolveLiveFields,
   resolveLoopReturnRatio, resolveMarkGuide, resolveNotificationFields, resolvePumping, resolveRecordingProfile, resolveSpeedRange, resolveSpeedUnit,
@@ -50,6 +51,13 @@ import {
 
 const STORAGE_KEY = 'tracker.sportSettings';
 
+
+/** Dernières bornes de la course à bornes de l'activité (choix retenu), `null` sans elles. */
+export const readHeartBandPicks = (activityId: string): HeartBandPicks | null => sanitizeBandPicks(readStoredSettings().heartBands?.[activityId]);
+
+/** Retient les bornes de la course à bornes de l'activité, proposées pré-remplies la fois suivante. */
+export const rememberHeartBandPicks = (activityId: string, picks: HeartBandPicks): void =>
+  updateStoredSettings((stored) => ({ ...stored, heartBands: { ...stored.heartBands, [activityId]: picks } }));
 
 /** Seuil fixé pour une activité, hors composant (résumés de la bibliothèque) ; `undefined` sans réglage ni pré-réglage. */
 export const effectiveThresholdOverride = (activity: Activity): number | undefined =>
@@ -672,6 +680,9 @@ export const useSportSettings = (family: SportFamily) => {
   const gearGroups = useStableByText(resolveGearGroups(stored, id));
   // Cardio : décalage des seuils S1 et S2, réglé dans Réglages.
   const hrOffsetBpm = resolveHrOffset(stored, activity);
+  // Cardio : limites des zones sur la courbe de FC, case « Zones » de l'onglet cardio (05/11).
+  const hrZoneLines = effectiveHrZoneLines(stored, activity);
+  const setHrZoneLines = useCallback((on: boolean) => updateStoredSettings((current) => withSetting(current, id, 'hrZoneLines', on)), [id]);
 
   return {
     activity,
@@ -703,6 +714,9 @@ export const useSportSettings = (family: SportFamily) => {
     gearGroups,
     /** Décalage des seuils cardio de l'activité, en bpm. */
     hrOffsetBpm,
+    /** Limites des zones Z1 à Z5 sur la courbe de FC, et leur case (rangée pour l'activité). */
+    hrZoneLines,
+    setHrZoneLines,
     foil,
     pumping,
   };

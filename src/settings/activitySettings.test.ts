@@ -10,7 +10,7 @@ import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
   defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride,
-  SETTING_FIELDS, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
+  SETTING_FIELDS, effectiveHrZoneLines, settingsView, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
 describe('pré-réglages du bateau (21/10)', () => {
@@ -248,6 +248,7 @@ describe('isActivityOverridden', () => {
     jumps: { activity: wing, value: getSportProfile('wingfoil').jumps },
     heartRate: { activity: run, value: !defaultHeartRateOf(run) },
     cadence: { activity: run, value: false },
+    hrZoneLines: { activity: run, value: true },
   };
 
   it('couvre chaque table rangée par activité, le matériel enregistré excepté', () => {
@@ -445,5 +446,28 @@ describe("paire de bornes de Réglages : un champ vidé n'efface que sa borne", 
     const run = DEFAULT_ACTIVITIES.find((a) => a.base === 'running')!;
     const stored = withSetting({}, run.id, 'speedRange', nextSpeedRange(null, 'minMs', 1, defaultSpeedRangeOf(run)));
     expect(settingsView(stored!, run).speedRange).toEqual({ minMs: 1, maxMs: defaultSpeedRangeOf(run).maxMs });
+  });
+});
+
+describe('limites des zones sur la courbe de FC (case « Zones », 05/11)', () => {
+  const run = DEFAULT_ACTIVITIES.find((a) => a.id === 'running')!;
+  const bike = DEFAULT_ACTIVITIES.find((a) => a.id === 'cycling')!;
+
+  it('décochées par défaut', () => {
+    expect(effectiveHrZoneLines({}, run)).toBe(false);
+    expect(settingsView({}, run).hrZoneLines).toBe(false);
+  });
+
+  it('cochées pour une activité seulement, « non » effacé', () => {
+    const on = withSetting({}, run.id, 'hrZoneLines', true)!;
+    expect(on.hrZoneLines).toEqual({ [run.id]: true });
+    expect(effectiveHrZoneLines(on, run)).toBe(true);
+    expect(effectiveHrZoneLines(on, bike)).toBe(false);
+    expect(withSetting(on, run.id, 'hrZoneLines', false)!.hrZoneLines).toEqual({});
+  });
+
+  it('une valeur relue d’un fichier qui n’est pas « oui » vaut non ; une valeur absurde n’est pas écrite', () => {
+    expect(effectiveHrZoneLines({ hrZoneLines: { [run.id]: 'oui' as unknown as boolean } }, run)).toBe(false);
+    expect(withSetting({}, run.id, 'hrZoneLines', 1 as unknown as boolean)).toBeNull();
   });
 });

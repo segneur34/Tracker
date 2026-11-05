@@ -118,6 +118,23 @@
   text-align: right;
 }
 
+/* Course à bornes en cours, sous la tuile BPM (05/11) : la bande et « Modifier » ; boutons de sa fenêtre. */
+.rec-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-s);
+}
+
+.rec-band__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 /* Matériel choisi à la fin de la session, avant « Analyser » (lot 143, 131). */
 .rec-end-gear {
   margin-bottom: var(--space-3);

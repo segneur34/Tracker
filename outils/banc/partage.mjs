@@ -10,6 +10,8 @@
 //     l'activité de la session (`tracker.partage`) et retrouvés à la réouverture ; « Partager » par le partage du
 //     navigateur (simulé : fichier PNG nommé d'après la session), puis sans partage (téléchargement et message) ;
 //     Échap ferme ;
+//     lignes ajoutées le 05/11 : « Meilleur 1 km » en course, « Manœuvres réussies » et « Vent » en voile, rien de
+//     « — » (pas d'appréciation donnée) ;
 //  4. à 390×844 : la fenêtre tient dans l'écran, sans débordement de la page ;
 //  5. fin d'enregistrement, à 390×844 : rejeu ×600 de la boucle en À pied, Arrêter, puis « … » › « Partager » de la
 //     carte « Session terminée » : aperçu en 1080 × 1920, chiffres du résumé, choix de la course repris (même activité).
@@ -19,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
@@ -32,8 +35,8 @@ const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, impo
 let failures = 0;
 const check = (what, ok, detail = '') => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${detail ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+// Rangée « avancé » des analyses ouverte d'office, onglets posés dans `tracker.sections` rejoués à chaque analyse (`lib/onglets.mjs`, 05/11) ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://brouter.de/*']);
 
 // --- Sessions ---
@@ -55,8 +58,8 @@ const T_RUN = Date.UTC(2026, 9, 1, 8, 0, 0);
 const T_VOILE = Date.UTC(2026, 8, 20, 13, 0, 0);
 const SESSIONS = [
   // `share` : chiffres de l'image (22/10 : la liste entière d'avant, l'onglet « général » n'en montrant plus que l'essentiel).
-  { page: 'course', start: T_RUN, gpx: loopGpx(T_RUN), share: ['Distance', 'Distance en mouvement', 'Temps de parcours', /^Temps en mouvement/, 'Moyenne en mouvement', 'Moyenne sur le temps total', 'Dénivelé', 'Altitude'] },
-  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8'), share: ['Distance', 'Distance active', 'Temps total', /^Temps en vol/, 'Ratio de vol', 'Vitesse moyenne', /^Moyenne active/] },
+  { page: 'course', start: T_RUN, gpx: loopGpx(T_RUN), share: ['Distance', 'Distance en mouvement', 'Temps de parcours', /^Temps en mouvement/, 'Moyenne en mouvement', 'Moyenne sur le temps total', 'Dénivelé', 'Altitude', 'Meilleur 1 km'] },
+  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8'), share: ['Distance', 'Distance active', 'Temps total', /^Temps en vol/, 'Ratio de vol', 'Vitesse moyenne', /^Moyenne active/, 'Manœuvres réussies', 'Vent'] },
 ];
 
 const paths = {};
@@ -130,6 +133,8 @@ for (const s of SESSIONS) {
   // L'essentiel de « général » se retrouve dans l'image (distance, temps, moyenne).
   const shared = general.filter((g) => g.value !== '—' && c.some((x) => x.label === g.label));
   check(`${s.page} : chiffres communs avec « général »`, shared.length >= 3, shared.map((g) => g.label).join(' | '));
+  // Lignes ajoutées le 05/11 (lot 145) : sans appréciation donnée, pas de pastille « Appréciation » (« — » écarté).
+  check(`${s.page} : pas d'« Appréciation » sans appréciation`, !c.some((x) => x.label === 'Appréciation'));
   check(`${s.page} : les six premières enfoncées`, c.filter((x) => x.on).length === Math.min(6, c.length) && c.slice(0, 6).every((x) => x.on));
   const size = await imageSize();
   check(`${s.page} : image en hauteur de 1080 × 1920`, isPortrait(size), JSON.stringify(size));

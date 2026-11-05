@@ -66,6 +66,23 @@ describe('parseRecord et serializeRecord', () => {
     expect('movingDistanceM' in parseRecord(serializeRecord(record()))!.summary).toBe(false);
   });
 
+  it('relisent les chiffres du partage (lot 145) et écartent les valeurs absurdes', () => {
+    const fields = { best1kmS: 272, best5minMs: 9.1, pumpingShare: 0.35, windDirDeg: 230, avgPowerW: 182 };
+    const back = parseRecord(serializeRecord(record({ summary: { ...record().summary, ...fields } })))!.summary;
+    expect(back).toMatchObject(fields);
+    const abimee = { ...record(), summary: { ...record().summary, best1kmS: -3, best5minMs: 'x', pumpingShare: 1.5, windDirDeg: 400, avgPowerW: Number.NaN } };
+    const lue = parseRecord(JSON.stringify(abimee))!.summary;
+    for (const key of Object.keys(fields)) expect(key in lue).toBe(false);
+    // Plages nommées : meilleur kilomètre de 60 à 3 600 s, meilleures 5 min de 0,5 à 40 m/s.
+    const horsPlage = { ...record(), summary: { ...record().summary, best1kmS: 30, best5minMs: 45 } };
+    const relue = parseRecord(JSON.stringify(horsPlage))!.summary;
+    expect('best1kmS' in relue).toBe(false);
+    expect('best5minMs' in relue).toBe(false);
+    const bornes = parseRecord(JSON.stringify({ ...record(), summary: { ...record().summary, best1kmS: 3600, best5minMs: 0.5 } }))!.summary;
+    expect(bornes).toMatchObject({ best1kmS: 3600, best5minMs: 0.5 });
+    expect('best1kmS' in parseRecord(JSON.stringify({ ...record(), summary: { ...record().summary, best1kmS: 3601 } }))!.summary).toBe(false);
+  });
+
   it("relisent l'empreinte des réglages du résumé (lot 37), et écartent une empreinte qui n'est pas un texte", () => {
     const optionsKey = '[6,null,null,null]';
     expect(parseRecord(serializeRecord(record({ summary: { ...record().summary, optionsKey } })))!.summary.optionsKey).toBe(optionsKey);
@@ -564,6 +581,16 @@ describe('applyRecordPatch', () => {
     expect(scored.resummarize).toBe(false);
     // Les mêmes nombres : la fiche d'origine, sans réécriture.
     expect(applyRecordPatch(scored.record, { maneuverCount: 12, maneuverResults: { ...results } }).record).toBe(scored.record);
+  });
+
+  it('pose et retire les chiffres du partage écrits par l’analyse, sans refaire le résumé', () => {
+    const posed = applyRecordPatch(record(), { pumpingShare: 0.4, windDirDeg: 230, avgPowerW: 180 });
+    expect(posed.record.summary).toMatchObject({ pumpingShare: 0.4, windDirDeg: 230, avgPowerW: 180 });
+    expect(posed.resummarize).toBe(false);
+    expect(applyRecordPatch(posed.record, { pumpingShare: 0.4, windDirDeg: 230 }).record).toBe(posed.record);
+    const removed = applyRecordPatch(posed.record, { avgPowerW: null }).record.summary;
+    expect('avgPowerW' in removed).toBe(false);
+    expect(removed.windDirDeg).toBe(230);
   });
 });
 

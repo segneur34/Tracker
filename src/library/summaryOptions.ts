@@ -3,7 +3,7 @@ import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, isSport
 import type { SportType } from '../core/types';
 import { guessSport } from './naming';
 import {
-  carriedSettings, isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
+  ANALYSIS_SUMMARY_FIELDS, carriedSettings, isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
   type SummaryActivitySettings,
 } from './record';
 import { summarizeHeartRateSession, summarizeSession, type SummaryOptions } from './summary';
@@ -198,12 +198,12 @@ export const analyzeGpx = (
   };
 };
 
-/** Nouveau résumé, en gardant le nombre et la réussite des manœuvres de la dernière analyse. */
-export const withSummary = (record: RecordWithoutSummary, summary: SessionSummary): SessionRecord => ({
-  ...record,
-  summary: {
-    ...summary,
-    ...(record.summary?.maneuverCount !== undefined ? { maneuverCount: record.summary.maneuverCount } : {}),
-    ...(record.summary?.maneuverResults !== undefined ? { maneuverResults: record.summary.maneuverResults } : {}),
-  },
-});
+/** Nouveau résumé, en gardant les chiffres posés par la dernière analyse (manœuvres, pumping, vent, puissance). */
+export const withSummary = (record: RecordWithoutSummary, summary: SessionSummary): SessionRecord => {
+  const kept: Partial<SessionSummary> = {};
+  for (const field of ANALYSIS_SUMMARY_FIELDS) {
+    const value = record.summary?.[field];
+    if (value !== undefined) (kept as Record<string, unknown>)[field] = value;
+  }
+  return { ...record, summary: { ...summary, ...kept } };
+};

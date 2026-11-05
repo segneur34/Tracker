@@ -61,6 +61,11 @@ describe('nouveau résumé gardé avec ses manœuvres', () => {
     expect(next.summary.maneuverResults).toEqual({ success: 10 });
     expect(withSummary({ ...record, summary: null }, fresh).summary).toEqual(fresh);
   });
+  it('garde aussi le pumping, le vent et la puissance posés par l’analyse (lot 145)', () => {
+    const record = sessionRecord({}, { pumpingShare: 0.3, windDirDeg: 200, avgPowerW: 150 });
+    const next = withSummary(record, sessionRecord({}, { distanceM: 30_000 }).summary);
+    expect(next.summary).toMatchObject({ distanceM: 30_000, pumpingShare: 0.3, windDirDeg: 200, avgPowerW: 150 });
+  });
 });
 
 describe('résumé à refaire quand les réglages changent (lot 37)', () => {

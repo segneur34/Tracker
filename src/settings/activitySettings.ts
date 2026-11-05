@@ -15,6 +15,7 @@ import { finiteOr, inRange } from '../core/basics';
 import type { BeepSound } from '../recording/beepSound';
 import type { FitnessTestId, FitnessTestSettings } from '../recording/fitnessTest';
 import type { IntervalPreset, IntervalWorkout } from '../recording/intervalTimer';
+import type { HeartBandPicks } from '../recording/zoneAlert';
 import {
   MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf, sanitizeLiveFields, type LiveFieldKey,
 } from '../recording/liveFields';
@@ -183,6 +184,8 @@ export interface StoredSettings {
   energyModels?: ByActivity<EnergyModel>;
   /** Décalage des seuils cardio S1 et S2 par rapport à la course, en bpm ; absent : `defaultHrOffsetOf`. */
   hrOffsets?: ByActivity<number>;
+  /** Limites des zones Z1 à Z5 tracées sur la courbe de FC des analyses (case « Zones » de l'onglet cardio, 05/11) ; absent : non. */
+  hrZoneLines?: ByActivity<boolean>;
   /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
   gearLabels?: ByActivity<[string, string]>;
   /**
@@ -211,6 +214,8 @@ export interface StoredSettings {
   intervalPresets?: IntervalPreset[];
   /** Dernière séance lancée au compteur, proposée la fois suivante (choix retenu). */
   lastIntervalWorkout?: IntervalWorkout;
+  /** Dernières bornes de la course à bornes (Entraînement, 05/11), proposées pré-remplies la fois suivante (choix retenu). */
+  heartBands?: ByActivity<HeartBandPicks>;
   /** Séances du Timer (25/10), à part de celles du fractionné : hors de toute activité, sans GPS ni session. */
   timerPresets?: IntervalPreset[];
   /** Dernière séance lancée au Timer (choix retenu). */
@@ -648,6 +653,8 @@ export interface SportSettingsView {
   /** Décalage des seuils cardio, en bpm. */
   hrOffset: number;
   isHrOffsetOverridden: boolean;
+  /** Limites des zones tracées sur la courbe de FC ; non par défaut. */
+  hrZoneLines: boolean;
   /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
   gearLabels: [string, string] | null;
   /** Matériel enregistré ; `null` : option coupée ; liste vide : option cochée, rien de créé. */
@@ -673,7 +680,7 @@ export type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 export const PER_ACTIVITY_KEYS = [
   'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'energyModels', 'hrOffsets', 'gearLabels', 'gearGroups',
   'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
-  'heartRate', 'cadence',
+  'heartRate', 'cadence', 'hrZoneLines',
 ] as const;
 
 /**
@@ -700,6 +707,9 @@ export const withoutOverrides = (stored: StoredSettings, id: string, keep: reado
 
 /** « Par défaut » d'une activité : ses surcharges effacées, son matériel enregistré gardé. */
 export const resetOverrides = (stored: StoredSettings, id: string): StoredSettings => withoutOverrides(stored, id, KEPT_BY_RESET);
+
+/** Limites des zones cardio tracées sur la courbe de FC des analyses de l'activité : seul « oui » est rangé, non par défaut. */
+export const effectiveHrZoneLines = (stored: StoredSettings, activity: Activity): boolean => stored.hrZoneLines?.[activity.id] === true;
 
 /** Réglages d'une activité tels que Réglages les montre : valeurs effectives et ce qui est réglé. */
 export const settingsView = (stored: StoredSettings, activity: Activity): SportSettingsView => {
@@ -753,6 +763,7 @@ export const settingsView = (stored: StoredSettings, activity: Activity): SportS
     isEnergyModelOverridden: isEnergyModel(stored.energyModels?.[id]) && stored.energyModels[id] !== defaultEnergyModelOf(activity),
     hrOffset: resolveHrOffset(stored, activity),
     isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
+    hrZoneLines: effectiveHrZoneLines(stored, activity),
     gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
     gearGroups: sanitizeGearGroups(stored.gearGroups?.[id]),
     tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
@@ -770,7 +781,7 @@ export type SettingField =
   | 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields'
   | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight'
   | 'carriedLoad' | 'energyModel' | 'hrOffset' | 'gearLabels' | 'gearGroups' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs'
-  | 'wayTypes' | 'loopReturnRatio';
+  | 'wayTypes' | 'loopReturnRatio' | 'hrZoneLines';
 
 /**
  * Règle d'écriture d'un champ : la table où il se range, et la valeur rangée
@@ -890,6 +901,15 @@ export const SETTING_FIELDS: Record<SettingField, SettingFieldRule> = {
   },
   wayTypes: { key: 'wayTypes', normalize: sanitized(sanitizeWayTypes) },
   loopReturnRatio: { key: 'loopReturnRatios', normalize: plain(isValidLoopReturnRatio) },
+  hrZoneLines: {
+    key: 'hrZoneLines',
+    // Seul « oui » est rangé.
+    normalize: (v, activity) => {
+      if (!activity) return undefined;
+      const on = booleanOrNull(v);
+      return on === undefined ? undefined : on === true ? true : null;
+    },
+  },
 };
 
 /**
@@ -924,7 +944,7 @@ export const isActivityOverridden = (s: SportSettingsView): boolean => {
     s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
     s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
     s.paceLevel !== pace.level || s.customFlatSpeedMs !== pace.customFlatSpeedMs || s.isWayTypesOverridden ||
-    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false
+    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false || s.hrZoneLines
   );
 };
 

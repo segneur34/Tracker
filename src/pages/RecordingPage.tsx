@@ -28,7 +28,7 @@ import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMe
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
-import { armZoneAlert, useZoneAlert } from '../hooks/useZoneAlert';
+import { armHeartBand, armZoneAlert, setLiveBand, useZoneAlert } from '../hooks/useZoneAlert';
 import { useIntervalTimerOpen, useIntervalTimerRunning } from '../hooks/useIntervalTimer';
 import { useTransientValue } from '../hooks/useTransientValue';
 import { useStopwatchOpen, useStopwatchRunning } from '../hooks/useStopwatch';
@@ -41,9 +41,9 @@ import { setBeepsMuted, skipMark, useMarkGuide } from '../hooks/useMarkGuide';
 import { usePerActivityChoice } from '../hooks/usePerActivityChoice';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { usePhoneLandscape } from '../hooks/useNarrowScreen';
-import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
+import { readHeartRateZoneBounds, readHeartRateZones } from '../hooks/useRunnerProfile';
 import {
-  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, lastRecordActivity, lastRecordedOrFirst, rememberRecordActivity, useVisibility,
+  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, lastRecordActivity, lastRecordedOrFirst, readHeartBandPicks, rememberHeartBandPicks, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../platform/heartRate';
@@ -75,7 +75,9 @@ import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation,
 import { fixesFromRawPoints, recordingDurationMs, isAutoPause, isManualPause } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
-import { ZONE_TARGETS, type ZoneTarget } from '../recording/zoneAlert';
+import { NO_BAND_PICKS, ZONE_TARGETS, armableBand, bandLabel, type HeartBand, type HeartBandPicks, type ZoneTarget } from '../recording/zoneAlert';
+import HeartBandPicker from '../components/HeartBandPicker';
+import Dialog from '../components/ui/Dialog';
 import { WORKOUT_LISTS } from '../recording/workoutLists';
 import './RecordingPage.css';
 
@@ -140,7 +142,48 @@ const BpmTile = ({ belt, target }: { belt: { state: BeltState; bpm: number | nul
   );
 };
 
+/**
+ * Course à bornes en cours (05/11), sous la tuile BPM : la bande, et « Modifier »,
+ * qui ouvre les mêmes bornes qu'avant le départ ; les bips suivent la nouvelle
+ * bande dès la mesure suivante, le compte repart de zéro (`setLiveBand`).
+ */
+function LiveHeartBand({ activity, band }: { activity: Activity; band: HeartBand }) {
+  const [editing, setEditing] = useState<HeartBandPicks | null>(null);
+  const zones = readHeartRateZones(activity);
+  const open = () => setEditing(readHeartBandPicks(activity.id) ?? {
+    min: { choice: band.minBpm === null ? 'aucune' : 'bpm', bpm: band.minBpm },
+    max: { choice: band.maxBpm === null ? 'aucune' : 'bpm', bpm: band.maxBpm },
+  });
+  const next = editing ? armableBand(editing, zones) : null;
+  const apply = () => {
+    if (!editing || next === null) return;
+    rememberHeartBandPicks(activity.id, editing);
+    setLiveBand(next);
+    setEditing(null);
+  };
+  return (
+    <div className="rec-band">
+      <span>Bornes {bandLabel(band)}</span>
+      <Button size="s" onClick={open}>Modifier</Button>
+      {editing && (
+        <Dialog title="Bornes cardio" onClose={() => setEditing(null)}>
+          <HeartBandPicker picks={editing} onChange={setEditing} zones={zones} />
+          <div className="rec-band__actions">
+            <Button size="s" onClick={() => setEditing(null)}>Annuler</Button>
+            <Button size="s" variant="primary" disabled={next === null} onClick={apply}>Appliquer</Button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
+
+/** Guidage cardio de l'Entraînement : aucun, zone visée, ou bornes de BPM (course à bornes, 05/11). */
+type HeartGuideMode = 'aucun' | 'zone' | 'bornes';
+const HEART_GUIDE_MODES: readonly HeartGuideMode[] = ['aucun', 'zone', 'bornes'];
+const HEART_GUIDE_LABEL: Record<HeartGuideMode, string> = { aucun: 'aucun', zone: 'zone', bornes: 'bornes' };
 
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
@@ -510,6 +553,7 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
 
       <Card heading="En cours">
         {heartRate && <BpmTile belt={heartRate} target={zoneAlert.active ? zoneAlert.target : 0} />}
+        {zoneAlert.active && zoneAlert.band && liveActivity && <LiveHeartBand activity={liveActivity} band={zoneAlert.band} />}
         <div style={STAT_GRID}>
           <Stat label="Durée" value={formatClock(durationMs)} />
           {liveActivity && followed && (courseMarksOf && markGuide.active
@@ -715,6 +759,32 @@ function RecordingScreen() {
   const [zonePicked, setZonePicked] = usePerActivityChoice<ZoneTarget>(chosenActivityId, 0);
   const zoneOffered = !isTest && measureHeartRate && beltLive.state === 'connected'
     && (heartOnly || (native && sourceChoice === 'device')) && zoneBounds !== null;
+  // Course à bornes (05/11) : en Entraînement seulement, aux conditions de la zone visée ; « aucun » à chaque ouverture
+  // de la page, les dernières bornes de l'activité pré-remplies.
+  const guideOffered = zoneOffered && chosen !== null && activityFamily(chosen) === 'fractionne';
+  const [guidePicked, setGuidePicked] = usePerActivityChoice<HeartGuideMode>(chosenActivityId, 'aucun');
+  const guideMode: HeartGuideMode = guideOffered ? guidePicked : 'zone';
+  const [bandPicked, setBandPicked] = usePerActivityChoice<HeartBandPicks | null>(chosenActivityId, null);
+  const bandPicks = bandPicked ?? (chosen ? readHeartBandPicks(chosen.id) : null) ?? NO_BAND_PICKS;
+  const guideZones = chosen && guideOffered ? readHeartRateZones(chosen) : null;
+  /** Arme le guidage cardio choisi au départ : zone visée, bornes (retenues pour l'activité) ou rien. */
+  const armHeartGuide = () => {
+    if (!zoneOffered || guideMode === 'aucun') {
+      armZoneAlert(0);
+      return;
+    }
+    if (guideMode === 'bornes' && chosen) {
+      const band = armableBand(bandPicks, guideZones);
+      if (band !== null) {
+        rememberHeartBandPicks(chosen.id, bandPicks);
+        armHeartBand(band);
+      } else {
+        armZoneAlert(0);
+      }
+      return;
+    }
+    armZoneAlert(zonePicked);
+  };
   const liveActivity = recordedActivity ?? chosen;
   // Session sans position, en cours ou choisie : ni carte, ni GPS, ni trace suivie.
   const liveHeartOnly = liveActivity !== null && !hasPositions(liveActivity.base);
@@ -816,7 +886,7 @@ function RecordingScreen() {
     if (heartOnly) {
       if (!belt) return;
       rememberRecordActivity(chosen.id);
-      armZoneAlert(zoneOffered ? zonePicked : 0);
+      armHeartGuide();
       void beltWarmup.handOver(() => startRecording(chosen, null, { heartRate: belt }));
       return;
     }
@@ -829,7 +899,7 @@ function RecordingScreen() {
     )) return;
     rememberRecordActivity(chosen.id);
     if (isTest) armFitnessTest(guidedTestId);
-    armZoneAlert(zoneOffered ? zonePicked : 0);
+    armHeartGuide();
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
@@ -926,12 +996,28 @@ function RecordingScreen() {
             </CaptureOption>
           )}
 
-          {chosen && zoneOffered && (
+          {chosen && guideOffered && (
+            // Entraînement : zone visée ou bornes de BPM (course à bornes, 05/11).
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginLeft: '26px' }}>
+              <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>Guidage cardio</span>
+              <SegmentedControl label="Guidage cardio" value={guidePicked} onChange={setGuidePicked}
+                items={HEART_GUIDE_MODES.map((mode) => ({ key: mode, label: HEART_GUIDE_LABEL[mode] }))} />
+            </div>
+          )}
+
+          {chosen && zoneOffered && guideMode === 'zone' && (
             // Bips de sortie de zone : deux bips trop haut, trois trop bas, un au retour.
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginLeft: '26px' }}>
               <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>Zone visée</span>
               <SegmentedControl label="Zone visée" value={String(zonePicked)} onChange={(key) => setZonePicked(Number(key) as ZoneTarget)}
                 items={ZONE_TARGETS.map((zone) => ({ key: String(zone), label: zone === 0 ? 'aucune' : zoneLabel(zone) }))} />
+            </div>
+          )}
+
+          {chosen && guideOffered && guideMode === 'bornes' && (
+            // Mêmes bips que la zone visée, hors des bornes.
+            <div style={{ marginLeft: '26px' }}>
+              <HeartBandPicker picks={bandPicks} onChange={setBandPicked} zones={guideZones} />
             </div>
           )}
 

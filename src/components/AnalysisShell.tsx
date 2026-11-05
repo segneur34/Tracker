@@ -23,6 +23,8 @@ interface ShellTabs<K extends string> {
   sections: ReadonlyArray<SectionDefinition<K> & { primary?: true }>;
   open: Record<K, boolean>;
   onToggle: (key: K) => void;
+  /** « tout fermer » : chaque onglet fermé, « général » compris. */
+  onCloseAll: () => void;
   advanced: { open: boolean; toggle: () => void };
   accent?: string;
   panels: ReactNode;
@@ -116,7 +118,7 @@ function AnalysisShell<K extends string>({
 
       {tabs && (
         <div className="an-carte-col" style={map ? undefined : { marginTop: '10px' }}>
-          <CollapsibleSectionTabs sections={tabs.sections} open={tabs.open} onToggle={tabs.onToggle}
+          <CollapsibleSectionTabs sections={tabs.sections} open={tabs.open} onToggle={tabs.onToggle} onCloseAll={tabs.onCloseAll}
             advancedOpen={tabs.advanced.open} onToggleAdvanced={tabs.advanced.toggle} accent={tabs.accent} />
           <div className="an-carte-panels">
             {tabs.panels}

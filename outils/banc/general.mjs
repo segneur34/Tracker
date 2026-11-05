@@ -217,12 +217,11 @@ check('course, général : ni moyenne sur le temps total ni altitude min–max',
 check('course : profil d\'altitude compact', await profileShown());
 check('course : première rangée « général · avancé »', (await row(0)) === 'général | avancé', await row(0));
 await shoot('general-course');
-// La même session rouverte après une autre page garde son état.
+// La même session rouverte après une autre page s'ouvre aussi sur « général » seul, « avancé » fermé (lot 145, 05/11).
 await setAdvanced(true);
 await go('/statistiques', 2000);
 await go(paths.course, 8000);
-check('même session rouverte : « avancé » gardé ouvert, « général » fermé', (await advancedOpen()) && (await panel('Général')) === '(absent)');
-await setAdvanced(false);
+check('même session rouverte : « général » seul, « avancé » fermé', !(await advancedOpen()) && (await panel('Général')) !== '(absent)');
 
 await go(paths.velo, 8000);
 general = await panel('Général');

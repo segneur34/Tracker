@@ -20,13 +20,15 @@
 //     défilement, zoom compris ; de même zoomé, et pour la carte seule ouverte d'un toucher ;
 //  7. (25/10) « Afficher » sur chaque graphe, zoomé ou non, sur ordinateur et dans le plein écran (non zoomé :
 //     toute la trace) ; « +carte » dans la page du téléphone ; un second clic à la même plage retire le violet,
-//     zoom et plein écran gardés ; la plage changée entre-temps, il recadre.
+//     zoom et plein écran gardés ; la plage changée entre-temps, il recadre ;
+//  8. (05/11) flèches de sens en course, voile et surf : moins au zoom −2, les mêmes au retour, plus au zoom +2.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 import { CHART, SCOPE, graphGestures } from './lib/graphes.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -76,7 +78,7 @@ const violet = (where = '.an-map-row') => evaluate(`(() => {
 const mapOnScreen = () => evaluate(`(() => { const el = document.getElementById('map-view'); if (!el) return null; const r = el.getBoundingClientRect(); const top = parseFloat(getComputedStyle(el).scrollMarginTop) || 0; return r.top >= top - 1 && r.bottom <= window.innerHeight + 1; })()`);
 const chartTop = (title, nth) => evaluate(`(() => { const c = ${CHART(title, nth)}; return c ? Math.round(c.getBoundingClientRect().top + window.scrollY) : null; })()`);
 // Rangée « avancé » des analyses ouverte d'office, rouverte à chaque session neuve avec « général » (comme `graphes.mjs`).
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await blockNetwork();
 
 // --- Sessions synthétiques ---
@@ -407,6 +409,36 @@ check('390 px : un toucher ouvre la carte seule', (await overlayOpen()) === true
 const backedMap = await back();
 await wait(600);
 check(`390 px : le retour ferme la carte seule (${backedMap})`, backedMap === 'layer' && (await overlayOpen()) === false);
+
+// --- 8. Flèches de sens selon le zoom (05/11) ---
+await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+const arrows = () => evaluate(`document.querySelectorAll('.an-map-row .custom-arrow').length`);
+/** Clique `n` fois sur le bouton + ou − de la carte de la page ; « butée » si le bouton est grisé. */
+const zoomMap = async (sign, n) => {
+  for (let k = 0; k < n; k++) {
+    const r = await evaluate(`(() => { const b = document.querySelector('.an-map-row .leaflet-control-zoom-${sign === '+' ? 'in' : 'out'}'); if (!b) return 'absent'; if (b.classList.contains('leaflet-disabled')) return 'butée'; b.click(); return 'ok'; })()`);
+    if (r !== 'ok') return r;
+    await wait(700);
+  }
+  return 'ok';
+};
+for (const page of ['course', 'voile', 'surf']) {
+  await go(paths[page], 7000);
+  await settle({ max: 1500 });
+  const base = await arrows();
+  await zoomMap('-', 2);
+  const out = await arrows();
+  await zoomMap('+', 2);
+  const back2 = await arrows();
+  const inResult = await zoomMap('+', 2);
+  const closer = await arrows();
+  console.log(`${page}, flèches : zoom −2 ${out} · cadrage ${base} (${back2} au retour) · zoom +2 ${closer} (${inResult})`);
+  check(`${page} : des flèches sur la trace (${base})`, base > 0);
+  check(`${page} : moins de flèches au zoom −2 (${out} < ${base})`, out < base);
+  check(`${page} : les mêmes au retour (${back2})`, back2 === base);
+  check(`${page} : plus de flèches au zoom +2 (${closer} > ${base}), ou butée du zoom`, closer > base || inResult === 'butée');
+}
 
 console.log('\n--- console (erreurs, avertissements) ---');
 for (const l of logs) console.log(l);

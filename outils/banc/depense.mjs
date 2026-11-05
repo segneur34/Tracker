@@ -8,6 +8,7 @@
 //  4. l'analyse retrouve Minetti : « Énergie de course », environ 115 kcal (5,44 J/kg/m à 5 %), la marche à 0,6 à 0,8 fois ;
 //  5. « Dépense » remise sur Marche : le réglage rangé est effacé (« défaut »).
 import { connect } from './lib/cdp.mjs';
+import { ONGLETS } from './lib/onglets.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
@@ -56,7 +57,7 @@ const chooseActivity = (text) => evaluate(`(async () => {
 })()`);
 
 // Le réseau est déjà activé par connect : le blocage est effectif.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 /** Trace en côte à 5 %, `speedMs` constante, `type` lu par l'import (celle de `charge.mjs`). */

@@ -1,5 +1,5 @@
 import type { FileStat } from '../platform/memoryFolder';
-import { sameJson, type RecordWithoutSummary, type SessionRecord, type SessionSummary } from './record';
+import { ANALYSIS_SUMMARY_FIELDS, sameJson, type RecordWithoutSummary, type SessionRecord, type SessionSummary } from './record';
 
 /**
  * Fiche changée sur le disque pendant qu'on la tenait en mémoire (lot 148) : deux appareils sur un
@@ -19,14 +19,15 @@ const DATED_BLOCKS = ['notes', 'analysis'] as const;
 type DatedBlock = (typeof DATED_BLOCKS)[number];
 
 /** Le résumé, tiré du GPX, ne se fond pas : seuls ces champs, posés à part par l'analyse, le font. */
-const MANEUVER_FIELDS = ['maneuverCount', 'maneuverResults'] as const;
+const MANEUVER_FIELDS = ANALYSIS_SUMMARY_FIELDS;
 
 type Loose = Record<string, unknown>;
 
 const loose = (value: unknown): Loose => value as Loose;
 
 const summaryWithoutManeuvers = (summary: SessionSummary): Loose => {
-  const { maneuverCount: _count, maneuverResults: _results, ...others } = summary;
+  const others: Loose = { ...summary };
+  for (const field of MANEUVER_FIELDS) delete others[field];
   return others;
 };
 

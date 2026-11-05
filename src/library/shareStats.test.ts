@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shareableStats } from '../core/shareImage';
 import type { SessionSummary } from './record';
-import { summaryShareStats } from './shareStats';
+import { SHARE_EXTRA_KEYS, shareExtraStats, summaryShareStats } from './shareStats';
 
 const summary = (patch: Partial<SessionSummary> = {}): SessionSummary => ({
   calcVersion: 6,
@@ -68,5 +68,56 @@ describe('summaryShareStats', () => {
     expect(v.waves).toBe('12');
     expect(v.longestWave).toBe('84 m');
     expect(v.longestFlight).toBeUndefined();
+  });
+});
+
+describe('lignes ajoutées du partage (lot 145)', () => {
+  const kn = { speed: 'kn', distance: 'nm' } as const;
+  const km = { speed: 'kmh', distance: 'km' } as const;
+  const tail = (stats: ReturnType<typeof summaryShareStats>, n: number) => stats.slice(-n).map((s) => s.key);
+
+  it('mêmes clés, à la fin, dans le résumé et dans l’analyse ouverte (`shareExtraStats`)', () => {
+    for (const treatment of ['course', 'velo', 'surf', 'muscu'] as const) {
+      const keys = SHARE_EXTRA_KEYS[treatment];
+      expect(tail(summaryShareStats(summary(), treatment, km), keys.length)).toEqual([...keys]);
+      expect(shareExtraStats(treatment, {}).map((s) => s.key)).toEqual([...keys]);
+    }
+    expect(tail(summaryShareStats(summary(), 'voile', kn, true, true), 4)).toEqual([...SHARE_EXTRA_KEYS.voile]);
+    // Hors foil, pas de pumping.
+    expect(tail(summaryShareStats(summary(), 'voile', kn), 3)).toEqual(['maneuverSuccess', 'wind', 'rating']);
+  });
+
+  it('une valeur absente vaut « — »', () => {
+    const v = values(summaryShareStats(summary(), 'velo', km));
+    expect(v.puissance).toBe('—');
+    expect(v['top-t5min']).toBe('—');
+    expect(v.rating).toBe('—');
+  });
+
+  it('voile : manœuvres réussies, vent, appréciation, sans emoji', () => {
+    const v = values(summaryShareStats(summary({ maneuverResults: { tackSuccess: 4, tackFail: 1, jibeSuccess: 6, jibeFail: 1 }, windDirDeg: 230 }), 'voile', kn, true, false,
+      { rating: 4, windLevel: 'moyen' }));
+    expect(v.maneuverSuccess).toBe('83 % (10/12)');
+    expect(v.wind).toBe('230° · moyen');
+    expect(v.rating).toBe('Bien');
+    // Le vent saisi dans la fiche passe avant celui de l'analyse.
+    expect(values(summaryShareStats(summary({ windDirDeg: 230 }), 'voile', kn, true, false, { windDeg: 10 })).wind).toBe('10°');
+    expect(values(summaryShareStats(summary(), 'voile', kn)).wind).toBe('—');
+  });
+
+  it('voile sur foil seulement : ratio de vol et part du vol pompée', () => {
+    const foil = values(summaryShareStats(summary({ movingTimeS: 2700, inMotionS: 3000, pumpingShare: 0.35 }), 'voile', kn, true, true));
+    expect(foil.activeRatio).toBe('90,0%');
+    expect(foil.pumpingShare).toBe('35 % du vol');
+    const notFoil = values(summaryShareStats(summary({ inMotionS: 3000, pumpingShare: 0.35 }), 'voile', kn, true, false));
+    expect(notFoil.activeRatio).toBeUndefined();
+    expect(notFoil.pumpingShare).toBeUndefined();
+  });
+
+  it('à pied, meilleur kilomètre en temps ; à vélo, meilleures 5 min et puissance', () => {
+    expect(values(summaryShareStats(summary({ best1kmS: 272 }), 'course', km))['top-d1km']).toBe('4 min 32');
+    const ride = values(summaryShareStats(summary({ best5minMs: 10, avgPowerW: 181.6 }), 'velo', km));
+    expect(ride['top-t5min']).toBe('36,0 km/h');
+    expect(ride.puissance).toBe('182 W');
   });
 });
