@@ -30,6 +30,9 @@ export default defineConfig({
     cssCodeSplit: false,
     // Le chunk des graphes approche les 500 kB : l'avertissement ne dirait rien de neuf.
     chunkSizeWarningLimit: 700,
+    // Licences du JS réellement regroupé, lues par Réglages › À propos (`core/licenses.ts`). À la racine : le dossier
+    // `.vite/` par défaut serait écarté de l'APK (`ignoreAssetsPattern`, qui refuse les noms commençant par un point).
+    license: { fileName: 'licences.json' },
     rolldownOptions: {
       output: {
         // Pages en `React.lazy` (`App.tsx`) ; les bibliothèques lourdes à part, chargées une fois pour toutes les

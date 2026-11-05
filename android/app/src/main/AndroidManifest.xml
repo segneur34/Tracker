@@ -1,13 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Ni sauvegarde Google ni transfert d'appareil : le dossier mémoire est la seule sauvegarde. allowBackup="false"
+         n'arrête pas le transfert d'appareil sous Android 12 ou plus, d'où les règles, qui excluent tout des deux. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        tools:targetApi="31">
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -49,6 +54,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Récepteur du greffon GPS, retiré : il ne restaure au démarrage que des zones de géorepérage, jamais créées ici. -->
+        <receiver
+            android:name="com.capgo.capacitor_background_geolocation.GeofenceBootReceiver"
+            tools:node="remove" />
     </application>
 
     <!-- Permissions -->
@@ -71,4 +81,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Carte « Autorisations » (PermissionsPlugin) : l'écran système qui lève l'optimisation de la batterie. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Déclarée par le greffon GPS et par androidx.work, sans usage ici (récepteur retiré plus haut). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 </manifest>

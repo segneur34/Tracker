@@ -4,7 +4,7 @@ Journal des scripts de `outils/banc/` : ce que chacun éprouve, ses arguments, s
 
 ## Verdict ou neutralité
 
-Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 48 des 74 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147).
+Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 49 des 75 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151).
 
 | Sans verdict aujourd'hui | Scripts |
 |---|---|
@@ -379,6 +379,15 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - à 390×844 : l'accueil avec la carte, et une leçon, sans débordement.
 
   Il finit par « Tout passe. » ou le nombre d'échecs.
+- `apropos.mjs <port> [<dossier des captures>]` : le bloc « À propos » de Réglages et les licences (lot 151), sur un profil neuf, sans réseau, environ 30 s, `fetch` remplacé avant le chargement par une liste synthétique. Il vérifie :
+  - le bloc en dernier, après « Tutoriels », replié, aucune liste demandée au chargement ni à son ouverture ;
+  - ouvert : logo centré en police du logo à 34 px, version, paragraphe, filet, ligne « Licences… » repliée ;
+  - dépliée : les deux listes demandées, la phrase, les deux groupes, trois composants puis « Voir les 4 autres », lignes de 44 px au moins sur le fond de page, rayon `--radius-s`, un doublon JS et complément une seule fois ;
+  - un composant : son texte dans une zone qui défile (320 px au plus), un seul ouvert à la fois, notice et lien du greffon GPS, composants d'une famille native ;
+  - à 390×844 puis tourné : aucun débordement, zone à la moitié de l'écran au plus ; thème sombre : lignes sur le fond sombre ; « Tout réduire », rechargement compris ;
+  - sans `licences.json` (le serveur de développement répond par la page HTML) : le complément réel et la mention ; les deux fichiers en échec : le message.
+
+  Avec un dossier, les captures `apropos-*`, thème sombre compris. Il finit par « Tout passe. » ou le nombre d'échecs.
 - `racine-periodes.mjs <port> [<dossier des captures>]` : la racine du Profil ne dépend pas de la période (demande du 26/10, lot B), sur un profil neuf, sans réseau, environ 2 min. Treize courses d'un lundi chacune, page à la semaine 13 ; le Profil aux cinq périodes, à 390×844 et 1400×1000 : niveau, longueur visible de la racine mère (`data-longueur` du canevas), hauteurs de la page et des cadres, débordement. Il vérifie que la longueur est la même aux cinq périodes. Avec un dossier, une capture réduite (échelle 0,35) par période et par taille.
 - `tailles.mjs <port> <dossier de travail> [<dossier des captures>]` : relevé de toutes les pages à toutes les tailles de téléphone, droit et tourné (point 139 ; mode d'emploi détaillé en tête du fichier), sur un profil neuf, sans réseau, 8 à 12 min. Il importe une session de chaque famille, passe chaque page par douze tailles d'écran (dont 375×834 et 834×375, le téléphone de l'utilisateur) et trois tailles de texte (100, 115, 130 %), et relève : page plus large que l'écran, élément qui en sort, texte coupé, rangée qui défile, cibles qui se recouvrent ; pour information, cibles de moins de 40 px et surface prise par les barres. Une analyse tournée s'ouvre sur sa carte en plein écran : le script la referme avant de mesurer. Il écrit `rapport.md` et `rapport.json`, et la capture de la pire combinaison de chaque page. `SIZES`, `FONTS` et `PAGES` restreignent le relevé.
 - `aides.mjs <port> [<dossier des captures>]` : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10, point 148), sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une wing et une course. Il vérifie :

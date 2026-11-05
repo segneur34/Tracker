@@ -10,6 +10,7 @@ Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signat
 
 ## `core/` : noyau, SI, sans notion de sport
 
+- `licenses.ts` (+ test) : licences des composants livrés (Réglages › À propos) : `parseLicenseList`, `mergeLicenseLists`, `licenseGroup`, `refusedLicenses`, `uselessExceptions`, `productionPackages`, liste blanche et exceptions nommées.
 - `domainTypes.ts` : types de domaine que le noyau lit, définis ici et réexportés par leur domaine (`CadenceDetection`, `IntervalSeries`, placements des sauts, autorisations ; lot 71).
 - `base64.ts` : conversion base64, venue de `platform/` (lot 71).
 - `types.ts` : `SportType`, `RawTrackPoint`, `TrackPoint`, `TopSegment`, `BaseSessionStats`, `CumulativeTrack`.
@@ -280,6 +281,7 @@ Dans `sailing/` aussi : `pointData.ts` (`PointData` et `trackToPointData`, vue e
 
 ## `components/` et thème
 
+- `AboutSettings.tsx` : bloc « À propos » de Réglages, logo, version, où vont les données, et liste des licences chargée au dépliage. `SettingsPart.tsx` : partie repliable de Réglages (carte d'activité, licences).
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sur téléphone, fixe en cinq cases autour du bouton rond, point 127, en rail à gauche tourné, point 139 ; hauteur des bandeaux en `--shell-top` ; cadenas relâché à la fin d'un enregistrement ; barre haute sur ordinateur, « Statistiques » et « Profil » avant Réglages), bandeau d'enregistrement et du compteur, bouton rond (appui long : pause ou reprise) ; ne lit que le statut, `RecordingClock` et `RecordButton` suivent seuls l'horloge (point 210).
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités du Profil (venu de l'accueil), période, détail d'une barre touchée, totaux repliables d'un geste, précédés de la légende.
 - `SessionEndGear.tsx` : matériel de la session choisi à la fin de l'enregistrement, sur la carte « Session terminée » juste avant « Analyser » (`GearPicker` par groupe, vide d'office, rien sans liste de matériel ni activité ; écrit dans la fiche par « Analyser », lot 143).
@@ -338,6 +340,7 @@ Dans `sailing/` aussi : `pointData.ts` (`PointData` et `trackToPointData`, vue e
 
 ## Hors de `src/`
 
+- `outils/licences-hors-js.mjs` : régénère `public/licences-hors-js.json` (polices, `@capacitor/android`, greffon GPS, natif) depuis une sortie de `gradlew :app:dependencies` ; s'arrête sur un groupe natif inconnu.
 - `outils/lancer-tracker.bat` : lance le serveur de développement s'il ne tourne pas et ouvre l'application ; cible du raccourci « Tracker » du bureau, icône `outils/icone-tracker.ico` (`outils/LISEZMOI.md`).
 - `outils/icones/vectoriser.cjs` : vectorise (potrace) la planche d'icônes de l'utilisateur en `src/components/activityArt.tsx` (§10, point 125).
 - `public/_redirects` : toute adresse servie par `index.html`, pour l'application sur le web (point 127).

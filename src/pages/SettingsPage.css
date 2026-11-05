@@ -188,7 +188,7 @@
   border-top-style: dashed;
 }
 
-/* Partie repliable d'une carte d'activité (`ActivityPart`) : un titre qui l'ouvre, ses lignes en retrait. */
+/* Partie repliable (`SettingsPart`) : un titre qui l'ouvre, ses lignes en retrait. */
 .settings-part {
   border-top: 1px solid var(--line-soft);
 }
@@ -289,4 +289,119 @@
   margin: 0;
   color: var(--muted);
   font-size: var(--text-xs);
+}
+
+/* Bloc « À propos » (`AboutSettings`) : logo centré, version, paragraphe, puis les licences en partie repliable. */
+/* Logo, comme celui de l'accueil (`.home-logo`). */
+.about__logo {
+  font-family: var(--font-logo);
+  font-size: var(--logo-size);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.about__version {
+  margin: var(--space-1) 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.about__text {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+/* Les lignes de composant prennent toute la largeur : pas de retrait sous le titre. */
+.about .settings-part__body {
+  padding-left: 0;
+}
+
+.about-licenses__intro {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.about-licenses__group {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.about-licenses__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about-licenses__more {
+  margin-top: var(--space-2);
+}
+
+.about-license {
+  border-radius: var(--radius-s);
+  background-color: var(--bg);
+}
+
+.about-license__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.about-license__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.about-license__version {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.about-license__id {
+  flex-shrink: 0;
+  max-width: 45%;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+
+/* Texte de la licence : une zone qui défile, la page ne s'allonge pas sans fin. */
+.about-license__text {
+  box-sizing: border-box;
+  max-height: var(--license-text-height);
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.about-license__text p {
+  margin: 0 0 var(--space-2);
+}
+
+.about-license__text pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
 }

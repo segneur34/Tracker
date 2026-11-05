@@ -55,6 +55,11 @@
      servant à faire défiler la page à la souris (`analysisMobile.css`). */
   --analysis-map-width: 80%;
 
+  /* Hauteur d'une ligne qu'on touche au doigt (Réglages › À propos). */
+  --touch-target: 44px;
+  /* Zone qui défile du texte d'une licence (Réglages › À propos) : la moitié de l'écran, 320 px au plus. */
+  --license-text-height: min(50vh, 320px);
+
   /* Plans empilés (z-index), du plus bas au plus haut. Les contrôles de Leaflet montent jusqu'à 1000 dans le contexte
      de leur carte. */
   --z-map-tools: 900;

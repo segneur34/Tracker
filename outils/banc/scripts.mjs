@@ -32,6 +32,8 @@ export const SCRIPTS = [
   { nom: 'aides', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'statistiques', 'profil', 'accueil'] },
   { nom: 'allure-session', args: ['{port}', '{gpx}', '{gpx2}'], pages: ['voile', 'enregistrer'] },
   { nom: 'altitude', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'reglages'], reseau: true },
+  // À propos et licences de Réglages (lot 151) : `fetch` remplacé par une liste synthétique, puis le repli sans `licences.json`.
+  { nom: 'apropos', args: ['{port}', '{captures?}'], pages: ['reglages'] },
   { nom: 'balises', args: ['{port}', '{travail}', '{captures?}'], pages: ['planification', 'enregistrer', 'reglages', 'voile'], solo: true },
   { nom: 'barre', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'statistiques'] },
   { nom: 'bench', args: ['{port}', 'analyse', '{gpx}'], pages: ['enregistrer', 'voile'] },

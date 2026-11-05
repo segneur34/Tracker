@@ -64,6 +64,8 @@ import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import { PermissionsSettings } from '../components/PermissionsStatus';
 import PanelTitle from '../components/PanelTitle';
+import AboutSettings from '../components/AboutSettings';
+import SettingsPart from '../components/SettingsPart';
 import ShadePicker from '../components/ShadePicker';
 import ActivityIcon from '../components/ActivityIcon';
 import IconPicker from '../components/IconPicker';
@@ -175,29 +177,13 @@ function AnalysisTabsSetting({ view, profile, onChange }: {
   );
 }
 
-/**
- * Partie repliable d'une carte d'activité (affichage, analyse, enregistrement…) :
- * une carte ouverte pour changer un nom reste courte.
- */
-function ActivityPart({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: ReactNode }) {
-  return (
-    <div className="settings-part">
-      <button type="button" className="settings-part__toggle" aria-expanded={open} onClick={onToggle}>
-        <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: open ? 'rotate(90deg)' : undefined }} />
-        {label}
-      </button>
-      {open && <div className="settings-part__body">{children}</div>}
-    </div>
-  );
-}
-
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'affichage' | 'cartes' | 'coureur' | 'tutoriels';
+type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'affichage' | 'cartes' | 'coureur' | 'tutoriels' | 'apropos';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
   memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, affichage: false, cartes: false,
-  coureur: false, tutoriels: false,
+  coureur: false, tutoriels: false, apropos: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -514,7 +500,7 @@ const ActivityCard = memo(function ActivityCard({
             <IconPicker value={activityIcon(activity)} color={activity.color} onChange={(icon) => updateActivity(id, { icon })}
               label={`Icône de ${activity.name}`} />
           </SettingRow>
-          {positions && <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
+          {positions && <SettingsPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
             <SettingRow label="Unité de vitesse" helpKey={`${id}:unite-vitesse`} help={UNIT_HELP}>
               <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
                 {units.map((u) => <option key={u} value={u}>{speedUnitLabel(u, s.distanceUnit)}</option>)}
@@ -557,8 +543,8 @@ const ActivityCard = memo(function ActivityCard({
                 </div>
               </SettingRow>
             )}
-          </ActivityPart>}
-          <ActivityPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
+          </SettingsPart>}
+          <SettingsPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
             {withThreshold && (
             <SettingRow label={thresholdLabel} helpKey={`${id}:seuil`} help={thresholdHelp(treatment, s.foil === true)}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -636,8 +622,8 @@ const ActivityCard = memo(function ActivityCard({
               </SettingRow>
             )}
             <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
-          </ActivityPart>
-          <ActivityPart label="Matériel" open={openPart.materiel} onToggle={() => togglePart('materiel')}>
+          </SettingsPart>
+          <SettingsPart label="Matériel" open={openPart.materiel} onToggle={() => togglePart('materiel')}>
             <SettingRow label="Matériel enregistré" helpKey={`${id}:materiel-enregistre`}
               help={`Des groupes (voile, aile avant, mât…) et leurs pièces, choisis en fin de session dans l'onglet ${sailing ? '« matos et conditions »' : '« matériel et notes »'} à la place des champs de texte ; Statistiques filtre alors par pièce. « Par défaut » garde la liste.`}>
               <label className="settings-sports__pair">
@@ -660,8 +646,8 @@ const ActivityCard = memo(function ActivityCard({
                 </div>
               </SettingRow>
             )}
-          </ActivityPart>
-          <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
+          </SettingsPart>
+          <SettingsPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
             {positions && <SettingRow label="Pause automatique" helpKey={`${id}:pause`}
               help="La trace se met en pause seule sous cette vitesse, au bout de ce temps. 0 km/h la désactive.">
               <div className="settings-sports__pair">
@@ -715,9 +701,9 @@ const ActivityCard = memo(function ActivityCard({
                 defaults={defaultNotificationFieldsFor(activity)} max={MAX_NOTIFICATION_FIELDS}
                 onChange={(fields) => setFor(id, 'notificationFields', fields)} />
             </div>
-          </ActivityPart>
+          </SettingsPart>
           {(treatment === 'velo' || paceFamily !== null || s.loopReturnRatio !== null) && (
-            <ActivityPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et planification' : 'Vélo') : 'Planification'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
+            <SettingsPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et planification' : 'Vélo') : 'Planification'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
               {treatment === 'velo' && (
                 <BikeSettings view={s}
                   onBikeType={(t) => setFor(id, 'bikeType', t)}
@@ -742,17 +728,17 @@ const ActivityCard = memo(function ActivityCard({
                   onLevel={(level) => setFor(id, 'paceLevel', level)}
                   onCustomSpeed={(ms) => setFor(id, 'customFlatSpeedMs', ms)} />
               )}
-            </ActivityPart>
+            </SettingsPart>
           )}
           {usesMarkCourse(family) && (
-            <ActivityPart label="Planification : balise sonore" open={openPart.balises} onToggle={() => togglePart('balises')}>
+            <SettingsPart label="Planification : balise sonore" open={openPart.balises} onToggle={() => togglePart('balises')}>
                 <SettingRow label="Bips d'approche des balises" helpKey={`${id}:bips`} helpFirst
                   help="En navigation sur un parcours : bips de plus en plus rapprochés à l'approche de chaque balise, bip long à la validation. Tirez un point pour le déplacer, touchez le graphe pour en ajouter un.">
                   <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden} fallback={defaultMarkGuideOf(activity)}
                     approachMs={simulatedApproachMs(family)} speedUnit={s.speedUnit}
                     onChange={(guide) => setFor(id, 'markGuide', guide)} />
                 </SettingRow>
-            </ActivityPart>
+            </SettingsPart>
           )}
         </div>
       )}
@@ -977,6 +963,11 @@ function SettingsPage() {
       <div style={cardStyle}>
         <PanelTitle label="Tutoriels" open={open.tutoriels} onToggle={() => toggle('tutoriels')} />
         {open.tutoriels && <div className="settings-block__body"><TutorialsSettings /></div>}
+      </div>
+
+      <div style={cardStyle}>
+        <PanelTitle label="À propos" open={open.apropos} onToggle={() => toggle('apropos')} />
+        {open.apropos && <div className="settings-block__body"><AboutSettings /></div>}
       </div>
     </div>
     </SettingsScope>
