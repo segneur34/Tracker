@@ -1,8 +1,6 @@
-/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
-import { defineConfig } from 'vite'
-import { configDefaults } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // Version unique de l'application, lue dans package.json (Gradle lit la même).
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }

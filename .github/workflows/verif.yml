@@ -1,0 +1,28 @@
+# Vérification à chaque envoi vers main (dépôt privé : les minutes comptent, pas de déclenchement par branche).
+name: verif
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  verif:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Lint sans avertissement toléré, tous les tests en ordre mélangé (graine tirée à chaque passage), build,
+      # renvois des documents.
+      - run: npm run verif
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # Le projet Android s'ouvre : bit exécutable de gradlew, JDK 21, wrapper téléchargeable.
+      - run: ./gradlew --version
+        working-directory: android

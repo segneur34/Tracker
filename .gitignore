@@ -28,3 +28,11 @@ dist-ssr
 
 # Copies de travail des lots menés en parallèle (/chaine)
 .claude/worktrees/
+
+# Secrets, couverture, sorties de signature
+.claude/settings.local.json
+.env
+.env.*
+coverage/
+android/app/release/
+*.jks

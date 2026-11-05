@@ -9,8 +9,11 @@
 // pour l'imposer) ; un test qui dépend de l'ordre échoue un jour, et la sortie dit alors la graine et la commande
 // qui rejoue le même ordre. `--rapide` et `npm test` gardent l'ordre fixe.
 //
-// Tout passe : 4 ou 5 lignes. Sinon : seulement les échecs. Code de sortie 1 si un outil échoue (les avertissements
-// de lint sont montrés mais ne font pas échouer, comme `npm run lint`). Sans dépendance.
+// Les deux modes vérifient aussi les documents vivants : chaque fichier ou nom cité existe (`outils/docs-cites.mjs`) et la
+// carte `docs/INVENTAIRE.md` colle au disque (`outils/docs-inventaire.mjs`).
+//
+// Tout passe : 5 ou 6 lignes. Sinon : seulement les échecs. Code de sortie 1 si un outil échoue ; un avertissement de
+// lint fait échouer (`--deny-warnings`). Sans dépendance.
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
@@ -102,7 +105,7 @@ function portsDuBanc() {
 
 // ---------- briques ----------
 async function briqueLint() {
-  const r = await lancer(BIN.oxlint, ['-f', 'json'])
+  const r = await lancer(BIN.oxlint, ['-f', 'json', '--deny-warnings'])
   const lignes = []
   let n = 0
   try {
@@ -117,11 +120,21 @@ async function briqueLint() {
   }
   if (n === 0 && r.code === 0) return { ok: true, ms: r.ms, resume: `lint : propre (${secondes(r.ms)})`, details: [] }
   return {
-    ok: r.code === 0, // avertissements seuls : montrés, sans échec
+    ok: r.code === 0, // `--deny-warnings` : un avertissement fait quitter oxlint en 1
     ms: r.ms,
     resume: `lint : ${n} avertissement${n > 1 ? 's' : ''} (${secondes(r.ms)})`,
     details: lignes.length > 15 ? [...lignes.slice(0, 15), `  et ${lignes.length - 15} autres`] : lignes,
   }
+}
+
+async function briqueDocuments() {
+  const [cites, carte] = await Promise.all([lancer(join(RACINE, 'outils', 'docs-cites.mjs'), []), lancer(join(RACINE, 'outils', 'docs-inventaire.mjs'), [])])
+  const ms = Math.max(cites.ms, carte.ms)
+  if (cites.code === 0 && carte.code === 0) return { ok: true, ms, resume: `documents : renvois et carte des fichiers à jour (${secondes(ms)})`, details: [] }
+  const details = [cites, carte]
+    .filter((x) => x.code !== 0)
+    .flatMap((x) => sansCouleur(x.out + x.err).trim().split('\n').slice(0, 20))
+  return { ok: false, ms, resume: `documents : renvois faux (${secondes(ms)})`, details }
 }
 
 async function briqueTsc() {
@@ -242,15 +255,15 @@ async function briqueTests(ports) {
 // ---------- programme ----------
 const debut = performance.now()
 const ports = await portsDuBanc()
-const [lint, construction, tests] = await Promise.all([briqueLint(), rapide ? briqueTypecheck() : briqueBuild(), briqueTests(ports)])
+const [lint, construction, tests, documents] = await Promise.all([briqueLint(), rapide ? briqueTypecheck() : briqueBuild(), briqueTests(ports), briqueDocuments()])
 
 if (fichierNoms) writeFileSync(fichierNoms, tests.noms.join('\n') + '\n', 'utf8')
 
 const sortie = []
-for (const b of [lint, tests, construction]) {
+for (const b of [lint, tests, construction, documents]) {
   sortie.push(b.resume)
   sortie.push(...b.details)
 }
 sortie.push(`total : ${secondes(performance.now() - debut)}`)
 console.log(sortie.join('\n'))
-process.exit(lint.ok && tests.ok && construction.ok ? 0 : 1)
+process.exit(lint.ok && tests.ok && construction.ok && documents.ok ? 0 : 1)

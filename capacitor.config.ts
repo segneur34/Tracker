@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
     // Exigé par `@capgo/background-geolocation` : sans lui, les positions
     // cessent d'arriver après 5 min en arrière-plan.
     useLegacyBridge: true,
+    // Chromium 111 : la cible de construction de Vite (`baseline-widely-available`) ; en dessous, des écrans
+    // blancs. Capacitor ne fait que journaliser le refus (pas d'écran d'erreur sans `server.errorPath`).
+    minWebViewVersion: 111,
   },
   plugins: {
     // Icônes sombres dans les barres système au lancement ; le thème les règle

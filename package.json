@@ -1,12 +1,15 @@
 {
   "name": "tracker",
   "private": true,
-  "version": "0.4.85",
+  "version": "0.4.86",
   "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint --deny-warnings",
     "test": "vitest run",
     "verif": "node outils/verif.mjs",
     "test:watch": "vitest",
