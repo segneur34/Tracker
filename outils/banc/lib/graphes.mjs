@@ -1,7 +1,7 @@
 // Banc de test : gestes sur les graphes zoomables d'une analyse (lot 2 des demandes du 23/10), sortis de
 // `zoom-carte.mjs` pour être partagés avec `fluidite.mjs` (lot 114). Sélecteurs d'un panneau et de son n-ième
 // graphe, point visé dans la zone de tracé, double-clic à la souris, survol et double toucher daté comme par un doigt.
-// Usage : `const { plotPoint, mouse, doubleClick, hover, doubleTap } = graphGestures(b)` après `connect`.
+// Usage : `const { plotPoint, mouse, doubleClick, hover, doubleTap, pinch } = graphGestures(b)` après `connect`.
 
 /** Le panneau dont le titre commence ainsi. */
 export const SCOPE = (title) => `([...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}))?.closest('.an-carte-panels > *') ?? null)`;
@@ -54,5 +54,26 @@ export const graphGestures = ({ send, evaluate, settle, wait }) => {
     await settle({ max: 900 });
     return 'ok';
   };
-  return { plotPoint, mouse, doubleClick, hover, doubleTap };
+  /**
+   * Pincement à deux doigts, datés comme un vrai geste : doigts à `from` (fractions de la largeur du tracé, à mi-hauteur)
+   * au départ, à `to` à la fin, en `steps` mouvements espacés de `stepMs`. Écarter zoome (lot 164). Sous ralenti, le geste
+   * s'allonge : chaque mouvement attend que la page l'ait reçu, comme les événements qu'un téléphone regroupe.
+   */
+  const pinch = async (title, nth, { from = [0.4, 0.6], to = [0.1, 0.9], steps = 12, stepMs = 16 } = {}) => {
+    const p0 = await plotPoint(title, nth, 0);
+    if (!p0) return 'absent';
+    const width = await evaluate(`(() => { const c = ${CHART(title, nth)}; return (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect().width; })()`);
+    const fingers = (k) => {
+      const f = k / steps;
+      return [0, 1].map((id) => ({ id, x: p0.x + width * (from[id] + (to[id] - from[id]) * f), y: p0.y }));
+    };
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: fingers(0) });
+    for (let k = 1; k <= steps; k++) {
+      await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: fingers(k) });
+      await wait(stepMs);
+    }
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    return 'ok';
+  };
+  return { plotPoint, mouse, doubleClick, hover, doubleTap, pinch };
 };

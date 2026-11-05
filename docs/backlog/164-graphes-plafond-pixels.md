@@ -49,3 +49,31 @@ Essai au téléphone, un seul : pincement sur une course de 2 h, fluide.
 **Banc.** `FLUIDITE_MESURES=zoom node outils/banc/passe.mjs fluidite` avant et après ; `graphes survol cardio surf general onglets coquille vides zoom-carte` ; `survol` complété : point actif des graphes liés à la même abscisse, à un pas de ligne près.
 
 **Écarts acceptés, à signaler s'ils apparaissent.** Axes `dataMin`/`dataMax` calculés sur les lignes du graphe (écart de moins de 5 % de l'étendue, une graduation peut bouger) ; sur ordinateur, le repère du survol avance par pas de 2,7 px.
+
+## Relevés
+
+Banc sur le serveur de développement (Vite), comme tous les relevés de `fluidite` : React en mode développement. `FLUIDITE_REPS=3`, médianes.
+
+**Avant (commit 92053ed), première passe.** `course-pc` (double-clic, 1400 px) : image la plus longue 0,18 s à ×1, 1,48 s à ×6, tâche max 1,46 s (on retrouve le 1,5 s du 127). `course-tel` (pincement, 390 px) : 0,47 s à ×1, 1,55 s à ×6, tâche max 1,56 s. Lignes par graphe : 480 sur cette course de 2 h (7 200 points, pas de 15), et non 1 700 comme écrit plus haut ; 737 sur la course bruitée, 963 en voile 5 Hz avec FC, 651 en surf.
+
+**Profil à ×6 (`course-tel`).** `run` 25 %, `createElement` 13 %, `addObjectDiffToProperties` 8 %, `addValueToProperties` 8 %, `jsxDEV` 4 % : surtout du React de développement (`console.createTask`, pistes de performance), absent de l'APK. `getTotalLength` 2 %. Le chiffre du banc majore donc nettement celui du téléphone.
+
+**Point du banc.** La mesure à 390 px a demandé deux corrections : en surf le panneau s'appelle « Vitesse » ; après un second chargement du document, le toucher émulé n'arrive plus à la page, d'où une navigation interne entre variantes. Prises à une seule mesure, avant ces corrections : `bruit-tel` 2,74 s à ×6 (737 lignes), `surf-tel` 1,11 s (651 lignes). À refaire en version compilée (`vite preview`), qui fait foi si le coût vient du React de développement.
+
+**Avant, version compilée (`vite preview`, 92053ed, 3 prises), celle qui fait foi.** Image la plus longue à ×6 : `course-pc` 0,42 s, `course-tel` 0,55 s, `bruit-tel` 0,80 s, `voile-tel` 1,23 s (963 + 963 + 381 + 955 lignes). Soit trois à quatre fois moins que sur le serveur de développement (1,58 s, 1,63 s, 7,0 s, 4,4 s) : l'objectif de 1 s n'est dépassé que par la voile à 5 Hz avec FC.
+
+**Essai `linear` seul, version compilée, une prise.** `course-tel` 1,50 s (0,55 s avant, prise visiblement troublée : script 11,5 s contre 4,2 s), `voile-tel` 0,72 s (1,23 s avant ; script 5,8 s contre 7,0 s). Gain non établi : retiré.
+
+**Plafond et lignes de la voile, version compilée, 3 prises.** Plafond de 300 extrêmes par série et vitesse et FC de la voile sur leurs lignes propres (`syncNearestTick`), vérifiés (tests et typecheck passés). `voile-tel` : lignes de 3 262 à 2 483 (798 + 506 + 381 + 798), mais image la plus longue à ×6 de 1,15 s (0,58 à 1,45) contre 1,23 s (1,03 à 1,72), script 7,0 s des deux côtés. `course-tel`, dont les lignes n'ont pas changé : 0,92 s (0,45 à 1,07) contre 0,55 s. L'écart d'une passe à l'autre dépasse le gain : retiré, `src/` rendu tel quel. Ni `LandModule` ni le surf n'ont été modifiés.
+
+**Bilan (image la plus longue à ×6, version compilée, code inchangé).**
+
+| Variante | Lignes par graphe (entier) | Image max | Tâche max |
+|---|---|---|---|
+| `course-pc`, double-clic | 480 | 0,42 s | 0,40 s |
+| `course-tel`, pincement | 480 | 0,55 s | 0,56 s |
+| `bruit-tel`, pincement | 737 | 0,80 s | 0,80 s |
+| `voile-tel`, pincement | 963 + 963 + 381 + 955 | 1,23 s | 1,25 s |
+| `surf-tel`, pincement | 651 | 0,70 s | 0,69 s |
+
+Objectif tenu sauf en voile de 3 h à 5 Hz, FC et quatre graphes ouverts. Le coût n'y suit pas le nombre de lignes de la vue entière : pendant le pincement, chaque graphe a déjà environ 500 lignes (504 + 504 + 409 + 503 après le geste, avec ou sans plafond). Repli des `<stop>` sans objet : la voile n'en a pas. Suite possible hors de ce lot : moins de graphes redessinés par image de pincement, ou remplacer Recharts.

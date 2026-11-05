@@ -2,9 +2,9 @@
 // durées changent à chaque passage (`sansCache` du registre), elles sont en secondes (le masque commun `N ms` les
 // effacerait) et se lisent à l'œil, à vitesse normale puis processeur ralenti six fois (`Emulation.setCPUThrottlingRate`,
 // comme un Android moyen) ; chaque mesure est prise trois fois, médiane retenue.
-// Usage : node fluidite.mjs <port> <dossier de travail, chemin Windows>
+// Usage : node fluidite.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Variables : `FLUIDITE_MESURES=ouverture,quitter,seuil,zoom,resumes,demarrage` (sous-ensemble),
-// `FLUIDITE_REPS=3`. Le script :
+// `FLUIDITE_REPS=3`, `FLUIDITE_ZOOM=course-pc,course-tel,bruit-tel,voile-tel,surf-tel` (variantes du zoom). Le script :
 //  1. écrit une session de voile de 3 h à 5 Hz (54 000 points, bords, virements et empannages comme `make-gpx.mjs`),
 //     la trace d'une heure de `make-gpx.mjs`, une course de 2 h à 1 Hz avec FC et altitude, et 30 sessions de voile
 //     d'une heure à 1 Hz, et les importe par la page ;
@@ -18,8 +18,13 @@
 //     depuis le lot 157 : aucun, la lecture abandonnée), et si « Lecture de la session… » a paru entre-temps ;
 //  3. seuil d'activité changé dans l'onglet réglages de cette analyse : temps jusqu'aux chiffres refaits, jusqu'au calme
 //     du DOM, tâches longues ;
-//  4. zoom d'un graphe de la course (double-clic de `lib/graphes.mjs`, celui de `zoom-carte.mjs`), onglets graphiques et
-//     cardio ouverts : script par geste (`Performance.getMetrics`), images par seconde pendant 1,5 s, tâches longues ;
+//  4. zoom d'un graphe (lot 164), par variante : `course-pc`, la course de 2 h au double-clic de `lib/graphes.mjs`, à
+//     1400 px, onglets graphiques et cardio ouverts, la mesure d'origine ; à 390×844 et au vrai pincement à deux doigts
+//     (`pinch`) : `course-tel`, cette course ; `bruit-tel`, une course de 2 h bruitée (vitesse, altitude, FC à pics,
+//     cadence) ; `voile-tel`, une voile de 3 h à 5 Hz avec FC, onglets graphiques, vent et vmg ; `surf-tel`, un surf de
+//     2 h avec FC. Script par geste (`Performance.getMetrics`), images par seconde, image la plus longue, tâches
+//     longues, et par graphe les segments des courbes et les `<stop>` du dégradé, avant et après le geste. Avec un
+//     dossier de captures : le panneau « Graphiques » entier, puis zoomé ×2 (`zoom-<variante>-entier`, `-zoome`) ;
 //  5. mise à jour des résumés : les 30 fiches sont marquées d'une version de calcul antérieure (cache des fiches
 //     effacé), la page est relancée sur l'accueil ; temps jusqu'aux 30 résumés refaits, tâches longues, et la latence
 //     d'un mouvement de souris envoyé toutes les 300 ms pendant ce temps (la page répond-elle ?) ; une prise de plus
@@ -33,11 +38,11 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASE, connect } from './lib/cdp.mjs';
-import { CHART, graphGestures } from './lib/graphes.mjs';
+import { CHART, SCOPE, graphGestures } from './lib/graphes.mjs';
 
-const [port, workDir] = process.argv.slice(2);
+const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
-  console.error('Usage : node fluidite.mjs <port> <dossier de travail>');
+  console.error('Usage : node fluidite.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
 const MESURES = (process.env.FLUIDITE_MESURES ?? 'ouverture,quitter,seuil,zoom,resumes,demarrage').split(',').map((m) => m.trim());
@@ -46,7 +51,7 @@ const RATES = [1, 6];
 
 const b = await connect({ port, width: 1400, height: 1000 });
 const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importFiles, records, close, logs } = b;
-const { doubleClick } = graphGestures(b);
+const { doubleClick, doubleTap, pinch } = graphGestures(b);
 await blockNetwork();
 await send('Performance.enable');
 await send('Profiler.enable');
@@ -184,7 +189,7 @@ const profileStop = async () => (await send('Profiler.stop')).result?.profile;
 // --- 1. Traces ---
 const R = 6_371_000;
 /** Session de voile synthétique : bords de près et de portant, virements et empannages, vent du nord (le motif de `make-gpx.mjs`), à `hz` Hz pendant `seconds` s. */
-const sailGpx = ({ hz, seconds, startMs, name, lat0 = 43.5, lon0 = 3.95 }) => {
+const sailGpx = ({ hz, seconds, startMs, name, lat0 = 43.5, lon0 = 3.95, hrAt = null }) => {
   let lat = lat0, lon = lon0, t = 0;
   const dt = 1 / hz;
   const pts = [];
@@ -192,7 +197,7 @@ const sailGpx = ({ hz, seconds, startMs, name, lat0 = 43.5, lon0 = 3.95 }) => {
     const d = speed * dt;
     lat += (d * Math.cos(heading * Math.PI / 180)) / R * 180 / Math.PI;
     lon += (d * Math.sin(heading * Math.PI / 180)) / (R * Math.cos(lat * Math.PI / 180)) * 180 / Math.PI;
-    pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(startMs + Math.round(t * 1000)).toISOString()}</time><extensions><speed>${speed.toFixed(2)}</speed></extensions></trkpt>`);
+    pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(startMs + Math.round(t * 1000)).toISOString()}</time><extensions><speed>${speed.toFixed(2)}</speed>${hrAt ? `<gpxtpx:TrackPointExtension><gpxtpx:hr>${Math.round(hrAt(t))}</gpxtpx:hr></gpxtpx:TrackPointExtension>` : ''}</extensions></trkpt>`);
     t += dt;
   };
   const leg = (h, s, n) => { for (let i = 0; i < n; i++) step(h + Math.sin(i / (7 * hz)) * 3, s + Math.sin(i / (5 * hz)) * 0.5); };
@@ -209,7 +214,7 @@ const sailGpx = ({ hz, seconds, startMs, name, lat0 = 43.5, lon0 = 3.95 }) => {
     for (let k = 0; k < 6 && t < seconds; k++) { leg(135, 9, 150 * hz); turn(135, 225, 6, 9, 6 * hz); leg(225, 9, 150 * hz); turn(225, 135, 6, 9, 6 * hz); }
     turn(135, 45, 6, 9, 5 * hz);
   }
-  return { text: `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${name}</name><type>wingfoil</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`, points: pts.length };
+  return { text: `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"${hrAt ? ' xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"' : ''}><trk><name>${name}</name><type>wingfoil</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`, points: pts.length };
 };
 /** Course de 2 h à 1 Hz : boucles de 1 km autour de Montpellier, altitude ondulée, FC qui monte. */
 const runGpx = ({ seconds, startMs }) => {
@@ -224,6 +229,54 @@ const runGpx = ({ seconds, startMs }) => {
     pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${(80 + 30 * Math.sin(k / 400)).toFixed(1)}</ele><time>${new Date(startMs + k * 1000).toISOString()}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${Math.round(135 + 20 * Math.sin(k / 600) + k / 900)}</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions></trkpt>`);
   }
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Course 2 h</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
+};
+
+/** Pseudo-aléa répétable, dans [-1, 1] : la même trace d'un passage à l'autre, les captures se comparent. */
+const noiseFrom = (seed) => {
+  let x = seed;
+  return () => {
+    x = (x * 1664525 + 1013904223) % 4294967296;
+    return (x / 4294967296) * 2 - 1;
+  };
+};
+/** Pics de FC de `PEAK_S` s, plus hauts que le bruit, qu'un pas régulier sauterait : les captures doivent les garder. */
+const PEAK_S = 6;
+const hrPeak = (t, every, height) => (t % every < PEAK_S ? height : 0);
+/** Course de 2 h à 1 Hz bruitée, comme une vraie : vitesse, altitude, FC (bruit et pics) et cadence qui tremblent. */
+const noisyRunGpx = ({ seconds, startMs }) => {
+  const rnd = noiseFrom(164);
+  const pts = [];
+  let angle = 0;
+  for (let k = 0; k < seconds; k++) {
+    const speed = 3.25 + 1.25 * Math.sin(k / 300) + 0.3 * Math.sin(k / 17) + 0.5 * rnd();
+    angle += speed / 1000;
+    const radius = 1000 + 150 * Math.sin(k / 900);
+    const lat = 43.62 + ((radius * Math.cos(angle)) / R) * (180 / Math.PI);
+    const lon = 3.86 + ((radius * Math.sin(angle)) / (R * Math.cos((43.62 * Math.PI) / 180))) * (180 / Math.PI);
+    const hr = 135 + 20 * Math.sin(k / 600) + k / 900 + 4 * rnd() + hrPeak(k, 1700, 30);
+    const cad = 82 + 3 * Math.sin(k / 200) + 3 * rnd() - hrPeak(k + 500, 2300, 25);
+    pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>${(80 + 30 * Math.sin(k / 400) + 1.5 * rnd()).toFixed(1)}</ele><time>${new Date(startMs + k * 1000).toISOString()}</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${Math.round(hr)}</gpxtpx:hr><gpxtpx:cad>${Math.round(cad)}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Course bruitée</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
+};
+/** Surf de 2 h à 1 Hz avec FC : rame, attente au pic, vague de 12 s toutes les 5 min, comme `zoom-carte.mjs`. */
+const surfGpx = ({ seconds, startMs }) => {
+  const rnd = noiseFrom(4);
+  let lat = 43.4;
+  let lon = 3.6;
+  const pts = [];
+  for (let t = 0; t < seconds; t++) {
+    const inCycle = t % 300;
+    const wave = inCycle >= 280 && inCycle < 292;
+    const paddle = inCycle < 90 || inCycle >= 292;
+    const speed = (wave ? 5.5 : paddle ? 1.1 : 0.15) + 0.1 * rnd();
+    const heading = wave ? 180 : paddle ? 0 : 90;
+    lat += (speed * Math.cos((heading * Math.PI) / 180)) / 111_195;
+    lon += (speed * Math.sin((heading * Math.PI) / 180)) / (111_195 * Math.cos((lat * Math.PI) / 180));
+    const hr = 110 + 20 * Math.sin(t / 120) + 2 * rnd() + (wave ? 25 : 0);
+    pts.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(startMs + t * 1000).toISOString()}</time><extensions><speed>${speed.toFixed(2)}</speed><course>${heading}</course><gpxtpx:TrackPointExtension><gpxtpx:hr>${Math.round(hr)}</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions></trkpt>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Surf 2 h</name><type>surf</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
 
 const T_LONG = Date.UTC(2026, 7, 1, 9, 0, 0);
@@ -264,6 +317,30 @@ await settle({ max: 5000, label: 'import course' });
 const runFile = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx') && n.includes('2026-09-05'));
 const runUrl = `/course/analyse?session=${encodeURIComponent(runFile ?? '')}`;
 console.log('session course        :', runFile ?? '(absente)');
+
+// Traces des seules variantes du zoom : importées à la demande (la mesure des résumés compte les fiches).
+const ZOOM_DEMANDEES = MESURES.includes('zoom') ? (process.env.FLUIDITE_ZOOM ?? 'course-pc,course-tel,bruit-tel,voile-tel,surf-tel').split(',').map((v) => v.trim()) : [];
+const importOne = async (page, name, text, datePart) => {
+  const path = join(workDir, name);
+  writeFileSync(path, text);
+  const before = (await records()).length;
+  await go(`/${page}`, 5000);
+  console.log(`import ${name.padEnd(22)}:`, await importFiles(path, MULTI));
+  await waitFor(async () => (await records()).length > before, { timeout: 90000, every: 500, label: name });
+  await settle({ max: 5000, label: name });
+  const file = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx') && n.includes(datePart));
+  return `/${page}/analyse?session=${encodeURIComponent(file ?? '')}`;
+};
+const noisyUrl = ZOOM_DEMANDEES.includes('bruit-tel')
+  ? await importOne('course', 'fluidite-course-bruit.gpx', noisyRunGpx({ seconds: 7200, startMs: Date.UTC(2026, 8, 7, 8, 0, 0) }), '2026-09-07') : null;
+const sailHrUrl = ZOOM_DEMANDEES.includes('voile-tel')
+  ? await importOne('voile', 'fluidite-voile-fc.gpx', (() => {
+    const rnd = noiseFrom(7);
+    return sailGpx({ hz: 5, seconds: 3 * 3600, startMs: Date.UTC(2026, 7, 3, 9, 0, 0), name: 'Voile 3 h 5 Hz FC', hrAt: (t) => 130 + 20 * Math.sin(t / 600) + 3 * rnd() + hrPeak(Math.floor(t), 1900, 30) }).text;
+  })(), '2026-08-03') : null;
+const surfUrl = ZOOM_DEMANDEES.includes('surf-tel')
+  ? await importOne('surf', 'fluidite-surf.gpx', surfGpx({ seconds: 7200, startMs: Date.UTC(2026, 8, 9, 8, 0, 0) }), '2026-09-09') : null;
+const zoomImported = (noisyUrl ? 1 : 0) + (sailHrUrl ? 1 : 0) + (surfUrl ? 1 : 0);
 
 const results = {}; // nom de la mesure → { 1: {...médianes}, 6: {...} }
 
@@ -445,43 +522,97 @@ if (MESURES.includes('seuil')) {
   // Brouillon abandonné : la page suivante est chargée à neuf, le `confirm` est accepté d'office par la bibliothèque.
 }
 
-// --- 4. Zoom d'un graphe à pied ---
-if (MESURES.includes('zoom')) {
-  console.log('\n== Zoom d\'un graphe (double-clic) de la course de 2 h avec FC, onglets graphiques et cardio ouverts ==');
+// --- 4. Zoom d'un graphe ---
+const SCREEN_PC = { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false };
+const SCREEN_TEL = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true };
+const ZOOM_VARIANTES = {
+  'course-pc': { url: () => runUrl, titre: 'course de 2 h, 1400 px, double-clic', tel: false, onglets: ['général', 'graphiques', 'cardio'] },
+  'course-tel': { url: () => runUrl, titre: 'course de 2 h, 390 px, pincement', tel: true, onglets: ['graphiques', 'cardio'] },
+  'bruit-tel': { url: () => noisyUrl, titre: 'course bruitée de 2 h (vitesse, altitude, FC, cadence), 390 px, pincement', tel: true, onglets: ['graphiques', 'cardio'] },
+  'voile-tel': { url: () => sailHrUrl, titre: 'voile de 3 h à 5 Hz avec FC, 390 px, pincement', tel: true, onglets: ['graphiques', 'vent', 'vmg'] },
+  'surf-tel': { url: () => surfUrl, titre: 'surf de 2 h avec FC, 390 px, pincement', tel: true, onglets: ['graphiques'], panneau: 'Vitesse' },
+};
+/** Par graphe des panneaux : segments de sa plus longue courbe (`d` tracé) et `<stop>` de son dégradé. */
+const chartLines = async () => {
+  const list = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('.an-carte-panels .zoom-chart')].map((c) => ({
+    seg: Math.max(0, ...[...c.querySelectorAll('.recharts-line-curve, .recharts-area-curve')].map((p) => (p.getAttribute('d') ?? '').match(/[CLHV]/g)?.length ?? 0)),
+    stops: c.querySelectorAll('stop').length,
+  })))`));
+  return `${list.map((g) => g.seg).join(' + ')} lignes (${list.reduce((a, g) => a + g.seg, 0)}), ${list.reduce((a, g) => a + g.stops, 0)} stops`;
+};
+/** Capture du panneau « Graphiques » entier, même plus haut que l'écran. Rien sans dossier de captures. */
+const shootPanel = async (name, panel) => {
+  if (!shotDir) return;
+  const clip = await evaluate(`(() => { const s = ${SCOPE(panel)}; if (!s) return null; const r = s.getBoundingClientRect(); return JSON.stringify({ x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }); })()`);
+  if (!clip) return;
+  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: JSON.parse(clip) });
+  writeFileSync(join(shotDir, `${name}.png`), Buffer.from(shot.result.data, 'base64'));
+};
+const resetZoom = async (panel) => {
+  await evaluate(`(() => { const c = ${CHART(panel, 0)}; const b = c ? [...c.querySelectorAll('.zoom-chart__actions button')].find((x) => x.textContent.trim() === 'Tout voir') : null; b?.click(); return Boolean(b); })()`);
+  await settle({ max: 8000, label: 'tout voir' });
+};
+const zoomText = (r) => `script ${sec(r.script)} | ${(r.fps ?? 0).toFixed(0)} images/s, image la plus longue ${sec(r.gap)} | ${ltText(r)}`;
+const FRAMES_MS = 1500;
+let screenTel = false;
+let firstVariant = true;
+/** Une variante du zoom : la page ouverte, une prise de chauffe, `REPS` prises à ×1 et à ×6, médianes dans `results`. */
+const mesureZoom = async (nom) => {
+  const v = ZOOM_VARIANTES[nom];
+  const panel = v?.panneau ?? 'Graphiques';
+  if (!v || !v.url()) { console.log(`\n(variante du zoom inconnue : ${nom})`); return; }
+  console.log(`\n== Zoom d'un graphe : ${v.titre}, onglets ${v.onglets.join(', ')} ==`);
   await throttle(1);
-  await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); s.running = { ...(s.running ?? {}), general: true, graphiques: true, cardio: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); return 'ok'; })()`);
-  await go(runUrl, 30000);
-  await waitFor(`document.querySelectorAll('.an-sheet__stats .an-sheet__stat-value').length >= 3`, { timeout: 60000, label: 'analyse course' });
-  console.log('onglets ouverts       :', await openTabs(['général', 'graphiques', 'cardio']));
-  const charts = await evaluate(`document.querySelectorAll('.an-carte-panels .zoom-chart').length`);
-  console.log('graphes zoomables     :', charts);
-  const FRAMES_MS = 1500;
+  // Document neuf au changement d'écran seulement : passé un second chargement, le toucher émulé n'arrive plus à la
+  // page (aucun `touchstart`, vu au lot 164). Entre deux variantes au toucher, navigation dans la page.
+  if (screenTel !== v.tel) {
+    screenTel = v.tel;
+    await send('Emulation.setDeviceMetricsOverride', v.tel ? SCREEN_TEL : SCREEN_PC);
+    await send('Emulation.setTouchEmulationEnabled', v.tel ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
+    await go(v.url(), 30000);
+  } else if (firstVariant) await go(v.url(), 30000);
+  else {
+    await evaluate(`${SPA_GO(v.url())} 'ok'`);
+    await wait(500);
+  }
+  firstVariant = false;
+  await waitFor(`document.querySelectorAll('.an-tabs .ui-tab').length >= 2`, { timeout: 90000, label: 'analyse' });
+  await settle({ max: 20000, label: 'analyse' });
+  console.log('onglets ouverts       :', await openTabs(v.onglets));
+  await waitFor(`${CHART(panel, 0)} !== null`, { timeout: 30000, label: 'graphes' });
+  await settle({ max: 10000, label: 'graphes' });
+  console.log('graphes zoomables     :', await evaluate(`document.querySelectorAll('.an-carte-panels .zoom-chart').length`));
+  const lignes = { entier: await chartLines(), zoome: null };
+  await shootPanel(`zoom-${nom}-entier`, panel);
   const zoomOnce = async () => {
     const before = await metrics();
-    // Compteur d'images lancé dans la page, sans l'attendre : il court pendant le geste.
+    // Compteur d'images lancé dans la page, sans l'attendre : il court pendant le geste. Double-clic : 1,5 s comme à
+    // l'origine ; pincement : jusqu'à la fin du geste (`until`, repoussé après lui), le geste s'allonge sous ralenti.
     await send('Runtime.evaluate', { expression: `(() => {
       const f = window.__fluidite;
-      f.frames = { t0: performance.now(), n: 0, maxGap: 0, done: false };
+      f.frames = { t0: performance.now(), n: 0, maxGap: 0, done: false, until: ${v.tel ? 'Infinity' : FRAMES_MS} };
       let prev = f.frames.t0;
-      const loop = () => requestAnimationFrame((t) => { f.frames.n++; f.frames.maxGap = Math.max(f.frames.maxGap, t - prev); prev = t; if (t - f.frames.t0 < ${FRAMES_MS}) loop(); else { f.frames.t1 = t; f.frames.done = true; } });
+      const loop = () => requestAnimationFrame((t) => { f.frames.n++; f.frames.maxGap = Math.max(f.frames.maxGap, t - prev); prev = t; if (t - f.frames.t0 < f.frames.until) loop(); else { f.frames.t1 = t; f.frames.done = true; } });
       loop();
     })()`, returnByValue: true });
     const t0 = await evaluate('window.__fluidite.frames.t0');
-    const r = await doubleClick('Graphiques', 0, 0.25, { settleMax: 8000 });
-    await waitFor('window.__fluidite.frames.done', { timeout: 20000, every: 50 });
+    const r = v.tel ? await pinch(panel, 0) : await doubleClick(panel, 0, 0.25, { settleMax: 8000 });
+    if (v.tel) {
+      await settle({ max: 8000, label: 'après le pincement' });
+      await evaluate(`(() => { const f = window.__fluidite.frames; f.until = performance.now() - f.t0; })()`);
+    }
+    await waitFor('window.__fluidite.frames.done', { timeout: 30000, every: 50 });
     const after = await metrics();
-    const frames = await evaluate('JSON.stringify(window.__fluidite.frames)');
-    const f = JSON.parse(frames);
-    const lt = await longTasks(t0, t0 + FRAMES_MS);
-    // Zoom rendu : « Tout voir » paraît ; puis on le clique pour la prise suivante.
-    const buttons = await evaluate(`(() => { const c = ${CHART('Graphiques', 0)}; return c ? [...c.querySelectorAll('.zoom-chart__actions button')].map((b) => b.textContent.trim()).join(' | ') : '(absent)'; })()`);
-    await evaluate(`(() => { const c = ${CHART('Graphiques', 0)}; const b = c ? [...c.querySelectorAll('.zoom-chart__actions button')].find((x) => x.textContent.trim() === 'Tout voir') : null; b?.click(); return Boolean(b); })()`);
-    await settle({ max: 8000, label: 'tout voir' });
+    const f = JSON.parse(await evaluate('JSON.stringify(window.__fluidite.frames)'));
+    const lt = await longTasks(t0, f.t1);
+    // Zoom rendu : « Tout voir » paraît ; ses lignes relevées, puis on le clique pour la prise suivante.
+    const buttons = await evaluate(`(() => { const c = ${CHART(panel, 0)}; return c ? [...c.querySelectorAll('.zoom-chart__actions button')].map((b) => b.textContent.trim()).join(' | ') : '(absent)'; })()`);
+    lignes.zoome = await chartLines();
+    await resetZoom(panel);
     return { geste: r, fps: (f.n * 1000) / (f.t1 - f.t0), gap: f.maxGap, script: (after.ScriptDuration - before.ScriptDuration) * 1000, max: lt.max, total: lt.total, count: lt.count, buttons };
   };
-  const zoomText = (r) => `script ${sec(r.script)} | ${(r.fps ?? 0).toFixed(0)} images/s, image la plus longue ${sec(r.gap)} | ${ltText(r)}`;
   await zoomOnce(); // chauffe
-  results.zoom = {};
+  const out = {};
   for (const rate of RATES) {
     await throttle(rate);
     const runs = [];
@@ -491,10 +622,29 @@ if (MESURES.includes('zoom')) {
       console.log(`×${rate} essai ${k + 1} : ${zoomText(r)}${r.geste !== 'ok' ? ` (geste : ${r.geste})` : ''}${/Tout voir/.test(r.buttons) ? '' : ` (boutons : ${r.buttons})`}`);
     }
     const med = Object.fromEntries(['script', 'fps', 'gap', 'max', 'total', 'count'].map((k) => [k, median(runs.map((r) => r[k]))]));
-    results.zoom[rate] = med;
+    out[rate] = med;
     console.log(`×${rate} médiane : ${zoomText(med)}`);
   }
+  // Une prise de plus sous le profileur, au ralenti : où le temps part.
+  await profileStart();
+  const profiled = await zoomOnce();
+  const profile = await profileStop();
+  console.log(`×6 sous le profileur : ${zoomText(profiled)}`);
+  if (profile) console.log(profileSummary(profile));
   await throttle(1);
+  console.log(`lignes par graphe     : entier ${lignes.entier} ; après le geste ${lignes.zoome}`);
+  results[`zoom ${nom}`] = { ...out, lignes };
+  if (shotDir) {
+    await (v.tel ? doubleTap(panel, 0, 0.25) : doubleClick(panel, 0, 0.25, { settleMax: 8000 }));
+    await settle({ max: 8000, label: 'zoom pour la capture' });
+    await shootPanel(`zoom-${nom}-zoome`, panel);
+    await resetZoom(panel);
+  }
+};
+if (MESURES.includes('zoom')) {
+  for (const nom of ZOOM_DEMANDEES) await mesureZoom(nom);
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await send('Emulation.setDeviceMetricsOverride', SCREEN_PC);
 }
 
 // --- 5. Mise à jour des résumés ---
@@ -502,8 +652,8 @@ if (MESURES.includes('resumes') || MESURES.includes('demarrage')) {
   await throttle(1);
   await go('/voile', 5000);
   console.log('\nimport de 30 sessions :', await importFiles(manyPaths, MULTI));
-  const got = await waitFor(async () => (await records()).length >= 3 + COUNT, { timeout: 240000, every: 1000, label: 'fiches des 30 sessions' });
-  console.log('fiches                :', got ? 3 + COUNT : (await records()).length);
+  const got = await waitFor(async () => (await records()).length >= 3 + zoomImported + COUNT, { timeout: 240000, every: 1000, label: 'fiches des 30 sessions' });
+  console.log('fiches                :', got ? 3 + zoomImported + COUNT : (await records()).length);
   await settle({ max: 10000, label: 'import des 30' });
   await wait(3000); // cache des fiches écrit (1 s après le dernier import)
 }
@@ -682,10 +832,12 @@ if (results.seuil) {
   row('Seuil changé : chiffres / DOM calme', (r) => `${sec(s[r].chiffres)} / ${sec(s[r].calme)}`);
   row('Seuil changé : tâche max / bloqué', (r) => `${sec(s[r].max)} / ${sec(s[r].total)}`);
 }
-if (results.zoom) {
-  const z = results.zoom;
-  row('Zoom graphe course 2 h : script / images par s / image max', (r) => `${sec(z[r].script)} / ${(z[r].fps ?? 0).toFixed(0)} / ${sec(z[r].gap)}`);
-  row('Zoom : tâche max / bloqué', (r) => `${sec(z[r].max)} / ${sec(z[r].total)}`);
+for (const nom of ZOOM_DEMANDEES) {
+  const z = results[`zoom ${nom}`];
+  if (!z) continue;
+  row(`Zoom ${nom} : script / images par s / image max`, (r) => `${sec(z[r].script)} / ${(z[r].fps ?? 0).toFixed(0)} / ${sec(z[r].gap)}`);
+  row(`Zoom ${nom} : tâche max / bloqué`, (r) => `${sec(z[r].max)} / ${sec(z[r].total)}`);
+  console.log(`| Zoom ${nom} : lignes | entier ${z.lignes.entier} | après le geste ${z.lignes.zoome} |`);
 }
 if (results.resumes) {
   const s = results.resumes;

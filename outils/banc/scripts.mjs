@@ -56,7 +56,7 @@ export const SCRIPTS = [
   { nom: 'entrainement', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'] },
   { nom: 'familles', args: ['{port}', '{captures?}'], pages: ['reglages'] },
   // Mesure (lot 114) : fluidité, ouverture d'une longue voile, seuil changé, zoom d'un graphe, résumés refaits, démarrage ; ×1 puis processeur ralenti ×6, en s ; seul (tâches longues et images par seconde), environ 12 min.
-  { nom: 'fluidite', args: ['{port}', '{travail}'], pages: ['voile', 'course', 'accueil', 'bibliotheque'], solo: true, sansCache: true, delaiMin: 25 },
+  { nom: 'fluidite', args: ['{port}', '{travail}', '{captures?}'], pages: ['voile', 'course', 'accueil', 'bibliotheque'], solo: true, sansCache: true, delaiMin: 45 },
   { nom: 'fractionne', args: ['{port}', '{travail}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'], solo: true },
   { nom: 'general', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'velo', 'surf'] },
   { nom: 'glisser', args: ['{port}', '{captures?}'], pages: ['profil', 'statistiques'] },

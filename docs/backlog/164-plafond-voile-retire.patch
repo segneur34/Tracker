@@ -1,0 +1,372 @@
+diff --git a/src/components/TrackChart.tsx b/src/components/TrackChart.tsx
+index cdcccc2..cc784c0 100644
+--- a/src/components/TrackChart.tsx
++++ b/src/components/TrackChart.tsx
+@@ -3,7 +3,7 @@ import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip,
+ import type { ChartZoom } from '../hooks/useChartZoom';
+ import type { GradientStop } from '../core/grade';
+ import { chartXAxis, type ChartXSpec } from './chartAxes';
+-import { NO_TOOLTIP_CONTENT, clearTrackHover, trackHover, type ChartHoverEvent } from './chartHover';
++import { NO_TOOLTIP_CONTENT, clearTrackHover, syncNearestTick, trackHover, type ChartHoverEvent } from './chartHover';
+ import { CHART_GRID_PROPS, chartTick, yAxisLabel } from './chartStyle';
+ import { gradeGradientDefs } from './gradeGradientDefs';
+ import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
+@@ -60,7 +60,7 @@ interface TrackChartBase<R> {
+   margin?: Margin;
+   /** Grille en pointillés derrière les courbes ; `'horizontal'` : ses seuls traits horizontaux. */
+   grid?: boolean | 'horizontal';
+-  /** Graphes au survol lié (Recharts). */
++  /** Graphes au survol lié (Recharts), par abscisse : chacun peut avoir ses lignes (`syncNearestTick`). */
+   syncId?: string;
+   /** « Tout voir » sur ce graphe (voir `ZoomableChart`). */
+   showReset?: boolean;
+@@ -105,7 +105,7 @@ export default function TrackChart<R>(props: TrackChartProps<R>) {
+   return (
+     <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
+       <ResponsiveContainer>
+-        <ComposedChart data={rows} accessibilityLayer={false} {...(syncId !== undefined ? { syncId } : {})} onMouseMove={onHover} onTouchMove={onHover} margin={margin}>
++        <ComposedChart data={rows} accessibilityLayer={false} {...(syncId !== undefined ? { syncId, syncMethod: syncNearestTick } : {})} onMouseMove={onHover} onTouchMove={onHover} margin={margin}>
+           <ChartZoomProbe />
+           {grid === 'horizontal' ? <CartesianGrid {...CHART_GRID_PROPS} vertical={false} /> : grid && <CartesianGrid {...CHART_GRID_PROPS} />}
+           {chartXAxis(zoom, x)}
+diff --git a/src/components/chartHover.test.ts b/src/components/chartHover.test.ts
+index de937b2..b56a7ad 100644
+--- a/src/components/chartHover.test.ts
++++ b/src/components/chartHover.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ import { getHoveredIndex } from '../hooks/useChartHover';
+-import { clearTrackHover, hoveredRow, hoveredTrackIndex, inChartView, trackHover } from './chartHover';
++import { clearTrackHover, hoveredRow, hoveredTrackIndex, inChartView, syncNearestTick, trackHover } from './chartHover';
+ 
+ const rows = [{ index: 10, v: 1 }, { index: 25, v: 2 }, { index: 40, v: 3 }];
+ 
+@@ -52,3 +52,32 @@ describe('trackHover', () => {
+     expect(getHoveredIndex()).toBeNull();
+   });
+ });
++
++describe('syncNearestTick', () => {
++  const ticks = [0, 1, 2.5, 4].map((value) => ({ value }));
++
++  it("rend la place de la graduation la plus proche de l'abscisse", () => {
++    expect(syncNearestTick(ticks, { activeLabel: '2.4' })).toBe(2);
++    expect(syncNearestTick(ticks, { activeLabel: 3.6 })).toBe(3);
++    expect(syncNearestTick(ticks, { activeLabel: '-5' })).toBe(0);
++    expect(syncNearestTick(ticks, { activeLabel: '99' })).toBe(3);
++  });
++
++  it('à égalité, la première', () => {
++    expect(syncNearestTick(ticks, { activeLabel: '0.5' })).toBe(0);
++  });
++
++  it('sans abscisse numérique, le numéro de ligne reçu', () => {
++    expect(syncNearestTick(ticks, { activeLabel: 'matin', activeTooltipIndex: 2 })).toBe(2);
++    expect(syncNearestTick(ticks, { activeLabel: '', activeTooltipIndex: 1 })).toBe(1);
++    expect(syncNearestTick(ticks, {})).toBe(-1);
++  });
++
++  it('mêmes abscisses à 1 Hz et à 5 Hz : la même minute', () => {
++    for (const hz of [1, 5]) {
++      const minutes = Array.from({ length: 600 * hz }, (_, k) => ({ value: k / hz / 60 }));
++      const place = syncNearestTick(minutes, { activeLabel: '4.1' });
++      expect(minutes[place].value).toBeCloseTo(4.1, 1);
++    }
++  });
++});
+diff --git a/src/components/chartHover.ts b/src/components/chartHover.ts
+index 7bcbedf..367f664 100644
+--- a/src/components/chartHover.ts
++++ b/src/components/chartHover.ts
+@@ -47,6 +47,32 @@ export const hoveredTrackIndex = (
+   data: ReadonlyArray<{ index: number }>
+ ): number | null => hoveredRow(e, data)?.index ?? null;
+ 
++/**
++ * `syncMethod` des graphes liés dont chacun a ses lignes (lot 164) : Recharts
++ * synchronise d'ordinaire par numéro de ligne, ici par abscisse. Rend la place
++ * dans `ticks` de la graduation la plus proche de l'abscisse du graphe survolé
++ * (`activeLabel`), la première à égalité ; sans abscisse numérique, le numéro
++ * de ligne reçu.
++ */
++export const syncNearestTick = (
++  ticks: ReadonlyArray<{ value?: unknown }>,
++  data: { activeLabel?: unknown; activeTooltipIndex?: unknown }
++): number => {
++  const label = data.activeLabel;
++  const target = typeof label === 'number' ? label : typeof label === 'string' && label !== '' ? Number(label) : NaN;
++  if (Number.isNaN(target)) return typeof data.activeTooltipIndex === 'number' ? data.activeTooltipIndex : -1;
++  let best = -1;
++  let bestGap = Infinity;
++  ticks.forEach((tick, k) => {
++    const gap = Math.abs(Number(tick.value) - target);
++    if (gap < bestGap) {
++      bestGap = gap;
++      best = k;
++    }
++  });
++  return best;
++};
++
+ /** Vrai si l'abscisse `value` du point survolé est dans la plage zoomée (ou s'il n'y a pas de zoom) : sinon, rien à lire. */
+ export const inChartView = (view: XRange | null, value: number): boolean => !view || (value >= view.min && value <= view.max);
+ 
+diff --git a/src/core/chartZoom.test.ts b/src/core/chartZoom.test.ts
+index 7038e28..eb6d4ee 100644
+--- a/src/core/chartZoom.test.ts
++++ b/src/core/chartZoom.test.ts
+@@ -1,7 +1,7 @@
+ import { describe, expect, it } from 'vitest';
+ import { trackBounds } from './displayConfig';
+ import {
+-  axisRangePath, CHART_EXTREME_TOLERANCE, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, sampledIndicesKeeping,
++  axisRangePath, CHART_EXTREME_SHARE, CHART_EXTREME_TOLERANCE, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, sampledIndicesKeeping,
+   lastByRange, sameRange, visibleIndexRange, zoomAtRange, zoomPathRange, zoomViewOf,
+ } from './chartZoom';
+ 
+@@ -343,6 +343,54 @@ describe('indices tracés, plusieurs séries (pics gardés)', () => {
+   });
+ });
+ 
++describe('extrêmes plafonnés par série (lot 164)', () => {
++  /** Bruit fort sur `seconds` s à `hz` Hz, avec un pic de 3 s à la 1 800e seconde, plus haut que tout le reste (la limite joue). */
++  const noisyPeak = (seconds: number, hz: number) => {
++    const n = seconds * hz;
++    const values = Array.from({ length: n }, (_, k) => {
++      const t = k / hz;
++      return t >= 1800 && t < 1803 ? 3 : noise(k);
++    });
++    return { n, values, peakAt: 1800 * hz };
++  };
++
++  for (const hz of [1, 5]) {
++    it(`${hz} Hz, 3 600 s : au plus 500 réguliers et 300 extrêmes, le pic au même temps`, () => {
++      const { n, values, peakAt } = noisyPeak(3600, hz);
++      const regular = sampledIndices(0, n - 1, 500);
++      const kept = sampledIndices(0, n - 1, 500, values);
++      expect(kept.length).toBeLessThanOrEqual(regular.length + Math.ceil(500 * CHART_EXTREME_SHARE));
++      expect(sampledIndicesKeeping(0, n - 1, 500, [values], Infinity).length).toBeGreaterThan(kept.length);
++      expect(kept.filter((i) => regular.includes(i))).toEqual(regular);
++      for (let k = 1; k < kept.length; k++) expect(kept[k]).toBeGreaterThan(kept[k - 1]);
++      const peaks = kept.filter((i) => values[i] === 3);
++      expect(peaks.length).toBeGreaterThan(0);
++      expect(peaks[0] / hz).toBeGreaterThanOrEqual(1800);
++      expect(peaks[0] / hz).toBeLessThan(1803);
++      expect(peaks[0]).toBeGreaterThanOrEqual(peakAt);
++    });
++  }
++
++  it('le minimum et le maximum de la plage restent, même à faible écart à la corde', () => {
++    const n = 7200;
++    const values = Array.from({ length: n }, (_, k) => 2 * noise(k));
++    values[1234] = 2.5;
++    values[4321] = -2.5;
++    const kept = sampledIndicesKeeping(0, n - 1, 500, [values], 3);
++    expect(kept).toContain(1234);
++    expect(kept).toContain(4321);
++    expect(kept.length).toBeLessThanOrEqual(sampledIndices(0, n - 1, 500).length + 3);
++  });
++
++  it('sous la limite, la sortie ne change pas', () => {
++    const s = sprints(3000, 5);
++    for (const values of [s.speed, s.hr, s.cadence]) {
++      expect(sampledIndicesKeeping(0, s.n - 1, 500, [values])).toEqual(sampledIndicesKeeping(0, s.n - 1, 500, [values], Infinity));
++      expect(sampledIndicesKeeping(0, s.n - 1, 500, [values], Infinity)).toEqual(frozenSampledIndices(0, s.n - 1, 500, values));
++    }
++  });
++});
++
+ describe('zoom hors du module (lot 127)', () => {
+   it('sameRange : mêmes bornes, null compris', () => {
+     expect(sameRange(null, null)).toBe(true);
+diff --git a/src/core/chartZoom.ts b/src/core/chartZoom.ts
+index 309af39..cb50223 100644
+--- a/src/core/chartZoom.ts
++++ b/src/core/chartZoom.ts
+@@ -175,6 +175,13 @@ export const visibleIndexRange = (values: ArrayLike<number>, range: XRange | nul
+  */
+ export const CHART_EXTREME_TOLERANCE = 0.05;
+ 
++/**
++ * Extrêmes ajoutés au plus à une série, en part de `maxPoints` : sur une trace
++ * très bruitée, la tolérance seule en laisserait passer deux par pas régulier.
++ * Sous cette limite, elle décide seule ; au-delà, les plus grands écarts restent.
++ */
++export const CHART_EXTREME_SHARE = 0.6;
++
+ /** Indices de `first` à `last` à pas régulier, au plus `maxPoints` environ, le dernier compris ; et ce pas. */
+ const regularIndices = (first: number, last: number, maxPoints: number): { out: number[]; step: number } => {
+   const step = Math.max(1, Math.ceil((last - first + 1) / Math.max(1, maxPoints)));
+@@ -188,29 +195,44 @@ const regularIndices = (first: number, last: number, maxPoints: number): { out:
+  * Indices du pas régulier `out` (de `first` à `last`), avec les extrêmes de
+  * `values` qu'il sauterait : entre deux indices tracés, le maximum et le
+  * minimum qui s'écartent de la corde entre ces deux voisins de plus de
+- * `CHART_EXTREME_TOLERANCE` de l'étendue de la série sur la plage. Croissants.
++ * `CHART_EXTREME_TOLERANCE` de l'étendue de la série sur la plage ; au plus
++ * `maxExtremes` : le minimum et le maximum de la plage d'abord (ils font l'axe),
++ * puis les plus grands écarts à la corde. Croissants.
+  */
+-const keepExtremes = (out: number[], first: number, last: number, values: ArrayLike<number | null | undefined>): number[] => {
++const keepExtremes = (
++  out: number[],
++  first: number,
++  last: number,
++  values: ArrayLike<number | null | undefined>,
++  maxExtremes: number
++): number[] => {
+   const at = (i: number): number => {
+     const v = values[i];
+     return typeof v === 'number' && isFinite(v) ? v : NaN;
+   };
+   let lo = Infinity;
+   let hi = -Infinity;
++  let loI = -1;
++  let hiI = -1;
+   for (let i = first; i <= last; i++) {
+     const v = at(i);
+     if (Number.isNaN(v)) continue;
+-    if (v < lo) lo = v;
+-    if (v > hi) hi = v;
++    if (v < lo) {
++      lo = v;
++      loI = i;
++    }
++    if (v > hi) {
++      hi = v;
++      hiI = i;
++    }
+   }
+   const tolerance = (hi - lo) * CHART_EXTREME_TOLERANCE;
+   if (!(tolerance > 0)) return out;
+ 
+-  const kept: number[] = [];
++  const extremes: { index: number; gap: number }[] = [];
+   for (let k = 0; k < out.length - 1; k++) {
+     const a = out[k];
+     const b = out[k + 1];
+-    kept.push(a);
+     let maxI = -1;
+     let minI = -1;
+     let maxV = -Infinity;
+@@ -236,13 +258,27 @@ const keepExtremes = (out: number[], first: number, last: number, values: ArrayL
+       if (Number.isNaN(vb)) return va;
+       return va + ((vb - va) * (i - a)) / (b - a);
+     };
+-    const addMax = maxV - chordAt(maxI) > tolerance;
+-    const addMin = chordAt(minI) - minV > tolerance;
+-    if (addMax && addMin) kept.push(Math.min(maxI, minI), Math.max(maxI, minI));
+-    else if (addMax) kept.push(maxI);
+-    else if (addMin) kept.push(minI);
++    const maxGap = maxV - chordAt(maxI);
++    const minGap = chordAt(minI) - minV;
++    const pair = [
++      ...(maxGap > tolerance ? [{ index: maxI, gap: maxGap }] : []),
++      ...(minGap > tolerance ? [{ index: minI, gap: minGap }] : []),
++    ];
++    if (pair.length === 2 && pair[0].index > pair[1].index) pair.reverse();
++    extremes.push(...pair);
++  }
++  const chosen = extremes.length <= maxExtremes ? extremes : extremes
++    .map((e) => (e.index === loI || e.index === hiI ? { ...e, gap: Infinity } : e))
++    .sort((x, y) => y.gap - x.gap || x.index - y.index)
++    .slice(0, maxExtremes)
++    .sort((x, y) => x.index - y.index);
++
++  const kept: number[] = [];
++  let e = 0;
++  for (const i of out) {
++    while (e < chosen.length && chosen[e].index < i) kept.push(chosen[e++].index);
++    kept.push(i);
+   }
+-  kept.push(out[out.length - 1]);
+   return kept;
+ };
+ 
+@@ -254,22 +290,23 @@ const keepExtremes = (out: number[], first: number, last: number, values: ArrayL
+  * pas régulier sauterait sont ajoutés, chacun jugé sur l'étendue de sa
+  * série (27/10, et 29/10 pour plusieurs séries) : un pic bref de FC ou un
+  * creux de cadence reste tracé même quand la vitesse ne bouge pas. La
+- * tolérance (`CHART_EXTREME_TOLERANCE`) borne d'elle-même les points d'une
+- * trace bruitée, sans autre plafond. Les indices, croissants et sans
+- * doublon, restent ceux de la trace complète : le survol et le repère de la
+- * carte ne changent pas.
++ * tolérance (`CHART_EXTREME_TOLERANCE`) écarte le bruit ordinaire ; sur une
++ * trace très bruitée, `maxExtremes` borne ce qu'une série ajoute. Les indices,
++ * croissants et sans doublon, restent ceux de la trace complète : le survol et
++ * le repère de la carte ne changent pas.
+  */
+ export const sampledIndicesKeeping = (
+   first: number,
+   last: number,
+   maxPoints: number,
+-  series: ReadonlyArray<ArrayLike<number | null | undefined>>
++  series: ReadonlyArray<ArrayLike<number | null | undefined>>,
++  maxExtremes: number = Math.ceil(maxPoints * CHART_EXTREME_SHARE)
+ ): number[] => {
+   if (last < first) return [];
+   const { out, step } = regularIndices(first, last, maxPoints);
+   if (series.length === 0 || step <= 1) return out;
+-  if (series.length === 1) return keepExtremes(out, first, last, series[0]);
+-  const all = series.flatMap((values) => keepExtremes(out, first, last, values)).sort((a, b) => a - b);
++  if (series.length === 1) return keepExtremes(out, first, last, series[0], maxExtremes);
++  const all = series.flatMap((values) => keepExtremes(out, first, last, values, maxExtremes)).sort((a, b) => a - b);
+   const merged: number[] = [];
+   for (const i of all) if (merged[merged.length - 1] !== i) merged.push(i);
+   return merged;
+diff --git a/src/pages/SailingModule.tsx b/src/pages/SailingModule.tsx
+index e7cd854..8220a93 100644
+--- a/src/pages/SailingModule.tsx
++++ b/src/pages/SailingModule.tsx
+@@ -23,7 +23,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
+ import { useZoomOnMap } from '../hooks/useZoomOnMap';
+ import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
+ import { SAILING_TABS, tabDefaults, type SailingTab } from '../core/analysisTabs';
+-import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
++import { lastByRange, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+ import { nearestIndexAtTime } from '../core/search';
+ import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
+ import { useNarrowScreen } from '../hooks/useNarrowScreen';
+@@ -539,30 +539,29 @@ function SailingModule() {
+     () => lastByRange((view) => (trackData.length === 0 ? null : visibleIndexRange(trackMinutes, view))),
+     [trackData, trackMinutes]
+   );
+-  /** Lignes de la vitesse et de la FC : les extrêmes de l'une et de l'autre restent (un pic bref de FC aussi). */
+-  const chartIndicesAt = useMemo(() => lastByRange((view): number[] => {
+-    const visibleRange = visibleRangeAt(view);
+-    if (!visibleRange) return [];
+-    return sampledIndicesKeeping(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, heart.present ? [speedSeries, heart.smoothed] : [speedSeries]);
+-  }), [visibleRangeAt, speedSeries, heart]);
+-  /** Lignes du vent : ses points suivent la vitesse seule. */
+-  const windIndicesAt = useMemo(() => lastByRange((view): number[] => {
++  /** Lignes de la vitesse et du vent : les extrêmes de la vitesse restent. */
++  const speedIndicesAt = useMemo(() => lastByRange((view): number[] => {
+     const visibleRange = visibleRangeAt(view);
+     return visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, speedSeries) : [];
+   }), [visibleRangeAt, speedSeries]);
++  /** Lignes de la FC, à elle seule : un pic bref reste (lot 164 : chaque graphe a ses lignes, le survol les lie par abscisse). */
++  const heartIndicesAt = useMemo(() => lastByRange((view): number[] => {
++    const visibleRange = visibleRangeAt(view);
++    return visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, heart.smoothed) : [];
++  }), [visibleRangeAt, heart.smoothed]);
+   const speedRowsAt = useMemo(
+-    () => lastByRange((view) => chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) }))),
+-    [chartIndicesAt, trackMinutes, trackData, speedUnit]
++    () => lastByRange((view) => speedIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) }))),
++    [speedIndicesAt, trackMinutes, trackData, speedUnit]
+   );
+   const heartRowsAt = useMemo(
+     () => lastByRange((view) => (heart.present
+-      ? chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) }))
++      ? heartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) }))
+       : [])),
+-    [heart, chartIndicesAt, trackMinutes]
++    [heart, heartIndicesAt, trackMinutes]
+   );
+   const windRowsAt = useMemo(
+-    () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, windIndicesAt(view)) : [])),
+-    [windStats, trackData, windIndicesAt]
++    () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, speedIndicesAt(view)) : [])),
++    [windStats, trackData, speedIndicesAt]
+   );
+   /** Lignes de la VMG : ses points suivent sa propre courbe, ses extrêmes restent ; toute manœuvre y reste un trou (`vmgChartRows`). */
+   const vmgRowsAt = useMemo(() => lastByRange((view) => {
