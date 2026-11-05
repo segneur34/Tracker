@@ -15,7 +15,10 @@ const inventaire = fs.readFileSync(path.join(racine, 'docs/INVENTAIRE.md'), 'utf
 const norm = (p) => p.split(path.sep).join('/')
 
 // Ce que l'application crée à l'exécution ou qui n'est qu'un modèle de nom : jamais cherché sur le disque.
-const HORS_DEPOT = new Set(['reglages.json', 'vignettes.json', '_index.json', 'N-titre.md'])
+const HORS_DEPOT = new Set(['reglages.json', 'vignettes.json', '_index.json', 'N-titre.md', 'licences.json', 'fc-repos.json'])
+// Fichiers générés par la construction et ignorés par git : jamais parcourus, pour voir ici ce que voit un clone neuf
+// (vérification sur GitHub ; `licences.json` n'était trouvé que dans la copie Android, sur ce seul poste).
+const GENERES = ['android/app/src/main/assets', 'android/capacitor-cordova-android-plugins']
 
 const fichiers = []
 const parcourir = (dossier, liste = fichiers) => {
@@ -23,6 +26,7 @@ const parcourir = (dossier, liste = fichiers) => {
   for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
     if (['node_modules', '.git', 'build', 'sondes-audit'].includes(e.name)) continue
     const p = path.join(dossier, e.name)
+    if (GENERES.includes(norm(path.relative(racine, p)))) continue
     if (e.isDirectory()) parcourir(p, liste)
     else liste.push(norm(path.relative(racine, p)))
   }

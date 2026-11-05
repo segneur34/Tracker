@@ -24,12 +24,16 @@ const DOCUMENTS = [
   'docs/INVENTAIRE.md',
   'docs/BACKLOG.md',
 ]
+// Fichiers générés par la construction et ignorés par git : jamais parcourus, pour voir ici ce que voit un clone neuf
+// (vérification sur GitHub ; `licences.json` n'était trouvé que dans la copie Android, sur ce seul poste).
+const GENERES = ['android/app/src/main/assets', 'android/capacitor-cordova-android-plugins']
 const IGNORES = new Set(['node_modules', '.git', 'build', 'dist', '.gradle', 'worktrees'])
 // Ce que l'application crée à l'exécution ou qui vient d'ailleurs que du dépôt : jamais vérifié sur le disque.
 const HORS_DEPOT = new Set([
   'Tracker/', 'sessions/', 'reglages/', 'en-attente/', 'tuiles/', 'z_x_y.png', 'sat_z_x_y.png', '_index.json',
   'vignettes.json', 'tracker.json', 'reglages.json', 'dist/', 'leaflet.css', 'local.properties', 'keystore.properties',
   'node_modules/', 'gradlew', 'JAVA_HOME', 'ANDROID_HOME', 'MEMORY.md', '/', 'itineraires/', 'N-titre.md', 'docs/backlog/N-titre.md', 'Explore',
+  'licences.json', 'fc-repos.json',
 ])
 // Documents dont les noms seuls viennent de Claude Code (modèles, options), pas du code : seuls leurs chemins comptent.
 const SANS_NOMS = new Set(['docs/MODELES.md'])
@@ -41,6 +45,7 @@ const parcourir = (dossier) => {
   for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
     if (IGNORES.has(e.name)) continue
     const p = path.join(dossier, e.name)
+    if (GENERES.includes(norm(path.relative(racine, p)))) continue
     if (e.isDirectory()) parcourir(p)
     else fichiers.push(norm(path.relative(racine, p)))
   }

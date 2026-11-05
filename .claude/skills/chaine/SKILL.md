@@ -63,7 +63,7 @@ Seulement une vraie décision : choix de produit, donnée perdue, seuil à reten
 ## 4. Arrêt
 
 Arrête la boucle, mets `docs/BACKLOG.md` à jour, lance `node outils/backlog.mjs` (sans erreur de forme), et propose `/clore` quand :
-- un paquet de 2 ou 3 lots est « à valider » : construis alors l'APK (procédure au §12 d'ETAT, version déjà augmentée), installe-la, et note-la dans la première ligne de Maintenant (« APK <version> installée le jj/mm (versionCode …). ») ;
+- un paquet de 2 ou 3 lots est « à valider » : construis alors l'APK (procédure au §12 d'ETAT, version déjà augmentée), pose son tag annoté `v<version>`, installe-la, et note-la dans la première ligne de Maintenant (« APK <version> installée le jj/mm (versionCode …). ») ;
 - la limite de 3 lots avec essais est atteinte ;
 - une compaction a eu lieu, ou `/context` dépasse environ 60 % ;
 - tout ce qui reste est bloqué par des réponses de l'utilisateur : pose alors toutes les questions en attente en une fois (`AskUserQuestion`, quatre au plus, une recommandation en tête).

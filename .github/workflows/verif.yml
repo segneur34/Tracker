@@ -26,3 +26,8 @@ jobs:
       # Le projet Android s'ouvre : bit exécutable de gradlew, JDK 21, wrapper téléchargeable.
       - run: ./gradlew --version
         working-directory: android
+      # Test JUnit du format .imu (ImuWriter), que npm run verif ne joue pas. Gradle lit des fichiers que seul
+      # cap sync produit (cordova.variables.gradle), et cap sync lit dist, construit par npm run verif.
+      - run: npx cap sync android
+      - run: ./gradlew testDebugUnitTest
+        working-directory: android

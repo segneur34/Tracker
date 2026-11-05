@@ -64,7 +64,7 @@ Tu ne construis pas d'APK ici (procédure au §12 d'ETAT, à demander à part), 
 
 ## 6. Envoi sur GitHub
 
-Sauf `sans envoi` : `git push origin main`, puis `git log --oneline origin/main..main` doit être vide ; cite ce résultat. Si le push échoue, donne l'erreur et ne retente pas autrement.
+Sauf `sans envoi` : `git push origin main --follow-tags` (les tags annotés des APK partent avec), puis `git log --oneline origin/main..main` doit être vide ; cite ce résultat. Si le push échoue, donne l'erreur et ne retente pas autrement.
 
 ## 7. Compte rendu
 
