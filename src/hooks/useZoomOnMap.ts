@@ -18,7 +18,7 @@ export interface ZoomedChart {
 /**
  * Tronçon montré en violet, à lire par la couche de la carte qui le trace
  * (`AnalysisBaseLayers`) : le zoom du graphe montré, son axe, la trace, et
- * s'il a été montré entier. La couche suit le zoom elle-même (lot 127) :
+ * s'il a été montré entier. La couche suit le zoom elle-même (HISTORIQUE, point 272) :
  * zoomer ne redessine pas le module, le tronçon suit quand même.
  */
 export interface ZoomPathSource {
@@ -45,8 +45,8 @@ export interface ZoomOnMap<P extends string> {
 }
 
 /**
- * Partie d'un graphe vue sur la carte, dans les trois modules (23/10, revu
- * le 25/10). « Afficher » (ordinateur, et plein écran carte + graphes du
+ * Partie d'un graphe vue sur la carte, dans les trois modules (HISTORIQUE,
+ * points 142 et 156). « Afficher » (ordinateur, et plein écran carte + graphes du
  * téléphone) allume en violet la partie vue du graphe, surbrillance unique de
  * son onglet (`MapHighlight.showZoom`) : la plage zoomée, ou toute la trace
  * s'il n'est pas zoomé ; le tronçon suit ensuite le zoom. Montré zoomé, il
@@ -58,7 +58,7 @@ export interface ZoomOnMap<P extends string> {
  * l'écran, et une carte à l'écran se cadre sur place. Dans la page du
  * téléphone, « +carte » ouvre toujours la carte en plein écran avec les
  * graphes de l'onglet dessous (`companionPanel`), zoomé ou non, carte à
- * l'écran ou non (05/11, à la place du cadrage sur place du 25/10) : sur
+ * l'écran ou non (HISTORIQUE, point 275, à la place du cadrage sur place) : sur
  * toute la trace sans zoom ; zoomé, il allume aussi le tronçon et la carte se
  * cadre dessus. Le retour d'Android referme le plein écran (`AnalysisMap`) ;
  * en sortir (`closeCompanion`) retire aussi le tronçon violet, le zoom reste.
@@ -87,7 +87,7 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
   const axis = chart?.axis;
   const { show: showHighlight } = highlight;
   // Montré zoomé, zoom revenu à tout voir (« Tout voir », pincement, autre session) : le tronçon s'efface.
-  // Le zoom est hors de l'état du module : on l'écoute, et seul ce retour redessine le module (lot 127).
+  // Le zoom est hors de l'état du module : on l'écoute, et seul ce retour redessine le module (HISTORIQUE, point 272).
   useEffect(() => {
     if (panel === null || whole) return;
     const clearWhenWhole = () => {
@@ -148,7 +148,7 @@ export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Reco
     setFocus({ bounds, range: shown, whole: isWhole });
     // Plein écran déjà ouvert : sa carte se recadre, rien de plus.
     if (mapExpanded) return;
-    // Page du téléphone : toujours le plein écran carte + graphes, même carte entière à l'écran (05/11).
+    // Page du téléphone : toujours le plein écran carte + graphes, même carte entière à l'écran (HISTORIQUE, point 275).
     if (inPage) {
       setCompanionPanel(target);
       openMap();

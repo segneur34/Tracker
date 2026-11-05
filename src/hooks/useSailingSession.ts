@@ -38,14 +38,14 @@ export interface SailingSessionInput {
   activeThresholdKn: number | null;
   /** Allure de la session imposée, en m/s ; `null` : déduite de la trace. */
   referenceSpeedMs: number | null;
-  /** Fiche de la session, `null` hors de la mémoire : le seuil de l'activité qu'elle porte (Q57). */
+  /** Fiche de la session, `null` hors de la mémoire : le seuil de l'activité qu'elle porte (HISTORIQUE, point 265). */
   record: SessionRecord | null;
 }
 
 /**
  * Seuil d'activité de l'appareil et celui de l'activité pour la session : le
  * seuil réglé ou pré-réglé sur l'appareil (`null` sans l'un ni l'autre), et
- * celui que la fiche de la session porte, qui prime sur lui (Q57). Le seuil
+ * celui que la fiche de la session porte, qui prime sur lui (HISTORIQUE, point 265). Le seuil
  * propre de la session prime encore sur le second (`resolveSailingThresholds`).
  */
 export const sailingActivityThresholds = (
@@ -111,7 +111,7 @@ export const useSailingSession = ({
   const thresholds = resolveSailingThresholds(profile, activityThresholdKn, sessionThresholdKn, referenceSpeedKn);
   const { withThreshold, defaultKn: defaultActiveThresholdKn, activeKn: activeThresholdKn } = thresholds;
   /**
-   * Seuil des calculs : celui du champ, différé (Q40). Le champ et ses libellés
+   * Seuil des calculs : celui du champ, différé (HISTORIQUE, point 220). Le champ et ses libellés
    * lisent `activeThresholdKn`, immédiat ; le seuil de vol le suit comme dans
    * `resolveSailingThresholds`. Pas de retard quand la trace change avec lui
    * (autre session, autre support) : la nouvelle trace serait sinon calculée une
@@ -174,7 +174,7 @@ export const useSailingSession = ({
     activeThresholdKn,
     /** Seuil de l'activité réglé sur cet appareil, `null` sans réglage : pour dire s'il diffère de celui que la session garde. */
     deviceThresholdKn,
-    /** Vrai tant que les chiffres n'ont pas rejoint le seuil du champ (Q40) : rien n'en est recopié dans la fiche entre-temps. */
+    /** Vrai tant que les chiffres n'ont pas rejoint le seuil du champ (HISTORIQUE, point 220) : rien n'en est recopié dans la fiche entre-temps. */
     thresholdPending: computeThresholdKn !== activeThresholdKn,
     /** Seuil d'activité réglable : faux en bateau, où toute la session compte en navigation. */
     hasActiveThreshold: withThreshold,

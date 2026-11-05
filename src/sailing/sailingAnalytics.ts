@@ -329,7 +329,7 @@ export interface ManeuverSummary {
   jibe: ManeuverTypeSummary | null;
   /** Sens incertain : moyennes seulement, aucun podium (`MANEUVER_METRICS[].ranked`). */
   undecided: ManeuverTypeSummary | null;
-  /** Virements et empannages par amure avant la manœuvre (note 135, 04/11). */
+  /** Virements et empannages par amure avant la manœuvre (HISTORIQUE, point 267). */
   byTack: Record<'tack' | 'jibe', ManeuversByTack>;
 }
 
@@ -479,7 +479,7 @@ export interface WindInputWarning {
 }
 
 /**
- * Avertissement d'un vent saisi probablement faux (lot 149, C1-3) : avec des
+ * Avertissement d'un vent saisi probablement faux (HISTORIQUE, point 268) : avec des
  * bords à ±45° du vent, un vent saisi à plus de 45° du vent calculé met
  * l'approche et la sortie d'un virement du même côté de l'axe, et toutes les
  * manœuvres tombent en « sens incertain » sans qu'aucun chiffre ne le relie
@@ -547,7 +547,7 @@ const vmgSums = (trackData: PointData[], wind: WindReference, minSpeedKn: number
     const stepS = (p.timeMs - trackData[k - 1].timeMs) / 1000;
     const dt = p.segmentStart ? 0 : Math.max(0, stepS);
     const diff = angleDiff(p.bearing, windAt(wind, p.timeMs));
-    // Trou de trace (règle 6, comme les manœuvres au lot 79) : vitesse moyenne du pas = distance retenue (bornée par
+    // Trou de trace (règle 6, comme les manœuvres : HISTORIQUE, point 225) : vitesse moyenne du pas = distance retenue (bornée par
     // la corde, nulle si immobile) / durée. Hors trou, la vitesse lissée du point, inchangée.
     const speed = dt > maxGapS && p.stepDistanceM !== undefined ? msToKnots(p.stepDistanceM / dt) : p.smoothedSpeed;
     const vmg = speed * Math.cos(diff * (Math.PI / 180));
@@ -591,7 +591,7 @@ export const calculateVmgStats = (
   let sumUpStbd = 0, sumUpPort = 0, sumDownStbd = 0, sumDownPort = 0;
   let cUpStbd = 0, cUpPort = 0, cDownStbd = 0, cDownPort = 0;
 
-  // Fenêtres candidates au podium (toutes au-dessus du minimum), au près et au portant, en tableaux typés (lot 56).
+  // Fenêtres candidates au podium (toutes au-dessus du minimum), au près et au portant, en tableaux typés (HISTORIQUE, point 197).
   const up = { starts: new Int32Array(n), ends: new Int32Array(n), vals: new Float64Array(n), size: 0 };
   const down = { starts: new Int32Array(n), ends: new Int32Array(n), vals: new Float64Array(n), size: 0 };
   let j = 0;

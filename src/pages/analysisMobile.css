@@ -262,6 +262,37 @@
   pointer-events: auto;
 }
 
+/* Onglet « vmg » (voile) : première colonne du tableau, puis les deux podiums côte à côte. */
+.an-vmg-allure {
+  text-align: left;
+  padding: 4px;
+}
+
+.an-vmg-tops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  margin-top: 15px;
+}
+
+.an-vmg-top {
+  margin-bottom: 10px;
+}
+
+.an-vmg-top__head {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.an-vmg-top__ranks {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: var(--text-s);
+  font-weight: 700;
+}
+
 /* Synthèse des manœuvres (voile) : la marge des cellules, dont la version du téléphone (plus bas, `!important`) reste prioritaire. */
 .an-man-summary th,
 .an-man-summary td {

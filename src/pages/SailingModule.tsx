@@ -49,7 +49,7 @@ import JumpMapLayer from '../components/JumpMapLayer';
 import { FlightsPanel, PumpingPanel } from '../components/FlightPumpingPanel';
 import TrackSpanLayer from '../components/TrackSpanLayer';
 import { pumpingHighlightSpans } from '../components/pumpingHighlight';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, podiumColor } from '../components/highlightColors';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, TACK_PORT_COLOR, TACK_STARBOARD_COLOR, podiumColor } from '../components/highlightColors';
 import HeartRateChart from '../components/HeartRateChart';
 import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
@@ -705,16 +705,16 @@ function SailingModule() {
 
   /** Podium de VMG (près, portant) : les tops de vitesse passent par `TopsPanel`. */
   const renderTop3 = (panel: 'vmg', title: string, topKey: string, values: Pick<TopSegment, 'val' | 'path'>[]) => (
-    <div style={{ marginBottom: '10px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+    <div className="an-vmg-top">
+      <div className="an-vmg-top__head">
         <strong>{title}</strong>
         <MapToggle
           shown={selectedTopMap === topKey} color="var(--voile)" labels={['Voir (Carte)', 'Masquer (Carte)']}
           onClick={() => highlight.show(panel, selectedTopMap === topKey ? null : topKey)} />
       </div>
-      <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-s)', marginTop: '4px' }}>
+      <div className="an-vmg-top__ranks">
         {PODIUM_RANKS.map((rank, idx) => (
-          <span key={rank} style={{ color: HIGHLIGHT_PODIUM_COLORS[idx], fontWeight: 700 }}>{rank}: {values[idx] ? showKn(values[idx].val) : '-'}</span>
+          <span key={rank} style={{ color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank}: {values[idx] ? showKn(values[idx].val) : '-'}</span>
         ))}
       </div>
     </div>
@@ -764,24 +764,24 @@ function SailingModule() {
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
             <th>Allure</th>
-            <th style={{ color: '#d32f2f' }}>Bâbord (Moy/Max)</th>
-            <th style={{ color: '#388e3c' }}>Tribord (Moy/Max)</th>
+            <th style={{ color: TACK_PORT_COLOR }}>Bâbord (Moy/Max)</th>
+            <th style={{ color: TACK_STARBOARD_COLOR }}>Tribord (Moy/Max)</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style={{ textAlign: 'left', padding: '4px' }}>Près</td>
+            <td className="an-vmg-allure">Près</td>
             <td>{showKn(v.upPort.avg)} / <strong>{showKn(v.upPort.max)}</strong></td>
             <td>{showKn(v.upStbd.avg)} / <strong>{showKn(v.upStbd.max)}</strong></td>
           </tr>
           <tr>
-            <td style={{ textAlign: 'left', padding: '4px' }}>Portant</td>
+            <td className="an-vmg-allure">Portant</td>
             <td>{showKn(v.downPort.avg)} / <strong>{showKn(v.downPort.max)}</strong></td>
             <td>{showKn(v.downStbd.avg)} / <strong>{showKn(v.downStbd.max)}</strong></td>
           </tr>
         </tbody>
       </table>
-      <div style={{ display: 'flex', gap: '30px', marginTop: '15px', flexWrap: 'wrap' }}>
+      <div className="an-vmg-tops">
         <div>
           {renderTop3('vmg', "Tops Près (10s)", "vmgUpwind", v.topsUpwind)}
         </div>

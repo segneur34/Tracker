@@ -15,6 +15,10 @@ export const PODIUM_RANKS = ['1er', '2e', '3e'] as const;
 /** Couleur de la marche `rank` (0 pour la première) ; au-delà de la troisième, celle de la troisième. */
 export const podiumColor = (rank: number): string => HIGHLIGHT_PODIUM_COLORS[rank] ?? HIGHLIGHT_PODIUM_COLORS[2];
 
+/** Amures du tableau de VMG : bâbord en rouge, tribord en vert. */
+export const TACK_PORT_COLOR = '#d32f2f';
+export const TACK_STARBOARD_COLOR = '#388e3c';
+
 /** Passage seul montré sur la carte (zone de pente, répétition, saut) : un violet, absent du dégradé de la trace. */
 export const HIGHLIGHT_SHOWN_COLOR = '#7b1fa2';
 
