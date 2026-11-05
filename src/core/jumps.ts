@@ -22,11 +22,17 @@ import {
  * 3. verticale : filtre complémentaire sur le vecteur « haut » dans le repère
  *    du téléphone, gyroscope intégré et recalé doucement sur la force mesurée
  *    quand elle vaut à peu près g. Une passe aller, une passe retour,
- *    moyennées : le recalage ne traîne pas d'un côté du saut ;
- * 4. vol : l'accélération verticale lissée repasse sous 0 après une poussée
+ *    moyennées selon ce que le recalage a apporté à chacune : le recalage ne
+ *    traîne pas d'un côté du saut ;
+ * 4. biais : la moyenne de l'accélération verticale sur quelques secondes
+ *    (`biasWindowS`) est nulle ; ce qu'il en reste vient d'une verticale
+ *    penchée ou de l'échelle de l'accéléromètre, et est retiré avant de
+ *    chercher les vols, pas seulement pour la hauteur : sans cela, le corps au
+ *    sol paraît encore tomber, et un vol avale la marche qui le précède ;
+ * 5. vol : l'accélération verticale lissée repasse sous 0 après une poussée
  *    (décollage), puis remonte franchement (atterrissage). La force mesurée ne
  *    tombe pas à 0 en vol : l'aile porte encore ;
- * 5. hauteur : double intégration de l'accélération verticale pendant le vol,
+ * 6. hauteur : double intégration de l'accélération verticale pendant le vol,
  *    le corps retombant au niveau du décollage. C'est ce que gagne le
  *    téléphone, donc le buste, au-dessus de son niveau au décollage.
  *
@@ -36,7 +42,7 @@ import {
  */
 
 /** Version du calcul des sauts rangés dans la fiche : l'augmenter refait les sauts des sessions qui ont leur `.imu`. */
-export const JUMPS_CALC_VERSION = 2;
+export const JUMPS_CALC_VERSION = 3;
 
 /** Constantes de la détection et de la mesure (`SPORT_PROFILES[…].jumps.detection`). */
 export interface JumpDetection extends AttitudeParams {
@@ -56,7 +62,7 @@ export interface JumpDetection extends AttitudeParams {
   maxFlightS: number;
   /** Chute minimale : moyenne de l'accélération verticale pendant le vol, en g (valeur positive). */
   minFallG: number;
-  /** Demi-largeur de la fenêtre du biais vertical, autour du vol, en secondes. */
+  /** Demi-largeur de la moyenne glissante retirée de l'accélération verticale (son biais), en secondes. */
   biasWindowS: number;
   /** Vol rangé : au moins cette durée, en secondes… */
   keepMinFlightS: number;
@@ -196,16 +202,18 @@ const peakAbs = (s: ImuSeries, fromUs: number, toUs: number): number => {
 export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: number, toUs: number): Flight[] => {
   const vertical = verticalAcceleration(rec, d, fromUs, toUs);
   if (!vertical) return [];
-  const { acc, gyr, startUs, stepUs, dt, n, gLocal, aUp, horizontal, upF, upB, gap } = vertical;
+  const { acc, gyr, startUs, stepUs, dt, n, gLocal, aUp: measuredUp, horizontal, upF, upB, gap } = vertical;
   /** Angle entre les verticales des passes aller et retour, en radians. */
   const mismatch = (i: number) => Math.acos(Math.min(1, upF[0][i] * upB[0][i] + upF[1][i] * upB[1][i] + upF[2][i] * upB[2][i]));
 
+  // Accélération verticale sans son biais : moyenne glissante retirée, vol compris (la vitesse verticale y revient au même).
+  const bias = centredMean(measuredUp, Math.round(d.biasWindowS / dt));
+  const aUp = measuredUp.map((a, k) => a - bias[k]);
   // Accélération verticale lissée, centrée.
   const aS = centredMean(aUp, Math.max(0, Math.round(d.smoothingS / dt / 2)));
 
   const pushSteps = Math.round(d.pushSearchS / dt);
   const maxSteps = Math.round(d.maxFlightS / dt);
-  const biasSteps = Math.round(d.biasWindowS / dt);
   const curveSteps = Math.max(1, Math.round(d.curveStepS / dt));
   const marginSteps = Math.round(d.curveMarginS / dt);
   const doubtSteps = Math.round(d.doubtMarginS / dt);
@@ -235,20 +243,12 @@ export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: numbe
     for (let k = i0; k < i1; k++) fall += aUp[k];
     if (fall / (i1 - i0) > -d.minFallG * gLocal) continue;
 
-    // Biais vertical : moyenne sur la fenêtre autour du vol, vol compris (la vitesse verticale y revient au même).
-    let bias = 0;
-    {
-      const lo = Math.max(0, i0 - biasSteps);
-      const hi = Math.min(n, i1 + biasSteps);
-      for (let k = lo; k < hi; k++) bias += aUp[k];
-      bias /= hi - lo;
-    }
     // Double intégration pendant le vol, partie à vitesse nulle, puis vitesse de départ qui ramène au niveau du décollage.
     const zs = new Float64Array(i1 - i0 + 1);
     let v = 0;
     let z = 0;
     for (let k = i0; k < i1; k++) {
-      v += (aUp[k] - bias) * dt;
+      v += aUp[k] * dt;
       z += v * dt;
       zs[k - i0 + 1] = z;
     }
@@ -256,13 +256,13 @@ export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: numbe
     let heightM = 0;
     for (let k = 0; k < zs.length; k++) heightM = Math.max(heightM, zs[k] + v0 * k * dt);
 
-    // Courbe : prolongée de part et d'autre du vol avec la même vitesse de départ et le même biais.
+    // Courbe : prolongée de part et d'autre du vol avec la même vitesse de départ.
     const before: number[] = [];
     {
       let vb = v0;
       let zb = 0;
       for (let k = i0 - 1; k >= Math.max(0, i0 - marginSteps); k--) {
-        vb -= (aUp[k] - bias) * dt;
+        vb -= aUp[k] * dt;
         zb -= vb * dt;
         before.push(zb);
       }
@@ -273,7 +273,7 @@ export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: numbe
       let va = v + v0;
       let za = 0;
       for (let k = i1; k < Math.min(n, i1 + marginSteps); k++) {
-        va += (aUp[k] - bias) * dt;
+        va += aUp[k] * dt;
         za += va * dt;
         heights.push(za);
       }

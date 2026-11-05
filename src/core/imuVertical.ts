@@ -17,7 +17,10 @@ import { STANDARD_G } from './units';
  * 3. verticale : filtre complémentaire sur le vecteur « haut » dans le repère
  *    du téléphone, gyroscope intégré et recalé doucement sur la force mesurée
  *    quand elle vaut à peu près g. Une passe aller, une passe retour,
- *    moyennées : le recalage ne traîne d'aucun côté.
+ *    moyennées : le recalage ne traîne d'aucun côté. Chacune pèse dans la
+ *    moyenne ce que le recalage lui a apporté : une passe partie en pleine
+ *    course, où il ne se fait presque jamais, garde la direction de son
+ *    départ, souvent fausse, et ne doit pas fausser l'autre.
  */
 
 /** Constantes du calcul de la verticale, communes aux sauts et au pumping. */
@@ -70,11 +73,18 @@ const resample = (s: ImuSeries, from: number, to: number, startUs: number, n: nu
   return out;
 };
 
-/** Vecteur « haut » dans le repère du téléphone, par une passe du filtre complémentaire, aller ou retour. */
+/**
+ * Vecteur « haut » dans le repère du téléphone, par une passe du filtre
+ * complémentaire, aller ou retour, et sa part recalée sur la force mesurée
+ * (`settled`, de 0 au départ de la passe à 1) : la part de la direction qui ne
+ * vient plus de la direction de départ.
+ */
 const attitudePass = (
   f: Float64Array[], w: Float64Array[], norm: Float64Array, n: number, dt: number, gLocal: number, d: AttitudeParams, forward: boolean
-): Float64Array[] => {
+): { up: Float64Array[]; settled: Float64Array } => {
   const up = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
+  const settled = new Float64Array(n);
+  let share = 0;
   const idx = (s: number) => (forward ? s : n - 1 - s);
   let x = 0;
   let y = 0;
@@ -109,6 +119,7 @@ const attitudePass = (
         x += (f[0][i] / norm[i] - x) * k;
         y += (f[1][i] / norm[i] - y) * k;
         z += (f[2][i] / norm[i] - z) * k;
+        share += (1 - share) * k;
       }
       len = Math.hypot(x, y, z) || 1;
       x /= len;
@@ -118,8 +129,9 @@ const attitudePass = (
     up[0][i] = x;
     up[1][i] = y;
     up[2][i] = z;
+    settled[i] = share;
   }
-  return up;
+  return { up, settled };
 };
 
 /** Verticale du monde sur une grille, entre deux instants du fichier. */
@@ -179,14 +191,17 @@ export const verticalAcceleration = (rec: ImuRecording, d: AttitudeParams, fromU
   }
   const gLocal = calm.length * dt >= d.minCalmS ? upperMedianOfSorted(Float64Array.from(calm).sort()) : STANDARD_G;
 
-  const upF = attitudePass(f, w, norm, n, dt, gLocal, d, true);
-  const upB = attitudePass(f, w, norm, n, dt, gLocal, d, false);
+  const { up: upF, settled: settledF } = attitudePass(f, w, norm, n, dt, gLocal, d, true);
+  const { up: upB, settled: settledB } = attitudePass(f, w, norm, n, dt, gLocal, d, false);
   const aUp = new Float64Array(n);
   const horizontal = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    let x = upF[0][i] + upB[0][i];
-    let y = upF[1][i] + upB[1][i];
-    let z = upF[2][i] + upB[2][i];
+    // Continu : moyenne simple si les parts recalées sont égales (0 et 0, 1 et 1), la seule passe recalée à 1 et 0.
+    const weightF = 0.5 + 0.5 * (settledF[i] - settledB[i]);
+    const weightB = 1 - weightF;
+    let x = upF[0][i] * weightF + upB[0][i] * weightB;
+    let y = upF[1][i] * weightF + upB[1][i] * weightB;
+    let z = upF[2][i] * weightF + upB[2][i] * weightB;
     const len = Math.hypot(x, y, z) || 1;
     x /= len;
     y /= len;

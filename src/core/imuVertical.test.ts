@@ -95,6 +95,44 @@ describe('verticalAcceleration', () => {
     expect(v.gap[0]).toBe(0);
   });
 
+  /**
+   * Téléphone à plat, force verticale ; à partir de `calmUntilS`, il tourne sur
+   * lui-même, autour de sa verticale, assez vite pour couper le recalage ; la
+   * dernière seconde, une force horizontale de g·tan 60° fausse de 60° la
+   * direction de départ de la passe retour.
+   */
+  const leaningEnd = (calmUntilS: number, rateHz = 100, calmStepAtS = -1) =>
+    recording(
+      stream('accel', rateHz, 30, (t, a) => (a === 2 ? STANDARD_G : a === 0 && t >= 29 ? STANDARD_G * Math.tan(Math.PI / 3) : 0)),
+      stream('gyro', rateHz, 30, (t, a) => (a === 2 && t >= calmUntilS && Math.abs(t - calmStepAtS) > 1e-3 ? 3 : 0))
+    );
+
+  it.each([50, 100, 200])('à %i Hz : une passe jamais recalée ne fausse pas celle qui l\'a été', (hz) => {
+    const v = verticalAcceleration(leaningEnd(20, hz), P, 0, 30e6)!;
+    const i = Math.round((25e6 - v.startUs) / v.stepUs);
+    const dot = v.upF[0][i] * v.upB[0][i] + v.upF[1][i] * v.upB[1][i] + v.upF[2][i] * v.upB[2][i];
+    // Les deux passes restent en désaccord de 60° (le doute « verticale » le lit), mais la verticale est juste.
+    expect((Math.acos(dot) * 180) / Math.PI).toBeGreaterThan(50);
+    expect(Math.abs(v.aUp[i])).toBeLessThan(0.05);
+  });
+
+  it('aller à 0,003, retour à 0 : le poids ne saute pas, presque la moyenne simple', () => {
+    // Un seul pas calme à 5 s : à 25 s, seul l'aller en a profité, d'une part de pas / τ ≈ 0,003.
+    const aUpAt25 = (rec: ImuRecording) => {
+      const v = verticalAcceleration(rec, P, 0, 30e6)!;
+      return v.aUp[Math.round((25e6 - v.startUs) / v.stepUs)];
+    };
+    const none = aUpAt25(leaningEnd(0));
+    expect(none).toBeLessThan(-1);
+    expect(Math.abs(aUpAt25(leaningEnd(0, 100, 5)) - none)).toBeLessThan(0.02);
+  });
+
+  it('sans aucun recalage, les deux passes pèsent autant', () => {
+    const v = verticalAcceleration(leaningEnd(30), { ...P, attitudeMaxRotationRadS: 0 }, 0, 30e6)!;
+    const i = Math.round((25e6 - v.startUs) / v.stepUs);
+    expect(v.aUp[i]).toBeCloseTo(STANDARD_G * (Math.cos(Math.PI / 6) - 1), 1);
+  });
+
   it('le calcul d\'une fenêtre ne lit aucune mesure en dehors', () => {
     const rec = flat(100, 5);
     const v = verticalAcceleration(rec, P, 2e6, 4e6)!;

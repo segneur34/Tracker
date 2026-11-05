@@ -107,6 +107,71 @@ describe('sauts : hauteur', () => {
   });
 });
 
+describe('sauts : bornes du vol', () => {
+  /**
+   * La marche qui précède un petit saut (course du 31/10) : une foulée appuyée,
+   * un pas dont l'accélération lissée dépasse à peine celle d'un atterrissage,
+   * enfin le saut, 0,5 s de vol libre après une poussée douce (0,5 g).
+   */
+  const v0 = (G * 0.5) / 2;
+  const hop = jump(30, v0, G, v0 / (0.5 * G));
+  const walkThenHop = (t: number) => {
+    if (t >= 28.6 && t < 28.8) return 0.8 * G;
+    if (t >= 28.8 && t < 28.9) return -1.6 * G;
+    if (t >= 28.9 && t < 29.3) return 0.5 * G * Math.sin(2 * Math.PI * 2.5 * (t - 28.9));
+    return hop.az(t);
+  };
+  /**
+   * Un biais vertical de −0,15 g, jamais retiré par la pesanteur locale :
+   * échelle de l'accéléromètre fausse, téléphone qui tourne sans cesse, donc
+   * aucun moment calme. Le pas et la poussée du saut, ainsi abaissés, ne
+   * paraissent plus atteindre le seuil d'atterrissage.
+   */
+  const biased = (rateHz = 100) => record({ durationS: 60, rateHz, az: walkThenHop, scale: -0.15, tilt: (t) => Math.PI / 6 + 0.4 * t });
+
+  it.each([50, 100, 200])('à %i Hz : un biais de la verticale ne fait pas avaler au vol la marche qui le précède', (hz) => {
+    const jumps = jumpsOf(biased(hz));
+    expect(jumps).toHaveLength(1);
+    expect(Math.abs(jumps[0].flightS - hop.flightS)).toBeLessThan(0.05);
+    expect(jumps[0].takeoffMs - WALL_MS).toBeGreaterThan(29_900);
+  });
+
+  it('une durée et une hauteur qui concordent, celles d\'un vol libre (à l\'échelle fausse près)', () => {
+    const [only] = jumpsOf(biased());
+    expect(Math.abs(only.heightM - hop.heightM)).toBeLessThan(0.07);
+    expect(Math.abs(only.heightM - (G * only.flightS ** 2) / 8)).toBeLessThan(0.07);
+    expect(only.doubts).toEqual([]);
+  });
+
+  it.each([1, 5])('trace à %i Hz : vitesse et longueur du seul vol, pas de la marche', (hz) => {
+    const track = Array.from({ length: 60 * hz }, (_, i) => ({ timeMs: WALL_MS + (i * 1000) / hz, smoothedSpeedMs: 3 }));
+    const [only] = jumpsOf(biased(), track);
+    expect(only.speedMs).toBeCloseTo(3, 6);
+    expect(Math.abs(only.lengthM! - 3 * hop.flightS)).toBeLessThan(0.15);
+  });
+
+  /**
+   * Calme jusqu'à 25 s (l'aller se recale), puis le téléphone tourne sans cesse
+   * à 2 rad/s (plus aucun recalage) ; arrêté et penché de 60° dans la dernière seconde,
+   * où commence la passe retour. Moyennée à égalité, la verticale serait
+   * fausse de 30° à l'heure du saut, et la force horizontale qui accompagne le
+   * pas et la poussée y effacerait leur accélération verticale.
+   */
+  it.each([50, 100, 200])('à %i Hz : une passe de la verticale partie de travers ne fausse pas les bornes du vol', (rateHz) => {
+    const leansBack = (t: number) => (t >= 28.9 && t < 29.3) || (t >= 29.5 && t < 30);
+    const jumps = jumpsOf(record({
+      durationS: 45,
+      rateHz,
+      az: walkThenHop,
+      tilt: (t) => Math.PI / 6 + (t >= 25 ? 2 * (Math.min(t, 44) - 25) : 0),
+      ay: (t) => (t >= 44 ? G * Math.tan(Math.PI / 3) : leansBack(t) ? -walkThenHop(t) : 0),
+    }));
+    expect(jumps).toHaveLength(1);
+    expect(Math.abs(jumps[0].flightS - hop.flightS)).toBeLessThan(0.05);
+    expect(Math.abs(jumps[0].heightM - hop.heightM)).toBeLessThan(0.05);
+  });
+});
+
 describe('sauts : ce qui n\'en est pas', () => {
   it('ne trouve rien dans 10 min de clapot', () => {
     const rec = record({ durationS: 600, az: chop, noise: 0.3 });
