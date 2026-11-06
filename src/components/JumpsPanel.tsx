@@ -24,7 +24,7 @@ import SegmentedControl from './ui/SegmentedControl';
 /**
  * Onglet « sauts » des analyses (voile, course, vélo) : les sauts mesurés par les capteurs du
  * téléphone (`core/jumps.ts`, rangés dans la fiche par `useSessionJumps`).
- * Chiffres, podium des trois plus hauts, tableau trié au choix (hauteur, vol,
+ * Chiffres, podium des trois plus hauts, tableau trié au choix (hauteur, en l'air,
  * longueur), et courbe d'un saut, ou de deux pour les comparer. Le calcul est
  * ailleurs ; ici, l'affichage.
  */
@@ -42,7 +42,7 @@ type JumpSort = 'hauteur' | 'vol' | 'longueur';
 
 const SORTS: { key: JumpSort; label: string }[] = [
   { key: 'hauteur', label: 'Hauteur' },
-  { key: 'vol', label: 'Vol' },
+  { key: 'vol', label: "En l'air" },
   { key: 'longueur', label: 'Longueur' },
 ];
 
@@ -159,7 +159,7 @@ function JumpsPanel({
   const [curveSecond, setCurveSecond] = useState<number | null>(null);
   const heading = (label: string, helpKey?: string) => <PanelHeading label={label} open={open} onToggle={onToggle} helpKey={helpKey} padRight />;
   const hiddenNote = hiddenCount > 0
-    ? `${hiddenCount} ${hiddenCount > 1 ? 'autres vols, plus bas' : 'autre vol, plus bas'} que ${meters(minHeightM)} ou pris sous ${thresholdLabel}, ${hiddenCount > 1 ? 'ne sont pas montrés' : "n'est pas montré"}.`
+    ? `${hiddenCount} ${hiddenCount > 1 ? 'autres sauts, plus bas' : 'autre saut, plus bas'} que ${meters(minHeightM)} ou pris sous ${thresholdLabel}, ${hiddenCount > 1 ? 'ne sont pas montrés' : "n'est pas montré"}.`
     : null;
 
   if (status !== 'ready' || jumps.length === 0) {
@@ -200,8 +200,8 @@ function JumpsPanel({
       <HelpText helpKey="analyse:sauts" note>
           Hauteur gagnée par le téléphone, donc par le buste, au-dessus de son niveau au décollage, mesurée par
           l'accéléromètre et le gyroscope : ce n'est pas la hauteur {sailing ? "de la planche au-dessus de l'eau" : 'des pieds ou des roues au-dessus du sol'}. Précision attendue,
-          téléphone sur la poitrine : {sailing ? '±0,1 à 0,2 m sans foil, ±0,2 à 0,3 m sur foil' : '±0,1 à 0,2 m'} ; davantage au bras. Vol : du décollage
-          à l'atterrissage. Longueur : chemin parcouru pendant le vol, lu sur la trace ; vitesse : au décollage. « ≈ » marque
+          téléphone sur la poitrine : {sailing ? '±0,1 à 0,2 m sans foil, ±0,2 à 0,3 m sur foil' : '±0,1 à 0,2 m'} ; davantage au bras. En l'air : du décollage
+          à l'atterrissage. Longueur : chemin parcouru pendant le saut, lu sur la trace ; vitesse : au décollage. « ≈ » marque
           une mesure douteuse, dont la raison s'affiche au survol. « Voir » montre le saut sur la carte, « Détail » sur la
           courbe. Sont montrés les sauts d'au moins {meters(minHeightM)} (Réglages, carte de l'activité) pris à {thresholdLabel}
           ou plus (seuil d'activité de la session).
@@ -209,7 +209,7 @@ function JumpsPanel({
       <div className="an-sheet__stats an-sheet__stats--always">
         {stat('Sauts', `${jumps.length}`)}
         {stat('Plus haut', meters(highest.heightM), formatTimeOfDay(highest.takeoffMs))}
-        {stat('Plus long vol', seconds(longest.flightS), formatTimeOfDay(longest.takeoffMs))}
+        {stat('Plus long saut', seconds(longest.flightS), formatTimeOfDay(longest.takeoffMs))}
         {farthest && farthest.lengthM !== null && stat('Plus long saut', formatShortDistance(farthest.lengthM, distanceUnit), formatTimeOfDay(farthest.takeoffMs))}
       </div>
 
@@ -239,7 +239,7 @@ function JumpsPanel({
               <th style={{ ...cellStyle, textAlign: 'left' }} title="Numéro du saut dans la séance">N°</th>
               <th style={cellStyle}>Heure</th>
               <th style={cellStyle}>Hauteur</th>
-              <th style={cellStyle}>Vol</th>
+              <th style={cellStyle}>En l'air</th>
               <th style={cellStyle}>Longueur</th>
               <th style={cellStyle}>Vitesse</th>
               <th style={cellStyle} />
@@ -258,7 +258,7 @@ function JumpsPanel({
                     {doubtful && <span className="an-jump-doubt" aria-label="mesure douteuse">≈ </span>}
                     {meters(j.heightM)}
                   </td>
-                  <td className="an-jump-flight" data-label="vol" style={cellStyle}>{seconds(j.flightS)}</td>
+                  <td className="an-jump-flight" data-label="en l'air" style={cellStyle}>{seconds(j.flightS)}</td>
                   <td className="an-jump-length" style={cellStyle}>{j.lengthM === null ? '—' : formatShortDistance(j.lengthM, distanceUnit)}</td>
                   <td className="an-jump-speed" style={cellStyle}>{formatSpeed(j.speedMs, speedUnit)}</td>
                   <td className="an-jump-map" style={cellStyle}>
@@ -306,7 +306,7 @@ function JumpsPanel({
       <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
         {shown.map((j, k) => (
           <span key={j.takeoffMs} style={{ marginRight: '14px', color: CURVE_COLORS[k] }}>
-            n° {order.get(j.takeoffMs)} : {meters(j.heightM)} · {seconds(j.flightS)} de vol
+            n° {order.get(j.takeoffMs)} : {meters(j.heightM)} · {seconds(j.flightS)} en l'air
           </span>
         ))}
       </div>
