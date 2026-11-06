@@ -98,7 +98,7 @@ describe('manifeste Android : fichiers reçus d\'une autre application (lot 35)'
   const activity = MANIFEST.match(/<activity\b[\s\S]*?<\/activity>/)?.[0] ?? '';
   const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map((m) => m[1]);
   const withAction = (action: string): string => filters.find((f) => f.includes(`android.intent.action.${action}"`)) ?? '';
-  const TYPES = ['application/gpx+xml', 'application/vnd.ant.fit', 'application/fit', 'application/octet-stream', 'text/xml', 'application/xml'];
+  const TYPES = ['application/gpx+xml', 'application/vnd.ant.fit', 'application/fit', 'application/octet-stream', 'text/xml', 'application/xml', 'application/json'];
 
   it('l\'activité reste seule de sa tâche, et le lanceur ne change pas : une ouverture normale reste la même', () => {
     expect(activity).toContain('android:launchMode="singleTask"');
