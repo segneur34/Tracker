@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.104 installée le 06/11 à 21 h 26 (versionCode 4104, tag local v0.4.104) : porte les lots 181, 182, 179, 178, 180 et 35, et avant eux, depuis l’APK 0.4.97 du 06/11 (versionCode 4097, tag local v0.4.97) : porte le lot 177, et les lots 27 (pumping et rebonds), 176, 26, 96 et 40 (validés le 06/11 ; reste l'essai 130 ; le 134 attend une sortie surf).
+APK 0.5.04 installée le 06/11 (versionCode 5004, tag local v0.5.04 ; numéro voulu par l’utilisateur à la place de 0.4.104, même contenu) : porte les lots 181, 182, 179, 178, 180 et 35, et avant eux, depuis l’APK 0.4.97 du 06/11 (versionCode 4097, tag local v0.4.97) : porte le lot 177, et les lots 27 (pumping et rebonds), 176, 26, 96 et 40 (validés le 06/11 ; reste l'essai 130 ; le 134 attend une sortie surf).
 
 - 27 · [idée] Pumping en voile sur foil réglé sur la wing du 02/11 : de 75 à 150 coups par minute, série dès 5 coups, coups isolés retirés aux bords, un saut coupe la série, décollage pas cherché avant le creux de vitesse, capture partielle signalée (ex-fiche 16, point 186) ; rebonds d'un saut voisin écartés (06/11, réponse de l'utilisateur : une dizaine de sauts, pas 16) · noté 28/10 · gros · Fable/high · validé le 06/11, passe doc faite (version 0.4.93) ; il reste les essais 130 et 131 sur le téléphone ; fait sur Opus · détail : docs/backlog/27-pumping-wing.md
   - essai 130 : wing du 02/11 à 13 h 58, « avancé », onglet « pumping » → les plus longues séries, vers 14 h 06 (environ 30 s, 50 coups), puis 14 h 45, 14 h 25, 15 h 15 et 14 h 21, ressemblent à ce dont vous vous souvenez, et il ne manque rien d'évident.
