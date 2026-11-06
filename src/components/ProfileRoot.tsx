@@ -17,7 +17,7 @@ import { formatDecimal, formatDuration } from '../core/units';
  * Le temps de la semaine fait pousser des radicelles et la pousse au-dessus du
  * sol, dont la fleur paraît à la première minute, s'ouvre à l'objectif et
  * continue d'évoluer jusqu'à 4 fois l'objectif (maquette du 31/10), puis un
- * papillon approche et se pose sur elle à 5 fois (six étapes, lot 147) ;
+ * papillon arrive à côté d'elle à 4,6 fois et s'y pose à 5 fois (six étapes) ;
  * après une semaine manquée, ses feuilles tombent et restent mortes au sol, de
  * nouvelles repoussant avec le temps fait.
  *
@@ -69,10 +69,10 @@ const flowerText = (growth: RootGrowth, goalMin: number): string => {
   const reached = Math.min(BLOOM_MAX, Math.floor(growth.goalTimes + 1e-9));
   const at = (times: number) => minutesText(times * goalMin);
   if (reached <= 0) return `Fleur en bouton ; elle s'ouvre à ${minutesText(goalMin)}.`;
-  // Le papillon entre à 4 fois (4e étape), est à côté de la fleur à 4,6 (5e), posé à 5 fois (6e), tout figé au-delà.
+  // Fleur épanouie à 4 fois (4e étape), papillon à côté d'elle à 4,6 (5e), posé à 5 fois (6e), tout figé au-delà.
   if (reached >= BLOOM_MAX) return `Papillon posé : étape ${BLOOM_STEPS} sur ${BLOOM_STEPS}.`;
   if (growth.goalTimes + 1e-9 >= BLOOM_BESIDE) return `Le papillon est là : étape ${BLOOM_STEPS - 1} sur ${BLOOM_STEPS} ; il se pose à ${at(BLOOM_MAX)}.`;
-  if (reached === BLOOM_MAX - 1) return `Fleur épanouie : étape ${reached} sur ${BLOOM_STEPS} ; un papillon approche, il se pose à ${at(BLOOM_MAX)}.`;
+  if (reached === BLOOM_MAX - 1) return `Fleur épanouie : étape ${reached} sur ${BLOOM_STEPS} ; un papillon arrive à ${minutesText(Math.ceil(BLOOM_BESIDE * goalMin - 1e-9))}.`;
   return `Fleur à l'étape ${reached} sur ${BLOOM_STEPS} ; la suivante à ${at(reached + 1)}.`;
 };
 

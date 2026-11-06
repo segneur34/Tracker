@@ -1,7 +1,7 @@
 {
   "name": "tracker",
   "private": true,
-  "version": "0.4.101",
+  "version": "0.4.102",
   "type": "module",
   "engines": {
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"

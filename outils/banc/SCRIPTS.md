@@ -385,7 +385,7 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - Statistiques : l'adresse ne change qu'au lâcher, la vue est retenue au rechargement.
 - `racine.mjs <port> [<dossier des captures>]` : la racine du Profil, règle à la semaine (25/10), sur un profil neuf, sans réseau. Le script écrit lui-même un historique de courses (une de 45 min le lundi des semaines 0 à 29, 33 et 34 ; la semaine 35 : 15 min les mardi, mercredi et jeudi, 45 min les vendredi, samedi et dimanche, et deux de plus le dimanche, 27 min à 13 h et 18 min à 15 h), l'importe par la page Course, puis ouvre le Profil à des dates choisies (`Date` remplacé). Il vérifie (détail en tête du script) :
   - le niveau semaine après semaine, reculs et reprise compris, et la bulle du carré ;
-  - la fleur de la semaine 35 (`data-fleur`) : rien, bouton, ouverte, étapes 2 et 3, puis le papillon qui entre à 4 fois (« étape 4 sur 6 », dimanche 12 h), à côté de la fleur à 4,6 fois (« étape 5 sur 6 », 14 h) et posé à 5 fois (« étape 6 sur 6 », 16 h, tout figé au-delà), depuis le lot 147 ;
+  - la fleur de la semaine 35 (`data-fleur`) : rien, bouton, ouverte, étapes 2 et 3, puis le papillon qui arrive à côté à 4,6 fois (« étape 4 sur 6 », dimanche 12 h), à côté de la fleur à 4,6 fois (« étape 5 sur 6 », 14 h) et posé à 5 fois (« étape 6 sur 6 », 16 h, tout figé au-delà), depuis le lot 147 ;
   - Réglages › Pratiquant (« Objectif par semaine »), un état vu d'avant la règle ignoré, le rejeu d'un recul à l'ouverture ;
   - à 390 et 320 px : rien ne déborde, carré et bulle dans l'écran.
 

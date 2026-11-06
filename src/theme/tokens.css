@@ -171,9 +171,9 @@
   --root-flower: #f2c94c;
   --root-flower-edge: #c99a1a;
   --root-flower-heart: #b8641d;
-  /* Papillon de la fleur, ses deux dernières étapes (lot 147). */
-  --root-butterfly: #5b8def;
-  --root-butterfly-edge: #2f5aa8;
+  /* Papillon de la fleur, monarque orange, ses deux dernières étapes : aplat et bord épais (maquette du 06/11). */
+  --root-butterfly: #ec7a1c;
+  --root-butterfly-edge: #3a2415;
   --record: #2e7d32;
   --recording: #c62828;
 
@@ -252,9 +252,9 @@
   --root-dry-edge: #4a4338;
   --root-sprout: #4f9a48;
   --root-soil: #5a4b3e;
-  /* Papillon un cran plus clair. */
-  --root-butterfly: #7aa5f5;
-  --root-butterfly-edge: #4a74c2;
+  /* Papillon un cran plus clair, bord plus sombre ; le thème économe en hérite. */
+  --root-butterfly: #ff9a45;
+  --root-butterfly-edge: #21140b;
   --record: #3a9a40;
   --recording: #e04848;
 

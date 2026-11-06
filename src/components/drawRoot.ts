@@ -10,8 +10,8 @@ import { clamp } from '../core/basics';
  */
 
 /**
- * Étapes nommées de la fleur (lot 147) : ouverte à 1 fois l'objectif, épanouie à 4 (maquette du 31/10), le papillon
- * qui entre dès 4 fois (4e étape), à côté de la fleur à 4,6 (5e) et posé à 5 fois (6e), réponse du 03/11.
+ * Étapes nommées de la fleur (lot 147) : ouverte à 1 fois l'objectif, épanouie à 4 (4e étape, maquette du 31/10), puis
+ * le papillon, qui arrive à côté de la fleur à 4,6 fois (5e) et s'y pose à 5 fois (6e), maquette du 06/11.
  */
 export const BLOOM_STEPS = 6;
 /** Multiple où tout est figé, papillon posé : `bloom` est plafonné là. */
@@ -24,12 +24,10 @@ const BUD_OPENING_FROM = 0.7;
 const BLOOM_RING2: readonly [number, number] = [2, 3];
 /** Les graines du cœur paraissent entre ces deux multiples. */
 const BLOOM_SEEDS: readonly [number, number] = [3, 4];
-/** Multiple où le papillon est arrivé à côté de la fleur (étape 5 sur 6) ; il descend ensuite se poser. */
+/** Multiple où le papillon arrive à côté de la fleur (étape 5 sur 6), d'un coup ; il s'y pose à `BLOOM_MAX`. */
 export const BLOOM_BESIDE = 4.6;
-/** Le papillon entre par le coin haut droit du carré et vole jusqu'à côté de la fleur entre ces deux multiples. */
-const BLOOM_BUTTERFLY: readonly [number, number] = [4, BLOOM_BESIDE];
-/** Puis il descend se poser sur le cœur, ailes dressées en V, entre ces deux-là ; posé et figé au-delà. */
-const BLOOM_LANDING: readonly [number, number] = [BLOOM_BESIDE, BLOOM_MAX];
+/** Marge d'arrondi sur le multiple, la même que celle de la bulle : une étape dite dans la bulle est une étape dessinée. */
+const BLOOM_ROUNDING = 1e-9;
 /**
  * Envergure du papillon, en pixels du carré de 88 px (`k` = 1) : la moitié du diamètre de la fleur épanouie (25 px,
  * pétales compris), lisible comme un pétale sans sortir du carré par la droite.
@@ -37,8 +35,11 @@ const BLOOM_LANDING: readonly [number, number] = [BLOOM_BESIDE, BLOOM_MAX];
 const BUTTERFLY_SPAN = 13;
 /** Où il attend, à côté de la fleur : à droite, un peu plus haut que le cœur, en pixels du carré depuis le sommet de la tige. */
 const BUTTERFLY_BESIDE = { x: 17, y: -6 } as const;
-/** Écart des deux ailes dressées, posé (vu de profil). */
-const BUTTERFLY_V_DEG = 35;
+/** Pose du papillon dans chacun de ses deux états (maquette du 06/11) : largeur des ailes, de 0 à 1, et penché du corps, en radians. */
+const BUTTERFLY_POSES = {
+  beside: { flat: 0.72, tilt: -0.45 },
+  perched: { flat: 0.95, tilt: 0 },
+} as const;
 
 /** Couleurs du dessin, lues sur les variables `--root-*` de `theme/tokens.css`. */
 export interface RootColors {
@@ -86,7 +87,7 @@ export interface RootFrame {
   wither: number;
   /** Part de l'objectif faite dans la période, de 0 à 1 : la pousse grandit (tige et feuilles). */
   progress: number;
-  /** Temps de la période en multiples de l'objectif, de 0 à `BLOOM_MAX` : la fleur, en bouton avant 1, épanouie à 4, puis le papillon, posé à 5. */
+  /** Temps de la période en multiples de l'objectif, de 0 à `BLOOM_MAX` : la fleur, en bouton avant 1, épanouie à 4, puis le papillon, à côté d'elle à 4,6, posé à 5. */
   bloom: number;
   /** Feuilles tombées, de 0 (sur la tige) à 1 (mortes au sol) : la dernière période close a été manquée ; de nouvelles repoussent avec `progress`. */
   fallen: number;
@@ -324,97 +325,106 @@ const drawFlower = (ctx: CanvasRenderingContext2D, bloom: number, k: number, col
   }
 };
 
-/** Point d'une courbe quadratique de `p0` à `p2`, tirée vers `c`, à `t` de 0 à 1. */
-const quad = (p0: { x: number; y: number }, c: { x: number; y: number }, p2: { x: number; y: number }, t: number) => ({
-  x: (1 - t) * (1 - t) * p0.x + 2 * t * (1 - t) * c.x + t * t * p2.x,
-  y: (1 - t) * (1 - t) * p0.y + 2 * t * (1 - t) * c.y + t * t * p2.y,
-});
+/** Aile haute du côté droit, en unités de demi-envergure `a`, à plat. */
+const foreWing = (ctx: CanvasRenderingContext2D, a: number) => {
+  ctx.moveTo(0.05 * a, -0.3 * a);
+  ctx.bezierCurveTo(0.25 * a, -0.75 * a, 0.7 * a, -1.02 * a, 1 * a, -0.86 * a);
+  ctx.bezierCurveTo(1.04 * a, -0.55 * a, 0.9 * a, -0.18 * a, 0.72 * a, -0.04 * a);
+  ctx.bezierCurveTo(0.45 * a, 0.03 * a, 0.2 * a, 0.02 * a, 0.05 * a, 0.02 * a);
+  ctx.closePath();
+};
 
-/**
- * Le papillon, centré sur (`x`, `y`), d'envergure `size` : un corps sombre et deux antennes, deux paires d'ailes
- * (la haute plus grande, la basse plus petite et plus ronde) avec un point clair sur chaque aile haute.
- * `opening` : 0, ailes repliées (vues par la tranche), 1, à plat ; `perch`, de 0 à 1 : les ailes se dressent
- * en V, écartées de `BUTTERFLY_V_DEG`, comme posé, vu de profil.
- */
-const drawButterfly = (
-  ctx: CanvasRenderingContext2D, x: number, y: number, size: number, opening: number, colors: RootColors, perch = 0,
-) => {
-  const a = size / 2;
-  const p = clamp(perch, 0, 1);
-  const body = mix(colors.butterfly, '#000000', 0.5);
-  const spot = mix(colors.butterfly, '#ffffff', 0.55);
-  // Vers le haut, l'aile s'écarte de la verticale de la moitié du V.
-  const lift = p * (Math.PI / 2 - (BUTTERFLY_V_DEG * Math.PI) / 360);
-  const flat = clamp(opening + (1 - opening) * p, 0.05, 1);
+/** Aile basse du côté droit, plus petite et plus ronde. */
+const hindWing = (ctx: CanvasRenderingContext2D, a: number) => {
+  ctx.moveTo(0.05 * a, 0.02 * a);
+  ctx.bezierCurveTo(0.3 * a, 0.02 * a, 0.62 * a, 0.02 * a, 0.76 * a, 0.16 * a);
+  ctx.bezierCurveTo(0.84 * a, 0.42 * a, 0.62 * a, 0.78 * a, 0.38 * a, 0.8 * a);
+  ctx.bezierCurveTo(0.22 * a, 0.8 * a, 0.08 * a, 0.5 * a, 0.05 * a, 0.2 * a);
+  ctx.closePath();
+};
+
+/** Un chemin du côté `side`, tracé aplati de `flat` ; rempli et bordé hors de ce repère (trait d'épaisseur égale). */
+const sideShape = (ctx: CanvasRenderingContext2D, side: number, flat: number, draw: () => void) => {
   ctx.save();
-  ctx.translate(x, y);
-  /** Un chemin du côté `side`, tracé dans le repère tourné et aplati de ce côté ; rempli et bordé hors de ce repère (trait d'épaisseur égale). */
-  const wingPath = (side: number, draw: () => void) => {
-    ctx.save();
-    ctx.scale(side, 1);
-    ctx.rotate(-lift);
-    ctx.scale(flat, 1);
-    ctx.beginPath();
-    draw();
-    ctx.restore();
-  };
-  ctx.lineWidth = 0.7;
-  ctx.strokeStyle = colors.butterflyEdge;
-  ctx.fillStyle = colors.butterfly;
-  for (const side of [-1, 1]) {
-    // L'aile basse, puis la haute par-dessus.
-    for (const [cx, cy, rx, ry, rot] of [[0.42, 0.3, 0.4, 0.3, 0.5], [0.5, -0.28, 0.52, 0.4, -0.45]]) {
-      wingPath(side, () => ctx.ellipse(cx * a, cy * a, rx * a, ry * a, rot, 0, TAU));
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-  ctx.fillStyle = spot;
-  for (const side of [-1, 1]) {
-    wingPath(side, () => ctx.arc(0.6 * a, -0.33 * a, 0.12 * a, 0, TAU));
-    ctx.fill();
-  }
-  ctx.fillStyle = body;
+  ctx.scale(side * flat, 1);
   ctx.beginPath();
-  ctx.ellipse(0, 0.02 * a, 0.1 * a, 0.42 * a, 0, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(0, -0.46 * a, 0.12 * a, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = body;
-  ctx.lineWidth = 0.6;
-  ctx.lineCap = 'round';
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(side * 0.04 * a, -0.52 * a);
-    ctx.quadraticCurveTo(side * 0.08 * a, -0.85 * a, side * 0.3 * a, -0.98 * a);
-    ctx.stroke();
-  }
+  draw();
   ctx.restore();
 };
 
+/** Corps, tête et antennes, vus de dessus. */
+const bodyFromAbove = (ctx: CanvasRenderingContext2D, a: number, color: string) => {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0.02 * a, 0.08 * a, 0.48 * a, 0, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, -0.5 * a, 0.1 * a, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(0.5, a * 0.07);
+  ctx.lineCap = 'round';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side * 0.03 * a, -0.56 * a);
+    ctx.quadraticCurveTo(side * 0.06 * a, -0.9 * a, side * 0.3 * a, -1.04 * a);
+    ctx.stroke();
+  }
+};
+
 /**
- * Le papillon des deux dernières étapes, pour `t` multiples de l'objectif (rien avant 4) : de 4 à 4,6, il entre par le
- * coin haut droit du carré et vole, le long d'une courbe douce, jusqu'à côté de la fleur, ailes battant avec le
- * temps fait (elles ne bougent que quand `t` change) ; de 4,6 à 5, il descend de côté jusqu'au cœur et s'y pose,
- * ailes dressées en V ; posé et figé dès 5. `top` : le sommet de la tige (le cœur), `corner` : le coin haut droit du carré.
+ * Le papillon monarque (maquette du 06/11), centré sur (`x`, `y`), d'envergure `size`, vu de dessus : un grand aplat
+ * et un bord épais, lisibles en petit, deux points blancs par aile haute, corps et antennes de la couleur du bord.
  */
-const drawButterflyStage = (
-  ctx: CanvasRenderingContext2D, t: number, top: { x: number; y: number }, corner: { x: number; y: number }, k: number, colors: RootColors,
+const drawButterfly = (
+  ctx: CanvasRenderingContext2D, x: number, y: number, size: number, pose: { flat: number; tilt: number }, colors: RootColors,
 ) => {
-  if (t < BLOOM_BUTTERFLY[0]) return;
+  const a = size / 2;
+  const { flat } = pose;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(pose.tilt);
+  ctx.lineJoin = 'round';
+  for (const side of [-1, 1]) {
+    ctx.lineWidth = Math.max(0.9, a * 0.16);
+    ctx.strokeStyle = colors.butterflyEdge;
+    ctx.fillStyle = colors.butterfly;
+    // L'aile basse, puis la haute par-dessus.
+    sideShape(ctx, side, flat, () => hindWing(ctx, a));
+    ctx.fill();
+    ctx.stroke();
+    sideShape(ctx, side, flat, () => foreWing(ctx, a));
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    sideShape(ctx, side, flat, () => ctx.arc(0.8 * a, -0.68 * a, 0.075 * a, 0, TAU));
+    ctx.fill();
+    sideShape(ctx, side, flat, () => ctx.arc(0.74 * a, -0.34 * a, 0.075 * a, 0, TAU));
+    ctx.fill();
+  }
+  bodyFromAbove(ctx, a, colors.butterflyEdge);
+  ctx.restore();
+};
+
+/** État du papillon pour `t` multiples de l'objectif, sans entre-deux : absent, à côté de la fleur, ou posé sur elle. */
+export const butterflyStateAt = (t: number): keyof typeof BUTTERFLY_POSES | null => {
+  if (t + BLOOM_ROUNDING >= BLOOM_MAX) return 'perched';
+  return t + BLOOM_ROUNDING >= BLOOM_BESIDE ? 'beside' : null;
+};
+
+/**
+ * Le papillon des deux dernières étapes, pour `t` multiples de l'objectif : rien sous 4,6 ; de 4,6 à 5, à côté de la
+ * fleur, penché, ailes moins ouvertes ; posé sur le cœur et droit dès 5, tout figé au-delà. `top` : le sommet de la tige (le cœur).
+ */
+const drawButterflyStage = (ctx: CanvasRenderingContext2D, t: number, top: { x: number; y: number }, k: number, colors: RootColors) => {
+  const state = butterflyStateAt(t);
+  if (state === null) return;
   const span = BUTTERFLY_SPAN * k;
-  const beside = { x: top.x + BUTTERFLY_BESIDE.x * k, y: top.y + BUTTERFLY_BESIDE.y * k };
   // Posé : le bas du corps sur le cœur.
-  const perched = { x: top.x, y: top.y - 0.35 * (span / 2) };
-  const flight = clamp((t - BLOOM_BUTTERFLY[0]) / (BLOOM_BUTTERFLY[1] - BLOOM_BUTTERFLY[0]), 0, 1);
-  const landing = clamp((t - BLOOM_LANDING[0]) / (BLOOM_LANDING[1] - BLOOM_LANDING[0]), 0, 1);
-  const at = landing > 0
-    ? quad(beside, { x: top.x + 10 * k, y: top.y - 11 * k }, perched, landing)
-    : quad(corner, { x: corner.x - 2 * k, y: beside.y + 14 * k }, beside, flight);
-  // Deux battements sur le vol, l'ouverture gardée pendant la descente (les ailes s'y dressent).
-  const opening = 0.35 + 0.45 * Math.abs(Math.sin(2 * Math.PI * flight));
-  drawButterfly(ctx, at.x, at.y, span, opening, colors, landing);
+  const at = state === 'perched'
+    ? { x: top.x, y: top.y - 0.35 * (span / 2) }
+    : { x: top.x + BUTTERFLY_BESIDE.x * k, y: top.y + BUTTERFLY_BESIDE.y * k };
+  drawButterfly(ctx, at.x, at.y, span, BUTTERFLY_POSES[state], colors);
 };
 
 /** Ligne de sol du carré, avec quelques cailloux dessous, à droite (le chiffre est à gauche). */
@@ -448,8 +458,8 @@ const drawGround = (ctx: CanvasRenderingContext2D, model: RootModel, colors: Roo
  * période à l'autre et grandit avec l'objectif. La fleur n'est là qu'avec du
  * temps dans la période : un bouton dès la première minute, qui grossit puis
  * s'ouvre avec le temps fait, en entier à l'objectif, et continue d'évoluer par
- * multiples de l'objectif jusqu'à 4 fois (`drawFlower`) ; de 4 à 5 fois, un
- * papillon approche puis se pose sur elle (`drawButterflyStage`). Après une période
+ * multiples de l'objectif jusqu'à 4 fois (`drawFlower`) ; à 4,6 fois, un papillon
+ * arrive à côté d'elle, puis s'y pose à 5 fois (`drawButterflyStage`). Après une période
  * manquée (`fallen`), les feuilles tombent et restent mortes au sol ; de
  * nouvelles repoussent sur la tige avec le temps fait.
  */
@@ -527,15 +537,14 @@ const drawSprout = (ctx: CanvasRenderingContext2D, model: RootModel, frame: Root
     }
 
     // La fleur : rien sans temps dans la période ; un bouton, ouvert à l'objectif, puis ses étapes jusqu'à 4 fois ;
-    // ensuite le papillon, qui s'efface avec elle quand elle se fane.
+    // ensuite le papillon. Quand elle se fane, elle rétrécit ; lui garde son état, lu sur le multiple non fané, et s'efface.
     if (flowering) {
-      const bloom = frame.bloom * (1 - frame.wither);
       ctx.save();
       ctx.translate(top.x, top.y);
-      drawFlower(ctx, bloom, k, colors);
+      drawFlower(ctx, frame.bloom * (1 - frame.wither), k, colors);
       ctx.restore();
       ctx.globalAlpha = 1 - frame.wither;
-      drawButterflyStage(ctx, bloom, top, { x: slot.r, y: slot.y }, k, colors);
+      drawButterflyStage(ctx, frame.bloom, top, k, colors);
       ctx.globalAlpha = 1;
     }
   }
