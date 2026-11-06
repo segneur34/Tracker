@@ -105,6 +105,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     heartRate: true,
     bikeKg: 12,
     wayTypes: ['route', 'grandeRoute'],
+    // Onglet « sauts » décoché de base, sauf au VTT qui les mesure d'office (Q61, 06/11).
+    tabs: { sauts: false },
   },
   'run-intervals': RUN_TRAINING,
   'run-test': RUN_TRAINING,
@@ -142,6 +144,7 @@ const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
     hrThresholdOffsetBpm: -4,
     // Pandolf, pas Minetti (28/10).
     energyModel: 'marche',
+    tabs: { sauts: false },
   },
   'a-gravel': {
     threshold: 0,
@@ -152,6 +155,7 @@ const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
     bikeKg: 13,
     wayTypes: ['piste', 'route', 'grandeRoute'],
     terrainStepM: 5,
+    tabs: { sauts: false },
   },
   'a-vtt': {
     threshold: 0,

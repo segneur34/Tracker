@@ -160,7 +160,7 @@ describe('pré-réglages des activités (21/10)', () => {
     const next = resetStoredPresets(stored);
     expect(next.thresholds).toEqual({ running: 2, kite: 12 });
     expect(next.speedRanges).toBe(stored.speedRanges);
-    expect(PRESETS_VERSION).toBe(4);
+    expect(PRESETS_VERSION).toBe(5);
   });
 
   it('efface une fois la case des sauts du kite et du VTT (version 3 → 4), garde celle des autres', () => {
@@ -241,6 +241,8 @@ describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
     }
     expect(defaultTabsOf(run)).toEqual({ sauts: false });
     expect(defaultTabsOf(vtt)).toEqual({ tops: false });
+    // Q61, 06/11 : décoché de base partout à terre, sauf au VTT, qui mesure les sauts d\'office.
+    for (const activity of [byId('a-marche'), byId('a-gravel'), route]) expect(defaultTabsOf(activity), activity.id).toEqual({ sauts: false });
   });
 
   it('Course : cocher la case montre l\'onglet, en écrivant le choix en clair', () => {
@@ -253,8 +255,32 @@ describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
     expect(settingsView(checked, run).isTabsOverridden).toBe(true);
   });
 
-  it('rien à écrire si l\'onglet est déjà montré : VTT, Route, Voile', () => {
-    for (const activity of [vtt, route, byId('wingfoil')]) {
+  it('Marche, Route, Gravel : cocher la case montre l\'onglet', () => {
+    for (const activity of [byId('a-marche'), route, byId('a-gravel')]) {
+      const view = settingsView({ jumps: { [activity.id]: { enabled: false, placement: 'poitrine', minHeightM: 0.5 } } }, activity);
+      expect(shown({}, activity, 'sauts'), activity.id).toBe(false);
+      expect(tabsAfterJumpsChange(view, { ...view.jumps!, enabled: true }), activity.id).toEqual({ sauts: true });
+    }
+  });
+
+  it('une mise à jour décoche « sauts » dans les choix rangés, sans rien effacer d\'autre', () => {
+    const marche = byId('a-marche');
+    const gravel = byId('a-gravel');
+    const stored: StoredSettings = {
+      presetsVersion: 4,
+      tabs: { [marche.id]: { tops: true }, [route.id]: { sauts: true }, [vtt.id]: { cardio: false }, [gravel.id]: { tops: true } },
+      jumps: { [gravel.id]: { enabled: true, placement: 'poitrine', minHeightM: 0.5 } },
+    };
+    expect(resetStoredPresets(stored).tabs).toEqual({
+      // Sans choix sur « sauts » : décoché ; choix déjà fait, VTT et case cochée : gardés.
+      [marche.id]: { tops: true, sauts: false }, [route.id]: { sauts: true }, [vtt.id]: { cardio: false }, [gravel.id]: { tops: true },
+    });
+    const written = { ...stored, presetsVersion: PRESETS_VERSION };
+    expect(resetStoredPresets(written)).toBe(written);
+  });
+
+  it('rien à écrire si l\'onglet est déjà montré : VTT, Voile', () => {
+    for (const activity of [vtt, byId('wingfoil')]) {
       const view = settingsView({ jumps: { [activity.id]: { enabled: false, placement: 'poitrine', minHeightM: 0.5 } } }, activity);
       expect(tabsAfterJumpsChange(view, { ...view.jumps!, enabled: true }), activity.id).toBeUndefined();
     }
@@ -286,10 +312,11 @@ describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
   });
 
   it('un choix rangé sans pré-réglage qui cache l\'onglet s\'efface en le montrant', () => {
-    const stored: StoredSettings = { tabs: { [route.id]: { sauts: false } } };
-    const next = setCase(stored, route, true);
-    expect(shown(next, route, 'sauts')).toBe(true);
-    expect(settingsView(next, route).isTabsOverridden).toBe(false);
+    const wing = byId('wingfoil');
+    const stored: StoredSettings = { tabs: { [wing.id]: { sauts: false } }, jumps: { [wing.id]: { enabled: false, placement: 'poitrine', minHeightM: 0.5 } } };
+    const next = setCase(stored, wing, true);
+    expect(shown(next, wing, 'sauts')).toBe(true);
+    expect(settingsView(next, wing).isTabsOverridden).toBe(false);
   });
 });
 

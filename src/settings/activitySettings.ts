@@ -381,7 +381,7 @@ export const withVisibility = (stored: StoredSettings, activities: Activity[], h
  * 3 (28/10) : la Marche sans seuil d'activité. 4 (05/11) : sauts mesurés
  * d'office au kite et au VTT.
  */
-export const PRESETS_VERSION = 4;
+export const PRESETS_VERSION = 5;
 
 /**
  * Réglages effacés une fois, à la mise à jour, pour que les pré-réglages
@@ -408,9 +408,27 @@ const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys
 ];
 
 /**
+ * Onglet « sauts » décoché de base partout à terre, sauf au VTT (Q61, 06/11) : un
+ * choix d'onglets déjà rangé garde tout le reste (rien d'effacé, contrairement à
+ * `PRESET_RESETS`) et gagne « sauts » décoché, sauf s'il en parle déjà ou que la case
+ * « Mesurer les sauts » de l'activité est cochée.
+ */
+const HIDDEN_JUMPS_TAB_VERSION = 5;
+
+const withJumpsTabHidden = (stored: StoredSettings, activities: readonly Activity[]): StoredSettings => {
+  let tabs = stored.tabs;
+  for (const activity of activities) {
+    const own = tabs?.[activity.id];
+    if (!own || Object.hasOwn(own, 'sauts') || presetOf(activity).tabs?.sauts !== false || stored.jumps?.[activity.id]?.enabled) continue;
+    tabs = { ...tabs, [activity.id]: { ...own, sauts: false } };
+  }
+  return tabs === stored.tabs ? stored : { ...stored, tabs };
+};
+
+/**
  * Réglages d'une version de pré-réglages d'avant mis à jour (`PRESET_RESETS`) :
- * les réglages des calculs repris depuis sont effacés. Rend `stored` lui-même
- * s'il n'y a rien à effacer.
+ * les réglages des calculs repris depuis sont effacés, et l'onglet « sauts » décoché
+ * dans les choix gardés. Rend `stored` lui-même s'il n'y a rien à changer.
  */
 export const resetStoredPresets = (stored: StoredSettings): StoredSettings => {
   const from = stored.presetsVersion ?? 0;
@@ -428,7 +446,7 @@ export const resetStoredPresets = (stored: StoredSettings): StoredSettings => {
       next = { ...next, [key]: copy };
     }
   }
-  return next;
+  return from < HIDDEN_JUMPS_TAB_VERSION ? withJumpsTabHidden(next, activities) : next;
 };
 
 /** Type de vélo d'une activité sans réglage : celui de son pré-réglage (Gravel, VTT), route sinon. */
