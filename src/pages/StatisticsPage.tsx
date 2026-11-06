@@ -225,7 +225,9 @@ const WeekLineShape = () => (
   </svg>
 );
 
-const CHOICE_DEFAULT = { choix: false };
+const PART_FOLD_STYLE = { maxWidth: '100%', minWidth: 0 } as const;
+
+const CHOICE_DEFAULT = { choix: false, activite: true, materiel: false };
 
 /**
  * Aide de la charge, sous les chiffres du cardio : seul ce petit composant lit l'état des aides, pour qu'un « ? »
@@ -522,6 +524,8 @@ function StatisticsPage() {
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
   /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
+  /** Matériel déplié : jamais quand il est grisé, quoi que l'état retenu dise. */
+  const gearOpen = choice.open.materiel && gearGroups !== null;
   const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), ...gearSelection.map(gearPickLabel), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
@@ -538,7 +542,7 @@ function StatisticsPage() {
       <div className="stats-choice">
         <ChartFold open={choice.open.choix} onToggle={() => choice.toggle('choix')}
           title={choice.open.choix ? 'Replier la sélection' : 'Choisir la famille, l’activité et la période'}
-          style={{ padding: '6px 10px 6px 12px', fontSize: 'var(--text-s)' }}
+          style={{ padding: 'var(--space-2) var(--space-3)', minHeight: 'var(--touch-target)', fontSize: 'var(--text-m)' }}
           label={<>
             <strong>Sélection</strong>
             <span className="stats-choice__summary">{choiceSummary}</span>
@@ -546,18 +550,33 @@ function StatisticsPage() {
         {choice.open.choix && (<>
         <SegmentedControl fit label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
           onChange={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
-        {family !== null && activityItems.length > 0 && (
-          <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
-            onChange={(key) => go({ activite: key === '' ? null : key })} />
-        )}
-        {activity !== null && gearRows.map((row) => (
-          <div key={row.groupId} className="stats-gear">
-            <span className="stats-gear__label">{row.groupName}</span>
-            <SegmentedControl label={`Matériel : ${row.groupName}`} items={[{ key: '', label: 'Tous' }, ...row.items.map((it) => ({ key: it.key, label: it.itemName }))]}
-              value={gearSelection.find((it) => it.groupId === row.groupId)?.key ?? ''} accent={accent}
-              onChange={(key) => go({ materiel: gearParamOf(withGearPick(gearSelection, row.groupId, row.items.find((it) => it.key === key) ?? null, gearItems)) })} />
+        {family !== null && activityItems.length > 0 && (<>
+          <div className="stats-choice__part">
+            <ChartFold open={choice.open.activite} onToggle={() => choice.toggle('activite')}
+              title={choice.open.activite ? 'Replier le choix de l’activité' : 'Choisir l’activité'}
+              style={PART_FOLD_STYLE}
+              label={<><strong>Activité</strong><span className="stats-choice__summary">{activity ? activity.name : 'Toutes'}</span></>} />
+            {choice.open.activite && (
+              <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
+                onChange={(key) => go({ activite: key === '' ? null : key })} />
+            )}
           </div>
-        ))}
+          <div className="stats-choice__part">
+            <ChartFold open={gearOpen} disabled={gearGroups === null} onToggle={() => choice.toggle('materiel')}
+              title={gearGroups === null ? 'Aucune liste de matériel pour cette activité (Réglages : « Créer liste matériel »)' : gearOpen ? 'Replier le choix du matériel' : 'Choisir le matériel'}
+              style={PART_FOLD_STYLE}
+              label={<><strong>Matériel</strong>{gearSelection.length > 0 && <span className="stats-choice__summary">{gearSelection.map(gearPickLabel).join(' · ')}</span>}</>} />
+            {gearOpen && gearRows.length === 0 && <p className="ui-hint">Aucun matériel sur les sessions de cette période.</p>}
+            {gearOpen && activity !== null && gearRows.map((row) => (
+              <div key={row.groupId} className="stats-gear">
+                <span className="stats-gear__label">{row.groupName}</span>
+                <SegmentedControl label={`Matériel : ${row.groupName}`} items={[{ key: '', label: 'Tous' }, ...row.items.map((it) => ({ key: it.key, label: it.itemName }))]}
+                  value={gearSelection.find((it) => it.groupId === row.groupId)?.key ?? ''} accent={accent}
+                  onChange={(key) => go({ materiel: gearParamOf(withGearPick(gearSelection, row.groupId, row.items.find((it) => it.key === key) ?? null, gearItems)) })} />
+              </div>
+            ))}
+          </div>
+        </>)}
         <SegmentedControl fit label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
           onChange={(key) => go({ periode: key }, true)} />
         </>)}

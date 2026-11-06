@@ -202,6 +202,12 @@ if ((await evaluate(`document.querySelector('.stats-choice button[data-chart-fol
   await evaluate(`document.querySelector('.stats-choice button[data-chart-fold]')?.click()`);
   await settle({ max: 800, label: 'sélection' });
 }
+// Lot 178 : « Matériel » est un bouton de « Sélection », replié au départ, grisé sans liste de matériel.
+const partFold = (name) => `[...document.querySelectorAll('.stats-choice__part button[data-chart-fold]')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(name)}))`;
+check('Matériel replié au départ, bouton actif, aucune rangée', (await evaluate(`${partFold('Matériel')}?.getAttribute('aria-expanded')`)) === 'false'
+  && (await evaluate(`${partFold('Matériel')}?.disabled`)) === false && (await gearRows()) === '', await gearRows());
+await evaluate(`${partFold('Matériel')}?.click()`);
+await settle({ max: 800, label: 'matériel déplié' });
 console.log('\nlignes du matériel :', await gearRows());
 check('Course : 4 sessions, une ligne par groupe porté (pas « Montre »)', (await statSessions()) === '4'
   && (await gearRows()) === 'Chaussures : [Tous], Trail, Route | Sac : [Tous], 5 L, 10 L', `${await statSessions()} ; ${await gearRows()}`);
@@ -223,6 +229,43 @@ check('retour arrière : Trail seul, 2 sessions', (await statSessions()) === '2'
 await go('/statistiques?famille=course&activite=running&materiel=s-10', 4000);
 check('ancienne adresse à une pièce : 10 L, rangée dans Sac', (await statSessions()) === '1' && (await gearRows()) === 'Chaussures : [Tous], Trail, Route | Sac : Tous, 5 L, [10 L]',
   `${await statSessions()} ; ${await gearRows()}`);
+
+// Lot 178 : sans liste de matériel (Voile), « Matériel » reste grisé, non cliquable et replié ; avec « Toutes », de même.
+const mat = (expr) => evaluate(`${partFold('Matériel')}${expr}`);
+await go('/statistiques?famille=voile&activite=wingfoil', 4000);
+check('Voile : Matériel grisé et replié', (await mat('?.disabled')) === true && (await mat("?.getAttribute('aria-expanded')")) === 'false');
+await mat('?.click()');
+await wait(300);
+check('Voile : un clic sur Matériel ne déplie rien', (await mat("?.getAttribute('aria-expanded')")) === 'false' && (await gearRows()) === '');
+await go('/statistiques?famille=course', 4000);
+check('« Toutes » les activités : Matériel grisé', (await mat('?.disabled')) === true);
+// Activité : repliée puis rouverte.
+const act = (expr) => evaluate(`${partFold('Activité')}${expr}`);
+await go('/statistiques?famille=course&activite=running', 4000);
+check('Activité ouverte au départ, libellé du choix en cours', (await act("?.getAttribute('aria-expanded')")) === 'true' && (await act('?.textContent')).includes('Course'));
+await act('?.click()');
+await wait(300);
+check('Activité repliée : rangée partie, choix gardé dans le bouton', (await act("?.getAttribute('aria-expanded')")) === 'false'
+  && (await evaluate(`document.querySelector('.ui-segmented[aria-label="Activité"]')`)) === null && (await act('?.textContent')).includes('Course'));
+await go('/statistiques?famille=course&activite=running', 4000);
+check('Activité repliée retenue après rechargement', (await act("?.getAttribute('aria-expanded')")) === 'false');
+await act('?.click()');
+await wait(300);
+check('Activité rouverte', (await act("?.getAttribute('aria-expanded')")) === 'true' && (await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Activité"]')`)));
+// Matériel : un filtre posé reste dit une fois replié ; état retenu ; rien ne déborde à 320 px.
+await go('/statistiques?famille=course&activite=running&materiel=g-ch%3Ac-trail', 4000);
+if ((await mat("?.getAttribute('aria-expanded')")) !== 'true') { await mat('?.click()'); await wait(300); }
+await mat('?.click()');
+await wait(300);
+check('Matériel replié : le choix reste dit dans le bouton', (await mat("?.getAttribute('aria-expanded')")) === 'false' && (await mat('?.textContent')).includes('Trail'), await mat('?.textContent'));
+await go('/statistiques?famille=course&activite=running&materiel=g-ch%3Ac-trail', 4000);
+check('Matériel replié retenu après rechargement', (await mat("?.getAttribute('aria-expanded')")) === 'false');
+await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await go('/statistiques?famille=course&activite=running&materiel=g-ch%3Ac-trail', 4000);
+await mat('?.click()');
+await wait(300);
+check('320 px : rien ne déborde, chevrons visibles', await evaluate(`document.documentElement.scrollWidth <= window.innerWidth && [...document.querySelectorAll('.stats-choice button[data-chart-fold]')].every((b) => { const c = b.querySelector('svg')?.getBoundingClientRect(); return !!c && c.right <= window.innerWidth + 1; })`));
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));

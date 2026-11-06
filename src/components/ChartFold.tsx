@@ -10,20 +10,22 @@ import { IconChevronRight } from './icons';
  * graphe ; `aria-expanded` dit l'état (banc compris). Plus petit dans les
  * analyses (`--chart-name-size`, `analysisMobile.css`).
  */
-function ChartFold({ label, open, onToggle, color, title, style }: {
+function ChartFold({ label, open, onToggle, color, title, style, disabled }: {
   label: ReactNode;
   open: boolean;
   onToggle: () => void;
   color?: string;
   title?: string;
   style?: CSSProperties;
+  /** Bouton grisé, non cliquable, qui ne déplie rien. */
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" aria-expanded={open} onClick={onToggle} data-chart-fold=""
+    <button type="button" aria-expanded={open} onClick={disabled ? undefined : onToggle} disabled={disabled} aria-disabled={disabled || undefined} data-chart-fold=""
       title={title ?? (open ? 'Replier' : 'Montrer')}
       style={{
         alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
-        padding: '3px 8px 3px 10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--chart-name-size, var(--text-xs))',
+        padding: '3px 8px 3px 10px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : undefined, border: 'none', borderRadius: '4px', fontSize: 'var(--chart-name-size, var(--text-xs))',
         backgroundColor: 'var(--surface-sunken)', color: color ?? 'var(--ink)', fontWeight: color ? 600 : undefined,
         letterSpacing: 'var(--title-spacing)', textTransform: 'uppercase',
         ...style,

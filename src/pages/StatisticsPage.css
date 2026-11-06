@@ -19,6 +19,27 @@
   letter-spacing: normal;
   text-align: left;
   margin-left: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-choice button[data-chart-fold] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.stats-choice button[data-chart-fold] > svg {
+  flex-shrink: 0;
+}
+
+/* Une partie de « Sélection » : son bouton, puis ce qu'il déplie. */
+.stats-choice__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 /* Une ligne du filtre « Matériel » par groupe (lot 146) : le nom du groupe, puis ses pièces ; la rangée défile si elle ne tient pas. */
