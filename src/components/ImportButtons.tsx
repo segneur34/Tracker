@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { canImportSessions, importFiles, importFromFolder, useLibraryFields } from '../hooks/useSessionLibrary';
+import { NO_FOLDER_IMPORT_MESSAGE } from '../platform/memoryFolder';
 import { isNativeApp } from '../platform/runtime';
 import { IconFile } from './icons';
 import Button from './ui/Button';
@@ -29,7 +30,7 @@ function ImportButtons({ gpx = true }: { gpx?: boolean }) {
 
   return (
     <>
-      {noFolder && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 }}>Désignez d'abord le dossier mémoire (Réglages › Mémoire) pour importer des sessions.</p>}
+      {noFolder && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 }}>{NO_FOLDER_IMPORT_MESSAGE}</p>}
       {gpx && (
         <label className={labelClass}>
           <IconFile size={18} />

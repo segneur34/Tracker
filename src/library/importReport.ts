@@ -21,6 +21,11 @@ export interface ImportReport {
   unsaved: number;
   /** Fichiers qu'on n'a pas pu lire ou ranger, avec la raison. */
   failed: string[];
+  /**
+   * Parmi `failed`, ceux dont le rangement a levé une erreur (écriture dans la mémoire, lecture passagère), par leur nom :
+   * un nouvel essai peut réussir, à la différence d'un fichier illisible.
+   */
+  retryable: string[];
   /** Sessions déjà présentes qui ont reçu leurs capteurs (`.imu`). */
   motionAdded: number;
   /** GPX rangés ou déjà présents dont les capteurs (`.imu`) ne se sont pas lus : gardés sans eux, un nouvel import les ajoute. */

@@ -35,18 +35,19 @@ import { findSession, sessionOfFile } from './sessionLibrary/memory';
  * découpé par sujet sous `hooks/sessionLibrary/` (lot 113), en couches dont
  * chacune n'importe que les précédentes (`couches.test.ts`) : `store`,
  * `memory`, `summarySettings`, `recordWrites`, `cache`, `scan`,
- * `summaryQueue`, `deviceSettings`, `addSession`, `pending`, `importer`,
+ * `summaryQueue`, `deviceSettings`, `addSession`, `pending`, `importer`, `incoming`,
  * `sessionRecords`, `lifecycle`.
  */
 
 export type { LibraryState, LibraryStatus } from './sessionLibrary/store';
-export { dismissLibraryMessage, dismissSettingsOffer, readLibraryState, reportStartupError } from './sessionLibrary/store';
+export { dismissIncomingNotice, dismissLibraryMessage, dismissSettingsOffer, readLibraryState, reportStartupError } from './sessionLibrary/store';
 export { hasSessionMotion } from './sessionLibrary/memory';
 export { summarizeGpxText } from './sessionLibrary/summarySettings';
 export { queueOutdatedRefresh } from './sessionLibrary/summaryQueue';
 export { adoptSettingsFile, importSettingsFile, renameDevice, settingsUpgraded } from './sessionLibrary/deviceSettings';
 export type { AddResult, AddStatus } from './sessionLibrary/addSession';
 export { answerImportQuestion, canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
+export { startIncomingFiles } from './sessionLibrary/incoming';
 export {
   loadFullSession, loadSessionGpx, readSessionExport, readSessionGpx, readSessionMotion, removeSession,
   updateSessionRecord,

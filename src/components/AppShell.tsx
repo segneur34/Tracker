@@ -18,6 +18,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { HelpProvider } from './Help';
 import HoldDial from './ui/HoldDial';
 import ImportQuestion from './ImportQuestion';
+import IncomingFileNotice from './IncomingFileNotice';
 
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
@@ -232,6 +233,7 @@ function AppShell() {
           </Link>
         )}
         {pathname !== RECORD_PATH && <IntervalBanner />}
+        <IncomingFileNotice />
       </div>
 
       <main className="shell-main">

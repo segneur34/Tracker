@@ -68,6 +68,8 @@ export const SCRIPTS = [
   { nom: 'icones', args: ['{port}', '{captures?}'], pages: ['accueil', 'bibliotheque', 'reglages'] },
   // Fichiers FIT de montre (lot 35) : FIT fabriqués, chiffres et FC à l'écran, doublon, refus, question du dossier.
   { nom: 'import-fit', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course'] },
+  // Fichier reçu d'une autre application (lot 35) : bandeau, sur une fausse file privée à la place du greffon ; l'intention d'Android ne se prouve qu'au téléphone.
+  { nom: 'fichier-recu', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'accueil', 'course'], dev: true },
   { nom: 'imports', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'voile', 'course', 'velo', 'surf'] },
   { nom: 'library', args: ['{port}', '{dossierGpx}', '{captures?}'], pages: ['bibliotheque', 'reglages'],
     manuel: 'il faut voile.gpx, course.gpx et sans-type.gpx dans le dossier de --gpx' },

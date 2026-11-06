@@ -27,6 +27,34 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- « Ouvrir avec Tracker » d'un GPX ou d'un FIT (IncomingFilePlugin). Tracker apparaît dans le choix d'Android, sans en
+                 devenir l'application par défaut ; la signature du fichier est vérifiée à la réception, un type ne prouve rien. Pas de
+                 BROWSABLE : une page web ne peut pas pousser de fichier. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/vnd.ant.fit" />
+                <data android:mimeType="application/fit" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/xml" />
+            </intent-filter>
+
+            <!-- « Partager vers Tracker » : le fichier est dans EXTRA_STREAM, l'intention n'a pas d'adresse. Déclarer un schéma ici
+                 l'empêcherait d'entrer (règle des filtres d'Android). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/vnd.ant.fit" />
+                <data android:mimeType="application/fit" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/xml" />
+            </intent-filter>
+
         </activity>
 
         <!-- Compteur du fractionné : bips à l'heure dite, écran éteint, avec ou sans enregistrement (IntervalTimerService). -->

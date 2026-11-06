@@ -57,6 +57,37 @@
   flex: 1;
 }
 
+/* Résultat d'un fichier reçu d'une autre application : du texte à lire, pas un état en cours, donc sur fond de carte. */
+.shell-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+  border-left: 4px solid var(--velo);
+  color: var(--ink);
+  font-size: var(--text-s);
+}
+
+.shell-notice--trouble {
+  border-left-color: var(--course);
+}
+
+.shell-notice__text {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shell-notice__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
 /* --- Barre d'onglets, téléphone --- */
 
 .shell-tabbar {

@@ -93,3 +93,31 @@ describe('manifeste Android : sauvegarde', () => {
     for (const domain of DOMAINS) expect(body, domain).toContain(`<exclude domain="${domain}" path="." />`);
   });
 });
+
+describe('manifeste Android : fichiers reçus d\'une autre application (lot 35)', () => {
+  const activity = MANIFEST.match(/<activity\b[\s\S]*?<\/activity>/)?.[0] ?? '';
+  const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map((m) => m[1]);
+  const withAction = (action: string): string => filters.find((f) => f.includes(`android.intent.action.${action}"`)) ?? '';
+  const TYPES = ['application/gpx+xml', 'application/vnd.ant.fit', 'application/fit', 'application/octet-stream', 'text/xml', 'application/xml'];
+
+  it('l\'activité reste seule de sa tâche, et le lanceur ne change pas : une ouverture normale reste la même', () => {
+    expect(activity).toContain('android:launchMode="singleTask"');
+    expect(withAction('MAIN')).toContain('android.intent.category.LAUNCHER');
+  });
+
+  it.each(['VIEW', 'SEND'])('%s : les six types, proposé sans lien depuis une page web', (action) => {
+    const filter = withAction(action);
+    for (const type of TYPES) expect(filter, type).toContain(`android:mimeType="${type}"`);
+    expect(filter).toContain('android.intent.category.DEFAULT');
+    expect(filter).not.toContain('BROWSABLE');
+  });
+
+  it('VIEW en content:// seulement, SEND sans schéma : une intention SEND n\'a pas d\'adresse, un schéma l\'exclurait', () => {
+    expect(withAction('VIEW')).toContain('android:scheme="content"');
+    expect(withAction('SEND')).not.toContain('android:scheme');
+  });
+
+  it('aucune permission de stockage : le droit de lecture vient de l\'intention', () => {
+    expect(MANIFEST).not.toMatch(/READ_EXTERNAL_STORAGE|READ_MEDIA|MANAGE_EXTERNAL_STORAGE/);
+  });
+});

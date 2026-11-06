@@ -10,6 +10,16 @@ import { createListeners } from '../createStore';
 
 export type LibraryStatus = 'opening' | 'ready' | 'needs-permission' | 'unavailable';
 
+/** Résultat d'un fichier reçu d'une autre application (`incoming`), dit par un bandeau jusqu'à ce qu'on le ferme. */
+export interface IncomingNotice {
+  id: string;
+  text: string;
+  /** Session à ouvrir (« Voir la session »), rangée ou déjà présente. */
+  file: string | null;
+  /** Rien n'a été rangé. */
+  trouble: boolean;
+}
+
 export interface LibraryState {
   status: LibraryStatus;
   folderKind: MemoryKind | null;
@@ -48,6 +58,8 @@ export interface LibraryState {
   importing: boolean;
   /** Question posée avant d'importer un dossier : son nombre d'activités de montre (`answerImportQuestion`). */
   importQuestion: { watchActivities: number } | null;
+  /** Résultats des fichiers reçus d'une autre application, à dire. */
+  incomingNotices: IncomingNotice[];
   /** Incrémenté à chaque relecture du dossier : les listes tenues ailleurs (itinéraires) se relisent. */
   revision: number;
   /** Compte rendu de la dernière action (import, copie, relecture). */
@@ -74,6 +86,7 @@ const INITIAL_STATE: LibraryState = {
   refreshing: false,
   importing: false,
   importQuestion: null,
+  incomingNotices: [],
   revision: 0,
   message: null,
   error: null,
@@ -94,7 +107,7 @@ export const setState = (patch: Partial<LibraryState>): void => {
 export const subscribe = listeners.subscribe;
 
 /** Phrase terminée par un point, pour en mettre plusieurs à la suite. */
-const sentence = (text: string): string => (/[.!?…]$/.test(text) ? text : `${text}.`);
+export const sentence = (text: string): string => (/[.!?…]$/.test(text) ? text : `${text}.`);
 
 /**
  * Ajoute une erreur à celles déjà affichées, sans la répéter : plusieurs
@@ -113,6 +126,10 @@ export const reportStartupError = (text: string): void => reportError(text);
 export const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 export const dismissLibraryMessage = (): void => setState({ message: null, error: null });
+
+/** Ferme le bandeau d'un fichier reçu d'une autre application. */
+export const dismissIncomingNotice = (id: string): void =>
+  setState({ incomingNotices: state.incomingNotices.filter((notice) => notice.id !== id) });
 
 /** Ferme la proposition d'un nouveau fichier de réglages ; il reste dans la liste de Réglages › Mémoire. */
 export const dismissSettingsOffer = (): void => setState({ settingsOffer: null });

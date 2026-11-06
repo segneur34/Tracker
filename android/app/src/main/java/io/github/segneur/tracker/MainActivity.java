@@ -53,6 +53,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GnssPlugin.class);
         registerPlugin(ShareFilePlugin.class);
         registerPlugin(RecoveryPlugin.class);
+        registerPlugin(IncomingFilePlugin.class);
         // Sans écouteur qui réponde vrai, Android tue tout le processus avec le moteur de rendu, service GPS compris.
         bridgeBuilder.addWebViewListener(new WebViewListener() {
             @Override
@@ -66,6 +67,8 @@ public class MainActivity extends BridgeActivity {
                 main.removeCallbacks(pageLoadMissed);
             }
         });
+        // Avant le pont, qui lit l'intention de départ : celle d'une activité restaurée est déjà traitée.
+        IncomingFilePlugin.forgetReplayedFile(this, savedInstanceState);
         super.onCreate(savedInstanceState);
     }
 

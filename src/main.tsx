@@ -15,8 +15,8 @@ import { startFitnessTestGuide } from './hooks/useFitnessTest';
 import { startZoneAlertGuide } from './hooks/useZoneAlert';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
-import { getRecorderState, isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
-import { openLibrary, reportStartupError, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
+import { getRecorderState, isRecordingActive, recoverInterruptedRecording, subscribeToRecorder } from './hooks/useRecorder';
+import { openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi } from './hooks/useSessionLibrary';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { forgetFormerAnalysisTabs } from './hooks/useOpenSections';
 import { startTheme } from './hooks/useTheme';
@@ -93,6 +93,8 @@ void initStorage()
       // Déjà à l'arrêt (« Arrêter » attendait la reprise) : sa séance s'arrête avec lui.
       startIntervalTimer(isRecordingSession(getRecorderState()));
       if (!isRecordingActive()) clearStaleScreenOn();
+      // Fichiers reçus d'une autre application : rangés hors enregistrement, un enregistrement repris les fait attendre.
+      void startIncomingFiles(isRecordingActive, subscribeToRecorder);
     };
     void recovered.then(afterRecovery, afterRecovery);
     // Chronomètre de la carte du compteur, repris s'il était lancé.

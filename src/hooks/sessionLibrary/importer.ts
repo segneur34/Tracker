@@ -2,7 +2,7 @@ import type { SessionMark } from '../../core/sessionMarks';
 import type { SportType } from '../../core/types';
 import { describeImport, type ImportReport } from '../../library/importReport';
 import { importRecordChoice } from '../../library/importEntry';
-import { fitToGpx, isFitActivity } from '../../library/fitToGpx';
+import { fitToGpx, isFitActivity, type FitConversion } from '../../library/fitToGpx';
 import { isBlankGpxText, isFitFileName, isGpxFileName } from '../../library/record';
 import { unbundleSessionGpx } from '../../library/sessionBundle';
 import { readPickedBytes, readPickedFile } from '../../platform/files';
@@ -132,11 +132,15 @@ const noteAddResult = (report: ImportReport, result: AddResult, name: string): v
  * en GPX (`library/fitToGpx.ts`) puis rangé comme lui ; un FIT qui n'est pas une activité
  * est écarté sans bruit (`notActivities`). `fromFolder` : les fichiers forment un dossier,
  * dont plusieurs activités de montre demandent d'abord confirmation (refus : rien n'est importé).
+ * `quiet` : rien dans le message de la mémoire, l'appelant dit lui-même le résultat (fichier reçu d'une autre application).
  */
-export const importEntries = async (entries: ImportEntry[], { fromFolder = false }: { fromFolder?: boolean } = {}): Promise<ImportReport> => {
+export const importEntries = async (
+  entries: ImportEntry[],
+  { fromFolder = false, quiet = false }: { fromFolder?: boolean; quiet?: boolean } = {},
+): Promise<ImportReport> => {
   setState({ importing: true });
   const report: ImportReport = {
-    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], notActivities: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0,
+    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], notActivities: [], unsaved: 0, failed: [], retryable: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0,
   };
   try {
     await lib.opening;
@@ -183,6 +187,7 @@ export const importEntries = async (entries: ImportEntry[], { fromFolder = false
         if (motionFailed && !motion && result.file && !hasSessionMotion(result.file)) report.motionFailed.push(entry.name);
       } catch (err) {
         report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
+        report.retryable.push(entry.name);
       }
     }
     for (const entry of entries) {
@@ -193,15 +198,24 @@ export const importEntries = async (entries: ImportEntry[], { fromFolder = false
           report.failed.push(`${entry.name} : illisible`);
           continue;
         }
-        const fit = fitToGpx(bytes);
+        // Un fichier qui n'est pas un FIT ne le deviendra pas : refusé pour de bon, à la différence d'une écriture en échec.
+        let fit: FitConversion;
+        try {
+          fit = fitToGpx(bytes);
+        } catch (err) {
+          report.failed.push(`${entry.name} : ${errorMessage(err, 'fichier illisible')}`);
+          continue;
+        }
         if (fit.kind === 'not-activity') report.notActivities.push(entry.name);
         else if (fit.kind === 'refused') report.failed.push(`${entry.name} : ${fit.reason}`);
         else noteAddResult(report, await addGpx(fit.gpx, 'import', {}), entry.name);
       } catch (err) {
         report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
+        report.retryable.push(entry.name);
       }
     }
     if (lib.folder) scheduleCacheUpdate(lib.folder);
+    if (quiet) return report;
     if (report.failed.length === 0) {
       setState({ message: describeImport(report) });
     } else {
@@ -210,7 +224,7 @@ export const importEntries = async (entries: ImportEntry[], { fromFolder = false
       reportError(`${describeImport(report)} ${n} fichier${n > 1 ? 's' : ''} non rangé${n > 1 ? 's' : ''} (${report.failed.join(' ; ')})`);
     }
   } catch (err) {
-    reportError(`Import interrompu : ${errorMessage(err, 'erreur inconnue')}`);
+    if (!quiet) reportError(`Import interrompu : ${errorMessage(err, 'erreur inconnue')}`);
   } finally {
     setState({ importing: false });
   }

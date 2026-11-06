@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
 
 /**
  * Ce que le code Android de l'application suppose des greffons, sans moyen de
@@ -10,6 +11,8 @@ import { describe, expect, it } from 'vitest';
  * - La veille du GPS (`BeeperPlugin.java`) et la capture (`MotionPlugin.java`)
  *   n'ont pas de verrou de veille : elles comptent sur celui du service GPS,
  *   sans échéance, pris au démarrage, que le chien de garde ne rend pas.
+ * - `IncomingFilePlugin.java` lit l'intention de départ dans `handleOnNewIntent`, parce que `BridgeActivity` l'y passe
+ *   lui-même au démarrage (lot 35).
  * - La reprise après une chute du moteur de la WebView passe par
  *   `window.Capacitor.fromNative`, qui reçoit les réponses des greffons
  *   (`adoptRunningService`), et compte sur l'appel gardé du greffon.
@@ -48,6 +51,7 @@ const WEBVIEW_LISTENER = packageSource('@capacitor/android/capacitor/src/main/ja
 const NATIVE_BRIDGE = packageSource('@capacitor/android/capacitor/src/main/assets/native-bridge.js');
 const MAIN_ACTIVITY = appJava('MainActivity.java');
 const RECOVERY_PLUGIN = appJava('RecoveryPlugin.java');
+const INCOMING_PLUGIN = appJava('IncomingFilePlugin.java');
 
 /** Première capture de `pattern` dans `text` ; échoue si le source a changé de forme. */
 const captured = (text: string, pattern: RegExp): string => {
@@ -147,5 +151,43 @@ describe('chute du moteur de rendu', () => {
     const loaded = between(MAIN_ACTIVITY, 'public void onPageLoaded(WebView webView)', 'super.onCreate(savedInstanceState);');
     expect(loaded).toContain('main.removeCallbacks(pageLoadMissed);');
     expect(loaded).not.toContain('RENDER_RELOADS');
+  });
+});
+
+describe('fichiers reçus d\'une autre application (lot 35)', () => {
+  it('Capacitor passe l\'intention de départ à onNewIntent, une fois le pont créé, et relaie vers les greffons', () => {
+    const load = between(BRIDGE_ACTIVITY, 'protected void load()', 'public void registerPlugin(');
+    expect(load.indexOf('this.onNewIntent(getIntent());')).toBeGreaterThan(load.indexOf('bridge = bridgeBuilder'));
+    expect(between(BRIDGE, 'public void onNewIntent(Intent intent)', 'public void onConfigurationChanged')).toContain('plugin.getInstance().handleOnNewIntent(intent);');
+  });
+
+  it('le greffon est déclaré, et oublie l\'intention d\'une activité restaurée avant que le pont la lise', () => {
+    expect(MAIN_ACTIVITY).toContain('registerPlugin(IncomingFilePlugin.class);');
+    expect(MAIN_ACTIVITY.indexOf('IncomingFilePlugin.forgetReplayedFile(this, savedInstanceState);')).toBeGreaterThanOrEqual(0);
+    expect(MAIN_ACTIVITY.indexOf('IncomingFilePlugin.forgetReplayedFile(this, savedInstanceState);')).toBeLessThan(MAIN_ACTIVITY.indexOf('super.onCreate(savedInstanceState);'));
+  });
+
+  it('même plafond qu\'au listage de la mémoire', () => {
+    expect(captured(INCOMING_PLUGIN, /\bMAX_BYTES = (\d+L \* 1024 \* 1024);/)).toBe(`${MAX_LISTED_FILE_BYTES / (1024 * 1024)}L * 1024 * 1024`);
+  });
+
+  it('les motifs de refus sont ceux que la page connaît', () => {
+    expect(captured(INCOMING_PLUGIN, /\bREFUSED_FORMAT = "([^"]+)";/)).toBe('format');
+    expect(captured(INCOMING_PLUGIN, /\bREFUSED_TOO_LARGE = "([^"]+)";/)).toBe('trop-gros');
+    expect(captured(INCOMING_PLUGIN, /\bREFUSED_UNREADABLE = "([^"]+)";/)).toBe('illisible');
+  });
+
+  it('un partage sans fichier a le refus « ni GPX ni FIT » : rien à rouvrir ; une intention mal formée reste « illisible »', () => {
+    expect(between(INCOMING_PLUGIN, 'protected void handleOnNewIntent(Intent intent)', 'private static File directory'))
+      .toContain('carriesNoFile(intent) ? REFUSED_FORMAT : REFUSED_UNREADABLE');
+    expect(between(INCOMING_PLUGIN, 'private static boolean carriesNoFile', 'protected void handleOnNewIntent'))
+      .toMatch(/addressIn\(intent\) == null;[\s\S]*catch \(RuntimeException e\)[\s\S]*return false;/);
+  });
+
+  it('la copie ne passe ni par le fil de l\'interface ni par celui des greffons : une tâche à elle, gardée contre une chute', () => {
+    const entry = between(INCOMING_PLUGIN, 'protected void handleOnNewIntent(Intent intent)', 'private static File directory');
+    expect(entry).toContain('runOnWorker(() -> {');
+    expect(entry.indexOf('receive(context, uri, refusalWithoutFile);')).toBeGreaterThan(entry.indexOf('runOnWorker(() -> {'));
+    expect(between(INCOMING_PLUGIN, 'private static void runOnWorker', 'public void load()')).toContain('catch (Exception | OutOfMemoryError e)');
   });
 });
