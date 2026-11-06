@@ -28,6 +28,7 @@ import { ANALYSIS_PANEL_STYLE } from './styles';
 import './IntervalAnalysis.css';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
+import Button from './ui/Button';
 import { CHART_GRID_PROPS, CHART_TICK, SPEED_COLOR, TREND_COLOR, chartTick, yAxisLabel } from './chartStyle';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 
@@ -227,6 +228,9 @@ function IntervalAnalysis({
     else next.add(index);
     setFolding({ of: series, folded: next });
   };
+  /** Toutes les séances sont repliées : « Tout replier » devient « Tout déplier ». */
+  const allFolded = series.length > 0 && folded.size === series.length;
+  const toggleFoldAll = () => setFolding({ of: series, folded: allFolded ? new Set() : new Set(series.keys()) });
   /** Graphes de chaque séance, refaits seulement quand les séances ou l'unité changent. */
   const charts = useMemo(() => intervalChartData(series, stepS, speedUnit, distanceUnit), [series, stepS, speedUnit, distanceUnit]);
   const inverse = isInverseUnit(speedUnit);
@@ -294,6 +298,11 @@ function IntervalAnalysis({
         <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
           Répétitions retrouvées dans la vitesse : la fiche de cette session n'a pas les séances du compteur. Si elle a été
           faite avec lui, « Télécharger la session » sur le téléphone, puis « Importer des GPX » ici, les reprend.
+        </div>
+      )}
+      {series.length >= 2 && (
+        <div style={{ marginBottom: '8px' }}>
+          <Button onClick={toggleFoldAll}>{allFolded ? 'Tout déplier' : 'Tout replier'}</Button>
         </div>
       )}
       {series.map((s, seriesIndex) => {
@@ -416,7 +425,7 @@ function IntervalAnalysis({
       <HelpText helpKey="analyse:evolution" note>
         {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, de la première (verte) à la dernière (rouge), avec sa moyenne
         (trait fin) et sa tendance (pointillé){inverse ? ', axe inversé : plus haut, plus vite' : ''}. Toucher une répétition
-        la montre sur la carte. Toucher le titre d'une séance la replie dans les trois panneaux.
+        la montre sur la carte. Toucher le titre d'une séance la replie dans les trois panneaux ; « Tout replier » les replie toutes d'un coup.
       </HelpText>
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);

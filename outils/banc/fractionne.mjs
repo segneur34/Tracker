@@ -458,5 +458,58 @@ console.log('largeur au téléphone :', await evaluate('document.documentElement
   }
 }
 
+// 9 (lot 182). « Tout replier » : le rejeu du compteur (section 5) reçoit une seconde séance, copie de la première.
+{
+  const name = (await records()).find((r) => r.record.sport === 'run-intervals' && r.record.intervals?.length)?.name;
+  const gpxName = (await records()).find((r) => r.name === name)?.record.gpx;
+  const path = `/fractionne/analyse?session=${encodeURIComponent(gpxName ?? '')}`;
+  const foldBtn = () => evaluate(`[...document.querySelectorAll('.an-carte-panels button')].filter((b) => /^Tout (re|dé)plier$/.test(b.textContent.trim())).map((b) => b.textContent.trim()).join('|')`);
+  /** Titres de séance (boutons à chevron) : [ouverts, repliés] sur les trois panneaux. */
+  const titles = () => evaluate(`(() => { const b = [...document.querySelectorAll('.an-carte-panels button[aria-expanded]')].filter((x) => /cette séance$/.test(x.title)); return [b.filter((x) => x.title.startsWith('Replier')).length, b.filter((x) => x.title.startsWith('Déplier')).length]; })()`);
+  await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 2, mobile: true });
+  await go(path, 6000);
+  const one = await foldBtn();
+  console.log(`${one === '' ? 'ok   ' : 'ÉCHEC'} tout replier : pas de bouton avec une seule séance (« ${one} »)`);
+  // Deuxième séance : copie de la première, écrite dans la fiche (OPFS), puis analyse rouverte.
+  console.log('seconde séance :', await evaluate(`(async () => {
+    const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
+    const h = await dir.getFileHandle(${JSON.stringify(name)});
+    const rec = JSON.parse(await (await h.getFile()).text());
+    rec.intervals = [rec.intervals[0], structuredClone(rec.intervals[0])];
+    const w = await h.createWritable();
+    await w.write(JSON.stringify(rec));
+    await w.close();
+    return rec.intervals.length;
+  })()`));
+  await go(path, 6000);
+  await wait(500);
+  const both = await foldBtn();
+  const [open0, fold0] = await titles();
+  console.log(`${both === 'Tout replier' && open0 === 6 && fold0 === 0 ? 'ok   ' : 'ÉCHEC'} tout replier : bouton unique avec 2 séances, 6 titres ouverts (« ${both} », ${open0} ouverts, ${fold0} repliés)`);
+  const geom = await evaluate(`(() => { const b = [...document.querySelectorAll('.an-carte-panels button')].find((x) => x.textContent.trim() === 'Tout replier'); const r = b.getBoundingClientRect(); return { h: Math.round(r.height), right: Math.round(r.right), page: document.documentElement.scrollWidth }; })()`);
+  console.log(`${geom.h >= 40 && geom.right <= 320 && geom.page <= 320 ? 'ok   ' : 'ÉCHEC'} tout replier : bouton de ${geom.h} px de haut, contenu dans 320 px (bord droit ${geom.right}, page ${geom.page})`);
+  await shoot('fractionne-tout-replier');
+  const press = () => evaluate(`(() => { const b = [...document.querySelectorAll('.an-carte-panels button')].find((x) => /^Tout (re|dé)plier$/.test(x.textContent.trim())); b?.click(); return b ? 'ok' : 'absent'; })()`);
+  await press();
+  await wait(400);
+  const [open1, fold1] = await titles();
+  const label1 = await foldBtn();
+  console.log(`${open1 === 0 && fold1 === 6 && label1 === 'Tout déplier' ? 'ok   ' : 'ÉCHEC'} tout replier : un appui replie les 2 séances dans les 3 panneaux (${fold1} repliés, « ${label1} »)`);
+  await press();
+  await wait(400);
+  const [open2, fold2] = await titles();
+  const label2 = await foldBtn();
+  console.log(`${open2 === 6 && fold2 === 0 && label2 === 'Tout replier' ? 'ok   ' : 'ÉCHEC'} tout replier : un second appui rouvre tout (${open2} ouverts, « ${label2} »)`);
+  // Une à une : la dernière repliée change aussi le libellé.
+  const foldOne = () => evaluate(`(() => { const b = [...document.querySelectorAll('.an-carte-panels button[aria-expanded=true]')].find((x) => x.title === 'Replier cette séance'); b?.click(); return b ? 'ok' : 'absent'; })()`);
+  await foldOne();
+  await wait(300);
+  const mid = await foldBtn();
+  await foldOne();
+  await wait(300);
+  const last = await foldBtn();
+  console.log(`${mid === 'Tout replier' && last === 'Tout déplier' ? 'ok   ' : 'ÉCHEC'} tout replier : une séance repliée, « ${mid} » ; les deux, « ${last} »`);
+}
+
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 await close();
