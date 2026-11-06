@@ -46,7 +46,7 @@ export { summarizeGpxText } from './sessionLibrary/summarySettings';
 export { queueOutdatedRefresh } from './sessionLibrary/summaryQueue';
 export { adoptSettingsFile, importSettingsFile, renameDevice, settingsUpgraded } from './sessionLibrary/deviceSettings';
 export type { AddResult, AddStatus } from './sessionLibrary/addSession';
-export { canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
+export { answerImportQuestion, canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
 export {
   loadFullSession, loadSessionGpx, readSessionExport, readSessionGpx, readSessionMotion, removeSession,
   updateSessionRecord,

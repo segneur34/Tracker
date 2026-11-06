@@ -61,7 +61,7 @@ const startReplay = async (family, file, speed) => {
   await wait(300);
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
   await wait(300);
-  await setFile('input[type=file][accept=".gpx"]', file);
+  await setFile('input[type=file][accept*=".gpx"]', file);
   await wait(500);
   await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(String(speed))}); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
   return clickText('Démarrer');

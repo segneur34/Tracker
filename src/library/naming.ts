@@ -73,6 +73,7 @@ const FOREIGN_TYPES: Record<string, SportType> = {
   mountainbiking: 'cycling',
   gravelcycling: 'cycling',
   ebikeride: 'cycling',
+  ebiking: 'cycling',
   velo: 'cycling',
   surfing: 'surf',
   surf: 'surf',

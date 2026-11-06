@@ -77,7 +77,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 // 1. Cache allégé.
 console.log('— 1. cache allégé');
 await go('/velo');
-await importFiles([firstPath], 'input[type=file][accept=".gpx"][multiple]');
+await importFiles([firstPath], 'input[type=file][accept*=".gpx"][multiple]');
 // Le dossier n'existe qu'à la première écriture, après le calcul dans le worker (lot 161) : `listOpfs` ne rend pas de liste avant.
 await waitFor(async () => { const names = await listOpfs('sessions'); return Array.isArray(names) && names.some((n) => n.endsWith('.json')); }, { timeout: 10000, label: 'fiche' });
 await settle({ max: 3000, label: 'import' });
@@ -176,7 +176,7 @@ await go('/velo');
 await waitScan();
 // Un dossier au nom de la fiche, posé après la lecture du dossier : l'application ne le connaît pas, et l'écriture de la fiche échoue.
 await evaluate(`(async () => { await (await ${dirJs('sessions')}).getDirectoryHandle(${JSON.stringify(blockedJson)}, { create: true }); return 'ok'; })()`);
-await importFiles([okPath, brokenPath, blockedPath], 'input[type=file][accept=".gpx"][multiple]');
+await importFiles([okPath, brokenPath, blockedPath], 'input[type=file][accept*=".gpx"][multiple]');
 await waitFor(async () => (await alerts()) !== '(aucun bandeau)', { timeout: 4000, label: 'bandeau de l’import' });
 await settle({ max: 4000, label: 'import' });
 console.log('bandeaux :', await alerts());
@@ -187,7 +187,7 @@ await evaluate(`(async () => { await (await ${dirJs('sessions')}).removeEntry(${
 const okImu = join(workDir, 'import-ok.imu');
 writeFileSync(okImu, Buffer.from('capteurs du banc'));
 await evaluate(`(async () => { (${LIB}).dismissLibraryMessage(); return 'ok'; })()`);
-await importFiles([okPath, okImu], 'input[type=file][accept=".gpx"][multiple]');
+await importFiles([okPath, okImu], 'input[type=file][accept*=".gpx"][multiple]');
 await waitFor(async () => (await listOpfs('sessions')).some((n) => n.startsWith('2026-10-07') && n.endsWith('.imu')), { timeout: 3000, label: 'capteurs rangés' });
 await settle({ max: 3000, label: 'réimport' });
 const okGpx = (await listOpfs('sessions')).find((n) => n.startsWith('2026-10-07') && n.endsWith('.gpx'));

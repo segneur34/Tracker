@@ -68,7 +68,7 @@ const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(sel
 // --- Mise en place ---
 await go('/course', 5000);
 console.log('import :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(SESSIONS.map(([type, d, v]) => [`${type ?? 'sans-type'}-${d}.gpx`, gpxOf(type, d, v)]))}) {

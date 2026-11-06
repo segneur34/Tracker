@@ -202,7 +202,7 @@ const prepareReplay = async (speed) => {
   await evaluate(`[...document.querySelectorAll('[aria-label=Famille] button')].find((b) => b.textContent === 'Voile').click(); 'ok'`);
   await evaluate(`[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Rejeu')).querySelector('input').click(); 'ok'`);
   await wait(300);
-  await setFile('input[type=file][accept=".gpx"]', gpxPath);
+  await setFile('input[type=file][accept*=".gpx"]', gpxPath);
   await wait(500);
   await chooseOption(`×${speed}`);
 };

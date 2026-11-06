@@ -1021,6 +1021,9 @@ export const imuFileName = (gpxName: string): string => gpxName.replace(/\.gpx$/
 
 export const isGpxFileName = (name: string): boolean => /\.gpx$/i.test(name);
 
+/** Fichier d'une montre (`library/fitToGpx.ts`) : converti en GPX à l'import, jamais rangé tel quel. */
+export const isFitFileName = (name: string): boolean => /\.fit$/i.test(name);
+
 /**
  * Vrai pour un GPX vide ou blanc (écriture interrompue, fichier créé puis jamais rempli) : ce n'est
  * pas une session. Il est ignoré sans message, jamais effacé.

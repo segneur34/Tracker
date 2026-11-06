@@ -68,7 +68,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 step('1. Import du GPX, ouverture de la session');
 await go('/voile', 3000);
-console.log('import :', await importFiles(gpxPath, 'input[type=file][accept=".gpx"]'));
+console.log('import :', await importFiles(gpxPath, 'input[type=file][accept*=".gpx"]'));
 await waitFor(async () => (await records())?.some((r) => r.summary?.movingTimeS !== undefined), { timeout: 8000, label: 'fiche' });
 await settle({ max: 2000, label: 'import' });
 const file = (await records())?.[0]?.gpx ?? '';

@@ -297,7 +297,7 @@ function IntervalAnalysis({
       {series.some((s) => s.detected) && (
         <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
           Répétitions retrouvées dans la vitesse : la fiche de cette session n'a pas les séances du compteur. Si elle a été
-          faite avec lui, « Télécharger la session » sur le téléphone, puis « Importer des GPX » ici, les reprend.
+          faite avec lui, « Télécharger la session » sur le téléphone, puis « Importer des GPX ou FIT » ici, les reprend.
         </div>
       )}
       {series.length >= 2 && (

@@ -302,7 +302,7 @@ for (let i = 0; i < COUNT; i++) {
 }
 
 // --- Import ---
-const MULTI = 'input[type=file][accept=".gpx"][multiple]:not([disabled])';
+const MULTI = 'input[type=file][accept*=".gpx"][multiple]:not([disabled])';
 await go('/voile', 5000);
 console.log('import voile          :', await importFiles([longPath, hourPath], MULTI));
 await waitFor(async () => (await records()).length >= 2, { timeout: 60000, every: 500, label: 'fiches voile' });

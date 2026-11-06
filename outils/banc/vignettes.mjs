@@ -61,7 +61,7 @@ for (let i = 0; i < COUNT; i++) {
 }
 
 await go('/course');
-console.log('import             :', await importFiles(files, 'input[type=file][accept=".gpx"][multiple]:not([disabled])'));
+console.log('import             :', await importFiles(files, 'input[type=file][accept*=".gpx"][multiple]:not([disabled])'));
 const imported = await waitFor(async () => (await records()).length >= COUNT, { timeout: 240000, every: 1000, label: 'fiches' });
 console.log('fiches             :', imported ? COUNT : (await records()).length);
 

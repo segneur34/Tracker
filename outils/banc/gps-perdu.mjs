@@ -79,7 +79,7 @@ await clickText('Voile', '[aria-label=Famille] button');
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
-await importFiles(path, 'input[type=file][accept=".gpx"]');
+await importFiles(path, 'input[type=file][accept*=".gpx"]');
 await wait(500);
 // Rejeu ×1 : le trou dure vraiment 90 s.
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '1'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);

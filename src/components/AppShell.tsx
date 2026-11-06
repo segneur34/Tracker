@@ -17,6 +17,7 @@ import { FAMILY_ICON } from './familyIcons';
 import ErrorBoundary from './ErrorBoundary';
 import { HelpProvider } from './Help';
 import HoldDial from './ui/HoldDial';
+import ImportQuestion from './ImportQuestion';
 
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
@@ -261,6 +262,8 @@ function AppShell() {
           icon={paused ? <IconPlay size={56} strokeWidth={2.5} /> : <IconPause size={56} strokeWidth={3} />}
           title={paused ? 'Reprise' : 'Pause'} hint="Maintenez le bouton" />
       )}
+
+      <ImportQuestion />
     </div>
   );
 }

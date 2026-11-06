@@ -73,7 +73,7 @@ await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({
   running: { general: true, tops: false, zones: false, surface: false, energie: false, graphiques: true, reglages: false },
   'sailing-onglets': { general: true, tops: true, manoeuvres: true, graphiques: true, vmg: true, vent: true, matos: true, reglages: true },
 })); 'ok'`);
-console.log('import course      :', await importGpx(readFileSync(runPath, 'utf8'), 'survol-course.gpx', 'input[type=file][accept=".gpx"][multiple]:not([disabled])'));
+console.log('import course      :', await importGpx(readFileSync(runPath, 'utf8'), 'survol-course.gpx', 'input[type=file][accept*=".gpx"][multiple]:not([disabled])'));
 const runName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
 await settle({ max: 1500, label: 'import course' });
 await go(`/course/analyse?session=${encodeURIComponent(runName)}`, 8000);
@@ -109,7 +109,7 @@ if (hover.startsWith('{')) {
 // 3. Voile.
 const before = new Set(await listOpfs('sessions'));
 await go('/voile');
-console.log('import voile       :', await importGpx(readFileSync(sailPath, 'utf8'), 'survol-voile.gpx', 'input[type=file][accept=".gpx"][multiple]:not([disabled])'));
+console.log('import voile       :', await importGpx(readFileSync(sailPath, 'utf8'), 'survol-voile.gpx', 'input[type=file][accept*=".gpx"][multiple]:not([disabled])'));
 const sailName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx') && !before.has(n)), { timeout: 6000, label: 'fiche voile' });
 await settle({ max: 1500, label: 'import voile' });
 await go(`/voile/analyse?session=${encodeURIComponent(sailName)}`, 8000);

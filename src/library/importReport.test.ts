@@ -2,10 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { describeImport, describeRefresh, type ImportReport } from './importReport';
 
 const report = (patch: Partial<ImportReport> = {}): ImportReport => ({
-  added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0, ...patch,
+  added: [], existing: [], duplicates: 0, invalid: [], ignored: [], notActivities: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0, ...patch,
 });
 
 describe("compte rendu d'un import (lot 72)", () => {
+  it('un FIT qui n\'est pas une activité : dit seulement s\'il n\'y a rien d\'autre à dire (lot 35)', () => {
+    expect(describeImport(report({ notActivities: ['r.fit'] }))).toBe("Ce fichier de montre n'est pas une activité (réglages, parcours…) : rien n'a été importé.");
+    expect(describeImport(report({ notActivities: ['r.fit', 's.fit'] }))).toBe("Ces 2 fichiers de montre ne sont pas des activités (réglages, parcours…) : rien n'a été importé.");
+    expect(describeImport(report({ notActivities: ['r.fit'], added: ['a.gpx'] }))).toBe('1 session ajoutée.');
+    expect(describeImport(report({ notActivities: ['r.fit'], duplicates: 1 }))).toBe('0 sessions ajoutées, 1 déjà présente.');
+  });
+
   it('dit à part les capteurs illisibles, session gardée sans eux (lot 148)', () => {
     expect(describeImport(report({ added: ['a.gpx'], motionFailed: ['a.gpx'] })))
       .toBe('1 session ajoutée, capteurs illisibles pour 1 session (a.gpx), gardée sans eux : un nouvel import les ajoutera.');

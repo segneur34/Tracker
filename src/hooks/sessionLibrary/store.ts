@@ -46,6 +46,8 @@ export interface LibraryState {
   refreshing: boolean;
   /** Import en cours (GPX ou dossier), d'où qu'il parte. */
   importing: boolean;
+  /** Question posée avant d'importer un dossier : son nombre d'activités de montre (`answerImportQuestion`). */
+  importQuestion: { watchActivities: number } | null;
   /** Incrémenté à chaque relecture du dossier : les listes tenues ailleurs (itinéraires) se relisent. */
   revision: number;
   /** Compte rendu de la dernière action (import, copie, relecture). */
@@ -71,6 +73,7 @@ const INITIAL_STATE: LibraryState = {
   settingsOffer: null,
   refreshing: false,
   importing: false,
+  importQuestion: null,
   revision: 0,
   message: null,
   error: null,

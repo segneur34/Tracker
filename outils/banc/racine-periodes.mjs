@@ -53,9 +53,9 @@ const setClock = async (fakeMs) => {
 
 await go('/course', 5000);
 // Le champ de fichier n'est monté qu'une fois la bibliothèque relue (OPFS), ce que `settle` ne voit pas.
-await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 5000, every: 50, label: 'champ de fichier' });
+await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 5000, every: 50, label: 'champ de fichier' });
 console.log('import :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(files)}) dt.items.add(new File([text], name, { type: 'application/gpx+xml' }));

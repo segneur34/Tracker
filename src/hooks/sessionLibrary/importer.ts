@@ -2,7 +2,8 @@ import type { SessionMark } from '../../core/sessionMarks';
 import type { SportType } from '../../core/types';
 import { describeImport, type ImportReport } from '../../library/importReport';
 import { importRecordChoice } from '../../library/importEntry';
-import { isBlankGpxText, isGpxFileName } from '../../library/record';
+import { fitToGpx, isFitActivity } from '../../library/fitToGpx';
+import { isBlankGpxText, isFitFileName, isGpxFileName } from '../../library/record';
 import { unbundleSessionGpx } from '../../library/sessionBundle';
 import { readPickedBytes, readPickedFile } from '../../platform/files';
 import { pickFolderToImport, type ImportEntry } from '../../platform/memoryFolder';
@@ -12,10 +13,10 @@ import { errorMessage } from '../../core/basics';
 import { libraryState, reportError, setState, type LibraryState } from './store';
 import { hasSessionMotion, lib } from './memory';
 import { scheduleCacheUpdate } from './cache';
-import { addGpx } from './addSession';
+import { addGpx, type AddResult } from './addSession';
 
 /**
- * Import de sessions et rangement d'un enregistrement (lot 113) : GPX choisis, dossier mémoire entier, session
+ * Import de sessions et rangement d'un enregistrement (lot 113) : GPX ou FIT choisis, dossier mémoire entier, session
  * qui vient d'être enregistrée.
  */
 
@@ -65,13 +66,57 @@ export const saveRecordedSession = async (
 /** Fichier choisi dans le navigateur, lu seulement au moment de le ranger. */
 const pickedEntry = (file: File): ImportEntry => ({
   name: file.name,
-  key: (file.webkitRelativePath || file.name).replace(/\.(gpx|json|imu)$/i, '').toLowerCase(),
+  key: (file.webkitRelativePath || file.name).replace(/\.(gpx|fit|json|imu)$/i, '').toLowerCase(),
   readText: () => readPickedFile(file),
   readBytes: () => readPickedBytes(file),
 });
 
+/** Réponse attendue à la question de `importQuestion`. */
+let importAnswer: ((yes: boolean) => void) | null = null;
+
+/** Répond à la question posée avant d'importer un dossier (`ImportQuestion`). */
+export const answerImportQuestion = (yes: boolean): void => {
+  const answer = importAnswer;
+  importAnswer = null;
+  setState({ importQuestion: null });
+  answer?.(yes);
+};
+
 /**
- * Importe des fichiers : des GPX, ou un dossier mémoire entier, dont chaque
+ * Plusieurs activités de montre dans un dossier : on demande avant de tout prendre. La montre peut être prêtée, et les
+ * activités de la personne qui la prête ne doivent pas entrer par mégarde. Chaque FIT est lu pour son type, puis relâché.
+ */
+const confirmWatchFolder = async (entries: ImportEntry[]): Promise<boolean> => {
+  const fits = entries.filter((entry) => isFitFileName(entry.name));
+  if (fits.length < 2) return true;
+  let watchActivities = 0;
+  for (const entry of fits) {
+    const bytes = await entry.readBytes().catch(() => null);
+    if (bytes && isFitActivity(bytes)) watchActivities += 1;
+  }
+  if (watchActivities < 2) return true;
+  return new Promise<boolean>((resolve) => {
+    importAnswer = resolve;
+    setState({ importQuestion: { watchActivities } });
+  });
+};
+
+/** Porte au compte rendu ce que `addGpx` a fait d'un fichier. */
+const noteAddResult = (report: ImportReport, result: AddResult, name: string): void => {
+  if (result.status === 'added' && result.file) report.added.push(result.file);
+  else if (result.status === 'duplicate') {
+    report.duplicates += 1;
+    if (result.file) report.existing.push(result.file);
+    if (result.motionAdded) report.motionAdded += 1;
+    if (result.recordCompleted) report.recordCompleted += 1;
+    if (result.recordNotRead) report.recordNotRead += 1;
+  }
+  else if (result.status === 'invalid') report.invalid.push(name);
+  else report.unsaved += 1;
+};
+
+/**
+ * Importe des fichiers : des GPX, des FIT, ou un dossier mémoire entier, dont chaque
  * fiche accompagne son GPX (notes et support compris). Chaque session est lue
  * juste avant d'être rangée, GPX, fiche et capteurs, puis relâchée : un
  * dossier entier n'est jamais chargé d'un coup (E-B1). Une session déjà
@@ -81,14 +126,24 @@ const pickedEntry = (file: File): ImportEntry => ({
  * illisibles ne retiennent ni le GPX ni la fiche : comptés à part
  * (`motionFailed`), un nouvel import les ajoute (`motionAdded`). Sans
  * dossier mémoire, rien n'est rangé ni mis en attente (décision du 27/10).
+ *
+ * Les GPX passent d'abord, les FIT ensuite : le GPX d'une session garde sa fiche, et le FIT
+ * de la même sortie compte alors « déjà présente », rien n'est écrasé. Un FIT est converti
+ * en GPX (`library/fitToGpx.ts`) puis rangé comme lui ; un FIT qui n'est pas une activité
+ * est écarté sans bruit (`notActivities`). `fromFolder` : les fichiers forment un dossier,
+ * dont plusieurs activités de montre demandent d'abord confirmation (refus : rien n'est importé).
  */
-export const importEntries = async (entries: ImportEntry[]): Promise<ImportReport> => {
+export const importEntries = async (entries: ImportEntry[], { fromFolder = false }: { fromFolder?: boolean } = {}): Promise<ImportReport> => {
   setState({ importing: true });
   const report: ImportReport = {
-    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0,
+    added: [], existing: [], duplicates: 0, invalid: [], ignored: [], notActivities: [], unsaved: 0, failed: [], motionAdded: 0, motionFailed: [], recordCompleted: 0, recordNotRead: 0,
   };
   try {
     await lib.opening;
+    if (fromFolder && !(await confirmWatchFolder(entries))) {
+      setState({ message: 'Import annulé : rien n\'a été importé.' });
+      return report;
+    }
     const records = new Map<string, ImportEntry>();
     const motions = new Map<string, ImportEntry>();
     for (const entry of entries) {
@@ -123,18 +178,25 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         });
         const motion = sideMotion ?? bundle.motion ?? undefined;
         const result = await addGpx(bundle.gpx, 'import', { record, motion, unreadable, keepRecordText });
-        if (result.status === 'added' && result.file) report.added.push(result.file);
-        else if (result.status === 'duplicate') {
-          report.duplicates += 1;
-          if (result.file) report.existing.push(result.file);
-          if (result.motionAdded) report.motionAdded += 1;
-          if (result.recordCompleted) report.recordCompleted += 1;
-          if (result.recordNotRead) report.recordNotRead += 1;
-        }
-        else if (result.status === 'invalid') report.invalid.push(entry.name);
-        else report.unsaved += 1;
+        noteAddResult(report, result, entry.name);
         // Une session qui a déjà ses capteurs n'a rien perdu.
         if (motionFailed && !motion && result.file && !hasSessionMotion(result.file)) report.motionFailed.push(entry.name);
+      } catch (err) {
+        report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
+      }
+    }
+    for (const entry of entries) {
+      if (!isFitFileName(entry.name)) continue;
+      try {
+        const bytes = await entry.readBytes();
+        if (bytes === null) {
+          report.failed.push(`${entry.name} : illisible`);
+          continue;
+        }
+        const fit = fitToGpx(bytes);
+        if (fit.kind === 'not-activity') report.notActivities.push(entry.name);
+        else if (fit.kind === 'refused') report.failed.push(`${entry.name} : ${fit.reason}`);
+        else noteAddResult(report, await addGpx(fit.gpx, 'import', {}), entry.name);
       } catch (err) {
         report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
       }
@@ -155,12 +217,13 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
   return report;
 };
 
-/** Importe des fichiers choisis dans le navigateur (`importEntries`). */
-export const importFiles = (files: File[]): Promise<ImportReport> => importEntries(files.map(pickedEntry));
+/** Importe des fichiers choisis dans le navigateur (`importEntries`), ou le contenu d'un dossier (chemin relatif posé par le navigateur). */
+export const importFiles = (files: File[]): Promise<ImportReport> =>
+  importEntries(files.map(pickedEntry), { fromFolder: files.some((file) => file.webkitRelativePath !== '') });
 
 /**
  * Sur le téléphone, ajoute les sessions d'un dossier que l'utilisateur désigne
- * (un dossier Tracker copié depuis le PC) : `importEntries` sur ses GPX, ses
+ * (un dossier Tracker copié depuis le PC) : `importEntries` sur ses GPX, ses FIT, ses
  * fiches et ses capteurs, lus un par un. L'import est annoncé dès le
  * sélecteur, boutons grisés. `null` si l'utilisateur renonce.
  */
@@ -177,7 +240,7 @@ export const importFromFolder = async (): Promise<ImportReport | null> => {
     setState({ importing: false });
     return null;
   }
-  return importEntries(entries);
+  return importEntries(entries, { fromFolder: true });
 };
 
 /**

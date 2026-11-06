@@ -84,7 +84,7 @@ const recordCourse = async (tag, offsetMin) => {
   await wait(300);
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
   await wait(300);
-  await setFile('input[type=file][accept=".gpx"]', path);
+  await setFile('input[type=file][accept*=".gpx"]', path);
   await wait(500);
   await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '10'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
   console.log(`[${tag}] Démarrer :`, await clickText('Démarrer'));

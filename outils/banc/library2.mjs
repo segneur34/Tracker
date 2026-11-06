@@ -39,7 +39,7 @@ await wait(300);
 console.log('Confirmer :', await clickText('Confirmer'));
 await settle({ max: 1500 });
 console.log('après suppression :', await rows());
-console.log('import de la paire :', await setFiles('input[type=file][accept=".gpx"][multiple]', [win(`${NAME}.gpx`), win(`${NAME}.json`)]));
+console.log('import de la paire :', await setFiles('input[type=file][accept*=".gpx"][multiple]', [win(`${NAME}.gpx`), win(`${NAME}.json`)]));
 // L'écriture en mémoire (OPFS) ne touche ni au DOM ni au réseau : on attend la ligne de la liste, puis sa réécriture différée.
 await waitFor(`[...document.querySelectorAll('.lib-row')].some((r) => r.innerText.startsWith('Wingfoil'))`, { timeout: 6000, label: 'session réimportée' });
 await settle({ max: 2000 });

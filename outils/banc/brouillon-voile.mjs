@@ -62,7 +62,7 @@ for (let k = 0; k < 60 && !(await evaluate("!!document.querySelector('input[type
 const before = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx'));
 const names = [];
 for (const p of paths) {
-  await importFiles(p, 'input[type=file][accept=".gpx"]');
+  await importFiles(p, 'input[type=file][accept*=".gpx"]');
   let fresh;
   for (let k = 0; k < 40 && !fresh; k++) { await wait(1000); fresh = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx')).find((n) => !before.includes(n) && !names.includes(n)); }
   names.push(fresh);

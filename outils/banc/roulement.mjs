@@ -83,7 +83,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await go('/velo', 2000);
 await evaluate(`localStorage.setItem('tracker.sportSettings', JSON.stringify({ bikeTypes: { cycling: 'gravel' } })); 'ok'`);
 await go('/velo');
-await importFiles(ridePath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(ridePath, 'input[type=file][accept*=".gpx"][multiple]');
 const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche' });
 await settle({ max: 1500, label: 'import' });
 console.log('rangée :', gpxName);

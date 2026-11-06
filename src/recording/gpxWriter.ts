@@ -1,4 +1,3 @@
-import type { SportType } from '../core/types';
 import { GARMIN_TRACKPOINT_NAMESPACE, escapeXmlAttr, gpxDocument } from '../core/xml';
 import type { LocationFix } from '../platform/location';
 import { gpxStrideCadence } from '../running/cadence';
@@ -22,8 +21,11 @@ import type { HeartRateFix } from './session';
 export interface GpxMeta {
   /** Nom de la trace, qui sert aussi à rattacher les notes de session. */
   name: string;
-  /** Calcul de la session, écrit dans `<type>` ; `null` (journal sans en-tête lisible) : pas de `<type>`, session à classer. */
-  sport: SportType | null;
+  /**
+   * Calcul de la session, ou nom d'activité d'un autre appareil lu par `guessSport`, écrit dans `<type>` ; `null`
+   * (journal sans en-tête lisible, FIT sans sport connu) : pas de `<type>`, session à classer.
+   */
+  sport: string | null;
 }
 
 const isoTime = (ms: number): string => new Date(ms).toISOString();

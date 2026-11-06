@@ -191,7 +191,7 @@ const measure = async (label) => {
 
 // 2. Import et analyse.
 await go('/course');
-console.log('import             :', await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]:not([disabled])'));
+console.log('import             :', await importFiles(runPath, 'input[type=file][accept*=".gpx"][multiple]:not([disabled])'));
 const runName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 20000, label: 'fiche course' });
 // La fiche écrite et la vignette dessinée : la session se relit en entier (sous charge, l'écriture suit l'import de loin).
 await waitFor(async () => (await records()).length > 0, { timeout: 30000, label: 'fiche JSON' });

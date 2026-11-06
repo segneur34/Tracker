@@ -148,7 +148,7 @@ await go('/enregistrer?activite=run-test&test=fc-max');
 check('carte du test au repos : résumé à 3 min, zones 2 à 3', /Test FC max/.test(await cardText()) && /Échauffement 3 min en zones 2 à 3 \(130 à 155 bpm\)/.test(await cardText()), await cardText());
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
-await setFile('input[type=file][accept=".gpx"]', replayPath);
+await setFile('input[type=file][accept*=".gpx"]', replayPath);
 await wait(800);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '10'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 sounds.length = 0;

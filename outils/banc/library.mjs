@@ -82,7 +82,7 @@ console.log('fiche :', fiche, '| sport', record.sport, '| source', record.source
 
 step('4. Import : doublon, course typée, trace sans type');
 await go('/voile');
-console.log('import :', await setFiles('input[type=file][accept=".gpx"][multiple]', [win('voile.gpx'), win('course.gpx'), win('sans-type.gpx')]));
+console.log('import :', await setFiles('input[type=file][accept*=".gpx"][multiple]', [win('voile.gpx'), win('course.gpx'), win('sans-type.gpx')]));
 await waitFor(`/ajoutée|déjà|illisible/.test(document.body.innerText)`, { timeout: 8000, label: 'messages d import' });
 await settle({ max: 1500 });
 console.log(await lines(/ajoutée|déjà|illisible/));

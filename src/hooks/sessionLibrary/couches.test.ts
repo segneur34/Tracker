@@ -24,7 +24,7 @@ const LAYERS = [
 
 /** Valeurs exportées par le point d'entrée, les mêmes qu'avant le découpage (et cinq types). */
 const ENTRY_VALUES = [
-  'adoptSettingsFile', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'dismissLibraryMessage',
+  'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'dismissLibraryMessage',
   'dismissSettingsOffer', 'findLibrarySession', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
   'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'refreshLibrary',

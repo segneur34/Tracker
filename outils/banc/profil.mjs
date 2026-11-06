@@ -94,9 +94,9 @@ const parseFr = (s) => Number((s ?? '').replace(/[^\d,]/g, '').replace(',', '.')
 
 // --- Mise en place ---
 await go('/course', 5000);
-await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
+await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(SESSIONS.map(([type, d, v, c]) => [`${type}-${d}.gpx`, gpxOf(type, d, v, c)]))}) {
@@ -229,9 +229,9 @@ check('390 px : barre du bas sans débordement', !(await overflow()));
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 const EXTRA = [['windsurf', 3, 8], ['kite', 4, 9], ['bateau', 5, 4], ['run-intervals', 6, 3.5], ['surf', 7, 3]];
 await go('/course', 4000);
-await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
+await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import des cinq de plus :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(EXTRA.map(([type, d, v]) => [`${type}-${d}.gpx`, gpxOf(type, d, v)]))}) {

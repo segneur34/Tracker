@@ -78,7 +78,7 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 await go('/course');
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ running: { general: true, tops: true, zones: true, surface: false, energie: true, graphiques: true, reglages: false } })); 'ok'`);
-await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(runPath, 'input[type=file][accept*=".gpx"][multiple]');
 const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
 await settle({ max: 1500, label: 'import course' });
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 1500);
@@ -177,7 +177,7 @@ writeFileSync(bikePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1
 console.log(`vélo : ${bikeFixes.length} points, un toutes les 4 s, 24 m entre deux`);
 await go('/velo');
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ cycling: { general: true, tops: false, zones: true, surface: false, energie: true, graphiques: true, reglages: false } })); 'ok'`);
-await importFiles(bikePath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(bikePath, 'input[type=file][accept*=".gpx"][multiple]');
 const bikeName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx') && n.includes('cycling')), { timeout: 6000, label: 'fiche vélo' });
 await settle({ max: 1500, label: 'import vélo' });
 await go(`/velo/analyse?session=${encodeURIComponent(bikeName ?? '')}`, 1500);

@@ -95,7 +95,7 @@ export const LESSONS: readonly Lesson[] = [
       'Sur le téléphone, vos sessions vivent dans un dossier « Tracker » que vous désignez dans Réglages › Mémoire : pour chacune, son fichier GPX et sa fiche (notes, matériel, réglages de la session).',
       'Ce dossier est votre sauvegarde : copiez-le sur un ordinateur ou un disque pour tout garder, ou pour changer de téléphone.',
       "Deux appareils peuvent partager le même dossier. Chacun y garde son fichier de réglages ; « Reprendre », dans Réglages › Mémoire, prend ceux d'un autre appareil.",
-      "Pour ajouter des sessions venues d'ailleurs, « Importer des GPX » est dans le « … » en haut de chaque bibliothèque.",
+      "Pour ajouter des sessions venues d'ailleurs, « Importer des GPX ou FIT » est dans le « … » en haut de chaque bibliothèque.",
     ],
   },
   {

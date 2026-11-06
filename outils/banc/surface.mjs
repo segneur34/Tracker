@@ -134,7 +134,7 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 console.log(`course synthétique : ${fixes.length} points à ${SPEED} m/s`);
 await go('/course');
-await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(runPath, 'input[type=file][accept*=".gpx"][multiple]');
 const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
 await settle({ max: 1500, label: 'import course' });
 console.log('rangée :', gpxName);

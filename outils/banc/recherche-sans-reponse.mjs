@@ -70,7 +70,7 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 await go('/course');
 const before = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx'));
-await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(runPath, 'input[type=file][accept*=".gpx"][multiple]');
 const gpxName = await waitFor(async () => (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx')).find((n) => !before.includes(n)), { timeout: 6000, label: 'fiche' });
 console.log('rangée :', gpxName);
 check('course importée', Boolean(gpxName));

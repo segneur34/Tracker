@@ -440,12 +440,12 @@ const openDeviceFolder = async (): Promise<MemoryAccess> => {
 type NamedEntry = Pick<FolderEntry, 'name' | 'kind'>;
 
 /**
- * Fichiers à reprendre d'un dossier Tracker copié : GPX, fiches et capteurs,
- * à sa racine et dans `sessions/`. `root` et `sessions` : contenu de ces deux
+ * Fichiers à reprendre d'un dossier Tracker copié, ou d'un dossier de fichiers de montre :
+ * GPX, FIT, fiches et capteurs, à sa racine et dans `sessions/`. `root` et `sessions` : contenu de ces deux
  * dossiers.
  */
 export const folderImportPaths = (root: readonly NamedEntry[], sessions: readonly NamedEntry[]): string[] => {
-  const wanted = (e: NamedEntry) => e.kind === 'file' && /\.(gpx|json|imu)$/i.test(e.name);
+  const wanted = (e: NamedEntry) => e.kind === 'file' && /\.(gpx|fit|json|imu)$/i.test(e.name);
   return [
     ...root.filter(wanted).map((e) => e.name),
     ...sessions.filter(wanted).map((e) => `sessions/${e.name}`),
@@ -467,7 +467,7 @@ export interface ImportEntry {
 
 /**
  * Sur le téléphone, fait désigner un dossier (par exemple un dossier Tracker
- * copié depuis le PC) et en rend les GPX, les fiches et les capteurs, à lire
+ * copié depuis le PC) et en rend les GPX, les FIT, les fiches et les capteurs, à lire
  * un par un au moment de les ranger. `null` si l'utilisateur renonce.
  * L'accès au dossier n'est pas gardé : il n'est lu qu'une fois.
  */
@@ -483,7 +483,7 @@ export const pickFolderToImport = async (): Promise<ImportEntry[] | null> => {
     const fileName = path.split('/').pop()!;
     return {
       name: fileName,
-      key: fileName.replace(/\.(gpx|json|imu)$/i, '').toLowerCase(),
+      key: fileName.replace(/\.(gpx|fit|json|imu)$/i, '').toLowerCase(),
       readText: async () => (await nativeFolder.readText({ uri, path: full(path) })).text,
       readBytes: async () => {
         const { data } = await nativeFolder.readBase64({ uri, path: full(path) });

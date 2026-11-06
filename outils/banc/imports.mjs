@@ -33,7 +33,7 @@ const textWith = (re) => evaluate(`document.body.innerText.match(${re})?.[0] ?? 
 const gearField = (label) => evaluate(`(() => { const l = [...document.querySelectorAll('label')].find((x) => x.querySelector('span')?.textContent.trim() === ${JSON.stringify(label)}); return l ? JSON.stringify(l.querySelector('input')?.value ?? null) : '(absent)'; })()`);
 /** Fichiers posés dans le sélecteur « Importer des GPX », comme un choix de l'utilisateur. */
 const importFiles = (files) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(files)}) dt.items.add(new File([text], name, { type: name.endsWith('.gpx') ? 'application/gpx+xml' : 'application/json' }));

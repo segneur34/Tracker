@@ -168,7 +168,7 @@ console.log('famille Entraînement :', await clickText('Entraînement'));
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
-await setFile('input[type=file][accept=".gpx"]', replayPath);
+await setFile('input[type=file][accept*=".gpx"]', replayPath);
 await wait(500);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '1'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 console.log('Démarrer :', await clickText('Démarrer'));
@@ -235,7 +235,7 @@ for (let k = 0; k <= 600 + 8 * 120 - 60 + 300; k++) {
 const freeGpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Sans compteur</name><type>run-intervals</type><trkseg>\n${fpts.join('\n')}\n</trkseg></trk></gpx>\n`;
 await go('/fractionne');
 console.log('import sans compteur :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   dt.items.add(new File([${JSON.stringify(freeGpx)}], 'sans-compteur.gpx', { type: 'application/gpx+xml' }));
@@ -297,7 +297,7 @@ for (const [k, start] of twins.entries()) {
   await go('/fractionne');
   const gpx = freeGpxAt(start, `Jumelle ${k + 1}`);
   console.log(`import jumelle ${k + 1} :`, await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   dt.items.add(new File([${JSON.stringify(gpx)}], 'jumelle-${k + 1}.gpx', { type: 'application/gpx+xml' }));
@@ -417,7 +417,7 @@ console.log('largeur au téléphone :', await evaluate('document.documentElement
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>FC et cadence</name><type>run-intervals</type><trkseg>\n${list.join('\n')}\n</trkseg></trk></gpx>\n`;
   await go('/fractionne');
   await evaluate(`(() => {
-    const input = document.querySelector('input[type=file][accept=".gpx"]');
+    const input = document.querySelector('input[type=file][accept*=".gpx"]');
     const dt = new DataTransfer();
     dt.items.add(new File([${JSON.stringify(gpx)}], 'fc-cadence.gpx', { type: 'application/gpx+xml' }));
     input.files = dt.files;

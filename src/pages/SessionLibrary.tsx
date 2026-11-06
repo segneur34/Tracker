@@ -699,8 +699,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {helpOpen && (
         <p className="ui-hint ui-hint--m">
           {native
-            ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent avec « Mettre à jour », ou au lancement suivant."
-            : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire ; des fichiers copiés dedans pendant que Tracker est ouvert apparaissent avec « Mettre à jour »."}
+            ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent avec « Mettre à jour », ou au lancement suivant. Un dossier qui contient plusieurs activités de montre (fichiers .fit) demande confirmation : si la montre est prêtée, copiez d'abord vos seuls fichiers dans un dossier, ou choisissez-les un par un avec « Importer des GPX ou FIT »."
+            : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire ; des fichiers copiés dedans pendant que Tracker est ouvert apparaissent avec « Mettre à jour ». Un dossier qui contient plusieurs activités de montre (fichiers .fit) demande confirmation : si la montre est prêtée, copiez d'abord vos seuls fichiers dans un dossier du PC, ou choisissez-les un par un avec « Importer des GPX ou FIT »."}
         </p>
       )}
 

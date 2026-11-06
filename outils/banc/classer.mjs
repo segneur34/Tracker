@@ -41,7 +41,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 
 // 1. Import depuis la page Course.
 await go('/course');
-await importFiles(gpxPath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(gpxPath, 'input[type=file][accept*=".gpx"][multiple]');
 await waitFor(async () => (await readRecord()) !== null, { timeout: 3000, label: 'fiche' });
 await settle({ max: 3000, label: 'import' });
 console.log('carte « À classer » :', await evaluate(`[...document.querySelectorAll('h2, h3, .ui-card__heading')].some((h) => h.textContent.trim() === 'À classer')`));

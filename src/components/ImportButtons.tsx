@@ -5,7 +5,7 @@ import { IconFile } from './icons';
 import Button from './ui/Button';
 
 /**
- * Import dans la mémoire : « Importer des GPX » (des fichiers choisis) et
+ * Import dans la mémoire : « Importer des GPX ou FIT » (des fichiers choisis) et
  * « Ajouter les sessions d'un dossier » (un dossier Tracker copié d'un autre
  * appareil, fiches comprises). Dans le menu « … » des bibliothèques, et dans
  * Réglages › Mémoire pour le dossier seul (`gpx` à faux). Grisés pendant un
@@ -33,8 +33,9 @@ function ImportButtons({ gpx = true }: { gpx?: boolean }) {
       {gpx && (
         <label className={labelClass}>
           <IconFile size={18} />
-          {library.importing ? 'Import en cours…' : 'Importer des GPX'}
-          <input type="file" accept=".gpx" multiple hidden disabled={off} onChange={handleFiles} />
+          {library.importing ? 'Import en cours…' : 'Importer des GPX ou FIT'}
+          {/* Sur le téléphone, sans filtre : le sélecteur d'Android attend des types de fichiers et risque de griser tout devant une liste d'extensions. */}
+          <input type="file" accept={isNativeApp() ? undefined : '.gpx,.fit'} multiple hidden disabled={off} onChange={handleFiles} />
         </label>
       )}
       {isNativeApp() ? (

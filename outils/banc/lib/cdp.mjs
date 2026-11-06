@@ -250,7 +250,7 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
   // (ni DOM ni réseau) : on l'attend jusqu'à 3 s avant d'importer, sinon « absent » comme avant.
   const champFichier = (selector) => waitFor(`Boolean(document.querySelector(${JSON.stringify(selector)}))`, { timeout: 3000, every: 50 });
 
-  const importGpx = async (text, name, selector = 'input[type=file][accept=".gpx"]') => {
+  const importGpx = async (text, name, selector = 'input[type=file][accept*=".gpx"]') => {
     if (!(await champFichier(selector))) return 'absent';
     return evaluate(`(() => {
       const input = document.querySelector(${JSON.stringify(selector)});
@@ -264,7 +264,7 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
   };
 
   /** Donne des fichiers du disque (chemins Windows) au champ `selector` (`DOM.setFileInputFiles`) : 'ok' ou 'absent'. Même suite que `importGpx`. */
-  const importFiles = async (files, selector = 'input[type=file][accept=".gpx"]') => {
+  const importFiles = async (files, selector = 'input[type=file][accept*=".gpx"]') => {
     if (!(await champFichier(selector))) return 'absent';
     const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
     const found = await send('DOM.querySelector', { nodeId: root.nodeId, selector });

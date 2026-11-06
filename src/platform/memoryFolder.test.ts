@@ -49,6 +49,10 @@ describe('folderImportPaths', () => {
     )).toEqual(['tracker.json', 'a.GPX', 'sessions/b.gpx', 'sessions/b.json', 'sessions/b.imu']);
   });
 
+  it('reprend aussi les fichiers de montre, à la racine comme dans sessions/', () => {
+    expect(folderImportPaths([file('a.FIT'), dir('sessions')], [file('b.fit')])).toEqual(['a.FIT', 'sessions/b.fit']);
+  });
+
   it('ignore les autres fichiers et les dossiers', () => {
     expect(folderImportPaths(
       [file('LISEZMOI.txt'), dir('x.gpx')],

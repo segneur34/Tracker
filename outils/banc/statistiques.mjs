@@ -112,9 +112,9 @@ const openTab = (label) => evaluate(`(() => {
 
 // --- Mise en place ---
 await go('/course', 5000);
-await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
+await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   if (!input) return 'absent';
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify(SESSIONS.map(([type, d, v]) => [`${type}-${d}.gpx`, gpxOf(type, d, v)]))}) {
@@ -384,9 +384,9 @@ const longGpx = (type, daysAgo, speedMs, seconds) => {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${type} long</name><type>${type}</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
 await go('/course', 5000);
-await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
+await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import niveau :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  const input = document.querySelector('input[type=file][accept*=".gpx"]');
   const dt = new DataTransfer();
   for (const [name, text] of ${JSON.stringify([['course-longue.gpx', longGpx('running', 3, 10000 / 2460, 3000)], ['velo-long.gpx', longGpx('cycling', 4, 9, 1800)]])}) dt.items.add(new File([text], name, { type: 'application/gpx+xml' }));
   input.files = dt.files;

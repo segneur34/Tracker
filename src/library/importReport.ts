@@ -1,7 +1,7 @@
 import { plural } from '../core/basics';
 
 /**
- * Compte rendu d'un import de sessions (fichiers GPX ou dossier mémoire) et sa
+ * Compte rendu d'un import de sessions (fichiers GPX ou FIT, dossier mémoire) et sa
  * phrase pour l'utilisateur, purs (lot 72).
  */
 
@@ -16,6 +16,8 @@ export interface ImportReport {
    * la phrase du compte rendu.
    */
   ignored: string[];
+  /** FIT lisibles qui ne sont pas des activités (réglages, parcours…) : ignorés, dits seulement si rien d'autre n'est à dire. */
+  notActivities: string[];
   unsaved: number;
   /** Fichiers qu'on n'a pas pu lire ou ranger, avec la raison. */
   failed: string[];
@@ -31,6 +33,12 @@ export interface ImportReport {
 
 /** Phrase du compte rendu : sessions ajoutées, déjà présentes, complétées ou non, illisibles, non rangées. */
 export const describeImport = (report: ImportReport): string => {
+  const nothingElse = report.added.length === 0 && report.duplicates === 0 && report.invalid.length === 0 && report.unsaved === 0 && report.failed.length === 0;
+  if (report.notActivities.length > 0 && nothingElse) {
+    return report.notActivities.length > 1
+      ? `Ces ${report.notActivities.length} fichiers de montre ne sont pas des activités (réglages, parcours…) : rien n'a été importé.`
+      : "Ce fichier de montre n'est pas une activité (réglages, parcours…) : rien n'a été importé.";
+  }
   const parts: string[] = [];
   parts.push(report.added.length === 1 ? '1 session ajoutée' : `${report.added.length} sessions ajoutées`);
   if (report.duplicates > 0) parts.push(`${report.duplicates} déjà présente${report.duplicates > 1 ? 's' : ''}`);

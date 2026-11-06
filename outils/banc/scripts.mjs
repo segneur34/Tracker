@@ -66,6 +66,8 @@ export const SCRIPTS = [
   { nom: 'gps-perdu', args: ['{port}', '{travail}'], pages: ['enregistrer'], solo: true },
   { nom: 'graphes', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'voile'] },
   { nom: 'icones', args: ['{port}', '{captures?}'], pages: ['accueil', 'bibliotheque', 'reglages'] },
+  // Fichiers FIT de montre (lot 35) : FIT fabriqués, chiffres et FC à l'écran, doublon, refus, question du dossier.
+  { nom: 'import-fit', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course'] },
   { nom: 'imports', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'voile', 'course', 'velo', 'surf'] },
   { nom: 'library', args: ['{port}', '{dossierGpx}', '{captures?}'], pages: ['bibliotheque', 'reglages'],
     manuel: 'il faut voile.gpx, course.gpx et sans-type.gpx dans le dossier de --gpx' },

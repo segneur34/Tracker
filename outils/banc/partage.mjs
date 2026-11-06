@@ -217,7 +217,7 @@ console.log('famille :', await clickText('À pied', '[aria-label=Famille] button
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click()`);
 await wait(300);
-await importFiles(replayPath, 'input[type=file][accept=".gpx"]');
+await importFiles(replayPath, 'input[type=file][accept*=".gpx"]');
 await wait(800);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 console.log('Démarrer :', await clickText('Démarrer'));

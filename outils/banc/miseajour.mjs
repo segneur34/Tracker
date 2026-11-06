@@ -76,7 +76,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 // 1. Une session importée, puis retirée du dossier derrière le dos de l'application.
 await go('/velo');
 console.log('au départ :', await memory());
-await importFiles(firstPath, 'input[type=file][accept=".gpx"][multiple]');
+await importFiles(firstPath, 'input[type=file][accept*=".gpx"][multiple]');
 await waitFor(async () => (await listOpfs('sessions')).some((n) => n.endsWith('.json')), { timeout: 3000, label: 'fiche' });
 await settle({ max: 3000, label: 'import' });
 const gpx = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
@@ -141,7 +141,7 @@ const snapshot = () => evaluate(`(async () => {
   await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'), '');
   return JSON.stringify(out.sort());
 })()`);
-const importGreyed = () => evaluate(`(() => { const i = document.querySelector('input[type=file][accept=".gpx"]'); return i ? i.disabled : '(absent)'; })()`);
+const importGreyed = () => evaluate(`(() => { const i = document.querySelector('input[type=file][accept*=".gpx"]'); return i ? i.disabled : '(absent)'; })()`);
 await writeOpfs('', 'tracker.json', JSON.stringify({ format: 'tracker-memoire', version: 2 }));
 await writeOpfs('', '2026-10-07_10-00-00_cycling.gpx', rideGpx('Racine', Date.UTC(2026, 9, 7, 8, 0, 0)));
 await writeOpfs('sessions', '2026-10-08_10-00-00_cycling.gpx', rideGpx('Sans fiche', Date.UTC(2026, 9, 8, 8, 0, 0)));
