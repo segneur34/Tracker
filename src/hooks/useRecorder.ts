@@ -8,7 +8,7 @@ import { cadenceSeries, joinCadence } from '../running/cadence';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveHeartRate, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
-import { armGpsWatch, disarmGpsWatch, getBeeper, onGpsLost } from '../platform/beeper';
+import { armBeltWatch, armGpsWatch, disarmBeltWatch, disarmGpsWatch, getBeeper, onBeltLost, onGpsLost } from '../platform/beeper';
 import { readPermissions } from '../platform/permissions';
 import {
   findMotionCapture, motionCapturePath, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture, runningMotionCapture,
@@ -26,7 +26,7 @@ import { readRecoveryServices, type RecoveryServices } from '../platform/recover
 import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
 import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
 import {
-  START_GPS_WATCH, gpsWatchOnExpired, gpsWatchOnFix, gpsWatchOnPause, gpsWatchOnResume, watchesGps, type GpsWatchState, type GpsWatchStep,
+  START_GPS_WATCH, beltWatchSettings, gpsWatchOnExpired, gpsWatchOnFix, gpsWatchOnPause, gpsWatchOnResume, watchesGps, type GpsWatchState, type GpsWatchStep,
 } from '../recording/gpsWatch';
 import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
@@ -103,6 +103,10 @@ import { createListeners } from './createStore';
  * manuelle, le GPS est dit perdu (`gpsLost`, alerte `GPS_LOST_ERROR`, son et
  * notification), une fois par perte ; tout s'efface à la position suivante.
  * La machine est `recording/gpsWatch.ts`, le minuteur natif (`armGpsWatch`).
+ *
+ * Veille de la ceinture (lot 177) : la même machine, passé `beltLostDelayS` sans
+ * mesure lisible d'une ceinture qui en donnait, hors pause manuelle (`beltLost`,
+ * alerte `BELT_LOST_ERROR`, son et notification), une fois par perte.
  *
  * Reprise (lot 156, `recording/resume.ts`) : si le moteur de la page tombe, seule la page repart (`MainActivity.java`).
  * Le service GPS encore vivant, la session reprend seule (`resumeSilently`) : mémoire refaite depuis le journal, jamais
@@ -194,6 +198,8 @@ export interface RecorderState {
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
   gpsLost: boolean;
+  /** FC perdue : plus de mesure lisible d'une ceinture qui en donnait (lot 177) ; effacé à la mesure suivante. */
+  beltLost: boolean;
   /**
    * Vrai pendant le `starting` d'une session relue du journal, positions déjà en mémoire : les guidages se rejouent
    * alors au lieu de repartir de zéro.
@@ -221,6 +227,7 @@ const INITIAL_STATE: RecorderState = {
   saved: null,
   error: null,
   gpsLost: false,
+  beltLost: false,
   resuming: false,
   landOnRecording: false,
 };
@@ -379,6 +386,52 @@ const stopGpsWatch = (): void => {
   if (gpsWatchOn) void disarmGpsWatch().catch(() => {});
   gpsWatchOn = false;
   gpsWatch = START_GPS_WATCH;
+};
+
+/** Message de la perte de la fréquence cardiaque, ajouté à l'alerte comme « GPS perdu ». */
+export const BELT_LOST_ERROR = "Fréquence cardiaque perdue : plus aucune mesure de la ceinture. L'enregistrement continue, elle reprendra à son retour.";
+
+/** Veille de la ceinture de l'enregistrement en cours. */
+let beltWatch: GpsWatchState = START_GPS_WATCH;
+/** Vrai dès qu'une ceinture est tenue par l'enregistrement. */
+let beltWatchOn = false;
+/** Désabonnement de l'échéance du minuteur ; `null` tant que personne n'y est abonné. */
+let offBeltLost: (() => void) | null = null;
+
+/** L'alerte sans la perte de la FC : ce qu'elle disait par ailleurs est gardé ; `null` s'il ne reste rien. */
+const withoutBeltLost = (error: string | null): string | null => {
+  if (error === null) return null;
+  const rest = error.replace(` ${BELT_LOST_ERROR}`, '').replace(BELT_LOST_ERROR, '').trim();
+  return rest === '' ? null : rest;
+};
+
+/** Applique un pas de la veille de la ceinture : minuteur, et message ajouté à l'alerte ou retiré seul. */
+const applyBeltWatch = (step: GpsWatchStep): void => {
+  beltWatch = step.state;
+  if (step.disarm) void disarmBeltWatch().catch(() => {});
+  if (step.armMs !== null) void armBeltWatch(step.armMs).catch(() => {});
+  if (step.lost) {
+    const rest = withoutBeltLost(state.error);
+    setState({ beltLost: true, error: rest ? `${rest} ${BELT_LOST_ERROR}` : BELT_LOST_ERROR });
+  } else if (step.cleared && state.beltLost) {
+    setState({ beltLost: false, error: withoutBeltLost(state.error) });
+  }
+};
+
+/** Échéance du minuteur de la ceinture : revérifiée par la veille (une mesure a pu la repousser entre-temps). */
+const onBeltWatchExpired = (): void => {
+  if (!beltWatchOn || (state.status !== 'starting' && state.status !== 'recording' && state.status !== 'paused')) return;
+  applyBeltWatch(gpsWatchOnExpired(beltWatch, Date.now()));
+};
+
+/**
+ * Arrête la veille de la ceinture : minuteur désarmé, machine remise au départ. Désarmé même sans veille en
+ * cours : le minuteur natif survit à une chute de la page, et la ceinture peut n'avoir pas été reprise.
+ */
+const stopBeltWatch = (): void => {
+  void disarmBeltWatch().catch(() => {});
+  beltWatchOn = false;
+  beltWatch = START_GPS_WATCH;
 };
 
 /** Au départ : des notifications refusées sont dites une fois, dans l'alerte de la page (lot 115). */
@@ -753,12 +806,13 @@ const recoveryFactsOf = (parsed: ParsedJournal): { journal: RecoveryJournal; off
   };
 };
 
-/** Arrête ce qui peut tourner encore sans personne pour l'écouter : GPS, ceinture, minuteur du GPS et bips d'approche. */
+/** Arrête ce qui peut tourner encore sans personne pour l'écouter : GPS, ceinture, minuteurs des veilles et bips d'approche. */
 const stopOrphans = async (): Promise<void> => {
   await stopOrphanedDeviceLocation();
   await releaseOrphanedBelt();
   await stopBeltKeepAlive();
   await disarmGpsWatch().catch(() => {});
+  await disarmBeltWatch().catch(() => {});
   await getBeeper().stop().catch(() => {});
 };
 
@@ -784,7 +838,7 @@ const abandonResume = async (): Promise<void> => {
   currentTest = null;
   setState({
     status: 'idle', resuming: false, sport: null, activity: null, sourceLabel: null, pausedReason: null, pauseClock: null,
-    measuringMotion: false, motionSetup: null, heartRate: null, marks: [], stats: EMPTY_RECORDING_STATS, gpsLost: false,
+    measuringMotion: false, motionSetup: null, heartRate: null, marks: [], stats: EMPTY_RECORDING_STATS, gpsLost: false, beltLost: false,
   });
 };
 
@@ -817,7 +871,7 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
   );
   setState({
     status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
-    measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, motionUnreadable: false, saved: null, error: null, gpsLost: false,
+    measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, motionUnreadable: false, saved: null, error: null, gpsLost: false, beltLost: false,
   });
 };
 
@@ -861,6 +915,11 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
       // Rien n'est dû avant une position, mais le service peut se taire dès maintenant : le minuteur repart d'ici.
       const armedStep = gpsWatchOnFix(START_GPS_WATCH, Date.now(), currentProfile);
       applyGpsWatch(phase.pauseClock ? gpsWatchOnPause(armedStep.state) : armedStep);
+    }
+    if (beltWatchOn && currentProfile) {
+      // Comme le GPS : le minuteur de la page tombée est repris par une veille qui saura lire son échéance.
+      const armedBelt = gpsWatchOnFix(START_GPS_WATCH, Date.now(), beltWatchSettings(currentProfile));
+      applyBeltWatch(phase.pauseClock ? gpsWatchOnPause(armedBelt.state) : armedBelt);
     }
     console.info(`[reprise] enregistrement repris seul après une chute du moteur : ${fixes.length || heartFixes.length} points relus`);
     return true;
@@ -972,10 +1031,15 @@ const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => 
 /** Suit dans l'état les mesures d'une ceinture tenue ; `release` la rend. */
 const wireBelt = (release: () => void, maxAgeS: number): void => {
   heartRateMaxAgeS = maxAgeS;
+  beltWatch = START_GPS_WATCH;
+  beltWatchOn = true;
+  offBeltLost ??= onBeltLost(onBeltWatchExpired);
   setState({ heartRate: { state: beltState(), bpm: null } });
   const offSample = subscribeHeartRate((sample) => {
     receiveHeartSample(sample);
     const bpm = readableBpm(sample);
+    // Une ceinture décollée qui émet encore ne mesure plus : seule une mesure lisible repousse le minuteur.
+    if (beltWatchOn && bpm !== null && currentProfile) applyBeltWatch(gpsWatchOnFix(beltWatch, Date.now(), beltWatchSettings(currentProfile)));
     if (state.heartRate && (state.heartRate.bpm !== bpm || state.heartRate.state !== beltState())) {
       setState({ heartRate: { state: beltState(), bpm } });
     }
@@ -995,6 +1059,7 @@ const releaseRecordingBelt = (): void => {
   dropBelt?.();
   dropBelt = null;
   heartRateMaxAgeS = null;
+  stopBeltWatch();
 };
 
 /**
@@ -1089,7 +1154,7 @@ export const startRecording = exclusive(async (
   setState({
     status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
-    saved: null, error: recoveryNotice, gpsLost: false,
+    saved: null, error: recoveryNotice, gpsLost: false, beltLost: false,
   });
 
   if (!withPositions) {
@@ -1215,6 +1280,7 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
   // En pause dès l'appui : le GPS restant allumé, une position arrivée pendant l'écriture du journal ne serait pas gardée.
   setState({ status: 'paused', pausedReason: 'manual', pauseClock });
   if (gpsWatchOn) applyGpsWatch(gpsWatchOnPause(gpsWatch));
+  if (beltWatchOn) applyBeltWatch(gpsWatchOnPause(beltWatch));
   pendingLines += journalPauseLine(frozenAtMs, frozenAtMs - pauseClock.sinceMs);
   await flushJournal();
   if (state.measuringMotion) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
@@ -1226,6 +1292,7 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
   if (heartOnly && isManualPause(state)) {
     markManualResume();
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
+    if (beltWatchOn && currentProfile) applyBeltWatch(gpsWatchOnResume(beltWatch, Date.now(), beltWatchSettings(currentProfile)));
     return;
   }
   if (!isManualPause(state) || state.activity === null || currentProfile === null) {
@@ -1239,6 +1306,7 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
     const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
     setState({ status: 'recording', pausedReason: null, pauseClock: null, ...(sensorsFailed ? { error: SENSORS_RESUME_ERROR } : {}) });
     if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), currentProfile));
+    if (beltWatchOn) applyBeltWatch(gpsWatchOnResume(beltWatch, Date.now(), beltWatchSettings(currentProfile)));
     return;
   }
   if (currentSource === null) return;
@@ -1254,6 +1322,7 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
     // L'erreur de la source peut arriver avant la fin du démarrage (localisation coupée) : elle reste affichée.
     setState({ status: 'recording', pausedReason: null, pauseClock: null, error: sourceError ?? (sensorsFailed ? SENSORS_RESUME_ERROR : null) });
     if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), profile));
+    if (beltWatchOn) applyBeltWatch(gpsWatchOnResume(beltWatch, Date.now(), beltWatchSettings(profile)));
   } catch (err) {
     pendingBreak = false;
     manualBreakAutoPartMs = null;
@@ -1376,8 +1445,9 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   const stoppedAtMs = Date.now();
   const wasRecording = state.status === 'recording';
   stopGpsWatch();
-  // L'alerte de perte du GPS ne survit pas à l'enregistrement.
-  setState({ status: 'stopping', gpsLost: false, error: withoutGpsLost(state.error) });
+  stopBeltWatch();
+  // Les alertes de perte du GPS et de la FC ne survivent pas à l'enregistrement.
+  setState({ status: 'stopping', gpsLost: false, beltLost: false, error: withoutBeltLost(withoutGpsLost(state.error)) });
   // Écrit avant de couper le GPS : une chute d'ici la fin ne propose ni reprise ni « Continuer ».
   pendingLines += journalStopLine(stoppedAtMs);
   await flushJournal();

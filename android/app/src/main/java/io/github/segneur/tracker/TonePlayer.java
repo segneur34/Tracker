@@ -48,6 +48,12 @@ final class TonePlayer {
     static final int GPS_LOST_LOW_MS = 500;
     static final int GPS_LOST_GAP_MS = 150;
     private static final double GPS_LOST_LOW_RATIO = 2.0 / 3.0;
+    /**
+     * « FC perdue » (comme src/core/beepDurations.ts) : trois notes descendantes,
+     * la hauteur réglée puis ses 5/6 et ses 2/3, une seule fois, avec vibration.
+     */
+    static final int BELT_LOST_NOTE_MS = 220;
+    private static final double[] BELT_LOST_RATIOS = { 1.0, 5.0 / 6.0, 2.0 / 3.0 };
     /** Hauteur des bips par défaut : vers 2 kHz, un haut-parleur de téléphone porte le mieux. */
     static final int DEFAULT_PITCH_HZ = 2000;
     private static final int MIN_PITCH_HZ = 300;
@@ -66,6 +72,7 @@ final class TonePlayer {
     private AudioTrack longTone;
     private AudioTrack finalTone;
     private AudioTrack gpsLostTone;
+    private AudioTrack beltLostTone;
     /** Hauteur des sons synthétisés de cette instance. */
     private int builtHz = 0;
 
@@ -134,17 +141,26 @@ final class TonePlayer {
         vibratePattern(new long[] { 0, on, GPS_LOST_GAP_MS, on });
     }
 
+    /** « FC perdue » : un seul son synthétisé (les trois notes), avec sa vibration. */
+    void playBeltLost() {
+        ensurePitch();
+        if (beltLostTone == null) beltLostTone = buildBeltLostTone(builtHz);
+        play(beltLostTone, BELT_LOST_NOTE_MS * BELT_LOST_RATIOS.length);
+    }
+
     void release() {
         if (briefTone != null) briefTone.release();
         if (shortTone != null) shortTone.release();
         if (longTone != null) longTone.release();
         if (finalTone != null) finalTone.release();
         if (gpsLostTone != null) gpsLostTone.release();
+        if (beltLostTone != null) beltLostTone.release();
         briefTone = null;
         shortTone = null;
         longTone = null;
         finalTone = null;
         gpsLostTone = null;
+        beltLostTone = null;
     }
 
     /** Sinus de `durationMs` à `hz`, fondu à l'entrée et à la sortie, prêt à être rejoué. */
@@ -167,6 +183,16 @@ final class TonePlayer {
             writeNote(pcm, at, high, hz);
             writeNote(pcm, at + high, low, lowHz);
             at += high + low + gap;
+        }
+        return track(pcm);
+    }
+
+    /** « FC perdue » : les trois notes à la suite, dans un seul son. */
+    private static AudioTrack buildBeltLostTone(int hz) {
+        int note = SAMPLE_RATE * BELT_LOST_NOTE_MS / 1000;
+        short[] pcm = new short[note * BELT_LOST_RATIOS.length];
+        for (int k = 0; k < BELT_LOST_RATIOS.length; k++) {
+            writeNote(pcm, k * note, note, (int) Math.round(hz * BELT_LOST_RATIOS[k]));
         }
         return track(pcm);
     }

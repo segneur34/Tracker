@@ -27,6 +27,7 @@ const input = (patch: Partial<LiveNotificationInput> = {}): LiveNotificationInpu
   context: context(),
   paused: null,
   gpsLost: false,
+  beltLost: false,
   startedAtMs: NOW - 3_725_000,
   interval: null,
   nowMs: NOW,
@@ -95,6 +96,9 @@ describe('liveNotification', () => {
     expect(n.title).toBe('Wingfoil · GPS perdu');
     expect(n.chrono?.countDown).toBe(false);
     expect(liveNotification(input({ gpsLost: true, paused: 'auto' })).title).toBe('Wingfoil · GPS perdu · pause auto');
+    expect(liveNotification(input({ beltLost: true })).title).toBe('Wingfoil · FC perdue');
+    expect(liveNotification(input({ gpsLost: true, beltLost: true })).title).toBe('Wingfoil · GPS perdu · FC perdue');
+    expect(notificationStateKey({ status: 'recording', pausedReason: null, gpsLost: false, beltLost: true, activityId: 'running', timer: null, computed: true })).toContain('fc-perdue');
   });
 
   it('sans premier point, pas de chronomètre', () => {
@@ -152,13 +156,13 @@ describe('notificationStateKey (lot 67, sortie de recordingNotification)', () =>
   ];
 
   it.each(cases)('%s %s %s : la même clé qu\'avant', (status, pausedReason, activityId, timer, computed) => {
-    expect(notificationStateKey({ status, pausedReason, gpsLost: false, activityId, timer, computed }))
+    expect(notificationStateKey({ status, pausedReason, gpsLost: false, beltLost: false, activityId, timer, computed }))
       .toBe(oldKey(status, pausedReason, activityId === null ? null : { id: activityId }, timer, computed));
   });
 
   it('change avec la pause, la phase du compteur et le premier calcul', () => {
     const key = (patch: Partial<Parameters<typeof notificationStateKey>[0]>) =>
-      notificationStateKey({ status: 'recording', pausedReason: null, gpsLost: false, activityId: 'running', timer: null, computed: true, ...patch });
+      notificationStateKey({ status: 'recording', pausedReason: null, gpsLost: false, beltLost: false, activityId: 'running', timer: null, computed: true, ...patch });
     expect(key({})).toBe('recording||running||true');
     expect(key({ status: 'paused', pausedReason: 'auto' })).not.toBe(key({ status: 'paused', pausedReason: 'manual' }));
     expect(key({ timer: work3 })).toBe('recording||running|running:travail:3:100|true');
@@ -167,7 +171,7 @@ describe('notificationStateKey (lot 67, sortie de recordingNotification)', () =>
 
   it('change quand le GPS est perdu, puis revient (lot 115)', () => {
     const key = (gpsLost: boolean) =>
-      notificationStateKey({ status: 'recording', pausedReason: null, gpsLost, activityId: 'running', timer: null, computed: true });
+      notificationStateKey({ status: 'recording', pausedReason: null, gpsLost, beltLost: false, activityId: 'running', timer: null, computed: true });
     expect(key(true)).not.toBe(key(false));
     expect(key(false)).toBe('recording||running||true');
   });

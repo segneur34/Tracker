@@ -22,7 +22,7 @@ import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit 
  *
  * Rythme : à l'arrivée des positions et des recalculs du direct, au plus
  * toutes les `MIN_UPDATE_MS`, et seulement si le texte change ; tout de suite
- * à un changement d'état (pause, reprise, pause automatique, GPS perdu ou revenu, activité), de
+ * à un changement d'état (pause, reprise, pause automatique, GPS perdu ou revenu, FC perdue ou revenue, activité), de
  * phase du compteur du fractionné, et au premier calcul du direct. Le chronomètre d'Android fait tourner la
  * durée, ou le décompte de la phase, entre deux envois.
  *
@@ -73,7 +73,7 @@ const update = (force: boolean) => {
   const live = getLiveRecording();
   // État qui commande un envoi immédiat ; les premiers chiffres du direct aussi.
   const stateKey = notificationStateKey({
-    status, pausedReason: recorder.pausedReason, gpsLost: recorder.gpsLost, activityId: activity.id, timer, computed: live.updatedMs !== null,
+    status, pausedReason: recorder.pausedReason, gpsLost: recorder.gpsLost, beltLost: recorder.beltLost, activityId: activity.id, timer, computed: live.updatedMs !== null,
   });
   if (!force && stateKey === sentStateKey && nowMs - sentAtMs < MIN_UPDATE_MS) return;
 
@@ -104,6 +104,7 @@ const update = (force: boolean) => {
     context,
     paused,
     gpsLost: recorder.gpsLost,
+    beltLost: recorder.beltLost,
     startedAtMs: recorder.stats.firstMs,
     interval: timer?.phase && run && counterActive ? { state: timer } : null,
     nowMs,

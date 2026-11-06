@@ -18,6 +18,10 @@ import type { RecordingProfile } from '../core/sportProfiles';
  * qui ne trouve jamais sa position n'est pas « perdu ») ; `watching`, le
  * minuteur repoussé à chaque position ; `lost`, signalé, plus rien d'armé ;
  * `rearming`, revenu, rien d'armé ni de signalé jusqu'au réarmement.
+ *
+ * La veille de la ceinture (lot 177) est la même machine, sur une autre source :
+ * chaque mesure lisible y tient lieu de position, avec ses propres délais
+ * (`beltWatchSettings`). Une ceinture jamais jointe n'est donc pas « perdue ».
  */
 
 export type GpsWatchPhase = 'waiting' | 'watching' | 'lost' | 'rearming';
@@ -49,6 +53,12 @@ export interface GpsWatchStep {
   /** L'alerte de perte est à effacer. */
   cleared: boolean;
 }
+
+/** Délais de la veille de la ceinture, dans les termes de la machine. */
+export const beltWatchSettings = (recording: Pick<RecordingProfile, 'beltLostDelayS' | 'beltLostRearmS'>): GpsWatchSettings => ({
+  gpsLostDelayS: recording.beltLostDelayS,
+  gpsLostRearmS: recording.beltLostRearmS,
+});
 
 export const START_GPS_WATCH: GpsWatchState = { phase: 'waiting', paused: false, lastFixMs: null, returnedMs: null, deadlineMs: null };
 

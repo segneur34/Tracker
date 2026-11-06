@@ -77,6 +77,18 @@ public class BeeperPlugin extends Plugin {
         }
     };
 
+    /**
+     * Échéance de la veille de la ceinture (lot 177), sur le fil des bips : les bips d'approche continuent.
+     * Écran éteint, le verrou partiel est celui du service GPS, ou de HeartRateService en muscu.
+     */
+    private final Runnable beltLost = new Runnable() {
+        @Override
+        public void run() {
+            tones().playBeltLost();
+            notifyListeners("beltLost", new JSObject());
+        }
+    };
+
     private synchronized Handler handler() {
         if (handler == null) {
             thread = new HandlerThread("TrackerBeeper");
@@ -218,6 +230,24 @@ public class BeeperPlugin extends Plugin {
     public void unwatchGps(PluginCall call) {
         Handler g = gpsHandler;
         if (g != null) g.removeCallbacks(gpsLost);
+        call.resolve();
+    }
+
+    /** Veille de la ceinture : arme, ou repousse, le minuteur à `delayMs` ; à l'échéance, son « FC perdue » et événement `beltLost`. */
+    @PluginMethod
+    public void watchBelt(PluginCall call) {
+        long delayMs = Math.max(1000, call.getInt("delayMs", 60_000));
+        Handler g = gpsHandler();
+        g.removeCallbacks(beltLost);
+        g.postDelayed(beltLost, delayMs);
+        call.resolve();
+    }
+
+    /** Désarme la veille de la ceinture (pause manuelle, fin de l'enregistrement). */
+    @PluginMethod
+    public void unwatchBelt(PluginCall call) {
+        Handler g = gpsHandler;
+        if (g != null) g.removeCallbacks(beltLost);
         call.resolve();
     }
 

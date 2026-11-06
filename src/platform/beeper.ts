@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import {
-  BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS, GPS_LOST_GAP_MS, GPS_LOST_HIGH_MS, GPS_LOST_LOW_MS, GPS_LOST_NOTES, GPS_LOST_TOTAL_MS, TONE_MS,
+  BELT_LOST_NOTES, BELT_LOST_TOTAL_MS, BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS, GPS_LOST_GAP_MS, GPS_LOST_HIGH_MS, GPS_LOST_LOW_MS, GPS_LOST_NOTES, GPS_LOST_TOTAL_MS, TONE_MS,
   type ToneKind,
 } from '../core/beepDurations';
 import { isNativeApp } from './runtime';
@@ -82,7 +82,9 @@ interface BeeperPlugin {
   setPitch(options: { hz: number }): Promise<void>;
   watchGps(options: { delayMs: number }): Promise<void>;
   unwatchGps(): Promise<void>;
-  addListener(event: 'gpsLost', listener: () => void): Promise<{ remove: () => Promise<void> }>;
+  watchBelt(options: { delayMs: number }): Promise<void>;
+  unwatchBelt(): Promise<void>;
+  addListener(event: 'gpsLost' | 'beltLost', listener: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
 const nativePlugin = registerPlugin<BeeperPlugin>('Beeper');
@@ -312,6 +314,64 @@ export const onGpsLost = (listener: () => void): (() => void) => {
   let removed = false;
   let remove: (() => void) | null = null;
   void nativePlugin.addListener('gpsLost', listener).then((handle) => {
+    if (removed) void handle.remove();
+    else remove = () => void handle.remove();
+  }).catch(() => {});
+  return () => {
+    removed = true;
+    remove?.();
+  };
+};
+
+// --- Veille de la ceinture de l'enregistrement (lot 177) ---
+
+/** Minuteur de la veille de la ceinture dans le navigateur ; `null` désarmé. */
+let beltTimer: ReturnType<typeof setTimeout> | null = null;
+/** Abonnés à l'échéance, dans le navigateur. */
+const beltLostListeners = new Set<() => void>();
+
+/** Son « FC perdue » du navigateur : trois notes descendantes, avec vibration ; consigné une fois. */
+const playBrowserBeltLost = () => {
+  console.debug(`[bips] fc perdue ${BELT_LOST_TOTAL_MS} ms à ${Date.now()}`);
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(BELT_LOST_TOTAL_MS);
+  for (const note of BELT_LOST_NOTES) browserNote(note.durationMs, browserHz * note.ratio, note.atMs);
+};
+
+/**
+ * Arme, ou repousse, la veille de la ceinture : sans nouvel appel dans
+ * `delayMs`, le son « FC perdue » est joué (avec vibration), puis les abonnés de
+ * `onBeltLost` sont prévenus. Sur le téléphone, le minuteur est natif
+ * (`BeeperPlugin.watchBelt`), comme celui du GPS. Les bips d'approche des
+ * balises, eux, continuent : ils ne dépendent pas de la ceinture.
+ */
+export const armBeltWatch = (delayMs: number): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.watchBelt({ delayMs });
+  if (beltTimer !== null) clearTimeout(beltTimer);
+  beltTimer = setTimeout(() => {
+    beltTimer = null;
+    playBrowserBeltLost();
+    beltLostListeners.forEach((listener) => listener());
+  }, delayMs);
+  return Promise.resolve();
+};
+
+/** Désarme la veille de la ceinture. */
+export const disarmBeltWatch = (): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.unwatchBelt();
+  if (beltTimer !== null) clearTimeout(beltTimer);
+  beltTimer = null;
+  return Promise.resolve();
+};
+
+/** Échéance de la veille de la ceinture (le son est déjà parti) ; rend le désabonnement. */
+export const onBeltLost = (listener: () => void): (() => void) => {
+  if (!isNativeApp()) {
+    beltLostListeners.add(listener);
+    return () => beltLostListeners.delete(listener);
+  }
+  let removed = false;
+  let remove: (() => void) | null = null;
+  void nativePlugin.addListener('beltLost', listener).then((handle) => {
     if (removed) void handle.remove();
     else remove = () => void handle.remove();
   }).catch(() => {});

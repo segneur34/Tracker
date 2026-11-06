@@ -44,5 +44,17 @@ export const GPS_LOST_NOTES: ReadonlyArray<{ atMs: number; durationMs: number; r
   ];
 });
 
+/**
+ * « FC perdue » (lot 177) : trois notes descendantes, une seule fois, la hauteur
+ * réglée puis ses 5/6 et ses 2/3 ; à part du « GPS perdu », deux fois deux notes.
+ */
+export const BELT_LOST_NOTE_MS = 220;
+/** Notes du son « FC perdue », dans l'ordre : début et durée en millisecondes, hauteur rapportée à celle réglée. */
+export const BELT_LOST_NOTES: ReadonlyArray<{ atMs: number; durationMs: number; ratio: number }> = [1, 5 / 6, 2 / 3].map((ratio, k) => ({
+  atMs: k * BELT_LOST_NOTE_MS, durationMs: BELT_LOST_NOTE_MS, ratio,
+}));
+/** Durée totale du son « FC perdue », en millisecondes. */
+export const BELT_LOST_TOTAL_MS = 3 * BELT_LOST_NOTE_MS;
+
 /** Durée totale du son « GPS perdu », en millisecondes. */
 export const GPS_LOST_TOTAL_MS = 2 * (GPS_LOST_HIGH_MS + GPS_LOST_LOW_MS) + GPS_LOST_GAP_MS;

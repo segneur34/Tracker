@@ -78,6 +78,8 @@ vi.mock('../platform/heartRate', async (importOriginal) => ({
 
 /** Veille du GPS simulée (lot 115) : minuteurs armés et désarmés relevés, échéance déclenchée à la demande. */
 const gps = vi.hoisted(() => ({ arms: [] as number[], disarms: 0, expire: null as (() => void) | null }));
+/** Veille de la ceinture simulée (lot 177), de même. */
+const beltWatch = vi.hoisted(() => ({ arms: [] as number[], disarms: 0, expire: null as (() => void) | null }));
 vi.mock('../platform/beeper', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../platform/beeper')>()),
   armGpsWatch: async (delayMs: number) => {
@@ -88,6 +90,16 @@ vi.mock('../platform/beeper', async (importOriginal) => ({
   },
   onGpsLost: (listener: () => void) => {
     gps.expire = listener;
+    return () => undefined;
+  },
+  armBeltWatch: async (delayMs: number) => {
+    beltWatch.arms.push(delayMs);
+  },
+  disarmBeltWatch: async () => {
+    beltWatch.disarms += 1;
+  },
+  onBeltLost: (listener: () => void) => {
+    beltWatch.expire = listener;
     return () => undefined;
   },
 }));
@@ -524,6 +536,82 @@ describe('prévenir quand ça rate (lot 115)', () => {
     vi.setSystemTime(T0 + 600_000);
     gps.expire?.();
     expect(recorder.getRecorderState().gpsLost).toBe(false);
+  });
+
+  it('FC perdue après 1 min sans mesure lisible, une fois, sans rien armer avant la première mesure ni en pause', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    beltWatch.arms = [];
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    // Une ceinture jamais jointe n'est pas perdue.
+    expect(beltWatch.arms).toEqual([]);
+    belt.emit(T0, 100);
+    belt.emit(T0, 100);
+    expect(beltWatch.arms).toEqual([60_000, 60_000]);
+    // Décollée, elle émet encore mais ne mesure plus : le minuteur n'est pas repoussé.
+    vi.setSystemTime(T0 + 30_000);
+    belt.emit(T0 + 30_000, 100, false);
+    expect(beltWatch.arms).toHaveLength(2);
+    vi.setSystemTime(T0 + 59_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(false);
+    vi.setSystemTime(T0 + 61_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(true);
+    expect(recorder.getRecorderState().error).toBe(recorder.BELT_LOST_ERROR);
+    // Retour : l'alerte s'efface, rien n'est réarmé avant 2 min de mesures.
+    belt.emit(T0 + 62_000, 100);
+    expect(recorder.getRecorderState().beltLost).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+    expect(beltWatch.arms).toHaveLength(2);
+    for (const s of [100, 140, 182]) {
+      vi.setSystemTime(T0 + s * 1000);
+      belt.emit(T0 + s * 1000, 100);
+    }
+    expect(beltWatch.arms).toHaveLength(3);
+    // Pause manuelle : désarmé, une échéance qui arriverait quand même est ignorée.
+    const disarms = beltWatch.disarms;
+    await recorder.pauseRecording();
+    expect(beltWatch.disarms).toBe(disarms + 1);
+    vi.setSystemTime(T0 + 600_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(false);
+  });
+
+  it('muscu : la veille de la ceinture repart après une pause manuelle', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    await recorder.startRecording(baseActivity('muscu'), null, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    belt.emit(T0, 100);
+    await recorder.pauseRecording();
+    vi.setSystemTime(T0 + 10_000);
+    await recorder.resumeRecording();
+    beltWatch.arms = [];
+    vi.setSystemTime(T0 + 11_000);
+    belt.emit(T0 + 11_000, 100);
+    expect(beltWatch.arms).toEqual([60_000]);
+    vi.setSystemTime(T0 + 72_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(true);
+    await recorder.stopRecording();
+  });
+
+  it("l'arrêt efface la perte de la FC : rien ne reste à la session suivante, et le minuteur est désarmé", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    source.emit(0);
+    belt.emit(T0, 100);
+    vi.setSystemTime(T0 + 61_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(true);
+    const disarms = beltWatch.disarms;
+    await recorder.stopRecording();
+    expect(beltWatch.disarms).toBeGreaterThan(disarms);
+    expect(recorder.getRecorderState().beltLost).toBe(false);
+    expect(recorder.getRecorderState().error ?? '').not.toContain(recorder.BELT_LOST_ERROR);
   });
 
   it("« GPS perdu » s'ajoute à l'alerte déjà affichée et se retire seul au retour : l'avertissement des notifications reste", async () => {

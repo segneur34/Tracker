@@ -7,7 +7,7 @@ import { liveFieldLabel, liveFieldShortLabel, liveFieldValue, type LiveFieldCont
 /**
  * Texte de la notification de l'enregistrement, visible écran verrouillé.
  *
- * - Titre : l'activité, puis l'état s'il y en a un : « GPS perdu » (lot 115),
+ * - Titre : l'activité, puis l'état s'il y en a un : « GPS perdu » (lot 115), « FC perdue » (lot 177),
  *   la phase du compteur du fractionné (« Travail 3/8 »), la pause.
  * - Chronomètre d'Android dans l'en-tête, qui tourne seul : le décompte de la
  *   phase du compteur quand elle avance, sinon la durée de la session (depuis
@@ -41,6 +41,8 @@ export interface LiveNotificationInput {
   paused: 'manual' | 'auto' | null;
   /** GPS perdu : plus de position depuis le délai du profil (`recording/gpsWatch.ts`). */
   gpsLost: boolean;
+  /** FC perdue : plus de mesure lisible d'une ceinture qui en donnait (`hooks/useRecorder.ts`). */
+  beltLost: boolean;
   /** Premier point de la session, en ms ; `null` avant lui. */
   startedAtMs: number | null;
   /** Séance du compteur qui court ou attend en pause, avec son nombre de répétitions ; `null` sinon. */
@@ -55,13 +57,14 @@ const SEPARATOR = ' · ';
 const toSecond = (ms: number): number => Math.round(ms / 1000) * 1000;
 
 export const liveNotification = ({
-  activityName, fields, context, paused, gpsLost, startedAtMs, interval, nowMs,
+  activityName, fields, context, paused, gpsLost, beltLost, startedAtMs, interval, nowMs,
 }: LiveNotificationInput): RecordingNotificationContent => {
   const phase = interval?.state.phase ?? null;
   const counterRunning = phase !== null && interval?.state.status === 'running';
 
   const titleParts = [activityName];
   if (gpsLost) titleParts.push('GPS perdu');
+  if (beltLost) titleParts.push('FC perdue');
   if (phase && interval) titleParts.push(interval.state.status === 'paused' ? `${phaseName(phase)} en pause` : phaseName(phase));
   if (paused === 'manual') titleParts.push(`en pause ${formatClock(context.durationMs)}`);
   else if (paused === 'auto') titleParts.push('pause auto');
@@ -89,16 +92,17 @@ export const liveNotification = ({
  * et le premier calcul du direct (`computed`), pour ne pas attendre avec des
  * « — ». Deux états de même clé n'appellent pas d'envoi.
  */
-export const notificationStateKey = ({ status, pausedReason, gpsLost, activityId, timer, computed }: {
+export const notificationStateKey = ({ status, pausedReason, gpsLost, beltLost, activityId, timer, computed }: {
   status: string;
   pausedReason: 'manual' | 'auto' | null;
   gpsLost: boolean;
+  beltLost: boolean;
   activityId: string | null;
   timer: IntervalTimerState | null;
   computed: boolean;
 }): string => {
   const phase = timer?.phase ? `${timer.status}:${timer.phase.kind}:${timer.phase.rep}:${timer.phase.startS}` : '';
-  return `${status}|${pausedReason ?? ''}|${activityId ?? ''}|${phase}|${computed}${gpsLost ? '|gps-perdu' : ''}`;
+  return `${status}|${pausedReason ?? ''}|${activityId ?? ''}|${phase}|${computed}${gpsLost ? '|gps-perdu' : ''}${beltLost ? '|fc-perdue' : ''}`;
 };
 
 /** Clé d'une notification : deux notifications de même clé disent la même chose. */

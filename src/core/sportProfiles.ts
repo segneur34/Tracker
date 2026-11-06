@@ -111,6 +111,13 @@ export interface RecordingProfile {
    */
   gpsLostRearmS: number;
   /**
+   * Temps réel sans mesure lisible d'une ceinture qui en donnait, en secondes, au
+   * bout duquel la fréquence cardiaque est dite perdue (`hooks/useRecorder.ts`).
+   */
+  beltLostDelayS: number;
+  /** Temps réel de mesures revenues, en secondes, avant qu'une nouvelle perte de la FC soit signalée. */
+  beltLostRearmS: number;
+  /**
    * Temps réel depuis la dernière ligne du journal, en secondes, en deçà duquel
    * une application tuée puis rouverte propose « Continuer l'enregistrement »
    * (`recording/resume.ts`) ; au-delà, la session attend sa décision.
@@ -133,6 +140,8 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   autoPauseDelayS: 60,
   gpsLostDelayS: 60,
   gpsLostRearmS: 120,
+  beltLostDelayS: 60,
+  beltLostRearmS: 120,
   resumeOfferMaxAgeS: 600,
 };
 
