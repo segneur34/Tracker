@@ -343,8 +343,10 @@ const SAILING_PUMP_DETECTION: PumpDetection = {
  */
 const CADENCE: CadenceDetection = {
   gridStepS: 0.02, maxGapS: 0.2, gravityWindowS: 2, windowS: 6, stepS: 1,
-  // Foulée de course au-dessus de 10 m/s² : marche en poche 6 à 8, course 13 à 18 (17/10).
-  minSpm: 70, maxSpm: 240, minCorrelation: 0.3, peakFraction: 0.85, halfPeriodFraction: 0.5, strideRmsMs2: 10,
+  // Foulée de course au-dessus de 5 m/s² (06/11, n° 26, six courses et une marche sur la poitrine) : à 10, une
+  // foulée de course à 8 m/s² passait pour un pas (76 pas/min sur 30 % de la course du 25/10, 64 % de celle du
+  // 29/10) ; les fenêtres de marche qui ont la période d'un pas restent à 2,6 m/s².
+  minSpm: 70, maxSpm: 240, minCorrelation: 0.3, peakFraction: 0.85, halfPeriodFraction: 0.5, strideRmsMs2: 5,
   minRmsMs2: 0.5, minCoverage: 0.8, chartSmoothingS: 5, minCoverageS: 60, gapS: 10,
   walkBands: [90, 100, 110, 120, 130], runBands: [150, 160, 170, 180, 190], runAboveSpm: 140,
   maxWindowS: 30, speedBinKmh: 1, minBinS: 30, driftMinS: 10 * 60,

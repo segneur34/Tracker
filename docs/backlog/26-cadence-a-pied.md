@@ -31,3 +31,19 @@ Une vraie marche en pas par minute pour confirmer l'unité devinée d'un GPX imp
 ## Vérification
 
 `node outils/verif.mjs --rapide` par l'agent ; `npm run verif`, banc `cadence` et `relecture` par l'orchestrateur.
+
+## Étape 2, mesures du 06/11 (outil `cadence-diagnostic.mjs`, seuils d'alors)
+
+Couverture en mouvement (vitesse GPS lissée ≥ 3 km/h) : courses du 21/10 91,5 %, 24/10 97,2 %, 25/10 94,3 %, 29/10 93,3 %, 31/10 96,4 %, 04/11 97,1 % ; marche du 17/10 91,7 % (le « 96 % » du point 124 comptait le mouvement autrement ; à 1,5 km/h, 77,6 % d'une marche bien plus longue). Médianes de course 153,7 à 162 pas/min ; marche 103,8.
+
+Défaut trouvé : sur la poitrine, une foulée de course de 8 m/s² environ reste sous `strideRmsMs2` (10) et passe pour un pas : 76 pas/min sur 30 % de la course du 25/10 (34 % des fenêtres sous 120) et 64 % de celle du 29/10. Les fenêtres de marche qui ont la période d'un pas sont à 2,6 m/s².
+
+| `strideRmsMs2` | 25/10, sous 120 | 29/10, sous 120 | 31/10 | 21/10 | marche 17/10 (médiane) |
+|---|---|---|---|---|---|
+| 10 (avant) | 34,1 % | 64,0 % | 21,8 % | 13,7 % | 103,8 |
+| 7 | 6,5 % | 8,1 % | 19,3 % | 13,2 % | 103,8 |
+| 5 (retenu) | 4,1 % | 7,2 % | 19,0 % | 12,8 % | 103,8 |
+
+Retenu : `strideRmsMs2` 5 m/s² (seuil changé, à confirmer par l'utilisateur ; les 24/10 et 04/11 ne bougent pas, la marche non plus). Ce qui reste sous 120 sur les 31/10 et 21/10 vient d'autres fenêtres (marche, exercices à l'arrêt), pas de ce défaut. Les autres seuils (corrélation 0,3, énergie 0,5, demi-période 0,5) ne sont pas touchés : la couverture dépasse 90 % partout. « Cadence trouvée à l'arrêt » (34 à 68 %) : surtout des transitions de 5 s au départ et à l'arrêt et, le 21/10, des exercices sans déplacement ; pas un défaut des capteurs.
+
+Limites : les sessions déjà enregistrées gardent la cadence écrite dans leur GPX au moment de l'arrêt ; le seuil ne vaut que pour les prochaines. `keepCapture` reste vrai tant que l'utilisateur n'a pas confirmé le seuil (Q62). Une marche téléphone en poche (6 à 8 m/s² au point 124, sur les fenêtres de foulée) n'a pas de fenêtre ambiguë mesurée ici : à confirmer à l'essai 4.

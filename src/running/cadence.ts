@@ -107,18 +107,43 @@ const removeMovingMean = (values: Float64Array, half: number): Float64Array => {
 };
 
 /**
- * Période d'un pas dans une fenêtre, en cases de la grille (fractionnaire), ou
- * `null` ; `rmsMs2` : écart type de la fenêtre. Autocorrélation et crêtes :
+ * Ce qui a décidé d'une fenêtre (diagnostic, `outils/banc/cadence-diagnostic.mjs`) :
+ * son rejet (`trou` dans la capture, `energie` sous `minRmsMs2`, fenêtre trop
+ * `courte`, `correlation` sans crête assez haute, `hors-plage` plus lent que
+ * `minSpm`), ou la façon dont sa période a été retenue (`pas` tel quel,
+ * `demi-periode` d'une foulée, foulée trop longue pour un pas, foulée aux
+ * secousses de course).
+ */
+export type CadenceWindowReason =
+  | 'trou' | 'energie' | 'courte' | 'correlation' | 'hors-plage'
+  | 'pas' | 'demi-periode' | 'foulee-longue' | 'foulee-secousses';
+
+/** Période d'un pas dans une fenêtre, avec ce qui l'a décidée. */
+export interface StepPeriodDetail {
+  /** Période d'un pas, en cases de la grille (fractionnaire), ou `null`. */
+  period: number | null;
+  /** Corrélation de la crête retenue, ou de la plus haute crête faute de crête retenue ; `null` sans crête. */
+  correlation: number | null;
+  reason: CadenceWindowReason;
+}
+
+/**
+ * Période d'un pas dans une fenêtre (`stepPeriod`), avec la corrélation de
+ * sa crête et ce qui l'a décidée. Autocorrélation et crêtes :
  * `core/periodicity.ts`, communes au pumping sur foil.
  */
-export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number): number | null => {
+export const stepPeriodDetail = (x: Float64Array, p: CadenceDetection, rmsMs2: number): StepPeriodDetail => {
   const minLag = Math.max(2, Math.floor(60 / p.maxSpm / p.gridStepS));
   const maxStepLag = Math.ceil(60 / p.minSpm / p.gridStepS);
   const maxLag = Math.min(x.length - 2, 2 * maxStepLag + 1);
-  if (maxLag <= minLag) return null;
+  if (maxLag <= minLag) return { period: null, correlation: null, reason: 'courte' };
   const r = autocorrelation(x, maxLag);
   const strong = firstStrongPeak(r, minLag, maxLag, p.minCorrelation, p.peakFraction);
-  if (strong === null) return null;
+  if (strong === null) {
+    let best: number | null = null;
+    for (let k = minLag; k < maxLag; k++) if (isPeak(r, k) && (best === null || r[k] > best)) best = r[k];
+    return { period: null, correlation: best, reason: 'correlation' };
+  }
   let chosen = strong;
   // Pas ou foulée : la demi-période, si elle corrèle encore assez, est le pas.
   const half = chosen / 2;
@@ -129,22 +154,57 @@ export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number)
   }
   // Sans demi-période, une foulée : trop longue pour un pas, ou secousses de course.
   let steps = 1;
-  if (halfPeak >= minLag && r[halfPeak] >= p.halfPeriodFraction * r[chosen] && r[halfPeak] >= p.minCorrelation / 2) chosen = halfPeak;
-  else if (chosen > maxStepLag || (half >= minLag && rmsMs2 >= p.strideRmsMs2)) steps = 2;
-  if (chosen / steps > maxStepLag) return null;
+  let reason: CadenceWindowReason = 'pas';
+  if (halfPeak >= minLag && r[halfPeak] >= p.halfPeriodFraction * r[chosen] && r[halfPeak] >= p.minCorrelation / 2) {
+    chosen = halfPeak;
+    reason = 'demi-periode';
+  } else if (chosen > maxStepLag) {
+    steps = 2;
+    reason = 'foulee-longue';
+  } else if (half >= minLag && rmsMs2 >= p.strideRmsMs2) {
+    steps = 2;
+    reason = 'foulee-secousses';
+  }
+  if (chosen / steps > maxStepLag) return { period: null, correlation: r[chosen], reason: 'hors-plage' };
   // Crête affinée par une parabole sur ses deux voisines.
-  return refinedPeak(r, chosen) / steps;
+  return { period: refinedPeak(r, chosen) / steps, correlation: r[chosen], reason };
 };
 
-/** Cadence d'une capture, un pas tous les `stepS` ; `null` si elle n'a pas d'accéléromètre. */
-export const cadenceSeries = (rec: ImuRecording, p: CadenceDetection): CadenceSeries | null => {
+/**
+ * Période d'un pas dans une fenêtre, en cases de la grille (fractionnaire), ou
+ * `null` ; `rmsMs2` : écart type de la fenêtre.
+ */
+export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number): number | null =>
+  stepPeriodDetail(x, p, rmsMs2).period;
+
+/** Une fenêtre de la cadence : sa mesure, et ce qui l'a décidée. */
+export interface CadenceWindow extends StepPeriodDetail {
+  /** Écart type du module dans la fenêtre, sans pesanteur, en m/s² ; `null` dans un trou. */
+  rmsMs2: number | null;
+  /** Pas par minute, au dixième, `null` sans mesure. */
+  spm: number | null;
+}
+
+/** Les fenêtres d'une capture, une tous les `stepS`, depuis `startMs` (heure). */
+export interface CadenceWindows {
+  startMs: number;
+  stepS: number;
+  windows: CadenceWindow[];
+}
+
+/**
+ * Fenêtres de la cadence d'une capture, chacune avec sa mesure et ce qui l'a
+ * décidée (`cadenceSeries` n'en garde que la mesure) ; `null` si la capture
+ * n'a pas d'accéléromètre.
+ */
+export const cadenceWindows = (rec: ImuRecording, p: CadenceDetection): CadenceWindows | null => {
   const grid = accelMagnitudeGrid(rec, p);
   if (!grid) return null;
   const dyn = removeMovingMean(grid.values, Math.round(p.gravityWindowS / 2 / p.gridStepS));
   const n = dyn.length;
   const halfWindow = Math.round(p.windowS / 2 / p.gridStepS);
   const every = Math.max(1, Math.round(p.stepS / p.gridStepS));
-  const spm: (number | null)[] = [];
+  const windows: CadenceWindow[] = [];
   const window = new Float64Array(2 * halfWindow + 1);
   for (let center = 0; center < n; center += every) {
     const a = Math.max(0, center - halfWindow);
@@ -152,7 +212,10 @@ export const cadenceSeries = (rec: ImuRecording, p: CadenceDetection): CadenceSe
     let known = 0;
     let sum = 0;
     for (let k = a; k < b; k++) if (Number.isFinite(dyn[k])) { known++; sum += dyn[k]; }
-    if (known < p.minCoverage * (2 * halfWindow + 1)) { spm.push(null); continue; }
+    if (known < p.minCoverage * (2 * halfWindow + 1)) {
+      windows.push({ period: null, correlation: null, reason: 'trou', rmsMs2: null, spm: null });
+      continue;
+    }
     // Trous comblés par la moyenne : ils ne créent pas de corrélation.
     const mean = sum / known;
     const len = b - a;
@@ -163,12 +226,22 @@ export const cadenceSeries = (rec: ImuRecording, p: CadenceDetection): CadenceSe
       sq += window[k] * window[k];
     }
     const rms = Math.sqrt(sq / known);
-    if (rms < p.minRmsMs2) { spm.push(null); continue; }
-    const period = stepPeriod(window.subarray(0, len), p, rms);
-    spm.push(period === null ? null : Math.round((600 / (period * p.gridStepS))) / 10);
+    if (rms < p.minRmsMs2) {
+      windows.push({ period: null, correlation: null, reason: 'energie', rmsMs2: rms, spm: null });
+      continue;
+    }
+    const detail = stepPeriodDetail(window.subarray(0, len), p, rms);
+    const spm = detail.period === null ? null : Math.round((600 / (detail.period * p.gridStepS))) / 10;
+    windows.push({ ...detail, rmsMs2: rms, spm });
   }
   const wallMs = rec.header.clock.wallMs + grid.startUs / 1000;
-  return { startMs: wallMs, stepS: every * p.gridStepS, spm };
+  return { startMs: wallMs, stepS: every * p.gridStepS, windows };
+};
+
+/** Cadence d'une capture, un pas tous les `stepS` ; `null` si elle n'a pas d'accéléromètre. */
+export const cadenceSeries = (rec: ImuRecording, p: CadenceDetection): CadenceSeries | null => {
+  const scan = cadenceWindows(rec, p);
+  return scan && { startMs: scan.startMs, stepS: scan.stepS, spm: scan.windows.map((w) => w.spm) };
 };
 
 /** Cadence à un instant (la mesure la plus proche, à moins d'un pas), ou `null`. */

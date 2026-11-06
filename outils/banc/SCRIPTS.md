@@ -166,6 +166,7 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - l'absence de « Mesurer le pumping » dans le navigateur, et la page à 390 × 844 sans débordement.
 
   Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs.
+- `cadence-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--support=running] [--seuil cle=valeur]… [--mouvement=3] [--lissage=5] [--par-minute]` (lot 26, 06/11) : même principe que `sauts-diagnostic`, pour la cadence à pied (`running/cadence.ts`, `cadenceWindows`) : couverture selon l'état de la trace (en mouvement au-dessus de `--mouvement` km/h, à l'arrêt, en pause ou trou, hors trace), distribution des cadences en mouvement, motifs de rejet ou de choix par fenêtre (corrélation, énergie, pas, demi-période, foulée), écart à la cadence `cad` × 2 du GPX ; `--seuil` surcharge une constante de `CADENCE` pour rejouer sans toucher au code. 0,6 s pour 41 min, 3 s pour 5 h 41.
 - `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel, par `charge-ts.mjs`). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
   - le téléphone, les capteurs, l'emplacement et le foil choisis ;
   - la durée, la cadence et les trous de chaque flux ;

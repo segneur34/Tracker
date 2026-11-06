@@ -63,7 +63,8 @@ describe('cadenceSeries : pas par minute sur la capture', () => {
     const x = Float64Array.from({ length: 301 }, (_, k) => Math.sin(2 * Math.PI * (82 / 60) * k * P.gridStepS));
     const spmOf = (rms: number) => 60 / (stepPeriod(x, P, rms)! * P.gridStepS);
     expect(spmOf(P.strideRmsMs2 + 2)).toBeCloseTo(164, 0);
-    expect(spmOf(P.strideRmsMs2 - 7)).toBeCloseTo(82, 0);
+    // Moitié du seuil : les fenêtres de marche à la période d'un pas sont à 2,6 m/s² sur la poitrine (n° 26).
+    expect(spmOf(P.strideRmsMs2 / 2)).toBeCloseTo(82, 0);
   });
 
   it('un balancement à la foulée en plus des appuis (bras, poche) ne divise pas la cadence', () => {
