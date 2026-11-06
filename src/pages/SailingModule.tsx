@@ -1,15 +1,10 @@
 import { normalizeDeg } from '../core/angles';
-import { plural, roundTo } from '../core/basics';
-import { useCallback, useEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
-import { GraphFoldHead } from '../components/ChartFold';
-import { HoverReadout, type Readout } from '../components/ChartReadout';
+import { roundTo } from '../core/basics';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { CircleMarker, Popup } from 'react-leaflet';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
-import { ReferenceLine, type DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
-import { carriedSettings } from '../library/record';
-import { carriedThresholdNote } from '../library/summaryOptions';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
@@ -21,11 +16,11 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
-import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
-import { SAILING_TABS, tabDefaults, type SailingTab } from '../core/analysisTabs';
-import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
+import { trackBounds } from '../core/displayConfig';
+import { SAILING_TABS, tabDefaults } from '../core/analysisTabs';
 import { nearestIndexAtTime } from '../core/search';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
+import { useSailingChartRows } from '../hooks/useSailingChartRows';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT } from '../core/activities';
 import { activeRatioLabel } from '../core/sportProfiles';
@@ -36,55 +31,43 @@ import {
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { polarExcludedPoints, speedPolar, type PolarBin } from '../sailing/wind';
-import { MANEUVER_LOST_FLIGHT_S, VMG_WINDOW_S } from '../sailing/sailingConfig';
-import { MANEUVER_LABELS, MANEUVER_METRICS, TACK_LABELS, formatMetric, oppositeTack, vmgBridgedHoles, vmgChartRows, vmgManeuverSpans, windChartRows, windInputWarning, type ManeuverMetric, type ManeuverTop, type VmgGraphPoint, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LABELS, TACK_LABELS, oppositeTack, windInputWarning, type ManeuverMetric, type ManeuverTop } from '../sailing/sailingAnalytics';
 import type { ManeuverLocation } from '../sailing/maneuvers';
-import SessionActivityField from '../components/SessionActivityField';
-import SessionSettingsHeader from '../components/SessionSettingsHeader';
 import CardioTab from '../components/CardioTab';
 import NotesTab from '../components/NotesTab';
-import FoilPumpingFields from '../components/FoilPumpingFields';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
 import { FlightsPanel, PumpingPanel } from '../components/FlightPumpingPanel';
 import TrackSpanLayer from '../components/TrackSpanLayer';
 import { pumpingHighlightSpans } from '../components/pumpingHighlight';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, TACK_PORT_COLOR, TACK_STARBOARD_COLOR, podiumColor } from '../components/highlightColors';
-import HeartRateChart from '../components/HeartRateChart';
-import { CardioCompanion } from '../components/HeartRatePanel';
-import { heartRateReadout, speedReadout } from '../components/chartReadouts';
-import { HEART_RATE_COLOR } from '../components/heartRateColors';
+import { HIGHLIGHT_SPAN_OPACITY, podiumColor } from '../components/highlightColors';
 import { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
-import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/TrackChart';
-import ZoomView from '../components/ZoomView';
-import type { ChartZoom } from '../hooks/useChartZoom';
 import { zoomHint } from '../components/zoomHint';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HighlightPath from '../components/HighlightPath';
-import SessionThresholdField from '../components/SessionThresholdField';
 import type { GearField } from '../components/gearFields';
-import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
-import { HelpText } from '../components/Help';
-import { useHelp } from '../components/helpContext';
-import PanelTitle, { PanelHeading, SessionDate } from '../components/PanelTitle';
+import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
+import { PanelHeading, SessionDate } from '../components/PanelTitle';
 import GeneralStats from '../components/GeneralStats';
 import WindCompass from '../components/WindCompass';
 import WindAdjustOverlay from '../components/WindAdjustOverlay';
-import SpeedPolarChart from '../components/SpeedPolarChart';
 import type { ShareStat } from '../core/shareImage';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import TrackArrows from '../components/TrackArrows';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
-import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import Button from '../components/ui/Button';
-import MapToggle from '../components/ui/MapToggle';
-import SegmentedControl from '../components/ui/SegmentedControl';
-import { ALTITUDE_COLOR, SAILING_SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
+import { SAILING_GRAPH_FOLDS_DEFAULT, sailingChartReaders } from '../components/sailing/sailingChartParts';
+import ManeuversPanel, { type ManeuversOnMap, type ManeuversView } from '../components/sailing/ManeuversPanel';
+import SailingSettingsPanel from '../components/sailing/SailingSettingsPanel';
+import SailingGraphsPanel from '../components/sailing/SailingGraphsPanel';
+import WindPanel from '../components/sailing/WindPanel';
+import VmgPanel from '../components/sailing/VmgPanel';
+import { SailingCompanionCharts } from '../components/sailing/SailingCharts';
 
 /** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
 const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
@@ -103,66 +86,7 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  * une entrée là (ouvert par défaut s'il est `primary`, `tabDefaults`), et un bloc `{open.maCle && (...)}` dans la colonne.
  */
 
-/** Graphes de l'onglet « graphiques » dépliés tant qu'on ne les replie pas. */
-const SAILING_GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true, polaire: true };
-type SailingGraphFold = keyof typeof SAILING_GRAPH_FOLDS_DEFAULT;
-/** Nom de chaque graphe de « graphiques », à la couleur de sa courbe (règle commune des noms, Q37). */
-const SAILING_GRAPH_COLORS: Record<SailingGraphFold, string> = { vitesse: SAILING_SPEED_COLOR, fc: HEART_RATE_COLOR, polaire: ALTITUDE_COLOR };
-
 const SAILING_PANEL_DEFAULTS = tabDefaults(SAILING_TABS);
-
-// --- Utilitaires d'affichage ---
-
-/** Courbe du vent : le trait et les points des manœuvres partagent la couleur. */
-const WIND_COLOR = '#1565c0';
-/** Graphe qui remplit son cadre (onglets « graphiques » et « vent »). */
-const FILL_STYLE: CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
-/** Graphe sous la carte en plein écran (téléphone). */
-const COMPANION_CHART_STYLE: CSSProperties = { width: '100%', height: '200px', flex: 'none', marginBottom: '8px' };
-
-/**
- * Point visible aux seules manœuvres : ailleurs la courbe du vent n'est qu'une
- * interpolation, et le graphe compte jusqu'à 500 points.
- */
-const maneuverDot = (props: DotItemDotProps): ReactNode => {
-  // Recharts ne type pas la ligne derrière le point : c'est un `WindGraphPoint`.
-  const point: WindGraphPoint | undefined = props.payload;
-  if (!point?.isManeuver) return null;
-  return <circle cx={props.cx} cy={props.cy} r={3} fill={WIND_COLOR} stroke="var(--surface)" strokeWidth={1} />;
-};
-
-/** Courbe de la VMG. */
-const VMG_COLOR = '#00838f';
-/** Point d'un morceau de la courbe de VMG réduit à une ligne, que le trait ne montre pas (longue session, vue entière). */
-const vmgAloneDot = (props: DotItemDotProps): ReactNode => {
-  // Recharts ne type pas la ligne derrière le point : c'est un `VmgGraphPoint`.
-  const point: VmgGraphPoint | undefined = props.payload;
-  if (!point?.alone) return null;
-  return <circle cx={props.cx} cy={props.cy} r={1.5} fill={VMG_COLOR} />;
-};
-
-/** Curseur commun aux graphes de vitesse et de FC (Q38) : leurs lignes viennent des mêmes points. */
-const SAILING_SYNC_ID = 'sailing';
-/** Graduations des axes de la voile : encre grasse, sans unité. */
-const SAILING_TICK = { fill: 'var(--ink)', fontSize: 11, fontWeight: 700 };
-/** Axe de la vitesse : la largeur garde le tracé où le posaient la marge de −25 et l'axe de 60 px. */
-const SPEED_AXES: TrackYAxis[] = [{ color: SAILING_SPEED_COLOR, domain: [0, 'auto'], width: 35, tick: SAILING_TICK }];
-const SPEED_SERIES: TrackSeries<{ vitesse: number }>[] = [
-  { kind: 'line', key: 'vitesse', name: 'vitesse', color: SAILING_SPEED_COLOR, width: 2, activeDotR: 4 },
-];
-/** Axe du vent, en degrés : la largeur garde le tracé où le posaient la marge de −20 et l'axe de 60 px. */
-const WIND_AXES: TrackYAxis[] = [{
-  color: WIND_COLOR, domain: ['dataMin - 15', 'dataMax + 15'], width: 40, tick: SAILING_TICK,
-  tickFormatter: (val: number) => `${normalizeDeg(Math.round(val))}°`,
-}];
-const WIND_SERIES: TrackSeries<WindGraphPoint>[] = [
-  { kind: 'line', key: 'angle', name: 'angle', color: WIND_COLOR, width: 2, activeDotR: 6, dot: maneuverDot },
-];
-/** Axe de la VMG, de part et d'autre de zéro : le trait à 0 (`ifOverflow="extendDomain"`) le garde dans l'axe. */
-const VMG_AXES: TrackYAxis[] = [{ color: VMG_COLOR, domain: ['auto', 'auto'], width: 40, tick: SAILING_TICK, tickFormatter: commaDecimal }];
-const VMG_SERIES: TrackSeries<VmgGraphPoint>[] = [
-  { kind: 'line', key: 'vmg', name: 'VMG', color: VMG_COLOR, width: 2, activeDotR: 4, dot: vmgAloneDot },
-];
 
 function SailingModule() {
   /** Réglages de l'activité de voile, lus une fois ici et passés à `useSailingSession`. */
@@ -246,11 +170,6 @@ function SailingModule() {
   /** Seuil saisi en nœuds, montré tel quel en nœuds, sinon converti. */
   // Arrondi au dixième : un seuil mis à l'échelle de l'allure sort en 7,999999… nœuds.
   const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(roundTo(kn, 1)) : showKn(kn));
-  // Polaire dans l'unité ; en nœuds, celle du hook telle quelle.
-  const polarGraphShown = useMemo(
-    () => (speedUnit === 'kn' ? polarGraphData : polarGraphData.map((p) => ({ ...p, vitesse: knotsToChartValue(p.vitesse, speedUnit) }))),
-    [polarGraphData, speedUnit]
-  );
 
   useEffect(() => {
     loadTrack.current = loadGpxContent;
@@ -309,16 +228,6 @@ function SailingModule() {
    * graphe se réduit à son titre ; sa taille mémorisée l'attend.
    */
   const graphFolds = useOpenSections('sailing-graphes', SAILING_GRAPH_FOLDS_DEFAULT);
-  const graphTitle = (key: SailingGraphFold, label: string, read?: (index: number) => Readout | null) => (
-    <GraphFoldHead label={label} color={SAILING_GRAPH_COLORS[key]} open={graphFolds.open[key]} onToggle={() => graphFolds.toggle(key)} read={read}
-      title={graphFolds.open[key] ? 'Replier ce graphe' : 'Montrer ce graphe'}
-      style={{ justifyContent: read === undefined ? 'center' : undefined, marginBottom: '10px' }} />
-  );
-  const foldedGraph = (key: SailingGraphFold, label: string, widthPx: number) => (
-    <div style={{ flex: 'none', width: `${widthPx}px`, maxWidth: '100%', boxSizing: 'border-box', border: '1px dashed var(--line-strong)', padding: '10px 10px 0', backgroundColor: 'var(--surface)' }}>
-      {graphTitle(key, label)}
-    </div>
-  );
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
   // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché : une capture entière pèse plusieurs Mo.
   const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && (open.vols || open.pumping));
@@ -379,9 +288,19 @@ function SailingModule() {
   const [allManeuversOpen, setAllManeuversOpen] = useState<Record<'tack' | 'jibe', boolean>>({ tack: false, jibe: false });
   /** Genre montré dans le tableau par amure (note 135) : virements ou empannages. */
   const [tackTableType, setTackTableType] = useState<'tack' | 'jibe'>('tack');
-  /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
-  const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
-  const windHelpOpen = useHelp('voile:vent')?.open ?? false;
+  /** Vues et cases de la carte de l'onglet « manœuvres », tenues ici : la carte les lit, et l'onglet rouvert les retrouve. */
+  const maneuversView: ManeuversView = {
+    details: showManeuverDetails, setDetails: setShowManeuverDetails, tackType: tackTableType, setTackType: setTackTableType,
+    listOpen: allManeuversOpen, setListOpen: setAllManeuversOpen,
+  };
+  const maneuversOnMap: ManeuversOnMap = {
+    tack: showTacksOnMap, jibe: showJibesOnMap, undecided: showUndecidedOnMap,
+    toggle: (type) => {
+      if (type === 'tack') setShowTacksOnMap(!showTacksOnMap);
+      else if (type === 'jibe') setShowJibesOnMap(!showJibesOnMap);
+      else setShowUndecidedOnMap(!showUndecidedOnMap);
+    },
+  };
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -529,51 +448,11 @@ function SailingModule() {
    */
   const timeChart = useTimeChartAxis(trackData, sessionKey);
   const { minutes: trackMinutes, zoom: chartZoom, cardioZoom } = timeChart;
-  /**
-   * Points de trace des graphes sur une plage, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. Lus dans
-   * les blocs qui suivent le zoom (`ZoomView`), chacun gardé pour la dernière plage (`lastByRange`) : « graphiques »,
-   * « vent » et la carte en plein écran lisent les mêmes lignes sans les refaire, et zoomer ne redessine pas le module.
-   */
-  const speedSeries = useMemo(() => trackData.map((p) => p.smoothedSpeed), [trackData]);
-  const visibleRangeAt = useMemo(
-    () => lastByRange((view) => (trackData.length === 0 ? null : visibleIndexRange(trackMinutes, view))),
-    [trackData, trackMinutes]
-  );
-  /** Lignes de la vitesse et de la FC : les extrêmes de l'une et de l'autre restent (un pic bref de FC aussi). */
-  const chartIndicesAt = useMemo(() => lastByRange((view): number[] => {
-    const visibleRange = visibleRangeAt(view);
-    if (!visibleRange) return [];
-    return sampledIndicesKeeping(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, heart.present ? [speedSeries, heart.smoothed] : [speedSeries]);
-  }), [visibleRangeAt, speedSeries, heart]);
-  /** Lignes du vent : ses points suivent la vitesse seule. */
-  const windIndicesAt = useMemo(() => lastByRange((view): number[] => {
-    const visibleRange = visibleRangeAt(view);
-    return visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, speedSeries) : [];
-  }), [visibleRangeAt, speedSeries]);
-  const speedRowsAt = useMemo(
-    () => lastByRange((view) => chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) }))),
-    [chartIndicesAt, trackMinutes, trackData, speedUnit]
-  );
-  const heartRowsAt = useMemo(
-    () => lastByRange((view) => (heart.present
-      ? chartIndicesAt(view).map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) }))
-      : [])),
-    [heart, chartIndicesAt, trackMinutes]
-  );
-  const windRowsAt = useMemo(
-    () => lastByRange((view) => (windStats ? windChartRows(trackData, windStats, windIndicesAt(view)) : [])),
-    [windStats, trackData, windIndicesAt]
-  );
-  /** Trous de la VMG que le trait franchit : ceux des rotations ; un arrêt reste un trou (`vmgBridgedHoles`). */
-  const vmgBridged = useMemo(() => vmgBridgedHoles(vmgSeries, vmgManeuverSpans(maneuverStats?.locations ?? [])), [vmgSeries, maneuverStats]);
-  /** Lignes de la VMG : ses points suivent sa propre courbe, ses extrêmes restent (`vmgChartRows`). */
-  const vmgRowsAt = useMemo(() => lastByRange((view) => {
-    const visibleRange = visibleRangeAt(view);
-    const indices = visibleRange ? sampledIndices(visibleRange[0], visibleRange[1], CHART_MAX_POINTS, vmgSeries) : [];
-    return vmgChartRows(vmgSeries, trackMinutes, indices, (kn) => knotsToChartValue(kn, speedUnit), vmgBridged);
-  }), [visibleRangeAt, vmgSeries, trackMinutes, speedUnit, vmgBridged]);
-  /** La courbe de VMG a au moins une valeur sur la session ; sinon, une phrase à sa place. */
-  const vmgChartShown = useMemo(() => vmgSeries.some((v) => v !== null), [vmgSeries]);
+  const { timeX } = timeChart;
+  /** Lignes des graphes à la plage du zoom (`useSailingChartRows`), et lectures du point survolé. */
+  const chartRows = useSailingChartRows({ trackData, timeChart, heart, windStats, vmgSeries, maneuverStats, speedUnit });
+  const { vmgChartShown } = chartRows;
+  const chartReaders = sailingChartReaders({ trackData, timeChart, heart, windStats, vmgSeries, speedUnit });
   /**
    * La courbe de FC a des lignes, quelle que soit la plage : avec la FC et au moins deux points, la plage zoomée en
    * garde toujours deux (`visibleIndexRange` prend un voisin de chaque côté). Lu hors des blocs du zoom.
@@ -581,6 +460,8 @@ function SailingModule() {
   const heartChartShown = heart.present && trackData.length > 1;
   /** Traits des repères sur les graphes, en minutes depuis le premier point. */
   const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
+  /** Les mêmes, sur l'axe de la FC. */
+  const hrMarkLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr');
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
@@ -601,126 +482,11 @@ function SailingModule() {
   const retainSessionHrMax = useCallback((bpm: number) => retainHr('hrMax', bpm, { kind: 'seance', atMs: firstMs }), [retainHr, firstMs]);
   const { show: showZoomOnMap } = zoomOnMap;
   const showCardioOnMap = useCallback(() => showZoomOnMap('cardio'), [showZoomOnMap]);
-  /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent (`HoverReadout`), s'il est dans la plage zoomée `z`. */
-  const readAt = timeChart.readAt;
-  const readSpeed = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i)
-    ? speedReadout(`${showKn(trackData[i].smoothedSpeed)} ${speedSymbol}`, readAt(i), SAILING_SPEED_COLOR)
-    : null);
-  const readHeart = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
-  const windReadout = (z: ChartZoom) => (i: number): Readout | null => {
-    if (!timeChart.readable(z, i) || !windStats) return null;
-    const direction = windStats.windAt(trackData[i].timeMs);
-    return { values: [{ text: direction === null ? '—' : `${normalizeDeg(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
-  };
-  /** VMG du point survolé : la valeur, et de quel côté du vent. */
-  const readVmg = (z: ChartZoom) => (i: number): Readout | null => {
-    if (!timeChart.readable(z, i)) return null;
-    const vmg = vmgSeries[i] ?? null;
-    return {
-      values: [{ text: vmg === null ? '—' : `${vmg < 0 ? 'portant' : 'près'} ${showKn(Math.abs(vmg))} ${speedSymbol}`, color: VMG_COLOR }],
-      at: readAt(i),
-    };
-  };
   const zoomText = zoomHint(narrow);
-
-  /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
-  const speedChart = (z: ChartZoom, style: CSSProperties) => (
-    <TrackChart rows={speedRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={SPEED_AXES} series={SPEED_SERIES} syncId={SAILING_SYNC_ID}
-      onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
-      {markLines}
-    </TrackChart>
-  );
-  /** Graphe du vent : dans l'onglet « vent », et sous la carte en plein écran. */
-  const windChart = (z: ChartZoom, style: CSSProperties) => (
-    <TrackChart rows={windRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={WIND_AXES} series={WIND_SERIES}
-      onShowOnMap={() => zoomOnMap.show('vent')} style={style}>
-      {markLines}
-    </TrackChart>
-  );
-  /** Graphe de la VMG : dans l'onglet « vmg », et sous la carte en plein écran. */
-  const vmgChart = (z: ChartZoom, style: CSSProperties) => (
-    <TrackChart rows={vmgRowsAt(z.view)} zoom={z} x={timeChart.timeX} yAxes={VMG_AXES} series={VMG_SERIES}
-      onShowOnMap={() => zoomOnMap.show('vmg')} style={style}>
-      <ReferenceLine y={0} stroke="var(--ink)" strokeWidth={1} ifOverflow="extendDomain" />
-      {markLines}
-    </TrackChart>
-  );
-  /** Courbe de FC de « graphiques », sur le temps de la session ; ses boutons de zoom quand la vitesse est repliée. */
-  const heartChart = (z: ChartZoom, style: CSSProperties) => (
-    <HeartRateChart data={heartRowsAt(z.view)} zoom={z} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      syncId={SAILING_SYNC_ID} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
-      {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
-    </HeartRateChart>
-  );
-  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
-  const companionCharts = (panel: SailingTab | null): ReactNode => {
-    switch (panel) {
-      case 'graphiques':
-        return (
-          <ZoomView zoom={chartZoom}>
-            {(z) => (
-              <>
-                {graphFolds.open.vitesse && (
-                  <>
-                    <HoverReadout line read={readSpeed(z)} label="Vitesse" color={SAILING_SPEED_COLOR} />
-                    {speedChart(z, COMPANION_CHART_STYLE)}
-                  </>
-                )}
-                {heartChartShown && graphFolds.open.fc && (
-                  <>
-                    <HoverReadout line read={readHeart(z)} label="FC" color={HEART_RATE_COLOR} />
-                    {heartChart(z, COMPANION_CHART_STYLE)}
-                  </>
-                )}
-              </>
-            )}
-          </ZoomView>
-        );
-      case 'vent':
-        return windStats ? (
-          <ZoomView zoom={chartZoom}>
-            {(z) => (
-              <>
-                <HoverReadout line read={windReadout(z)} label="Vent" color={WIND_COLOR} />
-                {windChart(z, COMPANION_CHART_STYLE)}
-              </>
-            )}
-          </ZoomView>
-        ) : null;
-      case 'vmg':
-        return vmgChartShown ? (
-          <ZoomView zoom={chartZoom}>
-            {(z) => (
-              <>
-                <HoverReadout line read={readVmg(z)} label="VMG" color={VMG_COLOR} />
-                {vmgChart(z, COMPANION_CHART_STYLE)}
-              </>
-            )}
-          </ZoomView>
-        ) : null;
-      case 'cardio':
-        return <CardioCompanion minutes={trackMinutes} heart={heart} zoom={cardioZoom} zones={hrZones} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />;
-      default:
-        return null;
-    }
-  };
-
-  /** Podium de VMG (près, portant) : les tops de vitesse passent par `TopsPanel`. */
-  const renderTop3 = (panel: 'vmg', title: string, topKey: string, values: Pick<TopSegment, 'val' | 'path'>[]) => (
-    <div className="an-vmg-top">
-      <div className="an-vmg-top__head">
-        <strong>{title}</strong>
-        <MapToggle
-          shown={selectedTopMap === topKey} color="var(--voile)" labels={['Voir (Carte)', 'Masquer (Carte)']}
-          onClick={() => highlight.show(panel, selectedTopMap === topKey ? null : topKey)} />
-      </div>
-      <div className="an-vmg-top__ranks">
-        {PODIUM_RANKS.map((rank, idx) => (
-          <span key={rank} style={{ color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank}: {values[idx] ? showKn(values[idx].val) : '-'}</span>
-        ))}
-      </div>
-    </div>
-  );
+  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone), si l'onglet en a. */
+  const companionPanel = zoomOnMap.companionPanel;
+  const companionShown = companionPanel === 'graphiques' || companionPanel === 'cardio'
+    || (companionPanel === 'vent' && windStats !== null) || (companionPanel === 'vmg' && vmgChartShown);
 
   /** Ouvre le réglage du vent sur la carte : en plein écran sur téléphone, la carte ramenée à l'écran sinon. */
   const startWindAdjust = () => {
@@ -752,327 +518,6 @@ function SailingModule() {
         : undefined}>
       {windInputRequired ? `Vent inconnu : ${what} par rapport à lui. Réglez-le sur la carte.` : otherwise}
     </EmptyTabPanel>
-  );
-
-  /** Panneaux VMG et manœuvres, parmi les onglets sous la carte. */
-  const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
-    <ResizablePanel id="sailing.carte.vmg" style={PANEL_BLOCK_STYLE}>
-      <PanelHeading label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} helpKey="voile:vmg" />
-      <HelpText helpKey="voile:vmg" note>
-        La VMG est la vitesse utile vers le vent, moyennée sur {VMG_WINDOW_S} s : sur la courbe, au-dessus de zéro au près, en dessous au portant.
-        Les manœuvres, le temps de la rotation, sont écartées des chiffres (moyennes, max, tops) comme de la courbe, qui les franchit d'un trait droit. Un arrêt ou un passage sous le seuil d'activité y laisse un trou. {zoomText}
-      </HelpText>
-      <table className="ui-table" style={{ textAlign: 'center' }}>
-        <thead>
-          <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
-            <th>Allure</th>
-            <th style={{ color: TACK_PORT_COLOR }}>Bâbord (Moy/Max)</th>
-            <th style={{ color: TACK_STARBOARD_COLOR }}>Tribord (Moy/Max)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="an-vmg-allure">Près</td>
-            <td>{showKn(v.upPort.avg)} / <strong>{showKn(v.upPort.max)}</strong></td>
-            <td>{showKn(v.upStbd.avg)} / <strong>{showKn(v.upStbd.max)}</strong></td>
-          </tr>
-          <tr>
-            <td className="an-vmg-allure">Portant</td>
-            <td>{showKn(v.downPort.avg)} / <strong>{showKn(v.downPort.max)}</strong></td>
-            <td>{showKn(v.downStbd.avg)} / <strong>{showKn(v.downStbd.max)}</strong></td>
-          </tr>
-        </tbody>
-      </table>
-      <div className="an-vmg-tops">
-        <div>
-          {renderTop3('vmg', "Tops Près (10s)", "vmgUpwind", v.topsUpwind)}
-        </div>
-        <div>
-          {renderTop3('vmg', "Tops Portant (10s)", "vmgDownwind", v.topsDownwind)}
-        </div>
-      </div>
-      {vmgChartShown ? (
-        <ResizablePanel id="sailing.graph.vmg" defaultHeight={250} minWidth={250} minHeight={180} style={{ marginTop: '10px', width: '100%', boxSizing: 'border-box', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-          {/* Le graphe seul suit le zoom : ni le tableau ni les podiums ne se redessinent. */}
-          <ZoomView zoom={chartZoom}>
-            {(z) => (
-              <>
-                <div className="chart-head" style={{ marginBottom: '10px' }}>
-                  <HoverReadout read={readVmg(z)} label="VMG" color={VMG_COLOR} />
-                </div>
-                <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                  {vmgChart(z, FILL_STYLE)}
-                </div>
-              </>
-            )}
-          </ZoomView>
-        </ResizablePanel>
-      ) : (
-        <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
-          Pas de courbe : aucun passage de {VMG_WINDOW_S} s au-dessus du seuil d'activité, hors des manœuvres.
-        </p>
-      )}
-    </ResizablePanel>
-  );
-
-  const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
-    <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, ...(showManeuverDetails ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={toggleOf('manoeuvres')} helpKey="voile:manoeuvres" />
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>ratée si moins de {showThreshold(activeThresholdKn)} {speedSymbol} pendant au moins {MANEUVER_LOST_FLIGHT_S} s</span>
-      </div>
-
-      <div className="an-man-scroll">
-      <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
-        <thead>
-          <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-            <th style={{ textAlign: 'left' }}>Type</th>
-            <th>Réussis</th>
-            <th>Ratés</th>
-            <th title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. ({speedSymbol})</th>
-            <th title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max ({speedSymbol})</th>
-            <th style={{ padding: '7px 10px' }}>Carte</th>
-          </tr>
-        </thead>
-        <tbody>
-          {([
-            ['Virements', maneuverSummary.tack, showTacksOnMap, () => setShowTacksOnMap(!showTacksOnMap), undefined],
-            ['Empannages', maneuverSummary.jibe, showJibesOnMap, () => setShowJibesOnMap(!showJibesOnMap), undefined],
-            // Virages vus en un seul pas de la trace (lot 44) : la ligne n'apparaît que s'il y en a.
-            ...(maneuverSummary.undecided
-              ? [['Sens incertain', maneuverSummary.undecided, showUndecidedOnMap, () => setShowUndecidedOnMap(!showUndecidedOnMap),
-                'Virage vu en un seul pas de la trace : on connaît le cap avant et après, pas le côté par lequel il est passé. Compté, ni virement ni empannage, et hors du vent.'] as const]
-              : []),
-          ] as const).map(([label, summary, shown, toggle, hint]) => (
-            <tr key={label} className="ui-table__row">
-              <td style={{ fontWeight: 700 }} title={hint}>{label}</td>
-              <td style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
-              <td style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
-              <td style={{ textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
-              <td style={{ textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
-              <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                <MapToggle shown={shown} color="var(--voile)" title={`Afficher les ${hint ? 'manœuvres de sens incertain' : label.toLowerCase()} sur la carte`} onClick={toggle}
-                  style={{ padding: '3px 10px', border: 'none' }} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-
-      {/* Vent saisi loin du vent calculé fiable (C1-3, lot 149) : les virages tombent en « sens incertain », on le dit. */}
-      {windWarning && (
-        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--warning-soft)', borderLeft: '3px solid var(--warning-line)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
-          Le vent saisi ({formatDecimal(windWarning.manualDeg, 0)}°) écarte <strong>{windWarning.unclassified}</strong> virage{windWarning.unclassified > 1 ? 's' : ''}, ni virement ni empannage ; le vent calculé est à {formatDecimal(windWarning.autoDeg, 0)}°. Vérifier la direction.
-        </p>
-      )}
-
-      {/* Par amure (note 135, 04/11) : virements ou empannages selon l'amure d'avant la manœuvre, médianes. */}
-      {(maneuverSummary.tack || maneuverSummary.jibe) && (
-        <div className="an-man-scroll" style={{ marginBottom: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
-            <strong className="ui-subtitle">Par amure</strong>
-            <SegmentedControl<'tack' | 'jibe'> label="Manœuvres par amure" accent="var(--voile)" value={tackTableType} onChange={setTackTableType}
-              items={[{ key: 'tack', label: 'Virements' }, { key: 'jibe', label: 'Empannages' }]} />
-          </div>
-          <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                <th style={{ textAlign: 'left' }} title="Amure avant la manœuvre : d'où vient le vent">Amure</th>
-                <th title="Manœuvres réussies sur le total de cette amure">Réussis</th>
-                <th title="Vitesse minimale pendant la manœuvre, médiane sur cette amure">Vmin méd. ({speedSymbol})</th>
-                <th title="Vitesse minimale sur vitesse d'approche, médiane sur cette amure">Conservation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(['starboard', 'port'] as const).map((tack) => {
-                const onTack = maneuverSummary.byTack[tackTableType][tack];
-                return (
-                  <tr key={tack} className="ui-table__row">
-                    <td style={{ fontWeight: 700 }}>{TACK_LABELS[tack]}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      {onTack ? <><span style={{ color: 'var(--success)', fontWeight: 700 }}>{onTack.success}</span>{` / ${onTack.count}`}</> : '-'}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>{onTack ? showKn(onTack.vminMedian) : '-'}</td>
-                    <td style={{ textAlign: 'center' }}>{onTack ? formatMetric('conservation', onTack.conservationMedian) : '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {maneuverHelpOpen && (<>
-      <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
-        <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? formatDecimal(samplingS, 1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol}, d'après l'allure de la session.
-        {samplingS > 10 && (
-          <>
-            {' '}Cadence économique : les manœuvres se lisent encore, mais leur qualité
-            (Vmin, relance) et les tops courts reposent sur des moyennes de plusieurs
-            dizaines de secondes.
-          </>
-        )}
-      </p>
-
-      {(m.rejected.unclassified > 0 ||
-        m.rejected.slowEntry > 0 ||
-        m.rejected.incoherent > 0 ||
-        m.rejected.still > 0 ||
-        m.rejected.tooShort > 0 ||
-        m.rejected.noFlight > 0 ||
-        m.rejected.fullTurn > 0) && (
-        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
-          <strong>{m.locations.length} virage{m.locations.length > 1 ? 's' : ''} retenu{m.locations.length > 1 ? 's' : ''}</strong>, et d'autres écartés en chemin :
-          {m.rejected.noFlight > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.noFlight}</strong> demi-tour{m.rejected.noFlight > 1 ? 's' : ''} hors {foil ? 'vol' : 'navigation'} : entamé{m.rejected.noFlight > 1 ? 's' : ''} sous le seuil {foil ? 'de vol' : 'de navigation'}, ni réussi{m.rejected.noFlight > 1 ? 's' : ''} ni raté{m.rejected.noFlight > 1 ? 's' : ''}.
-            </>
-          )}
-          {m.rejected.fullTurn > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.fullTurn}</strong> tour{m.rejected.fullTurn > 1 ? 's' : ''} complet{m.rejected.fullTurn > 1 ? 's' : ''}, non compté{m.rejected.fullTurn > 1 ? 's' : ''}.
-            </>
-          )}
-          {m.rejected.unclassified > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.unclassified}</strong> franc{m.rejected.unclassified > 1 ? 's' : ''} et net{m.rejected.unclassified > 1 ? 's' : ''}, mais sans changer d'amures ou ni face au vent ni au vent arrière : ce sont des abattées ou des remontées — ou le vent retenu est faux, ce qui range tous les demi-tours au travers.
-            </>
-          )}
-          {m.rejected.slowEntry > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.slowEntry}</strong> entamé{m.rejected.slowEntry > 1 ? 's' : ''} trop lentement (moins de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol} à l'entrée).
-            </>
-          )}
-          {m.rejected.incoherent > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.incoherent}</strong> dont le cap partait dans tous les sens : chute ou hésitation.
-            </>
-          )}
-          {m.rejected.still > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.still}</strong> lu{m.rejected.still > 1 ? 's' : ''} planche arrêtée, avant ou après le virage : à l'arrêt le cap n'est que du bruit de position.
-            </>
-          )}
-          {m.rejected.tooShort > 0 && (
-            <>
-              <br />
-              <strong>{m.rejected.tooShort}</strong> sur place (moins de 10 m parcourus : à cette distance le cap n'est que du bruit de position) ou entamé{m.rejected.tooShort > 1 ? 's' : ''} dans les dernières secondes de la trace.
-            </>
-          )}
-        </p>
-      )}
-      {showManeuverDetails && (
-        <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 'var(--text-xs)', lineHeight: 1.45 }}>
-          Survolez une ligne pour la définition, une case du podium pour l'heure de la manœuvre. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap (virements seulement) et distance les plus faibles, gain au vent le plus grand ; à égalité, la meilleure conservation.
-        </p>
-      )}
-      </>)}
-
-      <SegmentedControl<'resume' | 'details'> label="Détails des manœuvres" accent="var(--voile)"
-        value={showManeuverDetails ? 'details' : 'resume'} onChange={(key) => setShowManeuverDetails(key === 'details')}
-        items={[{ key: 'resume', label: 'Résumé' }, { key: 'details', label: 'Détails' }]} />
-
-      {showManeuverDetails && (
-      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '12px' }}>
-        {([
-          ['tack', 'Virements', 'virements', maneuverSummary.tack],
-          ['jibe', 'Empannages', 'empannages', maneuverSummary.jibe],
-        ] as const).map(([type, title, noun, summary]) => {
-          const ofType = m.locations.filter((loc) => loc.type === type);
-          const listOpen = allManeuversOpen[type];
-          return (
-          <div key={type} className="an-man-detail" style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
-              <strong className="ui-subtitle">{title}</strong>
-              {summary ? (
-                <span style={{ fontSize: 'var(--text-s)' }}>
-                  <span style={{ color: 'var(--success)', fontWeight: 700 }}>{summary.success} réussi{summary.success > 1 ? 's' : ''}</span>
-                  {' · '}
-                  <span style={{ color: 'var(--danger)' }}>{summary.fail} raté{summary.fail > 1 ? 's' : ''}</span>
-                  {' · Vmin moy. '}{showKn(summary.vminAvg)}{` ${speedSymbol}, max `}<strong>{showKn(summary.vminMax)}</strong>{` ${speedSymbol}`}
-                </span>
-              ) : (
-                <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>aucun</span>
-              )}
-            </div>
-
-            {summary && (
-              <table className="an-man-podium" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-                <thead>
-                  <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--line)' }}>
-                    <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 'normal' }}>Métrique</th>
-                    <th style={{ padding: '3px 4px', fontWeight: 'normal' }}>Moyenne</th>
-                    {PODIUM_RANKS.map((rank, idx) => (
-                      <th key={rank} style={{ padding: '3px 4px', fontWeight: 'normal', color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank}</th>
-                    ))}
-                    <th style={{ padding: '3px 4px' }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {MANEUVER_METRICS.map((metric) => {
-                    const key = `${type}:${metric.key}`;
-                    const active = selectedManeuverTop === key;
-                    const tops = summary.tops[metric.key];
-                    const ranked = metric.ranked.includes(type);
-                    return (
-                      <tr key={metric.key} title={metric.hint} style={{ borderBottom: '1px solid var(--line-soft)', backgroundColor: active ? 'var(--voile-soft)' : 'transparent' }}>
-                        <td style={{ padding: '4px', textAlign: 'left' }}>{metric.label}</td>
-                        <td style={{ padding: '4px', textAlign: 'center', fontWeight: 700 }}>
-                          {summary.averages[metric.key]}
-                          {metric.key === 'relaunch' && summary.withoutRelaunch > 0 && (
-                            <span style={{ display: 'block', fontWeight: 'normal', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
-                              {summary.withoutRelaunch} sans relance
-                            </span>
-                          )}
-                        </td>
-                        {[0, 1, 2].map((rank) => (
-                          <td key={rank} title={tops[rank] ? formatTimeOfDay(tops[rank].timeMs) : undefined} style={{ padding: '4px', textAlign: 'center' }}>
-                            {ranked ? tops[rank]?.label ?? '-' : '—'}
-                          </td>
-                        ))}
-                        <td style={{ padding: '2px 4px', textAlign: 'right' }}>
-                          <MapToggle
-                            shown={active} color="var(--voile)" labels={['Carte', 'Masquer']} disabled={tops.length === 0}
-                            onClick={() => highlight.show('manoeuvres', active ? null : key)}
-                            style={{ padding: '2px 7px', opacity: tops.length === 0 ? 0.5 : 1 }} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {summary && ofType.length > 0 && (
-              <Button size="s" style={{ marginTop: '8px' }} aria-expanded={listOpen}
-                onClick={() => setAllManeuversOpen((prev) => ({ ...prev, [type]: !prev[type] }))}>
-                {listOpen ? `Replier les ${noun} ▲` : `Tous les ${noun} (${ofType.length}) ▼`}
-              </Button>
-            )}
-            {summary && listOpen && ofType.length > 0 && (
-              <ul style={{ margin: '8px 0 0', paddingLeft: '18px', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                {ofType.map((loc) => (
-                  <li key={loc.timeMs}>
-                    {formatTimeOfDay(loc.timeMs)}{' · '}
-                    <span style={{ color: loc.success ? 'var(--success)' : 'var(--danger)' }}>{loc.success ? 'réussi' : 'raté'}</span>
-                    {` · Vmin ${showKn(loc.vmin)} ${speedSymbol}`}
-                    {maneuverNotes(loc).map((note) => ` · ${note}`).join('')}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          );
-        })}
-      </div>
-      )}
-    </ResizablePanel>
   );
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
@@ -1128,7 +573,11 @@ function SailingModule() {
         defaultHeight: 480,
         expanded: mapExpanded,
         focus: zoomOnMap.focus,
-        companion: companionCharts(zoomOnMap.companionPanel),
+        companion: companionShown ? (
+          <SailingCompanionCharts panel={companionPanel} rows={chartRows} readers={chartReaders} chartZoom={chartZoom} timeX={timeX}
+            markLines={markLines} hrMarkLines={hrMarkLines} folds={graphFolds.open} heartChartShown={heartChartShown} windShown={windStats !== null}
+            zones={hrZones} minutes={trackMinutes} heart={heart} cardioZoom={cardioZoom} onShowOnMap={zoomOnMap.show} />
+        ) : null,
         onExpandedChange: (next) => {
           setMapExpanded(next);
           if (!next) zoomOnMap.closeCompanion();
@@ -1183,58 +632,19 @@ function SailingModule() {
             )}
 
             {open.manoeuvres && trackData.length > 0 && (maneuverStats
-              ? renderManeuversPanel(maneuverStats)
+              ? (
+                <ManeuversPanel stats={maneuverStats} summary={maneuverSummary} open={open.manoeuvres} onToggle={toggleOf('manoeuvres')}
+                  showKn={showKn} showThreshold={showThreshold} speedSymbol={speedSymbol} activeThresholdKn={activeThresholdKn} foil={foil}
+                  windWarning={windWarning} samplingS={samplingS} pointCount={pointCount} minEntrySpeedKn={maneuverThresholds.minEntrySpeedKn}
+                  notesOf={maneuverNotes} onMap={maneuversOnMap} selectedTop={highlight.shownIn('manoeuvres')}
+                  onSelectTop={(key) => highlight.show('manoeuvres', key)} view={maneuversView} />
+              )
               : renderEmptyPanel('manoeuvres', 'Manœuvres', 'virements et empannages se reconnaissent', 'Aucune manœuvre reconnue sur cette session.'))}
 
             {open.graphiques && (
-              <div style={{ ...PANEL_BLOCK_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ flex: '1 1 100%' }}>
-                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="voile:graphiques" />
-                  <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomText}</HelpText>
-                </div>
-
-                {graphFolds.open.vitesse ? (
-                <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  {/* Le graphe suit le zoom, pas le module ni la polaire (lot 127). */}
-                  <ZoomView zoom={chartZoom}>
-                    {(z) => (
-                      <>
-                        {graphTitle('vitesse', 'Historique de Vitesse', readSpeed(z))}
-                        <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                          {speedChart(z, FILL_STYLE)}
-                        </div>
-                      </>
-                    )}
-                  </ZoomView>
-                </ResizablePanel>
-                ) : foldedGraph('vitesse', 'Historique de Vitesse', 500)}
-
-                {heartChartShown && (
-                  graphFolds.open.fc ? (
-                  <ResizablePanel id="sailing.graph.fc" defaultHeight={250} minWidth={250} minHeight={160} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    <ZoomView zoom={chartZoom}>
-                      {(z) => (
-                        <>
-                          {graphTitle('fc', 'Fréquence cardiaque', readHeart(z))}
-                          <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                            {heartChart(z, FILL_STYLE)}
-                          </div>
-                        </>
-                      )}
-                    </ZoomView>
-                  </ResizablePanel>
-                  ) : foldedGraph('fc', 'Fréquence cardiaque', 500)
-                )}
-
-                {graphFolds.open.polaire ? (
-                <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  {graphTitle('polaire', 'Polaire de Vitesse (TWA)')}
-                  <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                    <SpeedPolarChart data={polarGraphShown} unitSymbol={speedSymbol} />
-                  </div>
-                </ResizablePanel>
-                ) : foldedGraph('polaire', 'Polaire de Vitesse (TWA)', 350)}
-              </div>
+              <SailingGraphsPanel open={open.graphiques} onToggle={toggleOf('graphiques')} folds={graphFolds} heartChartShown={heartChartShown}
+                chartZoom={chartZoom} rows={chartRows} readers={chartReaders} timeX={timeX} markLines={markLines} hrMarkLines={hrMarkLines} zones={hrZones}
+                onShowOnMap={() => zoomOnMap.show('graphiques')} polar={polarGraphData} speedUnit={speedUnit} zoomText={zoomText} />
             )}
 
             {open.cardio && heart.present && (
@@ -1245,7 +655,11 @@ function SailingModule() {
             )}
 
             {open.vmg && trackData.length > 0 && (vmgStats
-              ? renderVmgPanel(vmgStats)
+              ? (
+                <VmgPanel vmg={vmgStats} open={open.vmg} onToggle={toggleOf('vmg')} showKn={showKn} chartShown={vmgChartShown} chartZoom={chartZoom}
+                  rows={chartRows} readers={chartReaders} timeX={timeX} markLines={markLines} onShowOnMap={() => zoomOnMap.show('vmg')} zoomText={zoomText}
+                  selected={highlight.shownIn('vmg')} onSelect={(key) => highlight.show('vmg', key)} />
+              )
               : renderEmptyPanel('vmg', 'Analyse VMG', 'la VMG se mesure', 'Pas de VMG mesurable sur cette session.'))}
 
             {open.sauts && jumpsVisible && (
@@ -1313,53 +727,8 @@ function SailingModule() {
             {open.vent && trackData.length > 0 && !windStats && renderEmptyPanel('vent', 'Variations du Vent', 'ses variations se lisent aux manœuvres, qui se classent',
               'Il faut au moins deux manœuvres pour suivre le vent au fil de la session.')}
             {open.vent && windStats && (
-              <div style={{ ...PANEL_BLOCK_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
-                  <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <PanelTitle
-                      label="Variations du Vent"
-                      open={open.vent}
-                      onToggle={toggleOf('vent')}
-                      extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {plural(windStats.count, 'manœuvre')})</span>}
-                      helpKey="voile:vent" />
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
-                    <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
-                    <li><strong>Plage de variation :</strong> {windStats.range}° (de {windStats.minWind}° à {windStats.maxWind}°)</li>
-                    <li><strong>Régularité (écart-type circulaire) :</strong> ± {windStats.stdDev}° <em>(faible = vent laminaire, élevé = vent oscillant)</em></li>
-                    <li><strong>Tendance temporelle :</strong> {formatDecimal(Math.abs(windStats.slopePerHour), 1)}°/heure ({windStats.slopePerHour > 0 ? 'rotation droite / horaire' : 'rotation gauche / anti-horaire'})</li>
-                    <li style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
-                      {Math.round(windStats.stableShare * 100)}% des manœuvres ont des caps stabilisés avant et après : ce sont les mesures les plus nettes, mais toutes comptent.
-                    </li>
-                  </ul>
-                  {windHelpOpen && <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 'var(--text-xs)', lineHeight: '1.5' }}>
-                    Chaque virement et chaque empannage donne une lecture du vent local, sans exception. Une manœuvre
-                    symétrique, entrée et sortie au même angle du vent, place son milieu sur l'axe du vent et mesure
-                    juste ; entrer au largue pour ressortir au près décale ce milieu d'autant. Ce biais ne peut pas se
-                    corriger manœuvre par manœuvre, mais il change de signe d'une fois sur l'autre : les manœuvres les
-                    plus symétriques pèsent davantage dans la moyenne et l'écart-type, et l'ensemble compense. Entre
-                    deux manœuvres la courbe est interpolée ; avant la première et après la dernière, elle garde la
-                    valeur la plus proche. Elle s'interrompt au-delà de 30 minutes sans manœuvre. Sur le graphe, les
-                    points marquent les manœuvres : c'est là, et là seulement, que le vent est mesuré. Le graphe garde le
-                    même zoom que celui de la vitesse. {zoomText}
-                  </p>}
-                </div>
-
-                <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  <ZoomView zoom={chartZoom}>
-                    {(z) => (
-                      <>
-                        <div className="chart-head" style={{ marginBottom: '10px' }}>
-                          <HoverReadout read={windReadout(z)} label="Évolution du Vent" color={WIND_COLOR} />
-                        </div>
-                        <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
-                          {windChart(z, FILL_STYLE)}
-                        </div>
-                      </>
-                    )}
-                  </ZoomView>
-                </ResizablePanel>
-              </div>
+              <WindPanel windStats={windStats} open={open.vent} onToggle={toggleOf('vent')} chartZoom={chartZoom} rows={chartRows} readers={chartReaders}
+                timeX={timeX} markLines={markLines} onShowOnMap={() => zoomOnMap.show('vent')} zoomText={zoomText} />
             )}
 
             {open.matos && (
@@ -1370,57 +739,12 @@ function SailingModule() {
             )}
 
             {open.reglages && (
-              <ResizablePanel id="sailing.reglages" style={PANEL_BLOCK_STYLE}>
-                <SessionSettingsHeader helpKey="voile:reglages" open={open.reglages} onToggle={toggleOf('reglages')}>
-                  Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}.
-                </SessionSettingsHeader>
-                <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <SessionActivityField activities={allActivities} activity={activity} withPositions families={sessionFile ? undefined : ['voile']}
-                    onChange={(next) => changeSessionActivity(sessionFile, next)} />
-
-                  {hasActiveThreshold && (
-                    <div style={{ fontSize: 'var(--text-s)' }}>
-                      <SessionThresholdField
-                        label="Seuil d'activité"
-                        title="Seuil propre à cette session, enregistré avec elle. Sans lui, elle garde celui avec lequel elle a été calculée ; le changer dans Réglages recalcule les sessions de l'activité."
-                        value={activeThresholdKn}
-                        defaultValue={defaultActiveThresholdKn}
-                        isOverridden={edits.activeThreshold !== null}
-                        note={draftRecord && carriedThresholdNote(carriedSettings(draftRecord).threshold, deviceThresholdKn, (kn) => `${showThreshold(kn)} ${speedSymbol}`)}
-                        unit={speedUnit}
-                        thresholdUnit="kn"
-                        onChange={(next) => draft.update({ activeThreshold: next })} />
-                    </div>
-                  )}
-
-                  <FoilPumpingFields
-                    foilTitle="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages."
-                    foil={foil} foilIsDefault={edits.foil === null} onFoilChange={(next) => draft.update({ foil: next })}
-                    showPumping={foil && profile.pump !== null} pumping={pumping} pumpingIsDefault={edits.pumping === null}
-                    onPumpingChange={(next) => draft.update({ pumping: next === activityPumping ? null : next })} />
-
-                  {trackData.length > 0 && (
-                    <div style={{ fontSize: 'var(--text-s)' }}>
-                      <SessionThresholdField
-                        label="Allure de la session"
-                        title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
-                        value={referenceSpeedMs}
-                        isOverridden={edits.referenceSpeedMs !== null}
-                        unit={speedUnit}
-                        thresholdUnit="ms"
-                        hint="déduite de la trace"
-                        commit="blur"
-                        onChange={(next) => draft.update({ referenceSpeedMs: next })} />
-                    </div>
-                  )}
-                </div>
-                {trackData.length > 0 && (
-                  <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
-                    <SessionColorRangeField unit={speedUnit} range={colorRange} isOverridden={edits.speedRange !== null}
-                      onChange={(next) => draft.update({ speedRange: next })} />
-                  </div>
-                )}
-              </ResizablePanel>
+              <SailingSettingsPanel open={open.reglages} onToggle={toggleOf('reglages')} draft={draft} draftRecord={draftRecord} hasDeviceSpeed={hasDeviceSpeed}
+                activities={allActivities} activity={activity} sessionFile={sessionFile} onChangeActivity={(next) => changeSessionActivity(sessionFile, next)}
+                hasActiveThreshold={hasActiveThreshold} activeThresholdKn={activeThresholdKn} defaultActiveThresholdKn={defaultActiveThresholdKn}
+                deviceThresholdKn={deviceThresholdKn} foil={foil} activityPumping={activityPumping} pumping={pumping} showPumping={foil && profile.pump !== null}
+                hasTrack={trackData.length > 0} referenceSpeedMs={referenceSpeedMs} speedUnit={speedUnit} colorRange={colorRange}
+                showThreshold={showThreshold} speedSymbol={speedSymbol} />
             )}
           </>
         ),

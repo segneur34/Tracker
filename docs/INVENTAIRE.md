@@ -251,6 +251,7 @@ Dans `sailing/` aussi : `pointData.ts` (`PointData` et `trackToPointData`, vue e
 - `useGpxSession.ts` : ingestion générique, `loadGpxContent` (entrée unique), trace préparée de façon asynchrone par le worker (réponse périmée jetée, trace précédente gardée).
 - `useAnalysisSession.ts` : session d'une analyse, commune aux quatre modules (lecture, fichier affiché, brouillon, activités, changement d'activité ; voile : brouillon gardé sur la session demandée). `useAnalysisTabs.ts` : onglets, « avancé », masques, surbrillance et survol remis à zéro, `toggleOf` stable (points 203 et 204). `useAnalysisHeart.ts` : FC de l'analyse et surbrillance d'une zone. `useExclusiveToggles.ts`, `useNearViewport.ts`, `useTransientValue.ts` : petits états communs aux pages (point 205).
 - `useSailingSession.ts` : orchestration de la voile ; c'est ici que les seuils s'accordent à l'allure (règle 4) ; rend aussi les vols (`flights`) et le pumping de l'activité (`activityPumping`).
+- `useSailingChartRows.ts` : lignes des graphes de la voile (vitesse, FC, vent, VMG) à la plage du zoom, chacune gardée pour la dernière plage (`lastByRange`) ; les lectures du point survolé sont dans `sailingChartReaders` (`components/sailing/sailingChartParts.tsx`), un hook ne lisant pas les composants.
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant (liens, retour d'Android, fermeture, retour arrière du navigateur par une entrée d'historique « garde », `createHistoryGuard`).
 - `useLibraryNavigation.test.ts` : la session demandée par l'adresse et l'attente de sa trace (point 195).
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39 ; rend aussi `requested`, la session demandée, et `reading`, lecture en cours ; abandon au départ : `gpxLoadAction`, `sessionReading`, point 274), `useChangeSessionActivity` (changement d'activité depuis une analyse, vers l'autre module s'il le faut).
@@ -340,6 +341,16 @@ Dans `sailing/` aussi : `pointData.ts` (`PointData` et `trackToPointData`, vue e
 - `test/sailing.fixture.ts` : générateur de session de voile réaliste (bruit, cadence, silences), `buildLegSession`, `gpxOf`, `sailTrack`, et `analyzeSailing` qui appelle `analyzeSailingSession` (lots 149 et 159).
 - `test/library.fixture.ts` : aide commune des tests de la bibliothèque (`settle`, `gpxAt`). `test/gpx/corpus.ts` : 19 GPX au format de chaque éditeur et 8 illisibles. `test/gpxParser.legacy.ts` : copie gelée du lecteur GPX (ne pas modifier), contre laquelle `core/gpxParser.corpus.test.ts` vérifie l'égalité nombre à nombre (lot 159 A).
 - `test/*.fixture.ts` : traces et décors communs des tests (lot 75). `geo` : mètres par degré, `ORIGIN`, `at`, `T0`, `fixesAlong`. `track` : `eastwardTrack`, `phasesTrack`, `headingTrack`. `record` : `sessionRecord`, `statSession`. `memoryFolder` : `createFakeFolder`, `fakeEntries` (faux dossier mémoire).
+
+### `components/sailing/` : pièces de l'analyse voile, un composant par onglet
+
+Propres à la voile (les pièces partagées restent dans `components/` à plat) ; tous les états restent dans `pages/SailingModule.tsx`, qui garde « général », la carte et les onglets.
+
+- `sailing/sailingChartParts.tsx` : couleurs, axes et séries des graphes de la voile, points des manœuvres sur la courbe du vent, `sailingChartReaders` (lectures du point survolé) ; aucun composant.
+- `sailing/SailingCharts.tsx` : graphes de vitesse, de FC, du vent et de la VMG, et `SailingCompanionCharts`, ceux de l'onglet d'où vient « +carte » sous la carte en plein écran.
+- `sailing/ManeuversPanel.tsx` : onglet « manœuvres » (tableau, par amure, explications sous le « ? », « Détails » : podiums et liste de toutes les manœuvres) ; vues et cases de la carte tenues par le module.
+- `sailing/VmgPanel.tsx`, `sailing/WindPanel.tsx`, `sailing/SailingGraphsPanel.tsx`, `sailing/SailingSettingsPanel.tsx` : onglets « vmg », « vent », « graphiques » (vitesse, FC, polaire, repliables à part) et « réglages ».
+- `sailing/sailingPanelIds.test.ts` : les `id` des panneaux de la voile, clé de leur taille mémorisée, figurent chacun une fois.
 
 ## Racine de `src/`
 

@@ -69,7 +69,23 @@ await settle({ max: 5000 });
 
 console.log('résultat :', await snapshot());
 const texte = (await evaluate('document.body.innerText')) ?? '';
-if (process.env.DUMP) writeFileSync(process.env.DUMP, texte);
+// Vues des manœuvres tenues par le module (« Détails », genre du tableau par amure, liste de tous les virements) :
+// rendues telles quelles quand l'onglet se ferme puis se rouvre. Relevées à part, après le texte des verdicts.
+const choisir = (groupe, text) => evaluate(`(() => { const g = document.querySelector('[role=radiogroup][aria-label=${JSON.stringify(groupe)}]'); const b = g && [...g.querySelectorAll('button[role=radio]')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
+const onglet = (cle) => evaluate(`(() => { const b = document.querySelector('.an-tabs [data-tab=${JSON.stringify(cle)}]'); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
+console.log('manœuvres, Détails :', await choisir('Détails des manœuvres', 'Détails'));
+await settle({ max: 1000 });
+console.log('par amure, Empannages :', await choisir('Manœuvres par amure', 'Empannages'));
+await settle({ max: 1000 });
+console.log('Tous les virements :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.startsWith('Tous les virements')); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await settle({ max: 1000 });
+console.log('onglet manœuvres fermé :', await onglet('manoeuvres'));
+await settle({ max: 1000 });
+console.log('onglet manœuvres rouvert :', await onglet('manoeuvres'));
+await settle({ max: 2000 });
+const texteDetails = (await evaluate('document.body.innerText')) ?? '';
+const titreDetails = '===== manœuvres rouvertes : Détails, empannages par amure, tous les virements =====';
+if (process.env.DUMP) writeFileSync(process.env.DUMP, [texte, titreDetails, texteDetails].join('\n'));
 if (SHOT) {
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(SHOT, Buffer.from(shot.result.data, 'base64'));
@@ -100,4 +116,8 @@ check('par amure : conservation 43 % (3/7) des deux bords', /^Tribord\t0 \/ 6\t5
 // Vent du nord : bords de près à 45° et 315°, de portant à 135° et 225°.
 const vent = Number(texte.match(/^Vent (\d+)°$/m)?.[1]);
 check('vent du nord : entre 350° et 10°', Number.isFinite(vent) && (vent >= 350 || vent <= 10), texte.match(/^Vent [^\n]*/m)?.[0]);
+// Onglet fermé puis rouvert : « Détails », le tableau par amure sur les empannages (Vmin 11,7 nds) et la liste des virements restent.
+check('manœuvres rouvertes : détails, empannages par amure et liste des virements gardés',
+  /replier les virements/i.test(texteDetails) && /^(Tribord|Bâbord)\t\d+ \/ \d+\t11,7\t/m.test(texteDetails),
+  texteDetails.match(/^(Tribord|Bâbord)\t[^\n]*/gm)?.join(' | '));
 await finish();

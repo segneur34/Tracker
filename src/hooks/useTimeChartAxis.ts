@@ -45,3 +45,6 @@ export function useTimeChartAxis(track: ReadonlyArray<{ timeMs: number }>, sessi
     [minutes, fullRange, zoom, cardioZoom, timeX, readable, readAt]
   );
 }
+
+/** Axe du temps d'une session, tel que le rend `useTimeChartAxis` : passé aux pièces qui lisent ses graphes. */
+export type TimeChartAxis = ReturnType<typeof useTimeChartAxis>;
