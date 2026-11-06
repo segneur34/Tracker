@@ -430,6 +430,7 @@ Onglets des analyses (lot 145, 05/11) : l'application ne retient plus les onglet
 
 Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à compléter ; pas des défauts du code. Lot 91 (31/10) : `test-fcmax`, `marche`, `glisser`, `satellite`, `partage`, `reglages-aide`, `onglets`, `library`, `library3`, `prereglages`, `brouillon-voile` et `recherche-sans-reponse` remis d'aplomb ; `test-fcrepos` passe depuis le lot 107 (31/10, courbe du test gardé corrigée dans l'application).
 
+- `barre.mjs` et `miseajour.mjs` (vu le 06/11, sans rapport avec les lots du paquet, identiques avant et après) : `barre` échoue sur « course : barre visible, flèche en fin de rangée », `miseajour` s’arrête sur une erreur (code 1) au bout de 4 s.
 - `planning.mjs` attend la fin de « Calcul du tracé… » avant « Enregistrer » (bouton grisé pendant le calcul).
 - `fractionne.mjs` en rejeu temps réel donne des vitesses de répétitions qui bougent de 0,1 km/h d'un passage à l'autre (analyse déterministe identique nombre à nombre) : pas un écart.
 - Écarts admis depuis le lot 8 (performances) : dernière graduation de cap 242° au lieu de 241° (extrême gardé par la décimation) ; une mention « © OpenStreetMap » de moins quand la carte est agrandie (la carte compacte, cachée dessous, ne dessine plus ses couches).
