@@ -1430,3 +1430,28 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : Course, Marche, Route, Gravel et les activités créées sur ces calculs partent sans l'onglet « sauts » ; le VTT, qui mesure les sauts d'office, le garde. Les choix d'onglets déjà rangés ne sont pas effacés : la mise à jour des pré-réglages (`PRESETS_VERSION` 5) y ajoute seulement « sauts » décoché, sauf s'ils en parlent déjà ou si la case « Mesurer les sauts » de l'activité est cochée. Q59 et Q60 closes : les vols du 21/10 et du 29/10 ne s'affichent pas parce que ces captures ne mesurent pas les sauts (la course du 31/10 montre bien son seul saut) ; les 47 % de Q60 sont jugés probables mais ne portent que sur 102 s de vol.
     - **Pourquoi** : l'onglet vide encombrait la barre de ceux qui ne mesurent pas les sauts ; la règle de l'utilisateur vaut pour tout ce qui est à terre.
     - **Piège** : `PRESET_RESETS` efface des réglages entiers, ce qui aurait perdu les autres choix d'onglets déjà faits ; d'où une étape à part qui ne touche que la clé « sauts ».
+
+297. Tableau des répétitions du fractionné sur téléphone (lot 181, validé le 06/11).
+    - **Décision** : le mot « cadence » n'est plus affiché, « pas/min » suffit ; lancé, maintien, FC, récup., cadence et pas passent à la ligne s'ils manquent de place.
+    - **Pourquoi** : le tableau débordait à 320 px.
+    - **Piège** : une rupture de mise en page à 360 px est refusée par `mediaQueries.test.ts` ; le contrôle du banc mesure le texte des cellules, à 320, 360 et 390 px.
+
+298. Fractionné : « Tout replier » (lot 182, validé le 06/11).
+    - **Décision** : un bouton « Tout replier », puis « Tout déplier », en tête du panneau Répétitions, dès 2 séances, qui agit sur les trois panneaux à la fois.
+    - **Pourquoi** : les séances se replient une à une par leur titre, long à faire sur une journée chargée.
+
+299. Onglet « sauts » : le mot « saut » partout (lot 179, validé le 06/11).
+    - **Décision** : « autres sauts », « Plus long saut », colonne et tri « En l'air », aide et comparaison ; les vols sur foil gardent leur mot.
+    - **Pourquoi** : note de l'utilisateur du 06/11 : « c'est des sauts, pas des vols ». Un vol reste ce qu'il est sur foil.
+
+300. Distance de Tracker contre les positions et une montre (lot 184, mesure seule, 06/11).
+    - **Constat** : Tracker est plus court que ses positions sur les 12 courses, de 1,4 à 4,7 % sur les récentes de plus de 3 km ; le 06/11, 2,3 % sous la Garmin sur 32 min alors que les positions concordent à 0,1 %. Aucun changement du calcul.
+    - **Piège** : la cause (vitesse Doppler, lissage, écrêtage, démarrage) n'est pas isolée, et la distance des positions dépend de la base (brut, 5 s, 10 s). Rien ne prouve que la montre soit la plus juste : la sortie du week-end (essai 132) doit trancher. Rapport dans `docs/backlog/184-distance-mesure.md`, outil `outils/banc/distance-diagnostic.mjs`.
+
+301. Statistiques : « Sélection » en parties repliables (lot 178, validé le 06/11).
+    - **Décision** : bouton « Sélection » plus grand ; choix de l'activité repliable, ouvert au départ ; bouton « Matériel » replié au départ, grisé sans la case « Créer liste matériel » ou avec « Toutes » les activités ; un filtre posé reste actif et se lit bouton replié ; état retenu.
+    - **Pourquoi** : le menu entier est plus long, mais replié il reste clair.
+
+302. Papillon de la fleur de la Racine (lot 180, maquette validée le 06/11).
+    - **Décision** : monarque orange de 13 px, deux états d'ailes sans transition, à côté de la fleur à 4,6 fois l'objectif et posé à 5 fois ; plus de vol d'approche, moments inchangés. La bulle à 4 fois annonce son arrivée à une durée arrondie au-dessus ; l'animation de fin de semaine n'a pas changé.
+    - **Piège** : à 4,3 et à 4,6 fois, les anciennes ailes presque fermées ne faisaient qu'un trait.
