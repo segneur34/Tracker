@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.92 construite le 06/11 (versionCode 4092, tag local v0.4.92), à installer : porte les lots 27 et 176 ; rien envoyé sur GitHub.
+APK 0.4.96 construite le 06/11 au soir (versionCode 4096, tag local v0.4.96), à installer (téléphone absent au moment de la construction) : porte les lots 27 (pumping et rebonds), 176, 26, 96 et 40 ; rien envoyé sur GitHub. L'APK 0.4.92 n'a plus à être installée.
 
 - 27 · [idée] Pumping en voile sur foil réglé sur la wing du 02/11 : de 75 à 150 coups par minute, série dès 5 coups, coups isolés retirés aux bords, un saut coupe la série, décollage pas cherché avant le creux de vitesse, capture partielle signalée (ex-fiche 16, point 186) ; rebonds d'un saut voisin écartés (06/11, réponse de l'utilisateur : une dizaine de sauts, pas 16) · noté 28/10 · gros · Fable/high · à valider (commits « Lot 27 » et « Lot 27, rebonds », version 0.4.93) ; fait sur Opus · détail : docs/backlog/27-pumping-wing.md
   - essai 131 : wings du 08/10 à 15 h 24 et du 21/10, onglet « sauts » → 10 sauts chacune, aucun petit vol collé à un vrai saut ; le compte reste 10 après l'ouverture (sauts refaits en version 4).
