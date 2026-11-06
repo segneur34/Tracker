@@ -75,3 +75,8 @@ Périmètre : tout `src/**/*.tsx` **sauf** `src/pages/SailingModule.tsx` (et les
 - Cible chiffrée : total sous 400 (599 aujourd'hui, les 91 de la voile exclus).
 
 Banc (par l'orchestrateur) : `node outils/banc/passe.mjs general graphes cardio sauts familles prereglages statistiques partage tailles --avant HEAD` ; `prereglages` a 3 échecs anciens identiques avant et après.
+
+### Fait à la troisième passe (nuit du 06 au 07/11), écarts aux briefs
+
+- Lot A, tel que prévu ; en plus : `sailingChartReaders()` dans `sailingChartParts.tsx` à la place des lectures dans le hook (`architecture.test.ts` interdit à `hooks/` d'importer `components/`), `companionCharts` devenu le composant `SailingCompanionCharts` avec un prédicat `companionShown` dans le module (règle `only-export-components`), test `sailingPanelIds.test.ts` ; le verdict ajouté à `bench.mjs` lit le bouton « Replier les virements » sans tenir compte de la casse (la page le rend en capitales).
+- Lot B, au-delà des seuls objets recopiés : 599 → 268, par des utilitaires `ui-*` nommés par leur valeur (`ui-mt-10`, `ui-pr-28`…) : neutre au pixel, mais ce n'est pas encore l'échelle `--space-*` ; une passe visible, plus tard, les rapprochera. Un défaut vu au banc (`tailles`) et repris : une classe posée sur `ChartFold` est battue par son style de base en ligne (le bouton de choix des statistiques avait rétréci) ; règle : un composant qui pose lui-même un `style` de base garde ses surcharges en ligne. Les 91 styles des panneaux voile sont figés dans le relevé, à sortir à une passe suivante.
