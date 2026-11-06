@@ -284,12 +284,15 @@ const ATTITUDE = {
  * rien d'autre au-dessus de 0,33 m. Les longs vols du kite restent à vérifier
  * sur une séance de kite. À pied et à vélo (VTT), les mêmes seuils écartent
  * la foulée (vol d'environ 0,1 s) ; ils restent à vérifier sur le terrain.
+ * Rebonds (n° 27, 06/11) : sur les wings des 08/10 et 21/10, les 7 petits vols
+ * de 0,20 à 0,37 m trouvés à 1 à 3 s d'un vrai saut (0,75 à 1,70 m) sont son
+ * appel ou son rebond ; aucun vrai saut n'en a un autre à moins de 3 s.
  */
 export const JUMP_DETECTION: JumpDetection = {
   ...ATTITUDE,
   smoothingS: 0.1, pushG: 0.4, pushSearchS: 0.5, landingG: 0.3, edgeSearchS: 0.05,
   minFlightS: 0.2, maxFlightS: 8, minFallG: 0.2, biasWindowS: 10,
-  keepMinFlightS: 0.4, keepMinHeightM: 0.2,
+  keepMinFlightS: 0.4, keepMinHeightM: 0.2, satelliteGapS: 3, satelliteHeightRatio: 0.5,
   pruneMinFlightS: 0.4, pruneMinHeightM: 0.15, pruneMarginS: 15, pruneChunkS: 300, pruneChunkMarginS: 20,
   dubiousBallisticFactor: 1.1, saturationFraction: 0.98, doubtMarginS: 2, attitudeMaxErrorM: 0.1,
   curveStepS: 0.05, curveMarginS: 0.5,

@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 177, essai 131, question Q62.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 177, essai 132, question Q62.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -13,13 +13,17 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 APK 0.4.92 construite le 06/11 (versionCode 4092, tag local v0.4.92), à installer : porte les lots 27 et 176 ; rien envoyé sur GitHub.
 
-- 27 · [idée] Pumping en voile sur foil réglé sur la wing du 02/11 : de 75 à 150 coups par minute, série dès 5 coups, coups isolés retirés aux bords, un saut coupe la série, décollage pas cherché avant le creux de vitesse, capture partielle signalée (ex-fiche 16, point 186) · noté 28/10 · gros · Fable/high · à valider (commit « Lot 27 ») ; fait sur Opus · détail : docs/backlog/27-pumping-wing.md
+- 27 · [idée] Pumping en voile sur foil réglé sur la wing du 02/11 : de 75 à 150 coups par minute, série dès 5 coups, coups isolés retirés aux bords, un saut coupe la série, décollage pas cherché avant le creux de vitesse, capture partielle signalée (ex-fiche 16, point 186) ; rebonds d'un saut voisin écartés (06/11, réponse de l'utilisateur : une dizaine de sauts, pas 16) · noté 28/10 · gros · Fable/high · à valider (commits « Lot 27 » et « Lot 27, rebonds », version 0.4.93) ; fait sur Opus · détail : docs/backlog/27-pumping-wing.md
+  - essai 131 : wings du 08/10 à 15 h 24 et du 21/10, onglet « sauts » → 10 sauts chacune, aucun petit vol collé à un vrai saut ; le compte reste 10 après l'ouverture (sauts refaits en version 4).
   - essai 130 : wing du 02/11 à 13 h 58, « avancé », onglet « pumping » → les plus longues séries, vers 14 h 06 (environ 30 s, 50 coups), puis 14 h 45, 14 h 25, 15 h 15 et 14 h 21, ressemblent à ce dont vous vous souvenez, et il ne manque rien d'évident.
 - 176 · [idée] Onglet « sauts » décoché de base partout à terre, Marche, Route et Gravel comme la Course, pas le VTT ; choix d'onglets déjà faits gardés (réponse à Q61 le 06/11 : la règle s'applique à tout). Q59 close le 06/11 : les vols du 21/10 et du 29/10 ne s'affichent pas, ces captures ne mesurent pas les sauts, et la course du 31/10 montre bien son seul saut. Q60 close le 06/11 : 47 % jugé probable, mais ce chiffre ne porte que sur 102 s de vol · noté 06/11 · petit · Opus/medium · à valider sur lecture (commit « Lot 176 »)
+- 26 · [idée] Cadence à pied : relecture des .imu des courses des 21, 24, 25, 29, 31/10 et 04/11 et de la marche du 17/10, seuils réglés, keepCapture à false sur accord, unité devinée confirmée sur une marche en pas par minute (§11 « Course », point 124) · noté 17/10 · gros · Fable/high · en cours (06/11, outil de relecture d'abord) · détail : docs/backlog/26-cadence-a-pied.md
+- 39 · [idée] Les deux énergies (course, k de l'air 0,0065 ; vélo, Crr par revêtement) comparées aux méthodes publiées (Strava, Garmin, Minetti), puis à une montre quand l'utilisateur en aura une (§11 « Énergie », points 71, 72, 88) · noté 03/10 · petit · Sonnet/medium · en cours (06/11, rapport documentaire, sans code) · détail : docs/backlog/39-energie-comparaison.md
+- 40 · [idée] Surf : virages mesurés par le gyroscope (case « Mesurer les virages », élagage du .imu autour des vagues, rotation autour de la verticale) (§11 « Surf », point 110) · noté 10/10 · gros · Opus/high · en cours (06/11, sur synthétique : aucune session surf capturée avec des vagues) · détail : docs/backlog/40-virages-gyroscope.md
+- 96 · [idée] Énergie par la FC en voile et en surf (ex-n° 28) : recherche documentaire (Keytel et autres formules, leur validité sur l'eau), puis la formule codée, montrée seulement quand la session a sa FC · noté 30/10 · gros · Fable/high · en cours (06/11, recherche d'abord) · détail : docs/backlog/96-energie-fc-recherche.md
 
 ## Ensuite
 
-1. 26 · [idée] Cadence à pied : relecture des .imu des courses des 21, 24 et 25/10, seuils réglés, keepCapture à false, unité devinée confirmée sur une marche en pas par minute (§11 « Course », point 124) · noté 17/10 · gros · Fable/high · à briefer, session Fable ; .imu des trois courses sur le PC (D:\memoire Tracker\Tracker\sessions), une marche à fournir ; `keepCapture` à false seulement après accord et après le n° 105
 
 ## Ça attend une occasion
 
@@ -85,10 +89,7 @@ APK 0.4.92 construite le 06/11 (versionCode 4092, tag local v0.4.92), à install
 - 34 · [idée] Mode daltonien (ex-fiche 4) : des couleurs de familles, de traces et de graphes lisibles par un daltonien ; voulu « plus tard », reste à dire quel daltonisme et pour qui (§11 « Mode daltonien », point 90) · noté 08/10 · gros
 - 35 · [idée] Montre connectée Android (ex-fiche 5) : lire sa FC, importer ses sessions, piloter du poignet ; reste à dire quelle montre · noté 22/10 · gros · détail : docs/backlog/35-montre-connectee.md
 - 36 · [idée] Autres capteurs Bluetooth (ex-fiche 17) : puissance, cadence et vitesse à vélo lues comme la ceinture ; dort tant que l'utilisateur n'a pas de capteur (point 118) · noté 16/10 · gros
-- 39 · [idée] Les deux énergies (course, k de l'air 0,0065 ; vélo, Crr par revêtement) comparées à une montre ou à Strava ; demande une sortie avec une montre (§11 « Énergie », points 71, 72, 88) · noté 03/10 · petit
-- 40 · [idée] Surf : virages mesurés par le gyroscope (case « Mesurer les virages », élagage du .imu autour des vagues, rotation autour de la verticale) ; plan dans ~/.claude/plans/on-vas-reprendre-et-snug-stonebraker.md (§11 « Surf », point 110) · noté 10/10 · gros
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
-- 96 · [idée] Énergie par la FC en voile et en surf (ex-n° 28) : commencer par une recherche documentaire poussée (Keytel et autres formules, leur validité sur l'eau) avant tout code ; dort tant qu'aucune ceinture n'est portée sur l'eau · noté 30/10 · gros
 
 ## Questions
 

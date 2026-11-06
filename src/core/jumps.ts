@@ -42,7 +42,7 @@ import {
  */
 
 /** Version du calcul des sauts rangés dans la fiche : l'augmenter refait les sauts des sessions qui ont leur `.imu`. */
-export const JUMPS_CALC_VERSION = 3;
+export const JUMPS_CALC_VERSION = 4;
 
 /** Constantes de la détection et de la mesure (`SPORT_PROFILES[…].jumps.detection`). */
 export interface JumpDetection extends AttitudeParams {
@@ -68,6 +68,13 @@ export interface JumpDetection extends AttitudeParams {
   keepMinFlightS: number;
   /** …et cette hauteur, en mètres. La hauteur minimale de l'activité ne filtre qu'à l'affichage. */
   keepMinHeightM: number;
+  /**
+   * Rebond : un vol rangé qui commence ou finit à moins de cette durée d'un
+   * autre vol rangé, en secondes…
+   */
+  satelliteGapS: number;
+  /** …et plus bas que cette part de sa hauteur, n'est pas un saut (appel avant, rebond après). */
+  satelliteHeightRatio: number;
   /** Élagage : vol d'au moins cette durée, en secondes… */
   pruneMinFlightS: number;
   /** …et cette hauteur, en mètres, sans condition de vitesse. */
@@ -366,29 +373,48 @@ export interface JumpsMeasure {
   flights: Flight[];
   /** Fenêtres calculées : celles de l'en-tête si le fichier est élagué. */
   windows: ImuWindow[];
+  /** Vols qui avaient la durée et la hauteur, écartés comme rebonds d'un saut voisin (`satelliteGapS`), pour le diagnostic. */
+  satellites: Flight[];
 }
 
 /**
+ * Rebonds (n° 27, wings des 08/10 et 21/10) : autour d'un vrai saut, l'appel
+ * juste avant et le rebond de l'atterrissage juste après font chacun un petit
+ * vol, à 1 à 3 s du saut et trois à cinq fois plus bas. Un vol est un rebond
+ * s'il touche, à `satelliteGapS` près, un vol d'au moins sa hauteur divisée
+ * par `satelliteHeightRatio`. Deux sauts voisins de hauteurs comparables
+ * (un double à vélo) restent deux sauts.
+ */
+const isSatellite = (f: Flight, others: readonly Flight[], d: JumpDetection): boolean => {
+  const gapUs = d.satelliteGapS * 1e6;
+  return others.some((o) =>
+    o !== f && f.heightM < d.satelliteHeightRatio * o.heightM && f.takeoffUs < o.landingUs + gapUs && f.landingUs > o.takeoffUs - gapUs
+  );
+};
+
+/**
  * Sauts d'une session : fenêtres (`pruneWindows`), vols de chaque fenêtre,
- * puis ceux qui ont la durée et la hauteur à ranger. La vitesse au décollage
- * (lissée) et la longueur (par `cumDist`, la distance cumulée de la trace)
- * viennent de la trace, si elle est fournie. Le seuil
- * d'activité et la hauteur minimale de l'activité ne filtrent qu'à
- * l'affichage.
+ * puis ceux qui ont la durée et la hauteur à ranger, moins les rebonds d'un
+ * saut voisin (`isSatellite`). La vitesse au décollage (lissée) et la
+ * longueur (par `cumDist`, la distance cumulée de la trace) viennent de la
+ * trace, si elle est fournie. Le seuil d'activité et la hauteur minimale de
+ * l'activité ne filtrent qu'à l'affichage.
  */
 export const measureJumps = (
   rec: ImuRecording, d: JumpDetection, track: ReadonlyArray<JumpTrackPoint> = [], cumDist: ArrayLike<number> = []
 ): JumpsMeasure => {
   const windows = pruneWindows(rec, d);
   const flights = windows.flatMap(([from, to]) => detectFlights(rec, d, from, to));
-  const jumps = flights
-    .filter((f) => f.flightS >= d.keepMinFlightS && f.heightM >= d.keepMinHeightM)
+  const kept = flights.filter((f) => f.flightS >= d.keepMinFlightS && f.heightM >= d.keepMinHeightM);
+  const satellites = kept.filter((f) => isSatellite(f, kept, d));
+  const jumps = kept
+    .filter((f) => !satellites.includes(f))
     .map((f): MeasuredJump => ({
       ...f,
       speedMs: speedAt(track, f.takeoffMs),
       lengthM: distanceBetween(track, cumDist, f.takeoffMs, f.landingMs),
     }));
-  return { jumps, flights, windows };
+  return { jumps, flights, windows, satellites };
 };
 
 // --- Sur la carte ---

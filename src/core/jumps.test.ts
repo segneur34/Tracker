@@ -172,6 +172,58 @@ describe('sauts : bornes du vol', () => {
   });
 });
 
+describe('sauts : rebonds d\'un saut voisin', () => {
+  /** Un saut de 1,2 m à 30 s (vol de 0,99 s). */
+  const big = jump(30, Math.sqrt(2 * G * 1.2));
+  const smallV0 = Math.sqrt(2 * G * 0.25);
+  const smallFlightS = (2 * smallV0) / G;
+  /** Appel : petit vol de 0,25 m qui atterrit 1,5 s avant le décollage du saut. */
+  const before = jump(30 - 1.5 - smallFlightS, smallV0);
+  /** Rebond : petit vol de 0,25 m qui décolle 2 s après l'atterrissage du saut. */
+  const after = jump(30 + big.flightS + 2, smallV0);
+  const withSatellites = (t: number) => big.az(t) + before.az(t) + after.az(t);
+
+  it.each([50, 100, 200])('à %i Hz : l\'appel et le rebond autour d\'un saut ne sont pas des sauts', (rateHz) => {
+    const rec = record({ durationS: 60, rateHz, az: withSatellites });
+    const jumps = jumpsOf(rec);
+    expect(jumps).toHaveLength(1);
+    expect(Math.abs(jumps[0].heightM - 1.2)).toBeLessThan(0.07);
+    expect(jumps[0].takeoffMs - WALL_MS).toBeGreaterThan(29_900);
+    const { satellites } = measureJumps(rec, D);
+    expect(satellites).toHaveLength(2);
+    for (const s of satellites) expect(Math.abs(s.heightM - 0.25)).toBeLessThan(0.07);
+    // Sans la règle, les deux petits vols seraient rangés.
+    expect(measureJumps(rec, { ...D, satelliteGapS: 0 }).jumps).toHaveLength(3);
+  });
+
+  it('deux sauts de hauteurs comparables à 2 s l\'un de l\'autre restent deux sauts', () => {
+    const first = jump(30, Math.sqrt(2 * G * 1));
+    const second = jump(30 + first.flightS + 2, Math.sqrt(2 * G * 1));
+    const jumps = jumpsOf(record({ durationS: 60, az: (t) => first.az(t) + second.az(t) }));
+    expect(jumps).toHaveLength(2);
+    for (const j of jumps) expect(Math.abs(j.heightM - 1)).toBeLessThan(0.07);
+  });
+
+  it('un petit vol à 6 s d\'un saut est trop loin pour être son rebond', () => {
+    const far = jump(30 + big.flightS + 6, smallV0);
+    // Seul, le petit vol a la durée et la hauteur à ranger.
+    const alone = jumpsOf(record({ durationS: 60, az: far.az }));
+    expect(alone).toHaveLength(1);
+    expect(Math.abs(alone[0].heightM - 0.25)).toBeLessThan(0.07);
+    const rec = record({ durationS: 60, az: (t) => big.az(t) + far.az(t) });
+    expect(jumpsOf(rec)).toHaveLength(2);
+    expect(measureJumps(rec, D).satellites).toEqual([]);
+  });
+
+  it.each([1, 5])('trace à %i Hz : vitesse et longueur du seul saut, pas de ses rebonds', (hz) => {
+    const track = Array.from({ length: 60 * hz }, (_, i) => ({ timeMs: WALL_MS + (i * 1000) / hz, smoothedSpeedMs: 6 }));
+    const jumps = jumpsOf(record({ durationS: 60, az: withSatellites }), track);
+    expect(jumps).toHaveLength(1);
+    expect(jumps[0].speedMs).toBeCloseTo(6, 6);
+    expect(Math.abs(jumps[0].lengthM! - 6 * big.flightS)).toBeLessThan(0.3);
+  });
+});
+
 describe('sauts : ce qui n\'en est pas', () => {
   it('ne trouve rien dans 10 min de clapot', () => {
     const rec = record({ durationS: 600, az: chop, noise: 0.3 });

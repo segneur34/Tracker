@@ -98,7 +98,7 @@ const started = performance.now();
 // Distance cumulée de la vitesse lue, pas à pas (comme `segmentDistanceM`), pour la longueur des sauts.
 const cumDist = track.map(() => 0);
 for (let i = 1; i < track.length; i++) cumDist[i] = cumDist[i - 1] + (track[i].smoothedSpeedMs * Math.max(0, track[i].timeMs - track[i - 1].timeMs)) / 1000;
-const { jumps, flights, windows } = measureJumps(rec, detection, track, cumDist);
+const { jumps, flights, windows, satellites } = measureJumps(rec, detection, track, cumDist);
 const elapsed = performance.now() - started;
 const keptS = windows.reduce((s, [a, b]) => s + (b - a) / 1e6, 0);
 const share = stats.durationS > 0 ? keptS / stats.durationS : 0;
@@ -116,12 +116,13 @@ console.log('  heure     hauteur  vol     départ vertical  vitesse  longueur');
 for (const j of jumps) console.log(line(j));
 
 if (flags.tous) {
-  const rejected = flights.filter((f) => !(f.flightS >= detection.keepMinFlightS && f.heightM >= detection.keepMinHeightM));
+  const rejected = flights.filter((f) => !(f.flightS >= detection.keepMinFlightS && f.heightM >= detection.keepMinHeightM) || satellites.includes(f));
   console.log(`\nVols écartés : ${rejected.length}`);
   for (const f of rejected) {
     const why = [
       f.flightS < detection.keepMinFlightS ? 'vol trop court' : null,
       f.heightM < detection.keepMinHeightM ? 'trop bas' : null,
+      satellites.includes(f) ? `rebond d'un saut voisin (à moins de ${detection.satelliteGapS} s, plus bas que ${detection.satelliteHeightRatio} fois sa hauteur)` : null,
     ].filter(Boolean).join(', ');
     console.log(line(f, `  (${why})`));
   }
