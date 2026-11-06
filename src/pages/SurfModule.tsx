@@ -59,10 +59,11 @@ import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useFlightPumping, useSessionPumping } from '../hooks/useSessionPumping';
+import { useFlightPumping, useSessionPumping, type PumpingStatus } from '../hooks/useSessionPumping';
 import { useSportSettings } from '../hooks/useSportSettings';
-import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
+import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan, SurfWave } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
+import { gyroWaveTurns } from '../surfing/gyroTurns';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
 import SegmentedControl from '../components/ui/SegmentedControl';
@@ -102,6 +103,8 @@ const GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true };
 const CHART_HEIGHT_PX = 170;
 const chartBox = (heightPx: number): CSSProperties => ({ width: '100%', flex: `1 0 ${heightPx}px`, height: `${heightPx}px`, marginTop: '4px' });
 const ACCENT = 'var(--surf)';
+/** Capteurs coupés pour le pumping (case décochée) : ni mesures, ni lecture en cours. */
+const SENSORS_OFF: { status: PumpingStatus; error: string | null; recording: null } = { status: 'none', error: null, recording: null };
 
 /** Couleurs de la répartition du temps (données, en dur) : glisse, rame, attente, sans signal. */
 const PHASE_COLORS: Record<SurfPhase, string> = { glisse: '#1e88e5', rame: '#8d6e63', attente: '#bdbdbd', trou: '#eceff1' };
@@ -184,9 +187,12 @@ function SurfModule() {
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
   const { runner, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
-  // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo.
-  const sensors = useSessionPumping(shownFile, pumping && (open.vols || open.pumping));
+  // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo ;
+  // et à celle de l'onglet « vagues », pour les virages du gyroscope (lot 40).
+  const sensors = useSessionPumping(shownFile, (pumping && (open.vols || open.pumping)) || open.vagues);
   const pumpDetection = surfProfile?.pump ?? null;
+  /** Capteurs vus du pumping : rien tant que Pumping est décoché, même lus pour les virages de l'onglet « vagues ». */
+  const pumpSensors = pumping ? sensors : SENSORS_OFF;
   /** Onglet « pumping » : sur foil, pour un calcul qui le mesure, si la session a ses capteurs ; Pumping décoché, il le dit. */
   const pumpingVisible = foil && pumpDetection !== null && sensors.hasMotion;
   const sections = useMemo(
@@ -267,10 +273,21 @@ function SurfModule() {
   const waves = useMemo(() => analysis?.waves ?? [], [analysis]);
   const flights = useMemo(() => analysis?.flights ?? [], [analysis]);
   const returns = useMemo(() => analysis?.returns ?? [], [analysis]);
+  /** Virages du gyroscope de chaque vague (lot 40) ; absente : vague sans capture, qui garde ceux du GPS. */
+  const gyroTurns = useMemo(() => {
+    const byWave = new Map<SurfWave, number>();
+    if (!sensors.recording || !surfProfile) return byWave;
+    const counts = gyroWaveTurns(sensors.recording, surfProfile.surf.gyroTurns, waves);
+    waves.forEach((w, i) => {
+      const n = counts[i];
+      if (n !== null) byWave.set(w, n);
+    });
+    return byWave;
+  }, [sensors.recording, surfProfile, waves]);
 
   const {
     byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
-  } = useFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
+  } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
   const speedCell = (ms: number | null): string => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit));
   /** Colonnes « Tous les vols » du GPS, sans pumping mesuré : temps et vitesse hors des vagues (unité de l'activité). */
   const surfFlightGpsColumns: FlightColumn<SurfFlight>[] = [
@@ -546,7 +563,9 @@ function SurfModule() {
                   {foil
                     ? `Vague : un passage d'au moins ${surfProfile.surf.minWaveS} s au-dessus du seuil de vague en foil, pendant un vol.`
                     : `Vague : au moins ${surfProfile.surf.minWaveS} s et ${surfProfile.surf.minWaveM} m au-dessus du seuil de vague.`}
-                  {' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.
+                  {gyroTurns.size > 0
+                    ? <>{' '}Virages : comptés par le gyroscope du téléphone, chaque rotation du buste d'au moins {surfProfile.surf.gyroTurns.minDeg}°. * Vague sans capture : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) vus par le GPS, valeur expérimentale.</>
+                    : <>{' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.</>}
                 </HelpText>
                 {waves.length === 0 ? (
                   <div style={{ color: 'var(--muted)' }}>
@@ -563,7 +582,9 @@ function SurfModule() {
                           <th style={thStyle}>Distance</th>
                           <th style={thStyle}>Max ({unitLabel})</th>
                           <th style={thStyle}>Moy.</th>
-                          <th style={thStyle} title="Grands changements de direction vus par le GPS">Virages*</th>
+                          {gyroTurns.size > 0
+                            ? <th style={thStyle} title="Virages comptés par le gyroscope ; * : vague sans capture, grands changements de direction vus par le GPS">Virages</th>
+                            : <th style={thStyle} title="Grands changements de direction vus par le GPS">Virages*</th>}
                           {foil && <th style={thStyle}>Vol</th>}
                           <th style={thStyle}>Carte</th>
                         </tr>
@@ -579,7 +600,7 @@ function SurfModule() {
                               <td style={{ ...tdStyle, fontWeight: 700 }}>{Math.round(w.distanceM)} m</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.maxSpeedMs, speedUnit), speedUnit)}</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.avgSpeedMs, speedUnit), speedUnit)}</td>
-                              <td style={tdStyle}>{w.turns}</td>
+                              <td style={tdStyle}>{gyroTurns.get(w) ?? (gyroTurns.size > 0 ? `${w.turns}*` : w.turns)}</td>
                               {foil && <td style={tdStyle}>{w.flight ?? '—'}</td>}
                               <td style={tdStyle}>
                                 <ShowButton shown={shown} onClick={() => highlight.show('vagues', shown ? null : String(w.n))} />
@@ -667,7 +688,7 @@ function SurfModule() {
                   podiumColumns={SURF_FLIGHT_PODIUM_COLUMNS}
                   allColumns={SURF_FLIGHT_ALL_COLUMNS}
                   allColumnsWithoutPumping={surfFlightGpsColumns}
-                  sensors={sensors} />
+                  sensors={pumpSensors} />
               </ResizablePanel>
             )}
 
@@ -686,7 +707,7 @@ function SurfModule() {
                   pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
                   shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={ACCENT}
                   speedCell={speedCell} unitLabel={unitLabel}
-                  pumpingOn={pumping} sensors={sensors} flightTimeS={flights.reduce((sum, f) => sum + f.durationS, 0)}
+                  pumpingOn={pumping} sensors={pumpSensors} flightTimeS={flights.reduce((sum, f) => sum + f.durationS, 0)}
                   offNote="Cochez « Pumping » dans l'onglet réglages pour compter les séries de coups en vol, téléphone fixé sur la poitrine." />
               </ResizablePanel>
             )}

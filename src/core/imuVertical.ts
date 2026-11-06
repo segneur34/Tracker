@@ -154,6 +154,12 @@ export interface ImuVertical {
   /** Vecteur « haut » des passes aller et retour, dans le repère du téléphone. */
   upF: Float64Array[];
   upB: Float64Array[];
+  /**
+   * Vitesse de rotation autour de la verticale du monde (gyroscope projeté sur
+   * le « haut » moyenné), en rad/s, positive dans le sens trigonométrique vu
+   * d'en haut : les virages du surf (`surfing/gyroTurns.ts`).
+   */
+  yawRate: Float64Array;
   /** 1 sur un point entre deux mesures trop espacées. */
   gap: Uint8Array;
 }
@@ -195,6 +201,7 @@ export const verticalAcceleration = (rec: ImuRecording, d: AttitudeParams, fromU
   const { up: upB, settled: settledB } = attitudePass(f, w, norm, n, dt, gLocal, d, false);
   const aUp = new Float64Array(n);
   const horizontal = new Float64Array(n);
+  const yawRate = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     // Continu : moyenne simple si les parts recalées sont égales (0 et 0, 1 et 1), la seule passe recalée à 1 et 0.
     const weightF = 0.5 + 0.5 * (settledF[i] - settledB[i]);
@@ -209,8 +216,9 @@ export const verticalAcceleration = (rec: ImuRecording, d: AttitudeParams, fromU
     const vertical = f[0][i] * x + f[1][i] * y + f[2][i] * z;
     aUp[i] = vertical - gLocal;
     horizontal[i] = Math.sqrt(Math.max(0, norm[i] * norm[i] - vertical * vertical));
+    yawRate[i] = w[0][i] * x + w[1][i] * y + w[2][i] * z;
   }
-  return { acc, gyr, startUs, stepUs, dt, n, gLocal, aUp, horizontal, upF, upB, gap };
+  return { acc, gyr, startUs, stepUs, dt, n, gLocal, aUp, horizontal, upF, upB, yawRate, gap };
 };
 
 /** Moyenne glissante centrée sur `half` points de part et d'autre, rognée aux bords. */

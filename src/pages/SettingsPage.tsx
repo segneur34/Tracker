@@ -446,6 +446,7 @@ const ActivityCard = memo(function ActivityCard({
     s.autoPause.speedMs > 0 ? `pause sous ${commaDecimal(pauseKmh)} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
     ...(s.foil ? ['foil'] : []),
     ...(s.foil && s.pumping ? ['pumping'] : []),
+    ...(s.turns ? ['virages'] : []),
     ...(s.jumps?.enabled ? ['sauts'] : []),
     ...(s.cadence ? ['cadence'] : []),
     ...(treatment === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
@@ -578,6 +579,16 @@ const ActivityCard = memo(function ActivityCard({
                 <label className="settings-sports__pair">
                   <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
                   <span>Pumping foil</span>
+                </label>
+              </SettingRow>
+            )}
+            {s.turns !== null && (
+              <SettingRow label="Virages" helpKey={`${id}:virages`}
+                help="Virages de chaque vague comptés par le gyroscope du téléphone fixé sur la poitrine, plus fins que ceux du GPS : « Mesurer les virages » est alors proposé dans Enregistrer. Une vague sans capture garde les virages du GPS.">
+                <label className="settings-sports__pair">
+                  <input type="checkbox" checked={s.turns} onChange={(e) => setFor(id, 'turns', e.target.checked)} />
+                  <span>Mesurer les virages</span>
+                  {!s.isTurnsOverridden && <span className="settings-sports__mark">défaut</span>}
                 </label>
               </SettingRow>
             )}

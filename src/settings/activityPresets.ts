@@ -30,6 +30,8 @@ export interface ActivityPreset {
   notificationFields?: LiveFieldKey[];
   markGuide?: MarkGuideSettings;
   jumps?: JumpSettings;
+  /** Virages du surf mesurés par le gyroscope (case « Mesurer les virages »). */
+  turns?: boolean;
   heartRate?: boolean;
   bikeType?: BikeType;
   bikeKg?: number;
@@ -128,6 +130,9 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
 
 /** Par activité de départ (`core/activities.ts`) : remplace en entier celui de son calcul. */
 const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
+  // Virages mesurés d'office en surf (lot 40) ; le paddle, le kayak, le downwind, créés sur le même calcul, non.
+  surf: { turns: true },
+  'a-surf-foil': { turns: true },
   'a-marche': {
     // Aucun seuil (28/10) : le plancher d'arrêt ôte déjà les arrêts complets, comme en course.
     threshold: 0,

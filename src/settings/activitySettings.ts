@@ -103,6 +103,9 @@ export const defaultNotificationFieldsFor = (activity: Activity): LiveFieldKey[]
 /** Bips d'approche des balises à défaut de réglage. */
 export const defaultMarkGuideOf = (activity: Activity): MarkGuideSettings => presetOf(activity).markGuide ?? MARK_GUIDE_DEFAULTS;
 
+/** Virages du surf mesurés par le gyroscope à défaut de réglage (lot 40) : cochés pour Surf et Surf foil. */
+export const defaultTurnsOf = (activity: Activity): boolean => presetOf(activity).turns ?? false;
+
 /** Ceinture cardio à défaut de réglage. */
 export const defaultHeartRateOf = (activity: Activity): boolean => presetOf(activity).heartRate ?? false;
 
@@ -183,6 +186,8 @@ export interface StoredSettings {
   foils?: ByActivity<boolean>;
   /** Pumping foil (surf, point 104 ; voile sur foil, lot 22) : capteurs proposés à l'enregistrement, pumping des vols dans l'analyse ; absent : non. */
   pumping?: ByActivity<boolean>;
+  /** Virages du surf mesurés par le gyroscope (lot 40) : capteurs proposés à l'enregistrement ; absent : le pré-réglage (seul l'écart est rangé). */
+  turns?: ByActivity<boolean>;
   /** Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) ; absents : non mesurés. */
   jumps?: ByActivity<JumpSettings>;
   /** Ceinture cardio proposée à l'enregistrement (course, vélo, fractionné) ; absente : non. */
@@ -510,6 +515,13 @@ export const resolvePumping = (stored: StoredSettings, activity: Activity): bool
   return stored.pumping?.[activity.id] === true;
 };
 
+/** Virages mesurés par le gyroscope : ceux réglés, sinon le défaut de l'activité ; `null` hors surf. */
+export const resolveTurns = (stored: StoredSettings, activity: Activity): boolean | null => {
+  if (getSportProfile(activity.base).surf === null) return null;
+  const own = stored.turns?.[activity.id];
+  return typeof own === 'boolean' ? own : defaultTurnsOf(activity);
+};
+
 /** Ceinture cardio d'une activité : celle réglée, sinon son défaut ; proposée dans tous les sports. */
 export const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean => {
   const own = stored.heartRate?.[activity.id];
@@ -667,6 +679,10 @@ export interface SportSettingsView {
   isFoilOverridden: boolean;
   /** Pumping foil ; `null` si le calcul ne le mesure pas (bateau, à pied, à vélo). */
   pumping: boolean | null;
+  /** Virages mesurés par le gyroscope ; `null` hors surf. */
+  turns: boolean | null;
+  /** Virages réglés à l'écart de leur défaut. */
+  isTurnsOverridden: boolean;
   /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
   jumps: JumpSettings | null;
   /** Ceinture cardio proposée à l'enregistrement ; `null` en voile et en surf. */
@@ -712,7 +728,7 @@ export interface SportSettingsView {
 export type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 export const PER_ACTIVITY_KEYS = [
   'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'energyModels', 'hrOffsets', 'gearLabels', 'gearGroups',
-  'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
+  'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'turns', 'jumps',
   'heartRate', 'cadence', 'hrZoneLines',
 ] as const;
 
@@ -784,6 +800,8 @@ export const settingsView = (stored: StoredSettings, activity: Activity): SportS
     foil: resolveFoil(stored, activity),
     isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
     pumping: resolvePumping(stored, activity),
+    turns: resolveTurns(stored, activity),
+    isTurnsOverridden: profile.surf !== null && typeof stored.turns?.[id] === 'boolean' && stored.turns[id] !== defaultTurnsOf(activity),
     jumps: resolveJumps(stored, activity),
     heartRate: resolveHeartRate(stored, activity),
     isHeartRateOverridden: typeof stored.heartRate?.[id] === 'boolean' && stored.heartRate[id] !== defaultHeartRateOf(activity),
@@ -812,7 +830,7 @@ export const settingsView = (stored: StoredSettings, activity: Activity): SportS
 /** Champ de `SportSettingsView` qui s'écrit depuis Réglages (`withSetting`). */
 export type SettingField =
   | 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields'
-  | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight'
+  | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'turns' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight'
   | 'carriedLoad' | 'energyModel' | 'hrOffset' | 'gearLabels' | 'gearGroups' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs'
   | 'wayTypes' | 'loopReturnRatio' | 'hrZoneLines';
 
@@ -875,6 +893,15 @@ export const SETTING_FIELDS: Record<SettingField, SettingFieldRule> = {
       if (!activity || resolvePumping(stored, activity) === null) return undefined;
       const on = booleanOrNull(v);
       return on === undefined ? undefined : on === true ? true : null;
+    },
+  },
+  turns: {
+    key: 'turns',
+    // Seul l'écart à son défaut est rangé : décocher les virages pré-réglés range « non ».
+    normalize: (v, activity, stored) => {
+      if (!activity || resolveTurns(stored, activity) === null) return undefined;
+      const on = booleanOrNull(v);
+      return on === undefined ? undefined : on === null || on === defaultTurnsOf(activity) ? null : on;
     },
   },
   heartRate: {
@@ -977,7 +1004,7 @@ export const isActivityOverridden = (s: SportSettingsView): boolean => {
     s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
     s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
     s.paceLevel !== pace.level || s.customFlatSpeedMs !== pace.customFlatSpeedMs || s.isWayTypesOverridden ||
-    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false || s.hrZoneLines
+    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isTurnsOverridden || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false || s.hrZoneLines
   );
 };
 

@@ -18,47 +18,87 @@ import type { TrackPoint } from '../core/types';
 
 const headingOf = (p: TrackPoint): number => p.courseDeg ?? p.bearing;
 
+/** Un changement de direction : l'extrême d'où il part, et le point où il atteint `minDeg`. */
+export interface DirectionChange {
+  /** Indice du dernier extrême du cap (le début du virage). */
+  from: number;
+  /** Indice où le cap s'en est éloigné de `minDeg` (le virage est compté). */
+  at: number;
+  /** Sens de la rotation : 1 cap croissant, −1 décroissant. */
+  direction: 1 | -1;
+}
+
+/**
+ * Changements de direction d'au moins `minDeg` d'un cap déroulé (en degrés,
+ * sans saut de 360°), par hystérésis : commun aux virages du GPS et à ceux du
+ * gyroscope (`surfing/gyroTurns.ts`). Le premier cap sert de départ.
+ */
+export const directionChanges = (heading: ArrayLike<number>, minDeg: number): DirectionChange[] => {
+  const out: DirectionChange[] = [];
+  if (heading.length < 2) return out;
+  let lo = heading[0];
+  let hi = heading[0];
+  let loAt = 0;
+  let hiAt = 0;
+  let extreme = heading[0];
+  let extremeAt = 0;
+  let direction: -1 | 0 | 1 = 0;
+  for (let i = 1; i < heading.length; i++) {
+    const h = heading[i];
+    if (direction === 0) {
+      if (h < lo) {
+        lo = h;
+        loAt = i;
+      }
+      if (h > hi) {
+        hi = h;
+        hiAt = i;
+      }
+      if (h - lo >= minDeg) {
+        direction = 1;
+        out.push({ from: loAt, at: i, direction });
+        extreme = h;
+        extremeAt = i;
+      } else if (hi - h >= minDeg) {
+        direction = -1;
+        out.push({ from: hiAt, at: i, direction });
+        extreme = h;
+        extremeAt = i;
+      }
+    } else if (direction === 1) {
+      if (h > extreme) {
+        extreme = h;
+        extremeAt = i;
+      } else if (extreme - h >= minDeg) {
+        direction = -1;
+        out.push({ from: extremeAt, at: i, direction });
+        extreme = h;
+        extremeAt = i;
+      }
+    } else {
+      if (h < extreme) {
+        extreme = h;
+        extremeAt = i;
+      } else if (h - extreme >= minDeg) {
+        direction = 1;
+        out.push({ from: extremeAt, at: i, direction });
+        extreme = h;
+        extremeAt = i;
+      }
+    }
+  }
+  return out;
+};
+
 /**
  * Nombre de changements de direction d'au moins `minDeg` entre les points
  * `start` et `end` : les caps des pas `start + 1` à `end`.
  */
 export const countDirectionChanges = (track: TrackPoint[], start: number, end: number, minDeg: number): number => {
   if (end - start < 2) return 0;
-  let heading = 0;
-  let lo = 0;
-  let hi = 0;
-  let extreme = 0;
-  let direction: -1 | 0 | 1 = 0;
-  let turns = 0;
+  const heading = new Float64Array(end - start);
   for (let i = start + 2; i <= end; i++) {
-    heading += signedDeltaHalfOpen(headingOf(track[i - 1]), headingOf(track[i]));
-    if (direction === 0) {
-      lo = Math.min(lo, heading);
-      hi = Math.max(hi, heading);
-      if (heading - lo >= minDeg) {
-        direction = 1;
-        extreme = heading;
-        turns++;
-      } else if (hi - heading >= minDeg) {
-        direction = -1;
-        extreme = heading;
-        turns++;
-      }
-    } else if (direction === 1) {
-      if (heading > extreme) extreme = heading;
-      else if (extreme - heading >= minDeg) {
-        direction = -1;
-        extreme = heading;
-        turns++;
-      }
-    } else {
-      if (heading < extreme) extreme = heading;
-      else if (heading - extreme >= minDeg) {
-        direction = 1;
-        extreme = heading;
-        turns++;
-      }
-    }
+    heading[i - start - 1] = heading[i - start - 2] + signedDeltaHalfOpen(headingOf(track[i - 1]), headingOf(track[i]));
   }
-  return turns;
+  return directionChanges(heading, minDeg).length;
 };

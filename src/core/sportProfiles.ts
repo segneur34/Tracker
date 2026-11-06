@@ -1,5 +1,6 @@
 import type { JumpDetection } from './jumps';
 import type { HeartRateZoneModel } from './heartRate';
+import type { AttitudeParams } from './imuVertical';
 import type { PumpDetection } from './pumping';
 import type { CadenceDetection } from './domainTypes';
 import type { SpeedRangeMs } from './speedGradient';
@@ -450,6 +451,24 @@ export interface SurfProfile {
   foilWaveThreshold: number;
   /** Changement de direction compté par le GPS : rotation d'au moins cette valeur depuis l'extrême précédent, en degrés. */
   turnMinDeg: number;
+  /** Virages mesurés par le gyroscope du téléphone (`surfing/gyroTurns.ts`). */
+  gyroTurns: GyroTurnDetection;
+}
+
+/**
+ * Virages d'une vague vus par le gyroscope, téléphone sur la poitrine : la
+ * verticale comme pour les sauts et le pumping (`core/imuVertical.ts`), puis la
+ * rotation du buste autour d'elle.
+ */
+export interface GyroTurnDetection extends AttitudeParams {
+  /** Virage compté : rotation d'au moins cette valeur depuis l'extrême précédent, en degrés. */
+  minDeg: number;
+  /** …et seulement si la rotation lissée a atteint cette vitesse pendant le virage, en °/s : le buste qui tourne, pas une dérive lente. */
+  minRateDegS: number;
+  /** Largeur de la moyenne glissante de la vitesse de rotation, en secondes. */
+  smoothingS: number;
+  /** Mesures lues avant et après la vague pour la verticale, en secondes : le filtre est déjà posé au départ de la vague. */
+  leadS: number;
 }
 
 export interface SportProfile {
@@ -786,6 +805,8 @@ const SURF_PROFILE: SportProfile = {
   surf: {
     minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
+    // Valeurs provisoires, à régler sur une vraie sortie avec des vagues (essai 46).
+    gyroTurns: { ...ATTITUDE, minDeg: 60, minRateDegS: 30, smoothingS: 0.3, leadS: 2 },
   },
   pump: PUMP_DETECTION,
 };

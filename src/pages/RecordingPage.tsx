@@ -43,7 +43,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { usePhoneLandscape } from '../hooks/useNarrowScreen';
 import { readHeartRateZoneBounds, readHeartRateZones } from '../hooks/useRunnerProfile';
 import {
-  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, lastRecordActivity, lastRecordedOrFirst, readHeartBandPicks, rememberHeartBandPicks, rememberRecordActivity, useVisibility,
+  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, effectiveTurns, lastRecordActivity, lastRecordedOrFirst, readHeartBandPicks, rememberHeartBandPicks, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../platform/heartRate';
@@ -710,6 +710,11 @@ function RecordingScreen() {
   const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
   const [pumpPicked, setPumpPicked] = usePerActivityChoice(chosenActivityId, true);
   const measurePumping = pumpingOffered && pumpPicked;
+  // Virages du surf (lot 40) : proposés par l'activité (case « Mesurer les virages » de Réglages), cochés d'office ; la case vaut
+  // pour cet enregistrement. Avec le pumping, une seule capture.
+  const turnsOffered = chosen !== null && effectiveTurns(chosen) === true;
+  const [turnsPicked, setTurnsPicked] = usePerActivityChoice(chosenActivityId, true);
+  const measureTurns = turnsOffered && turnsPicked;
   // Cadence à pied : proposée par l'activité (course, marche, fractionné à pied), cochée d'office sauf si Réglages la décoche ; la case vaut pour cet enregistrement.
   const cadenceSetting = chosen ? effectiveCadence(chosen) : null;
   const [cadencePicked, setCadencePicked] = usePerActivityChoice(chosenActivityId, cadenceSetting ?? false);
@@ -867,14 +872,15 @@ function RecordingScreen() {
     }
   };
 
-  /** Ce que mesurent les capteurs pendant l'enregistrement : sauts (pumping en surf, sauts et pumping en voile sur foil), cadence. */
+  /** Ce que mesurent les capteurs pendant l'enregistrement : sauts (pumping et virages en surf, sauts et pumping en voile sur foil), cadence. */
   const motionWhat = (() => {
     const setup = motionSetup;
     const what: string[] = [];
     const treatment = liveActivity ? sportTreatment(liveActivity.base) : null;
     const pumpingToo = treatment === 'voile' && setup?.foil === true && liveActivity !== null && effectivePumping(liveActivity) === true;
     // Pumping seul en voile : les sauts n'ont pas été mesurés (case de Réglages ou de l'enregistrement décochée).
-    if (setup?.jumps !== false) what.push(treatment === 'surf' ? 'Pumping' : pumpingToo ? (measureJumps ? 'Sauts et pumping' : 'Pumping') : 'Sauts');
+    const surfWhat = measurePumping && measureTurns ? 'Pumping et virages' : measureTurns ? 'Virages' : 'Pumping';
+    if (setup?.jumps !== false) what.push(treatment === 'surf' ? surfWhat : pumpingToo ? (measureJumps ? 'Sauts et pumping' : 'Pumping') : 'Sauts');
     if (setup?.cadence) what.push(what.length > 0 ? 'cadence' : 'Cadence');
     return what.join(' et ');
   })();
@@ -905,8 +911,9 @@ function RecordingScreen() {
     const cadence = capture && measureCadence;
     const motion = capture && measureJumps && jumpSettings
       ? { placement: jumpSettings.placement, foil: effectiveFoil(chosen) ?? false, jumps: true, cadence }
-      : capture && measurePumping
-        ? { placement: 'poitrine' as const, foil: true, jumps: true, cadence: false }
+      : capture && (measurePumping || measureTurns)
+        // Pumping et virages : une seule capture, téléphone sur la poitrine.
+        ? { placement: 'poitrine' as const, foil: effectiveFoil(chosen) ?? false, jumps: true, cadence: false }
         : cadence
           ? { placement: activityJumps?.placement ?? ('taille' as const), foil: false, jumps: false, cadence: true }
           : null;
@@ -1025,6 +1032,14 @@ function RecordingScreen() {
               note={motionCaps && !motionCaps.available
                 ? motionCaps.reason
                 : 'Téléphone fixé sur la poitrine : fréquence de pumping, distance par coup et décollage de chaque vol (Réglages).'} />
+          )}
+
+          {chosen && turnsOffered && native && (
+            <CaptureOption label="Mesurer les virages" checked={measureTurns && motionCaps?.available === true} disabled={!motionCaps?.available}
+              onChange={setTurnsPicked}
+              note={motionCaps && !motionCaps.available
+                ? motionCaps.reason
+                : 'Téléphone fixé sur la poitrine : virages de chaque vague, plus fins que ceux du GPS (Réglages).'} />
           )}
 
           {restingChosen || heartOnly ? null : native ? (

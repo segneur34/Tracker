@@ -122,6 +122,8 @@ export const SCRIPTS = [
   // Mesure (lot 118) : vignettes gardées d'un lancement à l'autre ; temps jusqu'aux vignettes visibles à la relance, processeur
   // ralenti six fois (en s, change à chaque passage), et images identiques au premier lancement.
   { nom: 'vignettes-relance', args: ['{port}', '{travail}'], pages: ['bibliotheque'], solo: true, sansCache: true },
+  // Virages du surf par le gyroscope (lot 40) : case de Réglages, colonne des vagues, vague hors capture.
+  { nom: 'virages', args: ['{port}', '{captures?}'], pages: ['surf', 'reglages', 'enregistrer'], dev: true },
   { nom: 'vides', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'surf', 'accueil', 'reglages'] },
   { nom: 'zoom-carte', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'surf'] },
 ];

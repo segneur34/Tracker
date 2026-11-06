@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, VTT_ACTIVITY, baseActivity } from '../core/activities';
+import { DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, baseActivity } from '../core/activities';
 import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from './activityPresets';
 import { kmhToMs, knotsToMs } from '../core/units';
 
@@ -29,6 +29,12 @@ describe('presetOf', () => {
       expect(p.threshold).toBe(8);
       expect(p.speedRangeMs?.minMs).toBeCloseTo(knotsToMs(8), 9);
     }
+  });
+
+  it("virages mesurés d'office pour Surf et Surf foil, pas pour une activité créée en surf (lot 40)", () => {
+    expect(presetOf(SURF_ACTIVITY).turns).toBe(true);
+    expect(presetOf(SURF_FOIL_ACTIVITY).turns).toBe(true);
+    expect(presetOf({ id: 'a-paddle', base: 'surf' }).turns).toBeUndefined();
   });
 
   it('un calcul sans pré-réglage rend un objet vide, toujours le même', () => {

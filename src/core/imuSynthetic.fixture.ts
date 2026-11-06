@@ -12,8 +12,10 @@ export const SYNTH_WALL_MS = 1_791_465_895_000;
 /**
  * Mouvement synthétique du téléphone : accélération verticale et force
  * horizontale (portance, traction de l'aile) dans le repère du monde, et
- * inclinaison θ autour de l'axe x du téléphone. Le téléphone mesure
- * f = Rx(−θ)·(0, ay, az + g) et ω = (θ', 0, 0).
+ * inclinaison θ autour de l'axe x du téléphone, et cap ψ autour de la
+ * verticale du monde. Le téléphone mesure f = Rx(−θ)·(0, ay, az + g) et
+ * ω = (θ', sin θ·ψ', cos θ·ψ') : la rotation ψ' autour du « haut »
+ * (0, sin θ, cos θ) vu dans son repère.
  */
 export interface SynthMotion {
   durationS: number;
@@ -21,6 +23,8 @@ export interface SynthMotion {
   az: (t: number) => number;
   ay?: (t: number) => number;
   tilt?: (t: number) => number;
+  /** Cap du buste autour de la verticale, en radians (virages). */
+  yaw?: (t: number) => number;
   /** Bruit de l'accéléromètre, écart type approché, en m/s². */
   noise?: number;
   /** Biais de l'accéléromètre sur chaque axe, en m/s². */
@@ -53,6 +57,7 @@ export const synthImu = (m: SynthMotion): ImuRecording => {
   const rand = noiseSource(42);
   const tilt = m.tilt ?? (() => Math.PI / 6);
   const lateral = m.ay;
+  const yaw = m.yaw;
   const range = m.accelRange ?? Infinity;
   const k = 1 + (m.scale ?? 0);
   const bias = m.bias ?? 0;
@@ -87,8 +92,14 @@ export const synthImu = (m: SynthMotion): ImuRecording => {
     az[count] = clamp(k * (-Math.sin(th) * h + Math.cos(th) * v) + bias + noiseAmplitude * rand() * sqrt3);
     const rate1 = (tilt(t + 0.0005) - tilt(t - 0.0005)) / 0.001;
     gx[count] = rate1 + drift + 0.002 * rand();
-    gy[count] = drift + 0.002 * rand();
-    gz[count] = 0.002 * rand();
+    if (yaw) {
+      const yawRate = (yaw(t + 0.0005) - yaw(t - 0.0005)) / 0.001;
+      gy[count] = drift + Math.sin(th) * yawRate + 0.002 * rand();
+      gz[count] = Math.cos(th) * yawRate + 0.002 * rand();
+    } else {
+      gy[count] = drift + 0.002 * rand();
+      gz[count] = 0.002 * rand();
+    }
     times[count] = Math.round(t * 1e6);
     count++;
   }

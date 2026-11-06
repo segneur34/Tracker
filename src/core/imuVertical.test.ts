@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, type ImuRecording, type ImuSeries } from './imuFile';
+import { synthImu } from './imuSynthetic.fixture';
 import { captureBounds, mergeWindows, rangeOf, verticalAcceleration, type AttitudeParams } from './imuVertical';
 import { STANDARD_G } from './units';
 
@@ -138,5 +139,14 @@ describe('verticalAcceleration', () => {
     const v = verticalAcceleration(rec, P, 2e6, 4e6)!;
     expect(v.startUs).toBeGreaterThanOrEqual(2e6);
     expect(v.startUs + (v.n - 1) * v.stepUs).toBeLessThanOrEqual(4e6);
+  });
+
+  it.each([0, 30, 60])('vitesse de rotation autour de la verticale juste, téléphone penché de %i°', (deg) => {
+    // Le buste tourne à 1 rad/s, puis à −0,5 rad/s : la projection sur le « haut » le retrouve.
+    const rec = synthImu({ durationS: 10, az: () => 0, tilt: () => (deg * Math.PI) / 180, yaw: (t) => (t < 5 ? t : 5 - 0.5 * (t - 5)) });
+    const v = verticalAcceleration(rec, P, 0, 10e6)!;
+    const at = (s: number) => v.yawRate[Math.round((s * 1e6 - v.startUs) / v.stepUs)];
+    expect(at(2.5)).toBeCloseTo(1, 1);
+    expect(at(7.5)).toBeCloseTo(-0.5, 1);
   });
 });

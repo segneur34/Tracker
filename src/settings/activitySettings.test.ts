@@ -10,7 +10,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride, resolveTurns, defaultTurnsOf,
   SETTING_FIELDS, defaultTabsOf, effectiveHrZoneLines, settingsView, tabsAfterJumpsChange, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
@@ -193,6 +193,33 @@ describe('sauts mesurés par défaut (05/11)', () => {
   });
 });
 
+describe('virages mesurés par le gyroscope (lot 40)', () => {
+  const byId = (id: string) => DEFAULT_ACTIVITIES.find((a) => a.id === id)!;
+  const paddle = { id: 'a-paddle', name: 'Paddle', base: 'surf' as const, color: '#8292a6' };
+
+  it('cochés pour Surf et Surf foil, décochés pour une activité créée en surf, absents hors surf', () => {
+    expect(resolveTurns({}, byId('surf'))).toBe(true);
+    expect(resolveTurns({}, byId('a-surf-foil'))).toBe(true);
+    expect(resolveTurns({}, paddle)).toBe(false);
+    for (const id of ['wingfoil', 'running', 'cycling', 'a-vtt']) expect(resolveTurns({}, byId(id))).toBeNull();
+    expect(settingsView({}, byId('wingfoil')).turns).toBeNull();
+  });
+
+  it("le réglage rangé prime, et seul l'écart au défaut est rangé", () => {
+    const surf = byId('surf');
+    expect(defaultTurnsOf(surf)).toBe(true);
+    const off = withSetting({}, surf.id, 'turns', false)!;
+    expect(off.turns).toEqual({ surf: false });
+    expect(resolveTurns(off, surf)).toBe(false);
+    expect(settingsView(off, surf).isTurnsOverridden).toBe(true);
+    expect(withSetting(off, surf.id, 'turns', true)!.turns).toEqual({});
+    expect(withSetting({}, paddle.id, 'turns', true)).toBeNull(); // activité inconnue des réglages : refusée
+    expect(withSetting({ activities: [paddle] } as StoredSettings, paddle.id, 'turns', true)!.turns).toEqual({ 'a-paddle': true });
+    expect(withSetting({}, 'wingfoil', 'turns', true)).toBeNull();
+    expect(settingsView({}, surf).isTurnsOverridden).toBe(false);
+  });
+});
+
 describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
   const byId = (id: string) => DEFAULT_ACTIVITIES.find((a) => a.id === id)!;
   const run = byId('running');
@@ -346,6 +373,7 @@ describe('isActivityOverridden', () => {
   const wing = find('wingfoil');
   const run = find('running');
   const bike = find('cycling');
+  const surf = find('surf');
   const otherBike = (Object.keys(BIKE_TYPES) as (keyof typeof BIKE_TYPES)[]).find((k) => k !== defaultBikeType(bike))!;
 
   /** Une valeur réglée, autre que le défaut, pour chaque table rangée par activité. */
@@ -373,6 +401,7 @@ describe('isActivityOverridden', () => {
     loopReturnRatios: { activity: run, value: getSportProfile('running').loopReturnMaxRatio === 2 ? 2.5 : 2 },
     foils: { activity: wing, value: true },
     pumping: { activity: wing, value: true },
+    turns: { activity: surf, value: false },
     jumps: { activity: wing, value: getSportProfile('wingfoil').jumps },
     heartRate: { activity: run, value: !defaultHeartRateOf(run) },
     cadence: { activity: run, value: false },
@@ -384,7 +413,7 @@ describe('isActivityOverridden', () => {
   });
 
   it('est faux sans aucun réglage', () => {
-    for (const activity of [wing, run, bike]) expect(isActivityOverridden(settingsView({}, activity))).toBe(false);
+    for (const activity of [wing, run, bike, surf]) expect(isActivityOverridden(settingsView({}, activity))).toBe(false);
   });
 
   for (const [key, { activity, value }] of Object.entries(SAMPLES)) {

@@ -34,7 +34,7 @@ import {
   DEFAULT_LONG_PRESS_MS, DEFAULT_STOP_HOLD_MS, PRESETS_VERSION, defaultSpeedRangeOf, durationSettingsOf, effectiveHrZoneLines, isValidLongPress, isValidStopHold,
   moduleActivity, readHiddenFamilies, resetOverrides, resetStoredPresets, resolveActivityPace, resolveBikeKg, resolveBikeType, resolveCadence,
   resolveDistanceUnit, resolveEnergyModel, resolveFoil, resolveGradeRange, resolveHeartRate, resolveHrOffset, resolveJumps, resolveLiveFields,
-  resolveLoopReturnRatio, resolveMarkGuide, resolveNotificationFields, resolvePumping, resolveRecordingProfile, resolveSpeedRange, resolveSpeedUnit,
+  resolveLoopReturnRatio, resolveMarkGuide, resolveNotificationFields, resolvePumping, resolveRecordingProfile, resolveTurns, resolveSpeedRange, resolveSpeedUnit,
   resolveTabChoices, resolveTerrainStepM, resolveThresholdOverride, resolveWayTypes, settingsView, withSetting, withVisibility, withoutOverrides,
   type SettingField, type SportSettingsView, type StoredSettings,
 } from '../settings/activitySettings';
@@ -388,6 +388,9 @@ export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil
 
 /** Pumping foil d'une activité de surf ou de voile (bateau excepté), `null` ailleurs. Utilisable hors composant. */
 export const effectivePumping = (activity: Activity): boolean | null => resolvePumping(readStoredSettings(), activity);
+
+/** Virages du surf mesurés par le gyroscope, `null` hors surf. Utilisable hors composant. */
+export const effectiveTurns = (activity: Activity): boolean | null => resolveTurns(readStoredSettings(), activity);
 
 /** Ceinture cardio d'une activité. Utilisable hors composant. */
 export const effectiveHeartRate = (activity: Activity): boolean => resolveHeartRate(readStoredSettings(), activity);

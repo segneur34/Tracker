@@ -4,7 +4,7 @@ Journal des scripts de `outils/banc/` : ce que chacun éprouve, ses arguments, s
 
 ## Verdict ou neutralité
 
-Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 49 des 75 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151).
+Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 50 des 76 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151, `virages` depuis le lot 40).
 
 | Sans verdict aujourd'hui | Scripts |
 |---|---|
@@ -167,6 +167,16 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
 
   Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs.
 - `cadence-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--support=running] [--seuil cle=valeur]… [--mouvement=3] [--lissage=5] [--par-minute]` (lot 26, 06/11) : même principe que `sauts-diagnostic`, pour la cadence à pied (`running/cadence.ts`, `cadenceWindows`) : couverture selon l'état de la trace (en mouvement au-dessus de `--mouvement` km/h, à l'arrêt, en pause ou trou, hors trace), distribution des cadences en mouvement, motifs de rejet ou de choix par fenêtre (corrélation, énergie, pas, demi-période, foulée), écart à la cadence `cad` × 2 du GPX ; `--seuil` surcharge une constante de `CADENCE` pour rejouer sans toucher au code. 0,6 s pour 41 min, 3 s pour 5 h 41.
+- `virages.mjs <port> [<dossier des captures>]` : virages du surf mesurés par le gyroscope (lot 40), sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page). Le script fabrique dans la page une session de surf de deux vagues et ses capteurs (`core/imuSynthetic.fixture.ts`) : trois virages du buste de 90° à 120°/s dans la première, vus du seul gyroscope (cap GPS constant), et une capture arrêtée avant la seconde, dont le cap GPS change. Il vérifie :
+  - dans Réglages, la ligne « Virages » de Surf et de Surf foil (partie Onglet analyse), case « Mesurer les virages » cochée d'office, marque « défaut », et « virages » dans le résumé de la carte repliée ;
+  - l'onglet « vagues » : en-tête « Virages » sans astérisque une fois les capteurs lus, 3 virages pour la première vague, la valeur du GPS marquée « * » pour la seconde, la note qui le dit ;
+  - l'absence de « Mesurer les virages » dans le navigateur, et la page à 390 × 844 sans débordement.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs.
+- `virages-diagnostic.mjs <fichier .imu> <fichier .gpx> [--support=surf] [--foil] [--seuil=9] [--vague=10] [--detail] [--tranches=60]` : sans navigateur ni serveur (Node 22.18 ou plus, par `charge-ts.mjs`). Relit une vraie session de surf et sa capture des capteurs, rangées dans le dossier mémoire (chemins en argument, jamais une copie dans le dépôt), pour régler les virages du gyroscope (`SurfProfile.gyroTurns`, essai 46). Les vagues sont celles de l'onglet « vagues » (`runSurfSession`, au seuil `--seuil` en km/h, sinon celui du profil ; `--foil` pour une session sur foil). Il donne :
+  - l'état de la capture (cadence, trous, fenêtres), l'écart avec le GPX, les seuils du GPS et du gyroscope ;
+  - par vague : heure, durée, distance, virages du GPS et du gyroscope (« hors capture » si elle ne la couvre pas en entier), retournements écartés, rotation la plus vive et cap parcouru ; avec `--detail`, chaque retournement (sens, angle, durée, temps le plus court pour tourner du seuil, compté ou écarté) ;
+  - avec `--tranches=60`, la capture entière découpée en tranches de 60 s traitées comme des vagues : ce que le calcul compterait hors des vagues. Témoin du 14/10 (sup foil à plat, `2026-10-14_16-08-08_surf`) : aucune vague, rien ne plante ; par tranches, 31 retournements gardés en 25 min, de vrais demi-tours (le cap GPS tourne de 200 à 500° par minute aux mêmes moments).
 - `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel, par `charge-ts.mjs`). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
   - le téléphone, les capteurs, l'emplacement et le foil choisis ;
   - la durée, la cadence et les trous de chaque flux ;
