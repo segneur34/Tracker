@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 176, essai 130, question Q62.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 177, essai 131, question Q62.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -11,13 +11,15 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.91 construite le 05/11 (versionCode 4091, tag v0.4.91) ; lots 105, 174, 173, 175 et deuxième passe du 160 validés, essai 129 compris. Installation non contrôlée d'ici, téléphone débranché à la clôture.
+APK 0.4.92 construite le 06/11 (versionCode 4092, tag local v0.4.92), à installer : porte les lots 27 et 176 ; rien envoyé sur GitHub.
 
+- 27 · [idée] Pumping en voile sur foil réglé sur la wing du 02/11 : de 75 à 150 coups par minute, série dès 5 coups, coups isolés retirés aux bords, un saut coupe la série, décollage pas cherché avant le creux de vitesse, capture partielle signalée (ex-fiche 16, point 186) · noté 28/10 · gros · Fable/high · à valider (commit « Lot 27 ») ; fait sur Opus · détail : docs/backlog/27-pumping-wing.md
+  - essai 130 : wing du 02/11 à 13 h 58, « avancé », onglet « pumping » → les plus longues séries, vers 14 h 06 (environ 30 s, 50 coups), puis 14 h 45, 14 h 25, 15 h 15 et 14 h 21, ressemblent à ce dont vous vous souvenez, et il ne manque rien d'évident.
+- 176 · [idée] Onglet « sauts » décoché de base partout à terre, Marche, Route et Gravel comme la Course, pas le VTT ; choix d'onglets déjà faits gardés (réponse à Q61 le 06/11 : la règle s'applique à tout). Q59 close le 06/11 : les vols du 21/10 et du 29/10 ne s'affichent pas, ces captures ne mesurent pas les sauts, et la course du 31/10 montre bien son seul saut. Q60 close le 06/11 : 47 % jugé probable, mais ce chiffre ne porte que sur 102 s de vol · noté 06/11 · petit · Opus/medium · à valider sur lecture (commit « Lot 176 »)
 
 ## Ensuite
 
 1. 26 · [idée] Cadence à pied : relecture des .imu des courses des 21, 24 et 25/10, seuils réglés, keepCapture à false, unité devinée confirmée sur une marche en pas par minute (§11 « Course », point 124) · noté 17/10 · gros · Fable/high · à briefer, session Fable ; .imu des trois courses sur le PC (D:\memoire Tracker\Tracker\sessions), une marche à fournir ; `keepCapture` à false seulement après accord et après le n° 105
-2. 27 · [idée] Pumping en wing : seuils de SAILING_PUMP_DETECTION (copie de ceux du surf) réglés, faux coups en série autour des sauts écartés, faux sauts en wing (ex-fiche 16, point 186) · noté 28/10 · gros · Fable/high · à briefer, session Fable · dépend de : la session wing du 02/11 à 13 h 58, capturée entière, Pumping coché, confirmé par l'utilisateur le 04/11 (D:\memoire Tracker\Tracker\sessions) ; lot 50 validé le 04/11
 
 ## Ça attend une occasion
 
@@ -90,6 +92,3 @@ APK 0.4.91 construite le 05/11 (versionCode 4091, tag v0.4.91) ; lots 105, 174, 
 
 ## Questions
 
-- Q59 · lot 105 · Trois vols à terre durent encore trop longtemps pour leur hauteur (21/10 à 16 h 42 : 1,40 s pour 0,48 m ; 21/10 à 17 h 46 : 1,15 s pour 0,23 m ; 29/10 à 9 h 18 : 1,30 s pour 0,28 m). Les écarter demande de rendre la détection plus stricte à terre, au risque de perdre de vrais sauts (17/10 : 3 sur 5). Avez-vous vraiment sauté à ces moments-là ? · par défaut : ne rien changer, ces vols restent affichés · posée le 05/11
-- Q60 · lot 105 · La wing du 01/11 passe de 47 % à 42 % du vol en pumping (59 à 56 coups) depuis le correctif des sauts : le nouveau chiffre vous paraît-il plus juste ? · par défaut : garder le nouveau calcul · posée le 05/11
-- Q61 · lot 174 · Seule la Course cache l'onglet « sauts » par défaut. À la Marche et au vélo hors VTT, l'onglet paraît dès qu'une session a sa capture, même case décochée. Votre règle (de base décoché, cocher la case coche l'onglet) doit-elle s'y appliquer aussi ? · par défaut : ne rien changer · posée le 05/11
