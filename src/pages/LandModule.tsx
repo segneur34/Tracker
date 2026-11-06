@@ -1181,7 +1181,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cardio && heart.present && (
-              <CardioTab id={panelId('cardio')} track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} runner={runner}
+              <CardioTab id={panelId('cardio')} track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={hrZones} runner={runner}
                 onRetainHrMax={retainSessionHrMax} zone={hrZone}
                 efficiency={heartEfficiency} zoneLines={zoneLinesChoice}
                 zoom={cardioZoom} onShowOnMap={showCardioOnMap}

@@ -55,7 +55,7 @@ export const smoothHeartRate = (points: readonly HeartRatePoint[], windowS: numb
  * deux ; la durée va à la FC lissée de `i`, arrondie au battement. Seulement
  * les points de `start` à `end` compris, s'ils sont donnés.
  */
-const forEachCounted = (
+export const forEachCounted = (
   points: readonly HeartRatePoint[],
   smoothed: readonly (number | null)[],
   gapS: number,

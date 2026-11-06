@@ -198,7 +198,7 @@ function MuscuModule() {
             )}
 
             {open.cardio && (heart.present ? (
-              <CardioTab id={panelId('cardio')} track={points} minutes={minutes} heart={heart} params={profile.heartRate} zones={zones} runner={runner}
+              <CardioTab id={panelId('cardio')} track={points} minutes={minutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={zones} runner={runner}
                 onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
                 zoom={cardioZoom} mapless open={open.cardio} onToggle={toggleOf('cardio')} />
             ) : (

@@ -18,10 +18,11 @@ import { CHART_MAX_POINTS } from '../core/displayConfig';
 import {
   edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
 } from '../core/heartRate';
-import type { HeartRateProfile } from '../core/sportProfiles';
+import { estimateHrEnergy, hrEnergyKcal } from '../core/hrEnergy';
+import type { HeartRateProfile, HrEnergyProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit, formatDecimal, commaDecimal } from '../core/units';
 import { useZoomState, type ChartZoomSource } from '../hooks/useChartZoom';
-import type { RunnerProfile } from '../running/runnerProfile';
+import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';
@@ -42,6 +43,8 @@ interface Props {
   minutes: readonly number[];
   heart: SessionHeartRate;
   params: HeartRateProfile;
+  /** Énergie estimée par la FC (voile et surf, `SportProfile.hrEnergy`) ; `null` : pas de tuile (à pied, à vélo, l'énergie mécanique reste seule). */
+  hrEnergy: HrEnergyProfile | null;
   /** Zones du pratiquant, `null` sans FC max ni âge. */
   zones: HeartRateZones | null;
   /** FC max saisie dans Pratiquant. */
@@ -145,13 +148,19 @@ export function CardioCompanion({ minutes, heart, zoom, zones, zoneLines = false
  * Posé dans le `ResizablePanel` du module.
  */
 function HeartRatePanel({
-  track, minutes, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
+  track, minutes, heart, params, hrEnergy, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
   zoom, onShowOnMap, mapless = false, zoneLines, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
 
   const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
   const loadHelp = useHelp('analyse:charge');
+  /** Âge à la date de la session ; poids et sexe du pratiquant. */
+  const energy = useMemo(() => {
+    if (!hrEnergy || track.length === 0) return null;
+    const athlete = { weightKg: runner.weightKg, age: runnerAge(runner, track[0].timeMs), sex: runner.sex, hrMax: runner.hrMax };
+    return estimateHrEnergy(track, smoothed, athlete, params, hrEnergy);
+  }, [hrEnergy, track, smoothed, runner, params]);
   const drift = useMemo(
     () => (efficiency ? heartRateDrift(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.driftMinS) : null),
     [efficiency, track, smoothed, params.gapS, params.driftMinS]
@@ -190,8 +199,26 @@ function HeartRatePanel({
             value={Math.round(edwardsLoad(zoneTimes, params.loadWeights))} />
         )}
         <StatTile label="Temps mesuré" value={formatShortDuration(stats.coveredS)} />
+        {hrEnergy && energy?.kind === 'estimation' && (
+          <StatTile
+            label={<>Énergie estimée <HelpToggle helpKey="analyse:energie-fc" label="Énergie estimée" /></>}
+            value={<>env. {hrEnergyKcal(energy.totalJ, hrEnergy.displayStepKcal)} kcal</>}
+            detail={<>
+              dont env. {hrEnergyKcal(energy.restJ, hrEnergy.displayStepKcal)} kcal au repos
+              {!energy.extrapolated && <>, sur {formatShortDuration(energy.measuredS)} avec FC</>}
+            </>} />
+        )}
       </div>
       {loadHelp?.open && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
+      <HelpText helpKey="analyse:energie-fc" note>
+        Calculée à partir de votre rythme cardiaque, de votre poids, de votre âge et de votre sexe. C'est un ordre de grandeur,
+        pas une mesure : comptez 25 % d'écart, davantage par temps froid ou en position de rappel.
+      </HelpText>
+      {energy?.kind === 'profil-incomplet' && (
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', margin: '8px 0' }}>
+          Pour l'énergie estimée, renseignez votre poids et votre année de naissance dans <Link to="/parametres">Réglages › Pratiquant</Link>.
+        </p>
+      )}
 
       {aboveProfile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>

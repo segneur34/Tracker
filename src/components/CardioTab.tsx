@@ -10,6 +10,8 @@ type PanelProps = ComponentProps<typeof HeartRatePanel>;
  * `ResizablePanel` d'`id` donné et `HeartRatePanel`, dont la FC max du
  * pratiquant se lit dans `runner`. `zone` est la zone montrée sur la carte et
  * son choix (`useHeartRateZoneHighlight`), absent sans carte (muscu).
+ * `hrEnergy` (`SportProfile.hrEnergy`) passe tel quel au panneau : la tuile
+ * « Énergie estimée » en voile et en surf, rien à pied, à vélo ni en muscu.
  */
 export default function CardioTab({ id, runner, zone, ...panel }: Omit<PanelProps, 'profileHrMax' | 'selectedZone' | 'onSelectZone'> & {
   id: string;

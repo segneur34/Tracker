@@ -5,7 +5,7 @@ import type { CadenceDetection } from './domainTypes';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
 import { DEFAULT_MAX_DETOUR_RATIO } from './kinematics';
-import { kmhToMs, knotsToMs, METERS_PER_DISTANCE_UNIT, type SpeedUnit } from './units';
+import { J_PER_KCAL, kmhToMs, knotsToMs, METERS_PER_DISTANCE_UNIT, type SpeedUnit } from './units';
 
 /**
  * Profil d'un support. Regroupe tout ce qui varie d'une activité à l'autre :
@@ -258,6 +258,52 @@ const HEART_RATE: HeartRateProfile = {
   driftStablePct: 5,
   recoveryS: 60,
   scatterBlockS: 30,
+};
+
+/** Coefficients d'une équation de Keytel : débit en kJ/min = intercept + hr·FC + weight·poids + age·âge (bpm, kg, ans). */
+export interface KeytelCoefficients {
+  intercept: number;
+  hr: number;
+  weight: number;
+  age: number;
+}
+
+/**
+ * Énergie estimée par la FC (`core/hrEnergy.ts`), en voile et en surf, où la
+ * vitesse ne dit rien de l'effort. Un ordre de grandeur : la formule n'est
+ * validée sur aucun de ces sports (recherche du lot 96).
+ */
+export interface HrEnergyProfile {
+  /** Équations sans VO2max, homme et femme ; sans sexe connu, la moyenne des deux. */
+  keytel: { m: KeytelCoefficients; f: KeytelCoefficients };
+  /** FC sous laquelle la formule n'est plus suivie : le débit retombe au repos, en bpm. */
+  floorBpm: number;
+  /** Plafond de la FC sans FC max saisie : base − âge + marge, en bpm. */
+  ageHrMax: { baseBpm: number; marginBpm: number };
+  /** Débit de repos (1 MET), en W par kg : jamais moins. */
+  restWPerKg: number;
+  /** Part du temps de session couverte par la FC à partir de laquelle le total est extrapolé à la session entière. */
+  coverageForTotal: number;
+  /** Arrondi de l'affichage, en kcal. */
+  displayStepKcal: number;
+}
+
+/**
+ * Keytel et al. 2005 (J Sports Sci 23(3):289-297, doi 10.1080/02640410470001730089),
+ * sans VO2max, coefficients recoupés dans deux sources secondaires ; validée de
+ * 18 à 45 ans, en effort stable. Plancher à 90 bpm : la formule n'est pas
+ * testée au-dessous et s'effondre près du repos. Repos : 1 kcal/kg/h.
+ */
+const HR_ENERGY: HrEnergyProfile = {
+  keytel: {
+    m: { intercept: -55.0969, hr: 0.6309, weight: 0.1988, age: 0.2017 },
+    f: { intercept: -20.4022, hr: 0.4472, weight: -0.1263, age: 0.074 },
+  },
+  floorBpm: 90,
+  ageHrMax: { baseBpm: 220, marginBpm: 10 },
+  restWPerKg: J_PER_KCAL / 3600,
+  coverageForTotal: 0.8,
+  displayStepKcal: 10,
 };
 
 /** Sauts mesurés par les capteurs du téléphone (`core/jumps.ts`) : voile, course, vélo. */
@@ -519,6 +565,11 @@ export interface SportProfile {
   jumps: JumpProfile | null;
   /** Ceinture cardio proposée à l'enregistrement et analyse de la FC, dans tous les sports. */
   heartRate: HeartRateProfile;
+  /**
+   * Énergie estimée par la FC, dans l'onglet « cardio » : voile et surf seulement ;
+   * `null` à pied, à vélo et en Entraînement, où l'énergie mécanique reste seule.
+   */
+  hrEnergy: HrEnergyProfile | null;
   /** Cadence à pied mesurée par les capteurs du téléphone ; `null` hors course, marche et fractionné à pied. */
   cadence: CadenceDetection | null;
   /** Analyse des vagues ; `null` hors surf. */
@@ -628,6 +679,7 @@ const SAILING_DEFAULTS = {
   topTargets: SAILING_TOP_TARGETS,
   intervals: null,
   heartRate: HEART_RATE,
+  hrEnergy: HR_ENERGY,
   cadence: null,
   surf: null,
   pump: SAILING_PUMP_DETECTION,
@@ -661,6 +713,7 @@ const RUNNING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: HEART_RATE,
+  hrEnergy: null,
   cadence: CADENCE,
   surf: null,
   pump: null,
@@ -691,6 +744,7 @@ const CYCLING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: heartRateOffset(-7),
+  hrEnergy: null,
   cadence: null,
   surf: null,
   pump: null,
@@ -727,6 +781,7 @@ const SURF_PROFILE: SportProfile = {
   intervals: null,
   jumps: null,
   heartRate: heartRateOffset(-10),
+  hrEnergy: HR_ENERGY,
   cadence: null,
   surf: {
     minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15,

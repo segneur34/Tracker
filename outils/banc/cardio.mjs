@@ -9,6 +9,9 @@
 //     d'une zone sur la carte, effacés à la fermeture de l'onglet ; dérive et nuage FC / vitesse en course ;
 //     un profil repris d'ailleurs, FC de repos écrite en texte (lot 150) : écartée, des zones plausibles ;
 //     case « Zones » du panneau (05/11) : décochée par défaut, cochée des limites de plus (au plus cinq), retenue au rechargement ;
+//     énergie estimée par la FC (lot 96) : sans poids ni âge, l'invite en voile et en surf, rien en course ; avec poids,
+//     année de naissance et sexe, la tuile « Énergie estimée » (« env. … kcal », « dont env. … kcal au repos ») et son
+//     « ? » en voile et en surf, toujours rien en course ;
 //  4. la courbe de FC dans l'onglet des graphes des trois modules ;
 //  5. Réglages : « Seuils cardio » (S1 et S2, zones, Personnaliser, Revenir au calcul), la ligne « Seuils cardio »
 //     de la carte d'une activité (−8 en voile), la case « Ceinture cardio » en voile et en surf, les chiffres
@@ -174,6 +177,10 @@ for (const key of ['course', 'surf', 'voile']) {
   const text = await panel('Cardio');
   check(`${key} : FC moyenne et max`, /FC moyenne \/ \d+ bpm/.test(text) && /FC max \/ \d+ bpm/.test(text));
   check(`${key} : pas de zones, et la raison`, text.includes('Pour les zones d\'effort'));
+  // Énergie estimée par la FC (lot 96) : voile et surf seulement ; profil vide, l'invite à la place de la tuile.
+  const withEnergy = key !== 'course';
+  check(`${key} : ${withEnergy ? "invite au poids et à l'année de naissance" : 'ni énergie estimée ni invite'}`,
+    text.includes('renseignez votre poids et votre année de naissance') === withEnergy && !text.includes('Énergie estimée'), text.slice(0, 400));
   check(`${key} : courbe de FC`, (await chartsIn('Cardio')) >= 1);
 }
 await go(paths.course, 6000);
@@ -235,6 +242,35 @@ check(`course : « Zones » retenue au rechargement (${await zoneBox()}, ${await
 await evaluate(`(() => { ${CARDIO_SCOPE}?.querySelector('.an-cardio__zone-lines input')?.click(); return 'ok'; })()`);
 await settle({ max: 800 });
 check('course : « Zones » décochée de nouveau', (await zoneBox()) === false && (await refLines()) === linesOff);
+
+// --- 3 ter. Énergie estimée par la FC (lot 96) : poids, année de naissance et sexe saisis ---
+const beforeEnergy = await runner();
+await setRunner({ ...beforeEnergy, weightKg: 75, birthYear: 1986, sex: 'm' });
+const ENERGY_TILE = /Énergie estimée\s*\/ env\. \d+ kcal dont env\. \d+ kcal au repos/;
+const ENERGY_HELP = 'button.ui-help[aria-label="Aide : Énergie estimée"]';
+for (const key of ['voile', 'surf', 'course']) {
+  await go(paths[key], 8000);
+  await clickTab('cardio');
+  await settle({ max: 1500 });
+  const text = await panel('Cardio');
+  const tile = text.match(/Énergie estimée[^/]*\/ [^/]*/)?.[0] ?? '(sans tuile)';
+  console.log(`  ${key}, énergie :`, tile);
+  if (key === 'course') {
+    check("course : pas d'énergie estimée par la FC (énergie mécanique seule)", !text.includes('Énergie estimée') && !text.includes('renseignez votre poids'), text.slice(0, 400));
+    continue;
+  }
+  check(`${key} : tuile « Énergie estimée » (${tile})`, ENERGY_TILE.test(text) && !text.includes('renseignez votre poids'), text.slice(0, 400));
+  if (key === 'voile') {
+    // 1 h 02 de FC autour de 120 bpm, homme de 75 kg, 40 ans : env. 650 kcal (diagnostic du lot 96).
+    const value = Number(tile.match(/env\. (\d+) kcal/)?.[1]);
+    check(`voile : ordre de grandeur de Keytel (${value} kcal, 600 à 700 attendus)`, value >= 600 && value <= 700);
+    console.log('  ? énergie :', await evaluate(`(() => { const b = document.querySelector(${JSON.stringify(ENERGY_HELP)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+    await wait(300);
+    check("voile : « ? » de l'énergie estimée", (await panel('Cardio')).includes("C'est un ordre de grandeur, pas une mesure : comptez 25 % d'écart"));
+    await evaluate(`document.querySelector(${JSON.stringify(ENERGY_HELP)})?.click()`);
+  }
+}
+await setRunner(beforeEnergy);
 
 // --- 4. Courbe dans les graphes ---
 await go(paths.course, 6000);
