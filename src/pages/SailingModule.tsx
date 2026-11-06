@@ -340,7 +340,7 @@ function SailingModule() {
   const pumpDetection = profile.pump;
   const {
     byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
-  } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
+  } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights, jumps.allJumps);
   /** Part du vol pompée (capteurs du `.imu`), sur foil avec le pumping mesuré : image de partage et résumé de la fiche (lot 145). */
   const sharedPumpingShare = foil && pumpSummary ? pumpSummary.pumpShare : null;
   // Part du vol pompée et vent retenu recopiés dans le résumé, pour le partage d'une session dont l'analyse n'est pas
@@ -1305,7 +1305,7 @@ function SailingModule() {
                   shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={FAMILY_ACCENT.voile}
                   speedCell={(ms) => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit))}
                   unitLabel={SPEED_UNIT_LABEL[speedUnit]}
-                  pumpingOn={pumping} sensors={pumpSensors}
+                  pumpingOn={pumping} sensors={pumpSensors} flightTimeS={flights.reduce((sum, f) => sum + f.durationS, 0)}
                   offNote="Cochez « Pumping » dans l'onglet réglages pour compter les séries de coups en vol, téléphone fixé sur la poitrine." />
               </ResizablePanel>
             )}

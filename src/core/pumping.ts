@@ -60,6 +60,16 @@ export interface PumpDetection extends AttitudeParams {
   strokeMaxGapS: number;
   /** Série gardée : au moins ce nombre de coups. */
   minSeriesStrokes: number;
+  /**
+   * Coup isolé au bord d'une série, retiré : écart à son voisin au-delà de ce
+   * multiple de l'écart médian de la série (une reprise avant le rythme fausse sa
+   * cadence et son début). `Infinity` : aucun retrait.
+   */
+  seriesEdgeGapRatio: number;
+  /** Plage d'un saut, sans coup et qui coupe la série : de cette durée avant le décollage (l'impulsion)… */
+  jumpMaskBeforeS: number;
+  /** …à cette durée après l'arrivée (le choc), en secondes. */
+  jumpMaskAfterS: number;
   /** Cadence : signal des coups moyenné par cases de cette durée, en secondes… */
   cadenceGridS: number;
   /** …période cherchée par autocorrélation sur une fenêtre centrée de cette durée, en secondes… */
@@ -186,6 +196,8 @@ export interface FlightPumping {
   measuredS: number;
   /** Part de ce temps pompée (séries), de 0 à 1. */
   pumpShare: number;
+  /** Part du vol GPS que la capture couvre, en secondes, sans ce qui précède son début. */
+  coveredS: number;
 }
 
 /** Nombre de points d'une demi-fenêtre de `seconds` sur la grille. */
@@ -226,7 +238,19 @@ export const pumpStrokes = (v: ImuVertical, from: number, to: number, p: PumpDet
   return strokes;
 };
 
-/** Séries de coups, instants en secondes : les coups espacés de `strokeMaxGapS` au plus, gardées si assez longues. */
+/** Coups d'une série sans ses coups isolés aux bords (`seriesEdgeGapRatio`) ; deux coups au moins restent. */
+const withoutIsolatedEdges = (strokes: number[], ratio: number): number[] => {
+  if (strokes.length < 3 || !Number.isFinite(ratio)) return strokes;
+  const gaps = strokes.slice(1).map((t, k) => t - strokes[k]).sort((a, b) => a - b);
+  const limit = ratio * gaps[Math.floor((gaps.length - 1) / 2)];
+  let first = 0;
+  let last = strokes.length - 1;
+  while (last - first > 1 && strokes[first + 1] - strokes[first] > limit) first++;
+  while (last - first > 1 && strokes[last] - strokes[last - 1] > limit) last--;
+  return strokes.slice(first, last + 1);
+};
+
+/** Séries de coups, instants en secondes : les coups espacés de `strokeMaxGapS` au plus, sans leurs coups isolés aux bords, gardées si assez longues. */
 export const pumpSeries = (strokeTimesS: number[], p: PumpDetection): PumpSeries[] => {
   const groups: number[][] = [];
   for (const t of strokeTimesS) {
@@ -235,6 +259,7 @@ export const pumpSeries = (strokeTimesS: number[], p: PumpDetection): PumpSeries
     else groups.push([t]);
   }
   return groups
+    .map((g) => withoutIsolatedEdges(g, p.seriesEdgeGapRatio))
     .filter((g) => g.length >= Math.max(2, p.minSeriesStrokes))
     .map((g) => {
       const halfPeriod = (g[g.length - 1] - g[0]) / (g.length - 1) / 2;
@@ -342,13 +367,31 @@ export const pumpCadence = (v: ImuVertical, signal: Float64Array, from: number, 
   return { windows, ranges };
 };
 
+/** Plages [début, fin] privées des plages `excluded`, dans l'ordre. */
+const withoutRanges = (ranges: [number, number][], excluded: readonly (readonly [number, number])[]): [number, number][] => {
+  let kept = ranges;
+  for (const [a, b] of excluded) {
+    kept = kept.flatMap(([x, y]): [number, number][] => {
+      if (b <= x || a >= y) return [[x, y]];
+      const parts: [number, number][] = [];
+      if (a > x) parts.push([x, a]);
+      if (b < y) parts.push([b, y]);
+      return parts;
+    });
+  }
+  return kept;
+};
+
 /**
  * Séries validées des points [from, to) : coups de `pumpStrokes` rangés par
  * plage de `pumpCadence`, puis groupés en séries (`pumpSeries`) dans chacune ;
- * un coup hors des plages ne compte pas. Instants en secondes sur l'axe de la grille.
+ * un coup hors des plages ne compte pas. Les plages `excluded` (les sauts) n'ont
+ * aucun coup et coupent la série. Instants en secondes sur l'axe de la grille.
  */
-export const validatedPumpSeries = (v: ImuVertical, signal: Float64Array, from: number, to: number, p: PumpDetection): PumpSeries[] => {
-  const { ranges } = pumpCadence(v, signal, from, to, p);
+export const validatedPumpSeries = (
+  v: ImuVertical, signal: Float64Array, from: number, to: number, p: PumpDetection, excluded: readonly (readonly [number, number])[] = []
+): PumpSeries[] => {
+  const ranges = withoutRanges(pumpCadence(v, signal, from, to, p).ranges, excluded);
   const times = pumpStrokes(v, from, to, p, signal).map((i) => i * v.dt);
   const out: PumpSeries[] = [];
   let k = 0;
@@ -362,11 +405,12 @@ export const validatedPumpSeries = (v: ImuVertical, signal: Float64Array, from: 
 };
 
 /**
- * Décollage cherché autour du point `around` de la grille : début de la
- * dernière reprise du calme, d'au moins `liftoffCalmS`, qui commence dans la
- * recherche. `null` si la recherche est calme de bout en bout, ou jamais.
+ * Décollage cherché autour du point `around` de la grille, pas avant le point
+ * `notBefore` : début de la dernière reprise du calme, d'au moins `liftoffCalmS`,
+ * qui commence dans la recherche. `null` si la recherche est calme de bout en
+ * bout, ou jamais.
  */
-export const liftoffAt = (v: ImuVertical, around: number, p: PumpDetection): number | null => {
+export const liftoffAt = (v: ImuVertical, around: number, p: PumpDetection, notBefore = 0): number | null => {
   const mean = centredMean(v.aUp, halfSteps(p.liftoffHighPassS, v.dt));
   const sq = new Float64Array(v.n);
   for (let i = 0; i < v.n; i++) sq[i] = (v.aUp[i] - mean[i]) ** 2;
@@ -376,7 +420,7 @@ export const liftoffAt = (v: ImuVertical, around: number, p: PumpDetection): num
   const calmRun = new Int32Array(v.n + 1);
   for (let i = v.n - 1; i >= 0; i--) calmRun[i] = rough[i] < limit ? calmRun[i + 1] + 1 : 0;
   const need = Math.max(1, Math.round(p.liftoffCalmS / v.dt));
-  const lo = Math.max(1, around - Math.round(p.liftoffSearchBeforeS / v.dt));
+  const lo = Math.max(1, notBefore, around - Math.round(p.liftoffSearchBeforeS / v.dt));
   const hi = Math.min(v.n - 1, around + Math.round(p.liftoffSearchAfterS / v.dt));
   for (let i = hi; i >= lo; i--) {
     if (calmRun[i] >= need && calmRun[i - 1] === 0) return i;
@@ -405,12 +449,31 @@ export interface FlightCapture {
 }
 
 /**
+ * Heure du creux de vitesse de la recherche du décollage, avant le début du vol :
+ * la planche ne décolle pas avant d'avoir ralenti, le calme d'avant ce creux est
+ * celui du vol précédent. Le premier point à la vitesse la plus basse ; `null`
+ * sans point dans la recherche.
+ */
+export const liftoffFloorMs = (track: readonly TrackPoint[], f: Pick<FlightSpan, 'startMs'>, p: PumpDetection): number | null => {
+  const from = f.startMs - p.liftoffSearchBeforeS * 1000;
+  let lowest = Infinity;
+  let at: number | null = null;
+  for (let i = Math.max(0, nearestIndexAtTime(track, from) - 1); i < track.length && track[i].timeMs <= f.startMs; i++) {
+    if (track[i].timeMs < from || track[i].smoothedSpeedMs >= lowest) continue;
+    lowest = track[i].smoothedSpeedMs;
+    at = track[i].timeMs;
+  }
+  return at;
+};
+
+/**
  * Capture d'un vol (`measureFlightPumping`, et le diagnostic du banc) ; `null`
  * si la capture ne touche pas le vol. Elle ne lit que les mesures du vol, et
- * de la recherche du décollage avant lui.
+ * de la recherche du décollage avant lui. `floorMs` : le décollage n'est pas
+ * cherché avant cette heure (`liftoffFloorMs`).
  */
 export const flightCapture = (
-  rec: ImuRecording, p: PumpDetection, windows: ImuWindow[], f: Pick<FlightSpan, 'startMs' | 'endMs'>
+  rec: ImuRecording, p: PumpDetection, windows: ImuWindow[], f: Pick<FlightSpan, 'startMs' | 'endMs'>, floorMs: number | null = null
 ): FlightCapture | null => {
   const wantFrom = fileUsOf(rec, f.startMs - p.liftoffSearchBeforeS * 1000);
   const flightFrom = fileUsOf(rec, f.startMs);
@@ -432,33 +495,41 @@ export const flightCapture = (
   const start = Math.max(0, Math.round((flightFrom - v.startUs) / v.stepUs));
   // Décollage cherché seulement si la capture couvre le début du vol : sinon la
   // dernière reprise du calme trouvée serait au milieu du vol (capture élaguée autour d'un saut).
-  const liftoff = best[0] <= flightFrom ? liftoffAt(v, start, p) : null;
+  const notBefore = floorMs === null ? 0 : Math.round((fileUsOf(rec, floorMs) - v.startUs) / v.stepUs);
+  const liftoff = best[0] <= flightFrom ? liftoffAt(v, start, p, notBefore) : null;
   return { v, covered, start, liftoff, from: liftoff === null ? start : Math.min(start, liftoff) };
 };
+
+/** Un saut, vu du pumping : ses heures de décollage et d'arrivée, en ms. */
+export type PumpJump = { takeoffMs: number; landingMs: number };
 
 /**
  * Pumping de chaque vol, dans l'ordre des vols ; `null` pour un vol que la
  * capture ne touche pas. Le calcul d'un vol ne lit que ses mesures, et la
- * recherche du décollage avant lui.
+ * recherche du décollage avant lui. Les sauts `jumps` (tous, la hauteur minimale
+ * de l'activité ne filtre qu'à l'affichage) n'ont aucun coup et coupent la série.
  */
 export const measureFlightPumping = (
-  rec: ImuRecording, p: PumpDetection, track: TrackPoint[], cum: CumulativeTrack, flights: Pick<FlightSpan, 'n' | 'startMs' | 'endMs'>[]
+  rec: ImuRecording, p: PumpDetection, track: TrackPoint[], cum: CumulativeTrack, flights: Pick<FlightSpan, 'n' | 'startMs' | 'endMs'>[],
+  jumps: readonly PumpJump[] = []
 ): (FlightPumping | null)[] => {
   const windows = capturedWindows(rec);
   const distanceAt = (ms: number) => valueAtTime(track, (i) => cum.cumDist[i], ms, 'clamp');
   const speedAt = (ms: number) => valueAtTime(track, (i) => track[i].smoothedSpeedMs, ms, 'clamp');
   const lastPoint = track.length - 1;
   return flights.map((f) => {
-    const capture = flightCapture(rec, p, windows, f);
+    const capture = flightCapture(rec, p, windows, f, liftoffFloorMs(track, f, p));
     if (!capture) return null;
-    const { v, covered, liftoff, from } = capture;
+    const { v, covered, start: flightStart, liftoff, from } = capture;
+    const gridS = (ms: number) => (fileUsOf(rec, ms) - v.startUs) / 1e6;
+    const jumpRanges = jumps.map((j): [number, number] => [gridS(j.takeoffMs) - p.jumpMaskBeforeS, gridS(j.landingMs) + p.jumpMaskAfterS]);
     const timeMsOf = (i: number) => wallMsOf(rec, v.startUs + i * v.stepUs);
     const liftoffMs = liftoff === null ? null : timeMsOf(liftoff);
     const takeoffSpeedMs = liftoffMs === null ? null : speedAt(liftoffMs);
 
     const signal = pumpSignal(v, p);
     const seriesMs = (s: number) => timeMsOf(0) + s * 1000;
-    const series = validatedPumpSeries(v, signal, from, v.n, p).map((s): MeasuredPumpSeries => {
+    const series = validatedPumpSeries(v, signal, from, v.n, p, jumpRanges).map((s): MeasuredPumpSeries => {
       const startMs = seriesMs(s.startS);
       const endMs = seriesMs(s.endS);
       const start = nearestIndexAtTime(track, startMs);
@@ -490,6 +561,7 @@ export const measureFlightPumping = (
       perStrokeM: strokes > 0 ? pumpDistanceM / strokes : null,
       measuredS,
       pumpShare: measuredS > 0 ? Math.min(1, pumpS / measuredS) : 0,
+      coveredS: Math.max(0, v.n - 1 - flightStart) * v.dt,
     };
   });
 };
@@ -509,6 +581,8 @@ export interface PumpingSummary {
   flightS: number;
   /** Part de ce temps pompée, de 0 à 1. */
   pumpShare: number;
+  /** Part des vols que la capture couvre (somme des `coveredS`), en secondes. */
+  coveredS: number;
 }
 
 export const summarizePumping = (list: (FlightPumping | null)[]): PumpingSummary => {
@@ -525,6 +599,7 @@ export const summarizePumping = (list: (FlightPumping | null)[]): PumpingSummary
     series: measured.reduce((s, x) => s + x.series.length, 0),
     flightS,
     pumpShare: flightS > 0 ? Math.min(1, pumpS / flightS) : 0,
+    coveredS: measured.reduce((s, x) => s + x.coveredS, 0),
   };
 };
 

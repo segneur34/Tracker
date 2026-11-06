@@ -44,7 +44,7 @@ const { buildCumulativeTrack } = await load('core/sessionStats.ts');
 const { decodeImu, imuCaptureStats } = await load('core/imuFile.ts');
 const { centredMean, fileUsOf, verticalAcceleration, wallMsOf } = await load('core/imuVertical.ts');
 const {
-  capturedWindows, flightCapture, measureFlightPumping, pumpCadence, pumpSeries, pumpSignal, pumpStrokes, summarizePumping,
+  capturedWindows, flightCapture, liftoffFloorMs, measureFlightPumping, pumpCadence, pumpSeries, pumpSignal, pumpStrokes, summarizePumping,
 } = await load('core/pumping.ts');
 const { measureJumps } = await load('core/jumps.ts');
 const { msToKnots } = await load('core/units.ts');
@@ -122,7 +122,9 @@ for (const [a, b] of windows) console.log(`  fenêtre ${clock(wallMsOf(rec, a))}
 
 // --- Vols et pumping ---
 const flights = sailingFlights(track, cum, support, seuil, minVol);
-const pumping = measureFlightPumping(rec, P, track, cum, flights);
+const jumpDetection = profile.jumps?.detection;
+const jumps = jumpDetection && rec.header.setup.jumps !== false ? measureJumps(rec, jumpDetection, track, cum.cumDist).jumps : [];
+const pumping = measureFlightPumping(rec, P, track, cum, flights, jumps);
 const flightS = flights.reduce((s, f) => s + f.durationS, 0);
 const coveredOf = (f) => {
   const from = fileUsOf(rec, f.startMs);
@@ -144,7 +146,7 @@ flights.forEach((f, k) => {
   const cov = coveredOf(f);
   if (cov === 0 && !flags.tous) return;
   // Cadence du vol, recalculée sur la même capture que l'application (`flightCapture`).
-  const capture = p ? flightCapture(rec, P, windows, f) : null;
+  const capture = p ? flightCapture(rec, P, windows, f, liftoffFloorMs(track, f, P)) : null;
   const cadence = capture ? pumpCadence(capture.v, pumpSignal(capture.v, P), capture.from, capture.v.n, P) : null;
   const t0Ms = capture ? wallMsOf(rec, capture.v.startUs) : 0;
   const validatedS = cadence ? cadence.ranges.reduce((s, [a, b]) => s + (b - a), 0) : 0;
@@ -170,10 +172,9 @@ console.log(`Total sur les vols touchés : ${sum.series} séries, ${sum.strokes}
 if (!flags.tous) console.log('(vols hors capture omis : --tous pour les lister)');
 
 // --- Coups autour des sauts : faux coups possibles ---
-const jumpDetection = profile.jumps?.detection;
 if (jumpDetection) {
-  const { jumps } = measureJumps(rec, jumpDetection, track, cum.cumDist);
-  console.log(`\nSauts rangés : ${jumps.length} ; coups trouvés de 3 s avant le décollage à 3 s après l'arrivée`);
+  console.log(`\nSauts rangés : ${jumps.length} ; coups bruts de 3 s avant le décollage à 3 s après l'arrivée, et séries retenues sur la plage du saut (−${P.jumpMaskBeforeS} à +${P.jumpMaskAfterS} s, aucune attendue)`);
+  const kept = pumping.flatMap((x) => x?.series ?? []);
   for (const j of jumps) {
     const v = verticalAcceleration(rec, P, fileUsOf(rec, j.takeoffMs - 13_000), fileUsOf(rec, j.landingMs + 13_000));
     if (!v) continue;
@@ -182,7 +183,12 @@ if (jumpDetection) {
     const series = pumpSeries(strokes.map((i) => i * v.dt), P);
     const inSeries = series.reduce((s, x) => s + x.strokes, 0);
     const flight = flights.find((f) => j.takeoffMs >= f.startMs && j.takeoffMs <= f.endMs);
-    console.log(`  ${clock(j.takeoffMs)}  ${r2(j.heightM)} m  ${r2(j.flightS)} s  ${flight ? `vol ${flight.n}` : 'hors vol'}  coups ${strokes.length}, en série ${inSeries}`);
+    // Une série déborde d'un demi-coup de ses coups extrêmes : seuls ses coups comptent ici.
+    const touching = kept.filter((s) => {
+      const halfMs = (s.durationS / s.strokes / 2) * 1000;
+      return s.startMs + halfMs <= j.landingMs + P.jumpMaskAfterS * 1000 && s.endMs - halfMs >= j.takeoffMs - P.jumpMaskBeforeS * 1000;
+    }).length;
+    console.log(`  ${clock(j.takeoffMs)}  ${r2(j.heightM)} m  ${r2(j.flightS)} s  ${flight ? `vol ${flight.n}` : 'hors vol'}  coups bruts ${strokes.length}, en série ${inSeries} ; séries retenues sur le saut : ${touching}`);
   }
 }
 

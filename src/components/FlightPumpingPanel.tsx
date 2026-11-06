@@ -48,6 +48,8 @@ export interface PumpingPanelProps extends PanelBaseProps {
   pumpingOn: boolean;
   /** Note, Pumping décoché ; rien si absente. */
   offNote?: ReactNode;
+  /** Temps de vol de la session, en secondes, pour dire si la capture n'en couvre qu'une partie. */
+  flightTimeS: number;
 }
 
 export interface FlightsPanelProps<F extends FlightSpan> extends PanelBaseProps {
@@ -75,6 +77,9 @@ const headStyle = { display: 'flex', alignItems: 'center', gap: '10px', flexWrap
 const orDash = (value: number | null, format: (v: number) => string): string => (value === null ? '—' : format(value));
 const perMin = (v: number) => `${Math.round(v)} /min`;
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
+
+/** Sous cette part du temps de vol mesurée, le panneau dit que ses chiffres ne valent que pour ces passages. */
+const PARTIAL_CAPTURE_BELOW = 0.9;
 
 /** Pumping mesuré : la capture touche au moins un vol. */
 const isMeasuring = (pumping: PanelBaseProps['pumping'], summary: PumpingSummary | null) =>
@@ -108,7 +113,7 @@ const sensorNotes = (sensors: PanelBaseProps['sensors']) => (
  * l'appelant, avec son identifiant.
  */
 export function PumpingPanel({
-  helpKey, open, onToggle, help, pumping, pumpSummary, series, seriesPodium, shown, onShow, accent, speedCell, unitLabel, pumpingOn, sensors, offNote,
+  helpKey, open, onToggle, help, pumping, pumpSummary, series, seriesPodium, shown, onShow, accent, speedCell, unitLabel, pumpingOn, sensors, offNote, flightTimeS,
 }: PumpingPanelProps) {
   const [allSeriesOpen, setAllSeriesOpen] = useState(false);
   const measuring = isMeasuring(pumping, pumpSummary);
@@ -169,6 +174,11 @@ export function PumpingPanel({
             <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${formatDecimal(v, 1)} m`)} title="Distance des séries divisée par leurs coups" />
             <StatTile label="Part du vol pompée" value={`${Math.round(pumpSummary.pumpShare * 100)} %`} title="Temps pompé sur le temps de vol couvert par les capteurs" />
           </div>
+          {pumpSummary.coveredS < PARTIAL_CAPTURE_BELOW * flightTimeS && (
+            <div style={noteStyle}>
+              Mesuré sur {formatShortDuration(pumpSummary.coveredS)} des {formatShortDuration(flightTimeS)} de vol : les capteurs de cette session ne couvrent qu'une partie des vols, ces chiffres ne valent que pour elle.
+            </div>
+          )}
           {series.length === 0 && (
             <div style={noteStyle}>Aucune série de coups à une cadence régulière : rien n'est compté comme du pumping.</div>
           )}

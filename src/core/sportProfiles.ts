@@ -304,6 +304,7 @@ export const JUMP_DETECTION: JumpDetection = {
 const PUMP_DETECTION: PumpDetection = {
   ...ATTITUDE,
   strokeSmoothingS: 0.15, strokeBaselineS: 2, strokeMinG: 0.12, strokeMinPeriodS: 0.3, strokeMaxGapS: 2.5, minSeriesStrokes: 3,
+  seriesEdgeGapRatio: Infinity, jumpMaskBeforeS: 0.5, jumpMaskAfterS: 1,
   cadenceGridS: 0.05, cadenceWindowS: 6, cadenceStepS: 0.5, cadenceMinCorrelation: 0.5, cadencePeakFraction: 0.85,
   cadenceMinCoverage: 0.5, cadenceMinPerMin: 40, cadenceMaxPerMin: 130,
   liftoffHighPassS: 0.1, liftoffRoughWindowS: 0.5, liftoffCalmG: 0.08, liftoffCalmS: 1.5,
@@ -315,15 +316,20 @@ const PUMP_DETECTION: PumpDetection = {
 
 /**
  * Pumping en voile sur foil (wing, planche, kite ; lot 22, décision du 28/10) :
- * au départ, copie de celui du surf, décollage compris. À régler sur une vraie
- * session de wing capturée entière (Pumping coché) : celle du 26/10, élaguée
- * autour des sauts, ne couvre que des bouts de vol. Pas d'élagage propre au
- * pumping : Pumping coché, la capture est rangée entière
+ * ceux du surf, réglés le 06/11 sur la wing du 02/11, capturée entière (n° 27).
+ * Deux groupes bien séparés : les vrais coups de 90 à 130 par minute, amples et
+ * réguliers ; le clapot de 20 à 70, trois fois plus faible ; presque rien entre
+ * les deux, d'où le bas de la plage à 75. Le haut à 150 laisse de la marge, aucun
+ * coup plus rapide n'ayant été capté. Une série compte 5 coups au moins (règle
+ * de l'utilisateur : « 4 ou 5 coups bien marqués »). Le seuil de coup reste bas :
+ * le relever perd de vrais coups sans rien écarter de plus. Pas d'élagage propre
+ * au pumping : Pumping coché, la capture est rangée entière
  * (`keepsWholeCaptureForPumping`). Un vol est une suite au-dessus du seuil
  * d'activité ; ceux de moins de 10 s ne sont pas listés (`minFlightS`).
  */
 const SAILING_PUMP_DETECTION: PumpDetection = {
   ...PUMP_DETECTION,
+  cadenceMinPerMin: 75, cadenceMaxPerMin: 150, minSeriesStrokes: 5, seriesEdgeGapRatio: 1.4,
   minFlightS: 10,
 };
 

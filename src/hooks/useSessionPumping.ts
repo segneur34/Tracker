@@ -2,7 +2,7 @@ import { plainError } from '../platform/errorText';
 import { useEffect, useMemo, useState } from 'react';
 import type { ImuRecording } from '../core/imuFile';
 import {
-  longestPumpSeries, measureFlightPumping, sessionPumpSeries, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection, type PumpingSeries,
+  longestPumpSeries, measureFlightPumping, sessionPumpSeries, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection, type PumpingSeries, type PumpJump,
 } from '../core/pumping';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { cachedSessionMotion, loadSessionMotion, useSessionMotionReader } from './sessionMotion';
@@ -56,22 +56,26 @@ export const useSessionPumping = (file: string | null, enabled: boolean) => {
 
 /** Aucune série : la même liste d'un rendu à l'autre. */
 const NO_SERIES: PumpingSeries[] = [];
+/** Aucun saut : la même liste d'un rendu à l'autre. */
+const NO_JUMPS: readonly PumpJump[] = [];
 
 /**
  * Pumping des vols (voile, surf), mesuré sur la capture lue par `useSessionPumping` :
  * par vol (`byFlight`, par numéro), son résumé, les séries de coups de la
  * session, numérotées dans l'ordre (`series`), et les 3 plus longues
  * (`seriesPodium`), le haut de l'onglet ; les 3 plus longs vols (`podium`).
- * Il suit les vols, donc le seuil du brouillon.
+ * Il suit les vols, donc le seuil du brouillon, et les sauts de la session, qui
+ * n'ont aucun coup (`jumps` : liste stable d'un rendu à l'autre, tout se recalcule sinon).
  */
 export const useFlightPumping = <F extends Pick<FlightSpan, 'n' | 'startMs' | 'endMs' | 'durationS'>>(
-  recording: ImuRecording | null, detection: PumpDetection | null, track: TrackPoint[], cumulative: CumulativeTrack, flights: F[]
+  recording: ImuRecording | null, detection: PumpDetection | null, track: TrackPoint[], cumulative: CumulativeTrack, flights: F[],
+  jumps: readonly PumpJump[] = NO_JUMPS
 ) => {
   const byFlight = useMemo(() => {
     if (!recording || !detection || flights.length === 0) return null;
-    const list = measureFlightPumping(recording, detection, track, cumulative, flights);
+    const list = measureFlightPumping(recording, detection, track, cumulative, flights, jumps);
     return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
-  }, [recording, detection, track, cumulative, flights]);
+  }, [recording, detection, track, cumulative, flights, jumps]);
   const summary = useMemo(() => (byFlight ? summarizePumping([...byFlight.values()]) : null), [byFlight]);
   const series = useMemo(() => (byFlight ? sessionPumpSeries([...byFlight.values()]) : NO_SERIES), [byFlight]);
   const seriesPodium = useMemo(() => longestPumpSeries(series, 3), [series]);

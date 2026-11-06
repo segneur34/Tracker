@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { selectImuWindows, type ImuRecording } from './imuFile';
 import { SYNTH_WALL_MS, synthImu } from './imuSynthetic.fixture';
 import {
-  capturedWindows, flightCapture, flightSpans, keepsWholeCaptureForPumping, longestPumpSeries, measureFlightPumping, pumpSeries, pumpStrokes,
+  capturedWindows, flightCapture, flightSpans, keepsWholeCaptureForPumping, liftoffFloorMs, longestPumpSeries, measureFlightPumping, pumpSeries, pumpStrokes,
   sessionPumpSeries, summarizePumping, type FlightPumping, type FlightSpan, type MeasuredPumpSeries, type PumpDetection,
 } from './pumping';
 import { activeRuns, buildCumulativeTrack } from './sessionStats';
@@ -366,6 +366,93 @@ describe('vols d’une suite de plages actives', () => {
   it('les garde tous sans durée minimale', () => {
     const { points, runs } = setup(1);
     expect(flightSpans(points, buildCumulativeTrack(points), runs, 0).map((s) => s.durationS)).toEqual([30, 5, 15, 15]);
+  });
+});
+
+describe('pumping en voile sur foil : réglage du 06/11 (n° 27)', () => {
+  const S = SPORT_PROFILES.wingfoil.pump!;
+  /** Saut de 70 à 70,9 s, en heures. */
+  const jump = { takeoffMs: W + 70_000, landingMs: W + 70_900 };
+  const seriesOf = (rec: ImuRecording, track: TrackPoint[], p: PumpDetection, jumps: { takeoffMs: number; landingMs: number }[] = []) =>
+    measureFlightPumping(rec, p, track, buildCumulativeTrack(track), [flightSpan(track, 41, 100)], jumps)[0]!.series;
+
+  it('un saut n’a aucun coup et coupe la série en deux', () => {
+    const rec = pumpCapture([[50, 90, 1.7]], 40, 120);
+    const track = trackWith(1, 120);
+    expect(seriesOf(rec, track, S)).toHaveLength(1);
+    const cut = seriesOf(rec, track, S, [jump]);
+    expect(cut).toHaveLength(2);
+    // Un demi-coup de part et d'autre des coups comptés : aucun coup de −0,5 s à +1 s.
+    const halfPeriodMs = 500 / 1.7;
+    expect(cut[0].endMs - halfPeriodMs).toBeLessThanOrEqual(jump.takeoffMs - S.jumpMaskBeforeS * 1000);
+    expect(cut[1].startMs + halfPeriodMs).toBeGreaterThanOrEqual(jump.landingMs + S.jumpMaskAfterS * 1000);
+    expect(cut[0].strokes + cut[1].strokes).toBeLessThan(seriesOf(rec, track, S)[0].strokes);
+  });
+
+  it('donne les mêmes séries autour d’un saut à 50 et 200 Hz, à 1 et 5 Hz', () => {
+    const at = (rateHz: number, hz: number) => seriesOf(pumpCapture([[50, 90, 1.7]], 40, 120, rateHz), trackWith(hz, 120), S, [jump]);
+    const reference = at(100, 1);
+    for (const [rateHz, hz] of [[50, 1], [200, 1], [100, 5]]) {
+      const other = at(rateHz, hz);
+      expect(other).toHaveLength(reference.length);
+      other.forEach((s, k) => expect(Math.abs(s.strokes - reference[k].strokes)).toBeLessThanOrEqual(1));
+    }
+  });
+
+  it('ne compte pas un rythme à 42 coups par minute ; le surf, si', () => {
+    const rec = pumpCapture([[50, 90, 0.7]], 40, 120);
+    const track = trackWith(1, 120);
+    expect(seriesOf(rec, track, S)).toHaveLength(0);
+    expect(seriesOf(rec, track, P).length).toBeGreaterThan(0);
+  });
+
+  it('valide une pompe à 140 coups par minute', () => {
+    const [s] = seriesOf(pumpCapture([[50, 80, 140 / 60]], 40, 120), trackWith(1, 120), S);
+    expect(Math.abs(s.strokesPerMin - 140) / 140).toBeLessThan(0.05);
+  });
+
+  it('demande 5 coups : 4 ne font pas une série, 6 oui', () => {
+    const track = trackWith(1, 120);
+    const burst = (strokes: number) => seriesOf(pumpCapture([[60, 60 + strokes / 1.7, 1.7]], 40, 120), track, S);
+    expect(burst(4)).toHaveLength(0);
+    expect(burst(6)).toHaveLength(1);
+  });
+
+  it('retire les coups isolés aux bords d’une série en voile, pas en surf', () => {
+    const strokes = [0, 1.4, 1.9, 2.4, 2.9, 3.4, 3.9, 5.3];
+    const [trimmed] = pumpSeries(strokes, S);
+    expect(trimmed.strokes).toBe(6);
+    expect(trimmed.startS).toBeCloseTo(1.15);
+    expect(trimmed.endS).toBeCloseTo(4.15);
+    expect(pumpSeries(strokes, P)[0].strokes).toBe(8);
+  });
+
+  it('ne prend pas pour décollage le calme d’avant le creux de vitesse', () => {
+    // Chocs jusqu'à 32 s, puis calme ; la vitesse tombe à 36 s sans choc, et le vol part à 40 s.
+    const rec = synthImu({ durationS: 120, az: (t) => (t < 32 ? water(t) : chop(t)) });
+    const track = trackWith(1, 120, (t) => (t < 34 ? 5 : t < 36 ? 5 - (t - 34) * 2 : t < 40 ? 1 + (t - 36) : 5));
+    const flight = flightSpan(track, 40, 100);
+    expect(liftoffFloorMs(track, flight, S)).toBe(W + 36_000);
+    const without = flightCapture(rec, S, capturedWindows(rec), flight);
+    expect(Math.abs(without!.liftoff! * without!.v.dt - (32 - (40 - S.liftoffSearchBeforeS)))).toBeLessThan(1);
+    expect(measureFlightPumping(rec, S, track, buildCumulativeTrack(track), [flight])[0]!.liftoffMs).toBeNull();
+  });
+
+  it('dit la part du vol que couvre la capture, sans ce qui précède le vol', () => {
+    // Capture coupée à 70 s, vol de 50 à 90 s : 20 s couvertes, quel que soit le décollage trouvé avant le vol.
+    const rec = synthImu({ durationS: 70, az: (t) => (t < 47 ? water(t) : chop(t)) });
+    const track = trackWith(1, 120, (t) => (t < 49 ? 2 : 5));
+    const list = measureFlightPumping(rec, S, track, buildCumulativeTrack(track), [flightSpan(track, 50, 90)]);
+    expect(Math.abs(list[0]!.coveredS - 20)).toBeLessThan(0.1);
+    expect(Math.abs(summarizePumping(list).coveredS - 20)).toBeLessThan(0.1);
+    expect(list[0]!.measuredS).toBeGreaterThan(list[0]!.coveredS);
+  });
+
+  it('garde le décollage d’une trace sans creux avant le vol', () => {
+    const rec = synthImu({ durationS: 120, az: (t) => (t < 42 ? water(t) : chop(t)) });
+    const track = trackWith(1, 120, (t) => (t < 41 ? 2 : 5));
+    const [p] = measureFlightPumping(rec, S, track, buildCumulativeTrack(track), [flightSpan(track, 41, 100)]);
+    expect(Math.abs(p!.liftoffMs! - (W + 42_000))).toBeLessThan(1000);
   });
 });
 

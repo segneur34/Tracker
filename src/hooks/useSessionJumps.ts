@@ -46,6 +46,9 @@ const compute = async (file: string, track: TrackPoint[], detection: JumpDetecti
 const isCurrent = (stored: SessionJumps | undefined): boolean =>
   stored !== undefined && (stored.measured === false || stored.version >= JUMPS_CALC_VERSION);
 
+/** Aucun saut : la même liste d'un rendu à l'autre (le pumping se recalcule quand elle change). */
+const NO_JUMPS: SessionJumps['jumps'] = [];
+
 export const useSessionJumps = (file: string | null, track: TrackPoint[], sport: SportType) => {
   const session = useLibrarySession(file);
   const detection = getSportProfile(sport).jumps?.detection ?? null;
@@ -60,7 +63,7 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
   const notMeasured = value?.measured === false;
   const jumps = value !== undefined && !notMeasured ? value.jumps : null;
   const status: JumpsStatus = jumps !== null ? 'ready' : error !== null ? 'error' : eligible && !notMeasured ? 'computing' : 'none';
-  return { status, jumps: jumps ?? [], error };
+  return { status, jumps: jumps ?? NO_JUMPS, error };
 };
 
 /** Surbrillance de l'onglet « sauts » : un saut par l'heure de son décollage, ou le podium (`podium`). */
@@ -99,7 +102,7 @@ export const useShownJumps = ({ file, track, profile, activity, thresholdMs, hig
   const showJump = useCallback((takeoffMs: number | null) => show('sauts', takeoffMs === null ? null : String(takeoffMs)), [show]);
   const togglePodium = useCallback(() => show('sauts', podiumShown ? null : 'podium'), [show, podiumShown]);
   return {
-    status: state.status, error: state.error, jumps, hiddenCount: state.jumps.length - jumps.length, minHeightM,
+    status: state.status, error: state.error, jumps, allJumps: state.jumps, hiddenCount: state.jumps.length - jumps.length, minHeightM,
     visible: state.status !== 'none', shownJump, podiumShown, showJump, togglePodium,
   };
 };

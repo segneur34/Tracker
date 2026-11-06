@@ -686,7 +686,7 @@ function SurfModule() {
                   pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
                   shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={ACCENT}
                   speedCell={speedCell} unitLabel={unitLabel}
-                  pumpingOn={pumping} sensors={sensors}
+                  pumpingOn={pumping} sensors={sensors} flightTimeS={flights.reduce((sum, f) => sum + f.durationS, 0)}
                   offNote="Cochez « Pumping » dans l'onglet réglages pour compter les séries de coups en vol, téléphone fixé sur la poitrine." />
               </ResizablePanel>
             )}
