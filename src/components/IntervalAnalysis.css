@@ -69,11 +69,15 @@
     margin: 0;
   }
 
+  /* Ces cellules passent à la ligne quand leur case est trop étroite (320 px) ; sinon elles tiennent sur une ligne. */
+  .an-ivl-launch,.an-ivl-hold,.an-ivl-hr,.an-ivl-rec,.an-ivl-cad,.an-ivl-step {
+    white-space: normal;
+  }
+
   .an-ivl-launch::before,
   .an-ivl-hold::before,
   .an-ivl-hr::before,
   .an-ivl-rec::before,
-  .an-ivl-cad::before,
   .an-ivl-step::before {
     content: attr(data-label) ' ';
     color: var(--muted);

@@ -402,5 +402,61 @@ await wait(400);
 await shoot('fractionne-telephone-compteur');
 console.log('largeur au téléphone :', await evaluate('document.documentElement.scrollWidth'));
 
+// 8 (lot 181). Séance avec FC et cadence : les cellules d'une carte de répétition ne se chevauchent pas, à 320, 360 et 390 px.
+{
+  const start = tf + 3 * 86_400_000;
+  let m = 0;
+  const list = [];
+  for (let k = 0; k <= 600 + 8 * 120 - 60 + 300; k++) {
+    const v = effortAt(k);
+    if (k > 0) m += v;
+    const hr = Math.round(110 + 8 * Math.min(1, v / 5));
+    const cad = Math.round(80 + 6 * Math.min(1, v / 5));
+    list.push(`<trkpt lat="${lat}" lon="${(3.85 + m / mPerDegLon).toFixed(7)}"><ele>60</ele><time>${new Date(start + k * 1000).toISOString()}</time><extensions><speed>${v.toFixed(3)}</speed><hr>${hr + 40}</hr><cad>${cad}</cad></extensions></trkpt>`);
+  }
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>FC et cadence</name><type>run-intervals</type><trkseg>\n${list.join('\n')}\n</trkseg></trk></gpx>\n`;
+  await go('/fractionne');
+  await evaluate(`(() => {
+    const input = document.querySelector('input[type=file][accept=".gpx"]');
+    const dt = new DataTransfer();
+    dt.items.add(new File([${JSON.stringify(gpx)}], 'fc-cadence.gpx', { type: 'application/gpx+xml' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'ok';
+  })()`);
+  await wait(4000);
+  const rec = (await records()).find((r) => r.record.summary?.startMs === start)?.record;
+  for (const width of [320, 360, 390]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 2, mobile: true });
+    await go(`/fractionne/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`, 6000);
+    const res = await evaluate(`(async () => {
+      const row = document.querySelector('.an-ivl-table tbody tr');
+      if (!row) return { error: 'aucune carte de répétition' };
+      row.scrollIntoView({ block: 'center' });
+      await new Promise((r) => setTimeout(r, 300));
+      const cells = [...row.querySelectorAll('td')].filter((c) => getComputedStyle(c).display !== 'none');
+      const named = cells.map((c) => {
+        const range = document.createRange();
+        range.selectNodeContents(c);
+        const r = range.getBoundingClientRect();
+        const before = getComputedStyle(c, '::before').content;
+        return { name: c.className.replace(/\\bnum\\b/, '').trim(), l: r.left, r: r.right, t: r.top, b: r.bottom, over: c.scrollWidth - c.clientWidth, w: r.width, before };
+      }).filter((c) => c.w > 0);
+      const bad = [];
+      for (let i = 0; i < named.length; i++) {
+        if (named[i].over > 1) bad.push(named[i].name + ' déborde de ' + named[i].over + ' px');
+        for (let j = i + 1; j < named.length; j++) {
+          const a = named[i], b = named[j];
+          if (a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5) bad.push(a.name + ' recouvre ' + b.name);
+        }
+      }
+      return { cells: named.length, hasCad: !!row.querySelector('.an-ivl-cad'), hasHr: !!row.querySelector('.an-ivl-hr'), bad, cad: row.querySelector('.an-ivl-cad')?.innerText, page: document.documentElement.scrollWidth };
+    })()`);
+    const ok = !res.error && res.hasCad && res.hasHr && res.bad.length === 0;
+    console.log(`${ok ? 'ok   ' : 'ÉCHEC'} carte de répétition à ${width} px : ${res.error ?? `${res.cells} cellules, FC ${res.hasHr}, cadence ${res.hasCad} (« ${(res.cad ?? '').replace(/\n/g, ' ')} »), page ${res.page} px, ${res.bad.length ? res.bad.join(' ; ') : 'aucun chevauchement'}`}`);
+    if (width === 320) await shoot('fractionne-carte-320');
+  }
+}
+
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 await close();
