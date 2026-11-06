@@ -120,7 +120,7 @@ export function PumpingPanel({
   const { mapButton, podiumButton } = showButtons({ shown, onShow, accent });
 
   const seriesTable = (list: PumpingSeries[], podiumRows: boolean) => (
-    <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+    <div className="ui-overflow-x ui-mt-10">
       <table className="ui-table ui-table--cards an-pump-table">
         <thead>
           <tr style={headRowStyle}>
@@ -159,7 +159,7 @@ export function PumpingPanel({
     <>
       <div style={headStyle}>
         <PanelTitle label={measuring ? `Pumping (${plural(series.length, 'série')})` : 'Pumping'} open={open} onToggle={onToggle} helpKey={helpKey} />
-        <span style={{ flex: 1 }} />
+        <span className="ui-grow" />
         {measuring && series.length > 1 && podiumButton(SERIES_PODIUM_KEY, 'les 3 plus longues séries')}
       </div>
       <HelpText helpKey={helpKey} note>{help}</HelpText>
@@ -184,7 +184,7 @@ export function PumpingPanel({
           )}
           {series.length > 0 && seriesTable(seriesPodium, series.length > 1)}
           {series.length > 3 && (
-            <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allSeriesOpen} onClick={() => setAllSeriesOpen(!allSeriesOpen)}>
+            <Button size="s" className="ui-mt-10" aria-expanded={allSeriesOpen} onClick={() => setAllSeriesOpen(!allSeriesOpen)}>
               {allSeriesOpen ? 'Replier les séries ▲' : `Toutes les séries (${series.length}) ▼`}
             </Button>
           )}
@@ -222,7 +222,7 @@ export function FlightsPanel<F extends FlightSpan>({
   const flightTable = (list: F[], podiumRows: boolean) => {
     const moduleColumns = measuring ? (podiumRows ? [] : allColumns) : podiumRows ? podiumColumns : [...allColumns, ...allColumnsWithoutPumping];
     return (
-      <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+      <div className="ui-overflow-x ui-mt-10">
         <table className="ui-table ui-table--cards an-pump-table">
           <thead>
             <tr style={headRowStyle}>
@@ -275,7 +275,7 @@ export function FlightsPanel<F extends FlightSpan>({
     <>
       <div style={headStyle}>
         <PanelTitle label={`Vols (${flights.length})`} open={open} onToggle={onToggle} helpKey={helpKey} />
-        <span style={{ flex: 1 }} />
+        <span className="ui-grow" />
         {flights.length > 1 && podiumButton(FLIGHT_PODIUM_KEY, 'les 3 plus longs vols')}
       </div>
       <HelpText helpKey={helpKey} note>{help}</HelpText>
@@ -288,7 +288,7 @@ export function FlightsPanel<F extends FlightSpan>({
       </div>
       {flights.length > 0 && flightTable(podium, flights.length > 1)}
       {flights.length > 3 && (
-        <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allFlightsOpen} onClick={() => setAllFlightsOpen(!allFlightsOpen)}>
+        <Button size="s" className="ui-mt-10" aria-expanded={allFlightsOpen} onClick={() => setAllFlightsOpen(!allFlightsOpen)}>
           {allFlightsOpen ? 'Replier les vols ▲' : `Tous les vols (${flights.length}) ▼`}
         </Button>
       )}

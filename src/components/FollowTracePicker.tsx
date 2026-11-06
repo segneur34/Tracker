@@ -122,7 +122,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
         {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
         {tab === 'route' && status === 'ready' && library.loaded && (routes.length === 0 ? (
-          <p style={{ margin: 0, color: 'var(--muted)' }}>
+          <p className="ui-muted ui-m-0">
             Aucun itinéraire enregistré : planifiez-en un depuis l'accueil.
           </p>
         ) : (
@@ -139,11 +139,11 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
         ))}
 
         {tab === 'session' && status === 'ready' && (sortedSessions.length === 0 ? (
-          <p style={{ margin: 0, color: 'var(--muted)' }}>Aucune session enregistrée pour l'instant.</p>
+          <p className="ui-muted ui-m-0">Aucune session enregistrée pour l'instant.</p>
         ) : (
           <>
             {sessionActivities.length > 1 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <label className="ui-row-10 ui-center ui-wrap">
                 <span className="ui-eyebrow">Activité</span>
                 <ActivitySelect activities={sessionActivities} value={activityFilter} label="Activité" className="ui-field"
                   placeholder={`Toutes (${sortedSessions.length})`}

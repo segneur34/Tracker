@@ -210,7 +210,7 @@ export default function FitnessTestPanel({
       </div>
 
       {results.hrMaxBpm !== null && results.hrMaxBpm !== profileHrMax && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>
+        <div className="ui-row-10 ui-center ui-wrap ui-my-8 ui-text-s">
           <span>
             {profileHrMax === null
               ? `Aucune FC max dans Réglages › Pratiquant : celle du test est de ${results.hrMaxBpm} bpm.`
@@ -220,15 +220,15 @@ export default function FitnessTestPanel({
         </div>
       )}
       {results.hrMaxBpm !== null && results.hrMaxBpm === profileHrMax && (
-        <p style={{ fontSize: 'var(--text-s)', margin: '8px 0' }}>FC max du test retenue dans Pratiquant : les zones du cardio en partent.</p>
+        <p className="ui-text-s ui-my-8">FC max du test retenue dans Pratiquant : les zones du cardio en partent.</p>
       )}
 
-      <div style={{ marginTop: '6px' }}>
+      <div className="ui-mt-6">
         <FitnessTestCurves track={track} test={test} minutes={minutes} speedsMs={speedsMs} hrSmoothed={hrSmoothed} speedUnit={speedUnit} zoom={zoom}
           onShowOnMap={onShowOnMap} />
       </div>
 
-      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
+      <div className="ui-muted ui-text-xs ui-mt-8">
         {test.endReason ? `Fin de la rampe : ${END_REASON_LABEL[test.endReason]}. ` : 'Rampe non terminée. '}
         En haut, <span style={{ color: SPEED_COLOR }}>vitesse lissée</span> et <span style={{ color: TARGET_COLOR }}>cible</span> ;
         en bas, <span style={{ color: HEART_RATE_COLOR }}>FC</span> et sa bande d'échauffement ; traits : {DRAWN_SIGNALS.map((s) => TEST_SIGNAL_LABEL[s].toLowerCase()).join(', ')}.

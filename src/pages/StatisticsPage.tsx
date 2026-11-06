@@ -661,7 +661,7 @@ function StatisticsPage() {
 
             {open.vitesse && (
               <ResizablePanel id={panelId('vitesse')} defaultHeight={380} minHeight={220} direction="vertical" style={chartPanelStyle}>
-                <div style={{ marginBottom: '8px', paddingRight: '28px' }}>
+                <div className="ui-mb-8 ui-pr-28">
                   <PanelTitle label="Graphique" open={open.vitesse} onToggle={() => toggle('vitesse')} helpKey={chartFull === null ? undefined : 'stats:graphique'} />
                 </div>
                 <HelpText helpKey="stats:graphique" note>
@@ -689,7 +689,7 @@ function StatisticsPage() {
                         )}
                       </div>
                     )}
-                    <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
+                    <ZoomableChart zoom={zoom} className="stats-chart-fill">
                       <ResponsiveContainer>
                         <ComposedChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <ChartZoomProbe />
@@ -767,7 +767,7 @@ function StatisticsPage() {
 
             {open.regularite && (
               <ResizablePanel id={panelId('regularite')} defaultHeight={380} minHeight={220} direction="vertical" style={chartPanelStyle}>
-                <div style={{ marginBottom: '10px', paddingRight: '28px' }}>
+                <div className="ui-mb-10 ui-pr-28">
                   <PanelTitle label="Régularité" open={open.regularite} onToggle={() => toggle('regularite')} helpKey={regular.weeks === 0 ? undefined : 'stats:regularite'} />
                 </div>
                 <HelpText helpKey="stats:regularite" note>Sessions par {regular.barUnit}, empilées par activité.</HelpText>
@@ -782,7 +782,7 @@ function StatisticsPage() {
                       <StatTile label="Série en cours" value={plural(regular.currentStreak, 'semaine')} title="Jusqu'à cette semaine, ou à la précédente si celle-ci est vide" />
                       <StatTile label="Dernière session" value={lastText} />
                     </div>
-                    <div style={{ flex: 1, minHeight: 140 }}>
+                    <div className="stats-chart-grow">
                       <ResponsiveContainer>
                         <BarChart data={barRows} accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
@@ -821,14 +821,14 @@ function StatisticsPage() {
                 {hrZones && <CardioLoadHelpSlot bounds={hrZones.bounds} />}
 
                 {cardio.zoneTimesS && cardio.coveredS > 0 && (
-                  <div style={{ marginTop: '10px' }}>
+                  <div className="ui-mt-10">
                     <div className="stats-records__title">Temps par zone</div>
-                    <div style={{ display: 'flex', height: '14px', borderRadius: '4px', overflow: 'hidden', margin: '6px 0' }}>
+                    <div className="stats-zone-bar">
                       {cardio.zoneTimesS.map((s, z) => s > 0 && (
                         <div key={z} title={`${zoneLabel(z)} : ${formatShortDuration(s)}`} style={{ width: `${(s / cardio.coveredS) * 100}%`, backgroundColor: HEART_ZONE_COLORS[z] }} />
                       ))}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: 'var(--text-xs)' }}>
+                    <div className="stats-zone-legend">
                       {cardio.zoneTimesS.map((s, z) => (
                         <span key={z} style={{ opacity: s > 0 ? 1 : 0.45 }}>
                           <span style={{ display: 'inline-block', width: '9px', height: '9px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[z], marginRight: '4px' }} />
@@ -840,9 +840,9 @@ function StatisticsPage() {
                 )}
 
                 {loadBars.length > 0 && (
-                  <div style={{ marginTop: '12px' }}>
+                  <div className="ui-mt-12">
                     <div className="stats-records__title">Charge par {regular.barUnit}</div>
-                    <div style={{ height: '160px' }}>
+                    <div className="ui-h-160">
                       <ResponsiveContainer>
                         <BarChart data={loadBars.map((b, i) => ({ i, load: Math.round(b.load) }))} accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
@@ -858,9 +858,9 @@ function StatisticsPage() {
                 )}
 
                 {hrPoints.length > 0 && hrTicks && (
-                  <div style={{ marginTop: '12px' }}>
+                  <div className="ui-mt-12">
                     <div className="stats-records__title">FC moyenne par session</div>
-                    <div style={{ height: '160px' }}>
+                    <div className="ui-h-160">
                       <ResponsiveContainer>
                         <ComposedChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} />

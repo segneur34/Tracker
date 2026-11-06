@@ -76,20 +76,20 @@ export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent, 
   const { located, rename, remove, editable } = view;
   if (located.length === 0) return null;
   return (
-    <div className="an-marks" style={{ marginTop: '12px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, marginBottom: '6px' }}>
+    <div className="an-marks ui-mt-12">
+      <div className="ui-row-6 ui-center ui-semibold ui-mb-6">
         <IconFlag size={16} />
         Notes posées pendant l'enregistrement
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div className="ui-stack-6">
         {located.map((m) => {
           const shown = m.mark.timeMs === shownMs;
           return (
-            <div key={`note-${m.mark.timeMs}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <strong style={{ minWidth: '1.5em' }}>{m.n}</strong>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTimeOfDay(m.mark.timeMs)}</span>
-              {withDistance && <span style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{formatDistance(m.distanceM, distanceUnit)}</span>}
-              <input type="text" className="ui-field ui-field--s" style={{ flex: '1 1 8em', minWidth: 0 }}
+            <div key={`note-${m.mark.timeMs}`} className="ui-row-8 ui-center ui-wrap">
+              <strong className="an-mark-n">{m.n}</strong>
+              <span className="num">{formatTimeOfDay(m.mark.timeMs)}</span>
+              {withDistance && <span className="num ui-muted">{formatDistance(m.distanceM, distanceUnit)}</span>}
+              <input type="text" className="ui-field ui-field--s an-mark-label"
                 value={m.mark.label ?? ''} placeholder={`Note ${m.n}`} disabled={!editable} aria-label={`Nom de la note ${m.n}`}
                 onChange={(e) => rename(m.mark, e.target.value)} />
               <Button size="s" aria-pressed={shown} onClick={() => onShow(shown ? null : m.mark.timeMs)}

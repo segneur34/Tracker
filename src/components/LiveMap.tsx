@@ -182,7 +182,7 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
     <div style={{ position: 'relative', height, borderRadius: 'var(--radius-m)', overflow: 'hidden', border: '1px solid var(--line-strong)', zIndex: 0 }}>
       <MapContainer
         {...(start ? { center: [start.lat, start.lon] as [number, number], zoom: 16 } : { bounds: guideBounds!, boundsOptions: { padding: [24, 24] } })}
-        style={{ height: '100%', width: '100%' }}>
+        className="ui-fill">
         <MapAutoResize />
         <BaseTileLayer family={family} />
         {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_STYLE} />}

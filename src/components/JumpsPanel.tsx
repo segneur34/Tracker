@@ -171,7 +171,7 @@ function JumpsPanel({
     return (
       <ResizablePanel id={`${panelPrefix}.sauts`} style={ANALYSIS_PANEL_STYLE}>
         {heading('Sauts')}
-        <div style={{ color: 'var(--muted)' }}>{text}</div>
+        <div className="ui-muted">{text}</div>
         {status === 'ready' && hiddenNote && <div style={noteStyle}>{hiddenNote}</div>}
       </ResizablePanel>
     );
@@ -213,8 +213,8 @@ function JumpsPanel({
         {farthest && farthest.lengthM !== null && stat('Plus long saut', formatShortDistance(farthest.lengthM, distanceUnit), formatTimeOfDay(farthest.takeoffMs))}
       </div>
 
-      <div style={{ margin: '10px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+      <div className="ui-my-10">
+        <div className="ui-row-15 ui-center">
           <strong>Les plus hauts</strong>
           <MapToggle shown={podiumShown} color={accent} labels={['Voir (Carte)', 'Masquer (Carte)']} onClick={onTogglePodium} />
         </div>
@@ -229,14 +229,14 @@ function JumpsPanel({
       </div>
 
       <div className="an-jump-sort">
-        <span style={{ color: 'var(--muted)' }}>Trier par</span>
+        <span className="ui-muted">Trier par</span>
         <SegmentedControl label="Trier les sauts" items={SORTS} value={sort} onChange={setSort} accent={accent} />
       </div>
-      <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+      <div className="ui-scroll-x">
         <table className="ui-table ui-table--cards an-jump-table">
           <thead>
-            <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-              <th style={{ ...cellStyle, textAlign: 'left' }} title="Numéro du saut dans la séance">N°</th>
+            <tr className="ui-sunken">
+              <th className="ui-cell ui-cell--left" title="Numéro du saut dans la séance">N°</th>
               <th style={cellStyle}>Heure</th>
               <th style={cellStyle}>Hauteur</th>
               <th style={cellStyle}>En l'air</th>
@@ -252,9 +252,9 @@ function JumpsPanel({
               const onCurve = j.takeoffMs === first.takeoffMs || j.takeoffMs === second?.takeoffMs;
               return (
                 <tr key={j.takeoffMs} className="ui-table__row">
-                  <td className="an-jump-num" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700 }}>{order.get(j.takeoffMs)}</td>
+                  <td className="an-jump-num ui-cell ui-cell--left ui-cell--bold">{order.get(j.takeoffMs)}</td>
                   <td className="an-jump-time num" style={cellStyle}>{formatTimeOfDay(j.takeoffMs)}</td>
-                  <td className="an-jump-height" style={{ ...cellStyle, fontWeight: 700 }} title={doubtful ? doubtText(j) : undefined}>
+                  <td className="an-jump-height ui-cell ui-cell--center ui-cell--bold" title={doubtful ? doubtText(j) : undefined}>
                     {doubtful && <span className="an-jump-doubt" aria-label="mesure douteuse">≈ </span>}
                     {meters(j.heightM)}
                   </td>
@@ -303,7 +303,7 @@ function JumpsPanel({
       <HelpText helpKey="analyse:sauts-courbe" note>
         Hauteur du téléphone au-dessus de son niveau au décollage. Les deux sauts comparés partent du même instant.
       </HelpText>
-      <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
+      <div className="ui-muted ui-mb-6">
         {shown.map((j, k) => (
           <span key={j.takeoffMs} style={{ marginRight: '14px', color: CURVE_COLORS[k] }}>
             n° {order.get(j.takeoffMs)} : {meters(j.heightM)} · {seconds(j.flightS)} en l'air

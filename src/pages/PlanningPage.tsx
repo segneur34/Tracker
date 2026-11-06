@@ -905,8 +905,8 @@ function PlanningPage() {
             </ul>
           )}
 
-          <ResizablePanel id="planning.carte" direction="vertical" minHeight={240} className="plan-map" style={{ overflow: 'hidden' }}>
-            <MapContainer ref={setMap} center={[initialView.lat, initialView.lon]} zoom={initialView.zoom} style={{ height: '100%', width: '100%' }}>
+          <ResizablePanel id="planning.carte" direction="vertical" minHeight={240} className="plan-map ui-overflow-hidden">
+            <MapContainer ref={setMap} center={[initialView.lat, initialView.lon]} zoom={initialView.zoom} className="ui-fill">
               <MapAutoResize />
               {/* Fond de la famille de l'activité planifiée : celui de ses analyses, changé ici aussi. */}
               <BaseTileLayer family={mapFamily} />

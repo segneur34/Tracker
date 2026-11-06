@@ -505,20 +505,20 @@ function SurfModule() {
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 <GeneralStats stats={overviewStats} />
                 {draft.edits.foil === null && (
-                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
+                  <div className="ui-muted ui-text-xs ui-mt-8">
                     {foil ? 'Sur foil' : 'Sans foil'}, supposé d'après l'activité : la session ne le dit pas. Il se règle dans l'onglet réglages.
                   </div>
                 )}
                 {summary.totalS > 0 && (
-                  <div style={{ marginTop: '12px' }}>
-                    <div style={{ display: 'flex', height: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--line)' }}
+                  <div className="ui-mt-12">
+                    <div className="an-surf-bar"
                       title="Répartition du temps de la session">
                       {(Object.keys(PHASE_COLORS) as SurfPhase[]).map((phase) => {
                         const s = phase === 'glisse' ? summary.glisseS : phase === 'rame' ? summary.rameS : phase === 'attente' ? summary.attenteS : summary.trouS;
                         return s > 0 ? <span key={phase} style={{ width: `${(s / summary.totalS) * 100}%`, backgroundColor: PHASE_COLORS[phase] }} /> : null;
                       })}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
+                    <div className="an-surf-legend">
                       {(Object.keys(PHASE_COLORS) as SurfPhase[]).map((phase) => {
                         const s = phase === 'glisse' ? summary.glisseS : phase === 'rame' ? summary.rameS : phase === 'attente' ? summary.attenteS : summary.trouS;
                         if (s <= 0) return null;
@@ -527,7 +527,7 @@ function SurfModule() {
                         // la légende ne le redit pas (demande du 19/10). Sur foil, « en vol » est une autre durée.
                         const repeated = phase === 'glisse' && !foil;
                         return (
-                          <span key={phase} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span key={phase} className="ui-inline-row-4 ui-center">
                             <Swatch color={PHASE_COLORS[phase]} bordered />
                             {label}{repeated ? '' : ` ${Math.round((s / summary.totalS) * 100)} %`}
                           </span>
@@ -543,12 +543,12 @@ function SurfModule() {
 
             {open.vagues && (
               <ResizablePanel id={panelId('vagues')} style={ANALYSIS_PANEL_STYLE}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <div className="ui-row-10 ui-center ui-wrap ui-mb-10">
                   <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={toggleOf('vagues')} helpKey="surf:vagues" />
-                  <span style={{ flex: 1 }} />
+                  <span className="ui-grow" />
                   {waves.length > 1 && (
                     <>
-                      <label style={{ fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <label className="ui-text-xs ui-row-4 ui-center">
                         Tri
                         <SegmentedControl<WaveSort> label="Tri des vagues" accent={ACCENT} value={waveSort} onChange={setWaveSort}
                           items={(Object.keys(WAVE_SORT_LABEL) as WaveSort[]).map((k) => ({ key: k, label: WAVE_SORT_LABEL[k] }))} />
@@ -568,14 +568,14 @@ function SurfModule() {
                     : <>{' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.</>}
                 </HelpText>
                 {waves.length === 0 ? (
-                  <div style={{ color: 'var(--muted)' }}>
+                  <div className="ui-muted">
                     Aucune vague : rien n'a dépassé le seuil {foil ? 'de vague en foil' : 'de vague'} ({formatSpeed(fromDisplaySpeed(foil ? waveThreshold : threshold, profile.thresholdUnit), speedUnit)}) pendant {surfProfile.surf.minWaveS} s. Il se règle dans l'onglet réglages.
                   </div>
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="ui-overflow-x">
                     <table className="ui-table">
                       <thead>
-                        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                        <tr className="ui-sunken">
                           <th style={thStyle}>N°</th>
                           <th style={thStyle}>Heure</th>
                           <th style={thStyle}>Durée</th>
@@ -594,10 +594,10 @@ function SurfModule() {
                           const shown = waveShown === String(w.n);
                           return (
                             <tr key={w.n} className="ui-table__row">
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{w.n}</td>
+                              <td className="ui-cell-tight ui-cell--bold">{w.n}</td>
                               <td style={tdStyle}>{formatTimeOfDay(w.startMs).slice(0, 5)}</td>
                               <td style={tdStyle}>{formatShortDuration(w.durationS)}</td>
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{Math.round(w.distanceM)} m</td>
+                              <td className="ui-cell-tight ui-cell--bold">{Math.round(w.distanceM)} m</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.maxSpeedMs, speedUnit), speedUnit)}</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.avgSpeedMs, speedUnit), speedUnit)}</td>
                               <td style={tdStyle}>{gyroTurns.get(w) ?? (gyroTurns.size > 0 ? `${w.turns}*` : w.turns)}</td>
@@ -633,10 +633,10 @@ function SurfModule() {
                   <StatTile label="Temps d'attente" value={formatShortDuration(summary.attenteS)} />
                 </div>
                 {(measuredReturns.length > 0 || firstOut) && (
-                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+                  <div className="ui-overflow-x ui-mt-10">
                     <table className="ui-table">
                       <thead>
-                        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                        <tr className="ui-sunken">
                           <th style={thStyle}>Après</th>
                           <th style={thStyle}>Retour</th>
                           <th style={thStyle}>Distance</th>
@@ -651,7 +651,7 @@ function SurfModule() {
                           const shown = returnShown === String(r.after);
                           return (
                             <tr key={r.after} className="ui-table__row">
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
+                              <td className="ui-cell-tight ui-cell--bold">{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
                               <td style={tdStyle}>{r.returnS === null ? 'enchaîné' : formatShortDuration(r.returnS)}</td>
                               <td style={tdStyle}>{r.straightM === null ? '—' : `${Math.round(r.straightM)} m`}</td>
                               <td style={tdStyle}>{orDash(r.returnSpeedMs, (v) => formatSpeed(v, speedUnit))}</td>
@@ -733,7 +733,7 @@ function SurfModule() {
                     const chartData = chartDataAt(z.view);
                     return (
                       <>
-                        <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
+                        <div className="chart-head ui-mb-8 ui-pr-28">
                           <PanelTitle label="Vitesse" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="surf:graphiques" />
                           {!folds && <HoverReadout read={readSpeed(z)} />}
                         </div>
@@ -758,7 +758,7 @@ function SurfModule() {
                     );
                   }}
                 </ZoomView>
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
+                <div className="ui-muted ui-text-xs ui-mt-6 ui-no-shrink">
                   Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}.
                 </div>
               </ResizablePanel>
@@ -783,7 +783,7 @@ function SurfModule() {
                   Vitesse : {speedSourceText(gpx.hasDeviceSpeed, gpx.deviceSpeedUnit)}
                   {' · '}Cap : {track.some((p) => p.courseDeg !== undefined) ? "fourni par l'appareil" : 'tiré des positions'}.
                 </SessionSettingsHeader>
-                <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="ui-row-18 ui-center ui-wrap">
                   <SessionActivityField activities={allActivities} activity={activity} withPositions families={sessionFile ? undefined : ['surf']}
                     onChange={(next) => changeSessionActivity(sessionFile, next)} />
                   <FoilPumpingFields
@@ -792,7 +792,7 @@ function SurfModule() {
                     showPumping={foil} pumping={pumping} pumpingIsDefault={draft.edits.pumping === null}
                     onPumpingChange={(next) => draft.update({ pumping: next === activityPumping ? null : next })} />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+                <div className="ui-stack-10 ui-mt-12">
                   <SessionThresholdField
                     label={foil ? 'Seuil de vol' : 'Seuil de vague'}
                     title={foil

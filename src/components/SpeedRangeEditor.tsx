@@ -107,18 +107,16 @@ function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, commit = 'i
   } : {};
 
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+    <label className="ui-row-6 ui-center ui-wrap">
       <strong>Couleur de la trace :</strong>
       de
       <input type="number" min={0} step={0.5} value={minText}
         onChange={handleBoundChange('min')} {...commitHandlers('min')}
-        className="ui-field ui-field--s num"
-        style={{ width: '68px', textAlign: 'right' }} />
+        className="ui-field ui-field--s num ui-input-num" />
       à
       <input type="number" min={0} step={0.5} value={maxText}
         onChange={handleBoundChange('max')} {...commitHandlers('max')}
-        className="ui-field ui-field--s num"
-        style={{ width: '68px', textAlign: 'right' }} />
+        className="ui-field ui-field--s num ui-input-num" />
       {unitLabel}
       {isOverridden && (
         <Button size="s" onClick={() => onChange(null)}>Défaut</Button>

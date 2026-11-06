@@ -144,3 +144,154 @@
   display: block;
   margin-bottom: var(--space-2);
 }
+
+/* Styles sortis du JSX (élément 160), à valeur égale ; les utilitaires communs sont dans `ui.css`. */
+
+.rec-action-btn {
+  flex: 1 1 130px;
+}
+
+.rec-actions-note {
+  margin: 0;
+  flex-basis: 100%;
+  font-size: var(--text-s);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.rec-break-all {
+  word-break: break-all;
+}
+
+.rec-footnote {
+  margin: 0;
+  font-size: var(--text-s);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.rec-grid-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.rec-indent {
+  margin-left: 26px;
+}
+
+.rec-lead {
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+
+.rec-leg-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.rec-leg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.rec-link-start {
+  font-size: var(--text-s);
+  align-self: flex-start;
+}
+
+.rec-live-label {
+  font-size: var(--text-m);
+  color: var(--muted);
+  min-width: 0;
+}
+
+.rec-live-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.rec-live-value {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.15;
+  min-width: 0;
+  text-align: right;
+}
+
+.rec-mark-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.rec-mark-aim {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.rec-mark-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  flex-wrap: wrap;
+}
+
+.rec-mark-text {
+  flex: 1 1 12em;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rec-replay-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: 24px;
+}
+
+.rec-saved-text {
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.rec-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: var(--bg);
+}
+
+.rec-stat__value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.rec-summary {
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+}
+
+.rec-test-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: var(--text-m);
+}
+
+.rec-tool-shadow {
+  box-shadow: var(--shadow-tool);
+}
+

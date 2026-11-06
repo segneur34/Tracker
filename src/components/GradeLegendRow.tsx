@@ -26,7 +26,7 @@ export default function GradeLegendRow({ label, gradeRange, onMap, onToggleMap }
       <span>{Math.round(gradeRange.min * 100)} %</span>
       <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
       <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-      <Button size="s" aria-pressed={onMap} onClick={onToggleMap} style={{ marginLeft: 'auto' }}>
+      <Button size="s" aria-pressed={onMap} onClick={onToggleMap} className="ui-ml-auto">
         {onMap ? 'Masquer de la carte' : 'Voir sur la carte'}
       </Button>
     </div>

@@ -10,18 +10,19 @@ import { IconChevronRight } from './icons';
  * graphe ; `aria-expanded` dit l'état (banc compris). Plus petit dans les
  * analyses (`--chart-name-size`, `analysisMobile.css`).
  */
-function ChartFold({ label, open, onToggle, color, title, style, disabled }: {
+function ChartFold({ label, open, onToggle, color, title, style, className, disabled }: {
   label: ReactNode;
   open: boolean;
   onToggle: () => void;
   color?: string;
   title?: string;
   style?: CSSProperties;
+  className?: string;
   /** Bouton grisé, non cliquable, qui ne déplie rien. */
   disabled?: boolean;
 }) {
   return (
-    <button type="button" aria-expanded={open} onClick={disabled ? undefined : onToggle} disabled={disabled} aria-disabled={disabled || undefined} data-chart-fold=""
+    <button type="button" aria-expanded={open} onClick={disabled ? undefined : onToggle} disabled={disabled} aria-disabled={disabled || undefined} data-chart-fold="" className={className}
       title={title ?? (open ? 'Replier' : 'Montrer')}
       style={{
         alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
@@ -41,7 +42,7 @@ function ChartFold({ label, open, onToggle, color, title, style, disabled }: {
  * droite, la lecture au point survolé tant que le graphe est montré. Chaque
  * infobulle (`title`) est donnée par l'appelant, avec ses mots.
  */
-export function GraphFoldHead({ label, color, open, onToggle, read, title, foldStyle, style }: {
+export function GraphFoldHead({ label, color, open, onToggle, read, title, foldStyle, style, className }: {
   label: ReactNode;
   color?: string;
   open: boolean;
@@ -51,11 +52,13 @@ export function GraphFoldHead({ label, color, open, onToggle, read, title, foldS
   title?: string;
   /** Style du bouton du nom. */
   foldStyle?: CSSProperties;
+  /** Classes de la rangée, en plus de `chart-head`. */
+  className?: string;
   /** Style de la rangée. */
   style?: CSSProperties;
 }) {
   return (
-    <div className="chart-head" style={style}>
+    <div className={className ? `chart-head ${className}` : 'chart-head'} style={style}>
       <ChartFold label={label} color={color} open={open} onToggle={onToggle} title={title} style={foldStyle} />
       {read !== undefined && open && <HoverReadout read={read} />}
     </div>

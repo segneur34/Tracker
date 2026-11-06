@@ -121,9 +121,9 @@ interface ReplayTrack {
 }
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '12px 14px', borderRadius: 'var(--radius-m)', background: 'var(--bg)' }}>
-    <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{label}</span>
-    <span className="num" style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>{value}</span>
+  <div className="rec-stat">
+    <span className="ui-muted ui-text-s">{label}</span>
+    <span className="num rec-stat__value">{value}</span>
   </div>
 );
 
@@ -221,14 +221,14 @@ const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Acti
       : `${formatShortDistance(view.distanceM, effectiveDistanceUnit(activity))} · ${roundBearingDeg(view.bearingDeg)}°`;
   return (
     <Card>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2) var(--space-3)', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 12em', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>
+      <div className="rec-mark-row">
+        <div className="rec-mark-text">
+          <span className="ui-muted ui-text-s">
             {view.finished ? `${count} balises` : `${markName(view.target, count)} · ${view.target + 1}/${count}`}
           </span>
-          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{aim}</span>
+          <span className="num rec-mark-aim">{aim}</span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className="rec-mark-actions">
           <Button onClick={skipMark} disabled={view.finished}>Passer</Button>
           <Button variant={view.muted ? 'secondary' : 'ghost'} aria-pressed={!view.muted} onClick={() => setBeepsMuted(!view.muted)}
             title={view.muted ? 'Remettre les bips et les vibrations' : 'Couper les bips et les vibrations'}>
@@ -304,12 +304,12 @@ const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg 
     ? `${leg.headingDeg === null ? 'cap —' : `cap ${roundBearingDeg(leg.headingDeg)}°`} · ${formatLegDuration(leg.endMs - leg.startMs)}`
     : empty;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)' }}>
-        <span style={{ fontWeight: 700 }}>{title}</span>
-        <span className="num" style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{detail}</span>
+    <div className="ui-stack-2">
+      <div className="rec-leg-head">
+        <span className="ui-bold">{title}</span>
+        <span className="num ui-muted ui-text-s">{detail}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+      <div className="rec-leg-grid">
         <Stat label="Moyenne" value={formatSpeed(leg?.averageSpeedMs ?? null, unit, distanceUnit)} />
         <Stat label={`Max (${LIVE_LEG_DEFAULTS.topDurationS} s)`} value={formatSpeed(leg?.maxSpeedMs ?? null, unit, distanceUnit)} />
       </div>
@@ -323,14 +323,14 @@ const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg 
  */
 const LiveSummary = ({ items }: { items: { label: string; value: string }[] }) => (
   <Card>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+    <div className="ui-stack-2">
       {items.map((item) => (
-        <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-3)' }}>
-          <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)', minWidth: 0 }}>{item.label}</span>
+        <div key={item.label} className="rec-live-row">
+          <span className="rec-live-label">{item.label}</span>
           {/* Une valeur longue (« sous Z1 · 142 ») passe à la ligne à son « · », jamais au milieu d'un morceau. */}
-          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, minWidth: 0, textAlign: 'right' }}>
+          <span className="num rec-live-value">
             {item.value.split(' · ').map((part, i) => (
-              <Fragment key={i}>{i > 0 && ' · '}<span style={{ whiteSpace: 'nowrap' }}>{part}</span></Fragment>
+              <Fragment key={i}>{i > 0 && ' · '}<span className="ui-nowrap">{part}</span></Fragment>
             ))}
           </span>
         </div>
@@ -380,7 +380,7 @@ const NOTE_BUZZ_MS = 80;
  * nomme ensuite dans l'analyse. Le bouton dit lui-même « Note N posée »
  * quelques secondes, et le téléphone vibre.
  */
-function NoteButton({ style }: { style?: React.CSSProperties }) {
+function NoteButton({ className }: { className?: string }) {
   const [feedback, setFeedback] = useTransientValue<string>(NOTE_FEEDBACK_MS);
   const note = () => {
     const added = addRecordingMark();
@@ -388,7 +388,7 @@ function NoteButton({ style }: { style?: React.CSSProperties }) {
     if (added) void buzz(NOTE_BUZZ_MS).catch(() => undefined);
   };
   return (
-    <Button variant="secondary" size="l" block className="ui-btn--hold" onClick={note} aria-live="polite" style={style}>
+    <Button variant="secondary" size="l" block className={className ? `ui-btn--hold ${className}` : 'ui-btn--hold'} onClick={note} aria-live="polite">
       <IconFlag size={20} />
       {feedback ?? 'Note'}
     </Button>
@@ -433,12 +433,12 @@ function CaptureOption({ label, checked, disabled, onChange, note, children }: {
   children?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+    <div className="ui-stack-1">
+      <label className="ui-row-10 ui-center">
         <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
         <span>{label}</span>
       </label>
-      <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginLeft: '26px' }}>{note}</span>
+      <span className="ui-muted ui-text-s rec-indent">{note}</span>
       {children}
     </div>
   );
@@ -498,7 +498,7 @@ function RecordingMap({ busy, followed, courseMarksOf, liveActivity, family, onR
         color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
         family={liveActivity ? activityFamily(liveActivity) : family}
         overlay={busy ? (
-          <Button size="s" onClick={onReduce} style={{ boxShadow: 'var(--shadow-tool)' }}>
+          <Button size="s" onClick={onReduce} className="rec-tool-shadow">
             Réduire la carte
           </Button>
         ) : undefined} />
@@ -563,7 +563,7 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
           {liveActivity && liveStatItems(liveActivity, live.stats, heartRate?.bpm ?? null, options).map((item) => <Stat key={item.label} {...item} />)}
         </div>
         {liveActivity && sportFamily(liveActivity.base) === 'voile' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+          <div className="rec-grid-fit">
             <LegCard title="Bord en cours" leg={live.stats.legs.current}
               empty={live.stats.movingTimeMs > 0 ? 'en manœuvre' : 'pas encore'} activity={liveActivity} />
             <LegCard title="Bord précédent" leg={live.stats.legs.previous} empty="pas encore" activity={liveActivity} />
@@ -596,7 +596,7 @@ function RecordingGpsCard({ busy, liveHeartOnly, deviceGps }: {
   return (
     <Card heading={busy ? undefined : 'Dernier enregistrement'}>
       <details open={!busy}>
-        <summary className="ui-eyebrow" style={{ cursor: 'pointer', marginBottom: 'var(--space-2)' }}>GPS</summary>
+        <summary className="ui-eyebrow rec-summary">GPS</summary>
         <div style={STAT_GRID}>
           <Stat label="Durée" value={formatClock(pointsDurationMs)} />
           <Stat label="Points" value={String(stats.pointCount)} />
@@ -926,10 +926,10 @@ function RecordingScreen() {
       <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
       {!busy && !pending && <Card className="rec-options">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
+        <div className="rec-test-form">
           {/* Boutons glissants en cascade : la famille, puis ses activités ; en Entraînement, le type d'entraînement entre les deux,
               et ses activités seulement s'il en a plusieurs ; sous Tests, le test et son protocole. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div className="ui-stack-2">
             <SegmentedControl fit label="Famille" items={families.map((f) => ({ key: f, label: FAMILY_LABEL[f] }))} value={family}
               accent={FAMILY_ACCENT[family]} onChange={pickFamily} />
             {kinds.length > 0 && (
@@ -947,7 +947,7 @@ function RecordingScreen() {
                     ...FITNESS_TEST_IDS.map((id) => ({ key: id, label: FITNESS_TESTS[id].label })),
                     { key: RESTING_HR_TEST.id, label: RESTING_HR_TEST.label },
                   ]} />
-                <Link to={`/fractionne/tests/${testId}`} style={{ fontSize: 'var(--text-s)' }}>Voir le protocole</Link>
+                <Link to={`/fractionne/tests/${testId}`} className="ui-text-s">Voir le protocole</Link>
               </>
             )}
           </div>
@@ -989,7 +989,7 @@ function RecordingScreen() {
                     ? `${belt.name}, portée et humidifiée : la muscu se fait avec elle, sans GPS.`
                     : `${belt.name}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}>
               {measureHeartRate && (sourceChoice === 'device' || heartOnly) && (
-                <span style={{ fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                <span className="ui-text-s rec-indent">
                   <BeltStatus state={beltLive.state} bpm={beltLive.bpm}
                     offText={beltWarmup.error ? `connexion impossible : ${beltWarmup.error}` : null}>
                     {beltWarmup.error && (
@@ -1003,8 +1003,8 @@ function RecordingScreen() {
 
           {chosen && guideOffered && (
             // Entraînement : zone visée ou bornes de BPM (course à bornes, 05/11).
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginLeft: '26px' }}>
-              <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>Guidage cardio</span>
+            <div className="ui-stack-1 rec-indent">
+              <span className="ui-muted ui-text-s">Guidage cardio</span>
               <SegmentedControl label="Guidage cardio" value={guidePicked} onChange={setGuidePicked}
                 items={HEART_GUIDE_MODES.map((mode) => ({ key: mode, label: HEART_GUIDE_LABEL[mode] }))} />
             </div>
@@ -1012,8 +1012,8 @@ function RecordingScreen() {
 
           {chosen && zoneOffered && guideMode === 'zone' && (
             // Bips de sortie de zone : deux bips trop haut, trois trop bas, un au retour.
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginLeft: '26px' }}>
-              <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>Zone visée</span>
+            <div className="ui-stack-1 rec-indent">
+              <span className="ui-muted ui-text-s">Zone visée</span>
               <SegmentedControl label="Zone visée" value={String(zonePicked)} onChange={(key) => setZonePicked(Number(key) as ZoneTarget)}
                 items={ZONE_TARGETS.map((zone) => ({ key: String(zone), label: zone === 0 ? 'aucune' : zoneLabel(zone) }))} />
             </div>
@@ -1021,7 +1021,7 @@ function RecordingScreen() {
 
           {chosen && guideOffered && guideMode === 'bornes' && (
             // Mêmes bips que la zone visée, hors des bornes.
-            <div style={{ marginLeft: '26px' }}>
+            <div className="rec-indent">
               <HeartBandPicker picks={bandPicks} onChange={setBandPicked} zones={guideZones} />
             </div>
           )}
@@ -1043,9 +1043,9 @@ function RecordingScreen() {
           )}
 
           {restingChosen || heartOnly ? null : native ? (
-            <div><span className="ui-eyebrow">Source</span> <span style={{ marginLeft: '8px' }}>GPS du téléphone</span></div>
+            <div><span className="ui-eyebrow">Source</span> <span className="ui-ml-8">GPS du téléphone</span></div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="ui-stack-8">
               <span className="ui-eyebrow">Source</span>
               <label>
                 <input type="radio" checked={sourceChoice === 'device'} disabled={busy}
@@ -1056,7 +1056,7 @@ function RecordingScreen() {
                   onChange={() => setSourceChoice('replay')} /> Rejeu d'un GPX, pour éprouver l'enregistrement
               </label>
               {sourceChoice === 'replay' && (
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginLeft: '24px' }}>
+                <div className="rec-replay-row">
                   <input type="file" accept=".gpx" disabled={busy} onChange={handleReplayFile} />
                   <label>
                     Vitesse :{' '}
@@ -1064,25 +1064,25 @@ function RecordingScreen() {
                       {REPLAY_SPEEDS.map((s) => <option key={s} value={s}>×{s}</option>)}
                     </select>
                   </label>
-                  {replay && <span style={{ color: 'var(--muted)' }}>{replay.fixes.length} points</span>}
+                  {replay && <span className="ui-muted">{replay.fixes.length} points</span>}
                 </div>
               )}
-              {replayError && <div style={{ color: 'var(--danger)' }}>{replayError}</div>}
+              {replayError && <div className="ui-danger-text">{replayError}</div>}
             </div>
           )}
         </div>
       </Card>}
 
       {busy ? (
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="ui-row-10">
           {status === 'recording' && (
-            <Button variant="secondary" size="l" className="ui-btn--hold" style={{ flex: 1 }} onClick={() => void pauseRecording()}>
+            <Button variant="secondary" size="l" className="ui-btn--hold ui-grow" onClick={() => void pauseRecording()}>
               <IconPause size={20} />
               Pause
             </Button>
           )}
           {manualPause && (
-            <Button variant="record" size="l" className="ui-btn--hold" style={{ flex: 1 }} onClick={() => void resumeRecording()}>
+            <Button variant="record" size="l" className="ui-btn--hold ui-grow" onClick={() => void resumeRecording()}>
               <IconPlay size={20} />
               Reprendre
             </Button>
@@ -1092,7 +1092,7 @@ function RecordingScreen() {
       ) : !pending && restingChosen ? (
         // FC repos : pas d'enregistrement, le test se fait sur sa page.
         <Card>
-          <p style={{ margin: '0 0 var(--space-3)', lineHeight: 1.5 }}>
+          <p className="rec-lead">
             Test de {RESTING_HR_TEST.durationS / 60} min, assis ou allongé, ceinture cardio portée, sans GPS : il se fait sur sa page.
           </p>
           <Button variant="record" size="l" block onClick={() => navigate(`/fractionne/tests/${RESTING_HR_TEST.id}`)}>
@@ -1102,19 +1102,19 @@ function RecordingScreen() {
       ) : !pending && (
         // Au repos, la moitié du bouton choisit une trace à suivre ; l'un sous l'autre quand la place manque (écran
         // étroit, texte d'Android agrandi).
-        <div className="rec-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-          <Button variant="record" size="l" style={{ flex: '1 1 130px' }} onClick={handleStart} disabled={!canStart}>
+        <div className="rec-actions ui-row-10 ui-wrap">
+          <Button variant="record" size="l" className="rec-action-btn" onClick={handleStart} disabled={!canStart}>
             <span className="ui-record-dot" />
             Démarrer
           </Button>
           {!heartOnly && (
-            <Button variant="secondary" size="l" style={{ flex: '1 1 130px' }} onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+            <Button variant="secondary" size="l" className="rec-action-btn" onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
               <IconRoute size={20} />
               Suivre une trace
             </Button>
           )}
           {beltMissing && (
-            <p style={{ margin: 0, flexBasis: '100%', fontSize: 'var(--text-s)', color: 'var(--muted)', lineHeight: 1.5 }}>
+            <p className="rec-actions-note">
               {belt === null
                 ? 'La muscu se fait avec la ceinture cardio : choisissez-la dans Réglages, bloc « Capteurs ».'
                 : "La muscu se fait avec la ceinture cardio : « Démarrer » attend qu'elle soit connectée. Portez-la, électrodes humidifiées."}
@@ -1124,8 +1124,8 @@ function RecordingScreen() {
       )}
 
       {(status === 'recording' || status === 'paused') && (canLockOrientation() ? (
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <NoteButton style={{ flex: 1 }} />
+        <div className="ui-row-10">
+          <NoteButton className="ui-grow" />
           <OrientationLockButton />
         </div>
       ) : <NoteButton />)}
@@ -1153,9 +1153,9 @@ function RecordingScreen() {
       {picking && !busy && !pending && !heartOnly && <FollowTracePicker onClose={() => setPicking(false)} onPicked={proposeActivityOf} />}
 
       {followed && !liveHeartOnly && (
-        <div className="ui-alert" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="ui-alert ui-row-10 ui-center ui-wrap">
           <IconRoute size={18} />
-          <span style={{ flex: 1 }}>
+          <span className="ui-grow">
             Trace suivie : <strong>{followed.name}</strong>{followed.source === 'session' ? ' (session)' : ''}
             {liveActivity && <> · {formatDistance(followedLengthM, effectiveDistanceUnit(liveActivity), 1)}</>}
           </span>
@@ -1202,22 +1202,22 @@ function RecordingScreen() {
 
       {pending && (
         <Card heading={(
-          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+          <span className="ui-flex-between">
             {pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}
             {pending.activity && (
               <SavedSessionShare gpx={pending.content} activity={pending.activity} fileName={pending.fileName} libraryFile={null} />
             )}
           </span>
         )}>
-          <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
+          <p className="rec-saved-text">
             {pending.activity?.name ?? 'À classer'}, {pending.pointCount} {pending.sport === null || hasPositions(pending.sport) ? 'points' : 'mesures de la ceinture'}.<br />
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
+            <span className="ui-muted ui-text-s">
               Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
               Aucun nouvel enregistrement avant ce choix.
             </span>
           </p>
           <SessionEndGear activity={pending.activity} gear={endGear} onChange={setEndGear} />
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="ui-row-10 ui-wrap">
             <Button variant="primary" onClick={() => void handleAnalyze()} disabled={analyzing}>
               {analyzing ? 'Rangement…' : 'Analyser'}
             </Button>
@@ -1245,32 +1245,32 @@ function RecordingScreen() {
 
       {saved && (
         <Card heading={(
-          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+          <span className="ui-flex-between">
             Session rangée
             {saved.activity && (
               <SavedSessionShare gpx={saved.content} activity={saved.activity} fileName={saved.fileName} libraryFile={saved.libraryFile} />
             )}
           </span>
         )}>
-          <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
+          <p className="rec-saved-text">
             {saved.activity?.name ?? 'À classer'}, {saved.pointCount} {saved.sport === null || hasPositions(saved.sport) ? 'points' : 'mesures de la ceinture'}.<br />
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
+            <span className="ui-muted ui-text-s rec-break-all">Rangée dans : {saved.location}</span>
             {gearNotWritten && (
               <>
                 <br />
-                <span style={{ fontSize: 'var(--text-s)' }}>{GEAR_NOT_WRITTEN}</span>
+                <span className="ui-text-s">{GEAR_NOT_WRITTEN}</span>
               </>
             )}
             {!saved.libraryFile && native && (
               <>
                 <br />
-                <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
+                <span className="ui-muted ui-text-s">
                   Pour l'analyser, choisissez le dossier mémoire (Réglages › Mémoire) : elle y sera rangée.
                 </span>
               </>
             )}
           </p>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="ui-row-10 ui-wrap">
             {saved.libraryFile && saved.sport !== null && (
               <Button variant="primary" onClick={() => openSession(saved.libraryFile!, sportFamily(saved.sport!))}>
                 Analyser
@@ -1289,7 +1289,7 @@ function RecordingScreen() {
       )}
 
       {native && !busy && !pending && (
-        <p style={{ margin: 0, fontSize: 'var(--text-s)', color: 'var(--muted)', lineHeight: 1.5 }}>
+        <p className="rec-footnote">
           {missingPermissions.length > 0 && (
             <>
               Pour un enregistrement écran éteint, il manque : {missingPermissions.map((key) => PERMISSION_LABEL[key].toLowerCase()).join(', ')}
@@ -1317,7 +1317,7 @@ function TimerScreen() {
       <PageHeader title="Timer" back={{ to: WORKOUT_LISTS.timer.listPath, label: 'Séances' }}
         subtitle="Le compteur seul : sans GPS, aucune session n'est enregistrée." />
       <IntervalCard kind="timer" recording={false} />
-      <Link to="/enregistrer" replace style={{ fontSize: 'var(--text-s)', alignSelf: 'flex-start' }}>Enregistrer une session</Link>
+      <Link to="/enregistrer" replace className="rec-link-start">Enregistrer une session</Link>
     </div>
   );
 }

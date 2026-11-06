@@ -126,7 +126,7 @@ function MemoryStatus({
   if (collapse && !collapse.open) {
     return (
       <Card heading={heading}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div className="ui-stack-3">
           {statusLine}
           <SettingsOfferBanner />
           {alert}
@@ -137,7 +137,7 @@ function MemoryStatus({
 
   return (
     <Card heading={heading}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div className="ui-stack-3">
         <HelpText helpKey="memoire">
           Le dossier garde chaque session (sa trace GPX et sa fiche) et un fichier de réglages par appareil. Pour
           sauvegarder ou changer d'appareil, copiez le dossier Tracker entier : sur le téléphone, Stockage interne ›

@@ -405,3 +405,73 @@
   font: inherit;
   white-space: pre-wrap;
 }
+
+/* Styles sortis du JSX (élément 160), à valeur égale ; les utilitaires communs sont dans `ui.css`. */
+
+.set-files-grow {
+  flex: 1 1 200px;
+}
+
+.set-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-files-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.set-files-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-m);
+}
+
+.set-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.set-input-84 {
+  width: 84px;
+  text-align: right;
+}
+
+.set-name-input {
+  width: 120px;
+  font-weight: 600;
+}
+
+.set-page-box {
+  padding: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.set-subhead {
+  margin: 16px 0 8px;
+}
+
+.set-w-110 {
+  width: 110px;
+}
+
+.set-wide-input {
+  width: 200px;
+  max-width: 100%;
+}
+

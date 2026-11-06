@@ -162,7 +162,7 @@ export function PermissionsPrompt({ onDecided }: { onDecided?: (shown: boolean) 
 
   return (
     <Card heading="Autorisations">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div className="ui-stack-3">
         <p className="permissions__intro">
           {missing.length === 0
             ? 'Tout est accordé : Tracker peut enregistrer écran éteint.'
@@ -188,7 +188,7 @@ export function PermissionsSettings() {
   const keys = requiredPermissions(true);
   const missing = missingPermissions(status, true);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+    <div className="ui-stack-3">
       <PermissionRows keys={keys} status={status} refresh={refresh} />
       {missing.length > 0 && (
         <div>

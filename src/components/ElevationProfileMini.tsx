@@ -48,7 +48,7 @@ function ElevationProfileMini({
   grid?: boolean;
 }) {
   return (
-    <div style={{ marginTop: '10px' }}>
+    <div className="ui-mt-10">
       <HoverReadout line read={read} label="Altitude" color={ALTITUDE_COLOR} />
       <TrackChart rows={rows} zoom={zoom} x={distanceX(distanceSymbol)} yAxes={PROFILE_AXIS}
         series={[{ kind: 'area', key: 'altitude', name: 'Altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 4, fillOpacity: 0.35, gradient: { id: gradientId, stops } }]}

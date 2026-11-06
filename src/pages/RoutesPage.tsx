@@ -62,16 +62,16 @@ function RoutesPage() {
       <MemoryStatus />
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <div className="ui-flex-between ui-wrap">
         {routes.length > 0 && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-m)' }}>
+          <label className="ui-row-s2 ui-center ui-text-m">
             <span className="ui-eyebrow">Trier</span>
             <select className="ui-field ui-field--s" value={sort} onChange={(e) => isRouteSort(e.target.value) && setSort(e.target.value)}>
               {ROUTE_SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
         )}
-        <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--s" style={{ marginLeft: 'auto' }}>
+        <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--s ui-ml-auto">
           <IconRoute size={18} /> Planifier
         </Link>
       </div>
@@ -85,7 +85,7 @@ function RoutesPage() {
         {shown.length > 0 ? (
           <RouteList routes={shown} activities={activities} />
         ) : (
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
+          <p className="ui-hint ui-hint--m">
             Aucun itinéraire pour l'instant. <Link to="/itineraires">Planifiez-en un</Link> : il apparaîtra ici, prêt à suivre.
           </p>
         )}

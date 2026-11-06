@@ -141,7 +141,7 @@ function MuscuModule() {
     <AnalysisShell title={PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
       share={{ segments: [], stats: generalStats }} error={sessionError ?? loadError} draft={draft} empty={requested === null}
       alerts={shownFile && !analysis && (
-        <div className="ui-alert ui-alert--warning" style={{ maxWidth: '520px' }}>Le fichier n'a pas assez de mesures de la ceinture.</div>
+        <div className="ui-alert ui-alert--warning ui-max-520">Le fichier n'a pas assez de mesures de la ceinture.</div>
       )}
       // Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={analysis ? {
@@ -157,14 +157,14 @@ function MuscuModule() {
                 </HelpText>
                 <GeneralStats stats={generalStats} />
                 {zones && analysis.zoneTimes && (
-                  <div className="an-sheet__stats an-sheet__stats--always" style={{ marginTop: '6px' }} aria-label="Temps par zone">
+                  <div className="an-sheet__stats an-sheet__stats--always ui-mt-6" aria-label="Temps par zone">
                     {analysis.zoneTimes.map((s, zone) => (s > 0 ? (
                       <StatTile key={zone} label={zoneLabel(zone)} value={formatDuration(s * 1000)} />
                     ) : null))}
                   </div>
                 )}
                 {smoothed && minutes.length > 1 && (
-                  <div style={{ marginTop: '10px' }}>
+                  <div className="ui-mt-10">
                     <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
                       style={{ width: '100%', height: '220px' }}>
                       {analysis.phases.map((phase) => (
@@ -174,9 +174,9 @@ function MuscuModule() {
                       {markReferenceLines(marks.located, (m) => (m.mark.timeMs - t0) / 60_000, shownMark, 'hr')}
                     </CardioCurve>
                     {phaseKinds.length > 0 && (
-                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
+                      <div className="an-muscu-legend">
                         {phaseKinds.map((kind) => (
-                          <span key={kind} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span key={kind} className="ui-inline-row-4 ui-center">
                             <Swatch color={PHASE_STYLE[kind].color} opacity={0.6} />
                             {PHASE_STYLE[kind].label}
                           </span>
@@ -186,10 +186,10 @@ function MuscuModule() {
                   </div>
                 )}
                 {intervals.length === 0 && (
-                  <p style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', margin: '8px 0 0' }}>Séance faite sans le compteur : pas de phases à poser sur la courbe.</p>
+                  <p className="ui-muted ui-text-xs ui-mt-8-only">Séance faite sans le compteur : pas de phases à poser sur la courbe.</p>
                 )}
                 {!zones && (
-                  <p style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', margin: '8px 0 0' }}>
+                  <p className="ui-muted ui-text-xs ui-mt-8-only">
                     Pour le temps par zone, saisir la FC max ou l'année de naissance dans <Link to="/parametres">Réglages</Link>, bloc « Pratiquant ».
                   </p>
                 )}

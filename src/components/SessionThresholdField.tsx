@@ -60,7 +60,7 @@ function SessionThresholdField({ label, title, value, defaultValue, isOverridden
     onChange(next);
   };
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }} title={title}>
+    <label className="ui-row-6 ui-center ui-wrap" title={title}>
       <strong>{label} :</strong>
       <input type="number" min={0} step={unit === 'ms' ? 0.1 : 0.5} value={text} aria-label={label}
         onChange={(e) => {
@@ -71,9 +71,9 @@ function SessionThresholdField({ label, title, value, defaultValue, isOverridden
         }}
         onBlur={commit === 'blur' ? commitText : undefined}
         onKeyDown={commit === 'blur' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); commitText(); } } : undefined}
-        className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
+        className="ui-field ui-field--s num ui-input-num" />
       {SPEED_UNIT_LABEL[unit]}
-      {!isOverridden && hint && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({hint})</span>}
+      {!isOverridden && hint && <span className="ui-muted ui-text-xs">({hint})</span>}
       {isOverridden && (
         <Button size="s" onClick={() => onChange(null)}
           title={defaultValue === undefined ? 'Revenir au défaut' : `Revenir au défaut (${shown(defaultValue)} ${SPEED_UNIT_LABEL[unit]})`}>

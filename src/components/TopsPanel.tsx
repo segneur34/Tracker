@@ -38,12 +38,12 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
       </HelpText>
       <table className="ui-table">
         <thead>
-          <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-            <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
+          <tr className="ui-sunken">
+            <th className="ui-cell ui-cell--left">Sur</th>
             {PODIUM_RANKS.map((rank, idx) => (
               <th key={rank} style={{ padding: '0.4em 0.6em', color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[unit]})</th>
             ))}
-            <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
+            <th className="ui-cell">Carte</th>
           </tr>
         </thead>
         <tbody>
@@ -55,11 +55,11 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
                 const shown = selected === target.key;
                 return (
                   <tr key={target.key} className={reached ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{target.label}</td>
+                    <td className="ui-cell ui-cell--bold">{target.label}</td>
                     {[0, 1, 2].map((idx) => (
                       <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
                     ))}
-                    <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                    <td className="ui-cell ui-cell--center">
                       <MapToggle shown={shown} disabled={!reached} color={accent} onClick={() => onSelect(shown ? null : target.key)} />
                     </td>
                   </tr>

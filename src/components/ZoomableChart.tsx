@@ -79,7 +79,7 @@ interface Tap {
   timeMs: number;
 }
 
-function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, children }: {
+function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, className, children }: {
   zoom: ChartZoom;
   /** Souris sortie du graphe. */
   onLeave?: () => void;
@@ -92,6 +92,7 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, ch
    */
   onShowOnMap?: () => void;
   style?: CSSProperties;
+  className?: string;
   children: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -225,7 +226,7 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, ch
   return (
     <div
       ref={box}
-      className="zoom-chart"
+      className={className ? `zoom-chart ${className}` : 'zoom-chart'}
       style={style}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}

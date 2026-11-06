@@ -222,3 +222,32 @@
     box-sizing: border-box;
   }
 }
+
+/* Styles sortis du JSX (élément 160), à valeur égale ; les utilitaires communs sont dans `ui.css`. */
+
+.stats-chart-fill {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.stats-chart-grow {
+  flex: 1;
+  min-height: 140px;
+}
+
+.stats-zone-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.stats-zone-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--text-xs);
+}
+

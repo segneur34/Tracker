@@ -777,3 +777,350 @@
     text-align: left !important;
   }
 }
+
+/* --- Utilitaires ---
+   Les styles qui étaient recopiés en ligne dans le JSX (élément 160), à valeur égale : une propriété ou un petit motif
+   par classe, à poser à côté de celles de l'élément. En fin de feuille, ils passent devant une règle de même poids ;
+   un style qui dépend d'une valeur calculée (couleur d'une activité, largeur en %) reste en ligne. */
+
+/* Texte et couleur */
+.ui-bold {
+  font-weight: 700;
+}
+
+.ui-danger-text {
+  color: var(--danger);
+}
+
+.ui-muted {
+  color: var(--muted);
+}
+
+.ui-nowrap {
+  white-space: nowrap;
+}
+
+.ui-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--panel-title-size, var(--text-m));
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-panel-title__text {
+  font-family: var(--font-title);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+}
+
+.ui-pointer {
+  cursor: pointer;
+}
+
+.ui-semibold {
+  font-weight: 600;
+}
+
+.ui-session-date {
+  margin-left: 6px;
+  font-size: var(--text-s);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.ui-sunken {
+  background-color: var(--surface-sunken);
+}
+
+.ui-text-m {
+  font-size: var(--text-m);
+}
+
+.ui-text-s {
+  font-size: var(--text-s);
+}
+
+.ui-text-xs {
+  font-size: var(--text-xs);
+}
+
+.ui-weight-normal {
+  font-weight: normal;
+}
+
+/* Marges et espacements */
+.ui-m-0 {
+  margin: 0;
+}
+
+.ui-mb-4 {
+  margin-bottom: 4px;
+}
+
+.ui-mb-6 {
+  margin-bottom: 6px;
+}
+
+.ui-mb-8 {
+  margin-bottom: 8px;
+}
+
+.ui-mb-10 {
+  margin-bottom: 10px;
+}
+
+.ui-mb-14 {
+  margin-bottom: 14px;
+}
+
+.ui-mb-15 {
+  margin-bottom: 15px;
+}
+
+.ui-ml-8 {
+  margin-left: 8px;
+}
+
+.ui-ml-auto {
+  margin-left: auto;
+}
+
+.ui-mt-4 {
+  margin-top: 4px;
+}
+
+.ui-mt-6 {
+  margin-top: 6px;
+}
+
+.ui-mt-8 {
+  margin-top: 8px;
+}
+
+.ui-mt-8-only {
+  margin: 8px 0 0;
+}
+
+.ui-mt-10 {
+  margin-top: 10px;
+}
+
+.ui-mt-12 {
+  margin-top: 12px;
+}
+
+.ui-my-8 {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.ui-my-10 {
+  margin: 10px 0;
+}
+
+.ui-p-20 {
+  padding: 20px;
+}
+
+.ui-pr-28 {
+  padding-right: 28px;
+}
+
+/* Rangées et colonnes */
+.ui-block {
+  display: block;
+}
+
+.ui-center {
+  align-items: center;
+}
+
+.ui-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ui-grow {
+  flex: 1;
+}
+
+.ui-inline-row-4 {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ui-inline-row-6 {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.ui-min-w-0 {
+  min-width: 0;
+}
+
+.ui-no-shrink {
+  flex-shrink: 0;
+}
+
+.ui-row-4 {
+  display: flex;
+  gap: 4px;
+}
+
+.ui-row-6 {
+  display: flex;
+  gap: 6px;
+}
+
+.ui-row-8 {
+  display: flex;
+  gap: 8px;
+}
+
+.ui-row-10 {
+  display: flex;
+  gap: 10px;
+}
+
+.ui-row-15 {
+  display: flex;
+  gap: 15px;
+}
+
+.ui-row-18 {
+  display: flex;
+  gap: 18px;
+}
+
+.ui-row-s2 {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ui-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-stack-1 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ui-stack-2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ui-stack-3 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ui-stack-6 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-stack-8 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ui-stack-10 {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ui-wrap {
+  flex-wrap: wrap;
+}
+
+/* Tailles et défilement */
+.ui-chart-200 {
+  width: 100%;
+  height: 200px;
+}
+
+.ui-fill {
+  height: 100%;
+  width: 100%;
+}
+
+.ui-h-160 {
+  height: 160px;
+}
+
+.ui-max-520 {
+  max-width: 520px;
+}
+
+.ui-overflow-hidden {
+  overflow: hidden;
+}
+
+.ui-overflow-x {
+  overflow-x: auto;
+}
+
+.ui-scroll-x {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ui-w-180 {
+  width: 180px;
+}
+
+/* Champs */
+.ui-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: var(--text-s);
+}
+
+.ui-field-row__label {
+  width: 190px;
+}
+
+.ui-input-num {
+  width: 68px;
+  text-align: right;
+}
+
+/* Cellules de tableau */
+.ui-cell {
+  padding: 0.4em 0.6em;
+}
+
+.ui-cell--bold {
+  font-weight: 700;
+}
+
+.ui-cell--center {
+  text-align: center;
+}
+
+.ui-cell--left {
+  text-align: left;
+}
+
+.ui-cell-tight {
+  padding: 0.35em 0.5em;
+  text-align: center;
+  white-space: nowrap;
+}
+

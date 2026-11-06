@@ -37,8 +37,8 @@ export function SettingsOfferBanner() {
   const { settingsOffer } = useLibraryFields('settingsOffer');
   if (!settingsOffer) return null;
   return (
-    <div className="ui-alert ui-alert--warning" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-      <span style={{ flex: '1 1 200px' }}>Nouveau fichier de réglages : <strong>{settingsOffer.name}</strong>.</span>
+    <div className="ui-alert ui-alert--warning ui-row-s2 ui-center ui-wrap">
+      <span className="set-files-grow">Nouveau fichier de réglages : <strong>{settingsOffer.name}</strong>.</span>
       <Button size="s" onClick={() => adopt(settingsOffer)}>Reprendre</Button>
       <Button size="s" variant="ghost" onClick={dismissSettingsOffer}>Fermer</Button>
     </div>
@@ -74,8 +74,8 @@ function SettingsFiles() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-      <strong style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: 'var(--text-m)' }}>
+    <div className="ui-stack-2">
+      <strong className="set-files-title">
         Réglages<HelpToggle helpKey="memoire:reglages" label="Réglages par appareil" />
       </strong>
       <HelpText helpKey="memoire:reglages">
@@ -83,9 +83,9 @@ function SettingsFiles() {
           ? "Chaque appareil range ses réglages sous son nom (Tracker › reglages). Pour reprendre ceux d'un autre : « Importer un fichier de réglages », puis choisissez son fichier."
           : "Chaque appareil range ses réglages sous son nom (Tracker › reglages). Pour reprendre ceux d'un autre : copiez son fichier dans ce dossier, puis « Mettre à jour » et « Reprendre », ou « Importer un fichier de réglages »."}
       </HelpText>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', fontSize: 'var(--text-s)' }}>
+      <label className="ui-row-s2 ui-center ui-wrap ui-text-s">
         <span>Nom de cet appareil<HelpToggle helpKey="memoire:appareil" label="Nom de cet appareil" /></span>
-        <input value={draft ?? deviceName} maxLength={DEVICE_NAME_MAX} className="ui-field ui-field--s" style={{ width: '180px' }}
+        <input value={draft ?? deviceName} maxLength={DEVICE_NAME_MAX} className="ui-field ui-field--s ui-w-180"
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(e) => {
@@ -95,14 +95,11 @@ function SettingsFiles() {
       </label>
       <HelpText helpKey="memoire:appareil">Nomme le fichier de réglages de cet appareil.</HelpText>
       {refusal && <p style={{ ...mutedStyle, color: 'var(--danger)' }}>{refusal}</p>}
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
+      <ul className="set-files-list">
         {settingsFiles.map((file) => (
-          <li key={file.fileName} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', flexWrap: 'wrap',
-            padding: 'var(--space-2) 0', borderTop: '1px solid var(--line-soft)',
-          }}>
-            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <strong style={{ fontSize: 'var(--text-m)' }}>{file.name}</strong>
+          <li key={file.fileName} className="set-files-row">
+            <span className="ui-stack ui-min-w-0">
+              <strong className="ui-text-m">{file.name}</strong>
               <span className="num" style={mutedStyle}>
                 {plural(file.activityCount, 'activité')} · modifiés le {dayMonthYearTime(file.savedAt)}
               </span>

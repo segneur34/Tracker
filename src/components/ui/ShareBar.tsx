@@ -5,7 +5,7 @@
  */
 export default function ShareBar({ share, color }: { share: number; color: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <div className="ui-row-6 ui-center">
       <div style={{ flex: 1, height: '8px', backgroundColor: 'var(--surface-sunken)', borderRadius: '4px', overflow: 'hidden' }}>
         <div style={{ width: `${share * 100}%`, height: '100%', backgroundColor: color }} />
       </div>

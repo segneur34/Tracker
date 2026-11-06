@@ -958,7 +958,7 @@ function LandModule({ family }: { family: LandFamily }) {
         return chartMode === 'overlay' ? (
           <>
             {/* Les mêmes replis : une série repliée n'est pas tracée. */}
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
+            <div className="an-chip-row">
               {graphCharts.map((c) => graphFold(c))}
             </div>
             <HoverReadout line read={graphReadout(shownGraphs.map((c) => c.key), z.view)} />
@@ -1113,7 +1113,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 <GeneralStats stats={overviewStats} />
                 {profileShown && generalProfile('')}
                 {!stats.hasElevation && (
-                  <div style={{ color: 'var(--danger)', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
+                  <div className="ui-danger-text ui-text-s">Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
                 <SessionMarksList view={marks} distanceUnit={distanceUnit} shownMs={shownMark} accent={page.accent}
                   onShow={(ms) => highlight.show('general', ms === null ? null : String(ms))} />
@@ -1163,9 +1163,9 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.graphiques && chartRowsShown && (
               <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
+                <div className="an-panel-head">
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="analyse:graphiques" />
-                  <span style={{ flex: 1 }} />
+                  <span className="ui-grow" />
                   <SegmentedControl<ChartMode> label="Disposition des graphes" accent={page.accent} value={chartMode} onChange={setChartMode}
                     items={[{ key: 'separate', label: 'Séparés' }, { key: 'overlay', label: 'Superposés' }]} />
                 </div>
@@ -1209,11 +1209,11 @@ function LandModule({ family }: { family: LandFamily }) {
                     selected={selectedSurface} onSelect={setSelectedSurface} />
                 )}
                 {surfaces.status === 'searching' && (
-                  <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>
+                  <div className="ui-muted">Recherche des voies sur OpenStreetMap…</div>
                 )}
                 {surfaces.status === 'error' && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: 'var(--danger)' }}>{surfaces.error}</span>
+                  <div className="ui-row-8 ui-center ui-wrap">
+                    <span className="ui-danger-text">{surfaces.error}</span>
                     <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
                   </div>
                 )}
@@ -1223,9 +1223,9 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.energie && energy && (
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
+                <div className="an-panel-head an-panel-head--mb10">
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={toggleOf('energie')} helpKey="analyse:energie" />
-                  <span style={{ flex: 1 }} />
+                  <span className="ui-grow" />
                   {energy.power.length > 0 && (
                     <SegmentedControl<EnergyChartMode> label="Courbe d'énergie" accent={page.accent} value={energyMode} onChange={setEnergyMode}
                       items={[{ key: 'power', label: 'Puissance' }, { key: 'cumulative', label: 'Cumulée' }]} />
@@ -1242,17 +1242,17 @@ function LandModule({ family }: { family: LandFamily }) {
                 {energyFold.open.chiffres && (
                   <>
                     {energy.warning && (
-                      <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
+                      <div className="ui-alert ui-alert--warning ui-mb-10">
                         {energy.warning}
                       </div>
                     )}
-                    <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
+                    <div className="an-sheet__stats an-sheet__stats--always ui-no-shrink">
                       {energy.stats.map((stat) => (
                         <StatTile key={stat.label} label={stat.label} value={stat.value} detail={stat.detail} />
                       ))}
                     </div>
                     {!stats?.hasElevation && (
-                      <div style={{ color: 'var(--danger)', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{model.flatWarning}</div>
+                      <div className="ui-danger-text ui-text-s ui-mb-6">{model.flatWarning}</div>
                     )}
                   </>
                 )}
@@ -1266,24 +1266,24 @@ function LandModule({ family }: { family: LandFamily }) {
                     style={{ marginTop: '12px', padding: '4px 8px 4px 12px' }} />
                 )}
                 {stats?.hasElevation && energy.zones.length > 0 && energyFold.open.zones && (
-                  <table className="ui-table" style={{ marginTop: '6px', flexShrink: 0 }}>
+                  <table className="ui-table ui-mt-6 ui-no-shrink">
                     <thead>
-                      <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                        <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                        <th style={{ padding: '0.4em 0.6em' }}>Énergie</th>
-                        <th style={{ padding: '0.4em 0.6em' }}>Part</th>
-                        <th style={{ padding: '0.4em 0.6em' }}>Par km</th>
-                        <th style={{ padding: '0.4em 0.6em' }} title="Puissance mécanique moyenne en mouvement dans la zone">Puissance</th>
+                      <tr className="ui-sunken">
+                        <th className="ui-cell ui-cell--left">Zone</th>
+                        <th className="ui-cell">Énergie</th>
+                        <th className="ui-cell">Part</th>
+                        <th className="ui-cell">Par km</th>
+                        <th className="ui-cell" title="Puissance mécanique moyenne en mouvement dans la zone">Puissance</th>
                       </tr>
                     </thead>
                     <tbody>
                       {energy.zones.map((z) => (
                         <tr key={z.zone.key} className={z.distanceM > 0 ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
-                          <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{z.zone.label} <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}>{z.zone.range}</span></td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.energy}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{Math.round(z.share * 100)} %</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{z.perKm}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.power}</td>
+                          <td className="ui-cell ui-cell--bold">{z.zone.label} <span className="ui-muted ui-weight-normal ui-text-xs">{z.zone.range}</span></td>
+                          <td className="ui-cell ui-cell--center">{z.energy}</td>
+                          <td className="ui-cell ui-cell--center">{Math.round(z.share * 100)} %</td>
+                          <td className="ui-cell ui-cell--center ui-cell--bold">{z.perKm}</td>
+                          <td className="ui-cell ui-cell--center">{z.power}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1303,10 +1303,10 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.zones && zoneStats.length > 0 && (
               <ResizablePanel id={panelId('zones')} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
-                <div style={{ marginBottom: '10px' }}>
+                <div className="ui-mb-10">
                   <PanelTitle
                     label={model.zonesTitle}
-                    extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>}
+                    extra={<span className="ui-muted ui-weight-normal ui-text-xs">(en mouvement)</span>}
                     open={open.zones}
                     onToggle={toggleOf('zones')}
                     helpKey="analyse:zones" />
@@ -1317,18 +1317,18 @@ function LandModule({ family }: { family: LandFamily }) {
                 {chartRowsShown && (
                   <ChartFold label="Tableau" open={zonesFold.open.tableau} onToggle={() => zonesFold.toggle('tableau')}
                     title={zonesFold.open.tableau ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
-                    style={{ marginBottom: '6px' }} />
+                    className="ui-mb-6" />
                 )}
                 {(zonesFold.open.tableau || !chartRowsShown) && (<>
-                <table className="ui-table" style={{ flexShrink: 0 }}>
+                <table className="ui-table ui-no-shrink">
                   <thead>
-                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                      <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
+                    <tr className="ui-sunken">
+                      <th className="ui-cell ui-cell--left">Zone</th>
+                      <th className="ui-cell ui-weight-normal ui-muted">Pente</th>
+                      <th className="ui-cell">Distance</th>
+                      <th className="ui-cell">Temps</th>
+                      <th className="ui-cell">Vitesse ({unitLabel})</th>
+                      <th className="ui-cell">Carte</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1337,12 +1337,12 @@ function LandModule({ family }: { family: LandFamily }) {
                       const shown = selectedZone === z.zone.key;
                       return (
                         <tr key={z.zone.key} className={z.timeMs > 0 ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
-                          <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{z.zone.label}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{z.zone.range}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatLandSpeed(z.avgSpeedMs, speedUnit, distanceUnit)}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                          <td className="ui-cell ui-cell--bold">{z.zone.label}</td>
+                          <td className="ui-cell ui-cell--center ui-muted ui-text-xs">{z.zone.range}</td>
+                          <td className="ui-cell ui-cell--center">{formatDistance(z.distanceM, distanceUnit)} <span className="ui-muted ui-text-xs">({Math.round(z.distanceShare * 100)} %)</span></td>
+                          <td className="ui-cell ui-cell--center">{z.time}</td>
+                          <td className="ui-cell ui-cell--center ui-cell--bold">{formatLandSpeed(z.avgSpeedMs, speedUnit, distanceUnit)}</td>
+                          <td className="ui-cell ui-cell--center">
                             <MapToggle shown={shown} disabled={!reached} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => setSelectedZone(shown ? null : z.zone.key)} />
                           </td>
                         </tr>
@@ -1351,7 +1351,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </tbody>
                 </table>
                 {ungradedS > 0 && (
-                  <p style={{ margin: 'var(--space-1) 0 0', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+                  <p className="an-land-hint">
                     Passages sans altitude : hors des zones ; l'énergie les compte au plat.
                   </p>
                 )}
@@ -1362,7 +1362,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     {(z) => (
                       <>
                         <GraphFoldHead label="Altitude" color={ALTITUDE_COLOR} open={zonesFold.open.graphe} onToggle={() => zonesFold.toggle('graphe')}
-                          read={graphReadout(['altitude'], z.view)} style={{ marginTop: '12px' }}
+                          read={graphReadout(['altitude'], z.view)} className="ui-mt-12"
                           title={zonesFold.open.graphe ? "Replier le graphe d'altitude" : "Montrer le graphe d'altitude"} />
                         {zonesFold.open.graphe && (
                           <>
@@ -1412,11 +1412,11 @@ function LandModule({ family }: { family: LandFamily }) {
                   {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun} (Réglages)`}
                   {runner.weightKg !== null && ` · Poids : ${runner.weightKg} kg`}.
                 </SessionSettingsHeader>
-                <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--text-s)' }}>
+                <div className="an-land-opts">
                   <SessionActivityField activities={allActivities} activity={activity} withPositions families={sessionFile ? undefined : [family]}
                     onChange={(next) => changeSessionActivity(sessionFile, next)} />
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">
+                  <label className="ui-row-6 ui-center" title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">
                     <strong>Altitude :</strong>
                     <select
                       value={terrainElevation.source}
@@ -1428,7 +1428,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     </select>
                   </label>
                 </div>
-                <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
+                <div className="ui-mt-12 ui-text-s">
                   {model.treatment === 'velo' ? (
                     <SessionWeightField label="Poids du vélo et des bagages" valueKg={draft.edits.bikeWeightKg} activityKg={activityBikeKg}
                       isValid={isValidBikeWeight} onChange={(kg) => draft.update({ bikeWeightKg: kg })}
@@ -1440,13 +1440,13 @@ function LandModule({ family }: { family: LandFamily }) {
                   )}
                 </div>
                 {gpx.track.length > 0 && (
-                  <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
+                  <div className="ui-mt-12 ui-text-s">
                     <SessionColorRangeField unit={speedUnit} range={range} isOverridden={draft.edits.speedRange !== null}
                       onChange={(next) => draft.update({ speedRange: next })} />
                   </div>
                 )}
                 {detected && (
-                  <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
+                  <div className="ui-mt-12 ui-text-s">
                     <EffortThresholdEditor
                       unit={editSpeedUnit(speedUnit)}
                       valueMs={detected.thresholdMs}
@@ -1456,7 +1456,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </div>
                 )}
                 {runner.weightKg === null && (
-                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>Poids non renseigné : voir Réglages › Pratiquant.</div>
+                  <div className="ui-muted ui-text-xs ui-mt-10">Poids non renseigné : voir Réglages › Pratiquant.</div>
                 )}
               </ResizablePanel>
             )}

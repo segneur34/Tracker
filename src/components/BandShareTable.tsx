@@ -41,8 +41,8 @@ export default function BandShareTable({ head, detailHead, rows, selected, onSel
   return (
     <table className="ui-table" style={{ marginTop }}>
       <thead>
-        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-          <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>{head}</th>
+        <tr className="ui-sunken">
+          <th className="ui-cell ui-cell--left">{head}</th>
           {detailHead && <th style={{ ...cell, fontWeight: 'normal', color: 'var(--muted)' }}>{detailHead}</th>}
           <th style={cell}>Temps</th>
           <th style={{ ...cell, width: shareWidth }}>Part</th>

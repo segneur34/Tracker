@@ -15,7 +15,7 @@ function StatTile({ label, value, detail, title }: StatTileProps) {
       <span className="an-sheet__stat-label">{label}</span>
       <strong className="an-sheet__stat-value">
         {value}
-        {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {detail}</span>}
+        {detail && <span className="ui-muted ui-weight-normal ui-text-xs"> {detail}</span>}
       </strong>
     </div>
   );

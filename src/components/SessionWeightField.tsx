@@ -39,13 +39,13 @@ function SessionWeightField({ label, valueKg, activityKg, isValid, onChange, tit
   };
 
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }} title={title}>
+    <label className="ui-row-6 ui-center ui-wrap" title={title}>
       <strong>{label} :</strong>
       <input type="number" min={0} step={0.5} value={text} placeholder={String(activityKg)} onChange={handleChange}
-        aria-label={label} className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
+        aria-label={label} className="ui-field ui-field--s num ui-input-num" />
       kg
       {valueKg === null
-        ? <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>valeur de l'activité</span>
+        ? <span className="ui-muted ui-text-xs">valeur de l'activité</span>
         : <Button size="s" onClick={() => { setText(''); onChange(null); }}>Revenir à l'activité</Button>}
     </label>
   );

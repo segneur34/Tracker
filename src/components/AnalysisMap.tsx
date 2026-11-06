@@ -140,7 +140,7 @@ function AnalysisMap({
             if (narrow) setExpanded(true);
           }}
           style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
-          <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
+          <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} className="ui-fill">
             <MapAutoResize />
             {focusControl}
             {/* Vue agrandie ouverte : elle seule dessine les couches, la carte compacte garde son cadrage sous elle (27/10). */}
@@ -155,7 +155,7 @@ function AnalysisMap({
         <div className={companion ? 'an-map-overlay an-map-overlay--charts' : 'an-map-overlay'} onClick={() => setExpanded(false)}>
           <button type="button" className="an-map-overlay__close theme-light" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
           <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
-            <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(focus?.bounds ?? bounds)} style={{ height: '100%', width: '100%' }}>
+            <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(focus?.bounds ?? bounds)} className="ui-fill">
               <MapAutoResize />
               {focusControl}
               {layers}

@@ -25,9 +25,9 @@ function PanelTitle({ label, extra, open, onToggle, helpKey }: {
       tabIndex={0}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-      style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--panel-title-size, var(--text-m))', cursor: 'pointer', userSelect: 'none' }}>
+      className="ui-panel-title">
       <IconChevronRight size={14} style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 0.15s', flexShrink: 0 }} />
-      <span style={{ fontFamily: 'var(--font-title)', fontWeight: 'var(--title-weight)', letterSpacing: 'var(--title-spacing)', textTransform: 'uppercase' }}>
+      <span className="ui-panel-title__text">
         {label}
       </span>
       {extra}
@@ -42,7 +42,7 @@ export default PanelTitle;
 export function SessionDate({ track }: { track: readonly { timeMs: number }[] }) {
   if (track.length === 0) return null;
   return (
-    <span style={{ marginLeft: '6px', fontSize: 'var(--text-s)', fontWeight: 400, color: 'var(--muted)' }}>
+    <span className="ui-session-date">
       {formatSessionDate(track[0].timeMs)}
     </span>
   );

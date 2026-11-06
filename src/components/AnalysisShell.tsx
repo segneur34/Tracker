@@ -81,21 +81,21 @@ function AnalysisShell<K extends string>({
   const back = libraryPath(family, params.get('activite') ?? undefined);
   useScrollToTopOnMount();
   return (
-    <div className="an-page" style={{ padding: '20px' }}>
+    <div className="an-page ui-p-20">
       <div className="an-sheet">
         <div className="an-sheet__head">
           <PageHeader title={title} subtitle={file ? (
             <SessionNameEditor file={file}
               share={share.stats.length > 0 ? { family, segments: share.segments, stats: shareableStats(share.stats) } : undefined} />
           ) : undefined} back={{ to: back, label: backLabel }} />
-          {error && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{error}</div>}
+          {error && <div className="ui-alert ui-alert--warning ui-mt-10">{error}</div>}
         </div>
       </div>
 
       {draft && <SessionSaveBar draft={draft} />}
 
       {loadError && (
-        <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px', maxWidth: '520px' }}>
+        <div className="ui-alert ui-alert--danger ui-mb-10 ui-max-520">
           {loadError}
         </div>
       )}
@@ -103,13 +103,13 @@ function AnalysisShell<K extends string>({
       {alerts}
 
       {empty && (
-        <p style={{ color: 'var(--muted)' }}>
+        <p className="ui-muted">
           Aucune session ouverte : choisissez-en une dans <Link to={back}>{backLabel}</Link>.
         </p>
       )}
 
       {reading && (
-        <p role="status" aria-live="polite" style={{ color: 'var(--muted)' }}>
+        <p role="status" aria-live="polite" className="ui-muted">
           Lecture de la session…
         </p>
       )}

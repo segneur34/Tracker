@@ -27,13 +27,13 @@ export default function KilometerSplitsTable({ splits, speedUnit, distanceUnit }
   const withElevation = splits.some((s) => s.gainM !== null);
   const withHr = splits.some((s) => s.heartRateBpm !== null);
   return (
-    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div className="ui-stack-8 ui-mt-12">
       <ChartFold label={distanceUnit === 'nm' ? 'Par mille' : 'Par kilomètre'} open={open} onToggle={() => setOpen(!open)} />
       {open && (
         <div className="an-man-scroll">
           <table className="ui-table">
             <thead>
-              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+              <tr className="ui-sunken">
                 <th style={{ ...CELL, textAlign: 'left' }}>{symbol}</th>
                 <th style={CELL}>Temps</th>
                 {withMoving && <th style={CELL}>En mouvement</th>}

@@ -74,23 +74,23 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
 
   if (draft !== null) {
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-1)' }}>
+      <span className="an-name-row">
         <SessionRenameField value={draft} onChange={setDraft} onSave={save} onCancel={() => setDraft(null)}
-          style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '360px' }} />
+          className="an-name-input" />
       </span>
     );
   }
 
   return (
     // Une seule ligne : un nom long se tronque, « Renommer » et « … » restent à droite (le menu s'ouvre à l'écran).
-    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+    <span className="ui-stack ui-min-w-0">
+      <span className="an-name-line">
         <span
           title={name ?? undefined}
           style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(name ? { color: 'var(--ink)', fontWeight: 600 } : {}) }}>
           {name ?? 'Sans nom'}
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <span className="ui-row-s2 ui-center ui-no-shrink">
           {!session.readOnly && (
             <Button size="s" variant="ghost" onClick={() => setDraft(name ?? '')}>Renommer</Button>
           )}

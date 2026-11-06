@@ -48,8 +48,8 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
   const speedRange = (fromMs: number, toMs: number) => (fromMs < 0.5 ? `< ${speedText(toMs)}` : `${speedText(fromMs)} – ${speedText(toMs)}`);
   const shareRow = (key: string, label: string, s: CadenceShare, extra?: string) => (
     <tr key={key} className={s.timeS > 0 ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
-      <td style={{ padding: '0.4em 0.6em', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {label}{extra && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {extra}</span>}
+      <td className="ui-cell ui-cell--bold ui-nowrap">
+        {label}{extra && <span className="ui-muted ui-weight-normal ui-text-xs"> {extra}</span>}
       </td>
       <td style={cell}>{formatShortDuration(s.timeS)}</td>
       <td style={{ ...cell, fontWeight: 700 }}>{s.timeS > 0 ? spmText(s.spm) : '—'}</td>
@@ -58,8 +58,8 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
   );
   const shareHead = (first: string) => (
     <thead>
-      <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-        <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>{first}</th>
+      <tr className="ui-sunken">
+        <th className="ui-cell ui-cell--left">{first}</th>
         <th style={cell}>Temps</th>
         <th style={cell}>Cadence</th>
         <th style={cell}>Pas</th>
@@ -69,7 +69,7 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
 
   return (
     <>
-      <PanelHeading label="Cadence" extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>} open={open} onToggle={onToggle} helpKey="analyse:cadence" />
+      <PanelHeading label="Cadence" extra={<span className="ui-muted ui-weight-normal ui-text-xs">(en mouvement)</span>} open={open} onToggle={onToggle} helpKey="analyse:cadence" />
       <HelpText helpKey="analyse:cadence" note>
         Cadence comptée par l'accéléromètre du téléphone (ou la montre), en pas par minute ; la courbe est dans l'onglet « graphiques ».
         {bands && ` Tranches de la ${bands.running ? 'course' : 'marche'}, choisies par la cadence moyenne ; « Voir » montre leurs passages sur la carte, en violet.`}
@@ -85,8 +85,8 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
         <StatTile label="Temps mesuré" value={<>{Math.round(analysis.measuredShare * 100)} %</>} />
       </div>
       {drift && (
-        <div style={{ fontSize: 'var(--text-s)', margin: '4px 0 2px' }}>
-          <span style={{ color: 'var(--muted)' }}>Dérive, du premier au dernier tiers : </span>
+        <div className="an-cad-title">
+          <span className="ui-muted">Dérive, du premier au dernier tiers : </span>
           cadence {Math.round(drift.first.spm)} → {Math.round(drift.last.spm)} pas/min ({signedChange(drift.first.spm, drift.last.spm)})
           {drift.first.stepLengthM !== null && drift.last.stepLengthM !== null && (
             <>, pas {formatDecimal(drift.first.stepLengthM, 2)} → {formatDecimal(drift.last.stepLengthM, 2)} m ({signedChange(drift.first.stepLengthM, drift.last.stepLengthM)})</>
@@ -94,7 +94,7 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
         </div>
       )}
 
-      <ChartFold label={bands.running ? 'Tranches (course)' : 'Tranches (marche)'} open={folds.open.tranches} onToggle={() => folds.toggle('tranches')} style={{ marginTop: '12px' }} />
+      <ChartFold label={bands.running ? 'Tranches (course)' : 'Tranches (marche)'} open={folds.open.tranches} onToggle={() => folds.toggle('tranches')} className="ui-mt-12" />
       {folds.open.tranches && (
         <BandShareTable head="Pas/min" shareWidth="35%" marginTop="6px" nowrapLabel
           rows={bands.timesS.map((timeS, band) => ({ color: CADENCE_BAND_COLORS[band], label: bandRangeLabel(bands.bounds, band), timeS }))}
@@ -103,9 +103,9 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
 
       {bySpeed.length > 0 && (
         <>
-          <ChartFold label="Selon la vitesse" open={folds.open.vitesse} onToggle={() => folds.toggle('vitesse')} style={{ marginTop: '12px' }} />
+          <ChartFold label="Selon la vitesse" open={folds.open.vitesse} onToggle={() => folds.toggle('vitesse')} className="ui-mt-12" />
           {folds.open.vitesse && (
-            <table className="ui-table" style={{ marginTop: '6px' }}>
+            <table className="ui-table ui-mt-6">
               {shareHead(unit)}
               <tbody>{bySpeed.map((b) => shareRow(String(b.fromMs), speedRange(b.fromMs, b.toMs), b))}</tbody>
             </table>
@@ -115,9 +115,9 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
 
       {byGrade && (
         <>
-          <ChartFold label="Selon la pente" open={folds.open.pente} onToggle={() => folds.toggle('pente')} style={{ marginTop: '12px' }} />
+          <ChartFold label="Selon la pente" open={folds.open.pente} onToggle={() => folds.toggle('pente')} className="ui-mt-12" />
           {folds.open.pente && (
-            <table className="ui-table" style={{ marginTop: '6px' }}>
+            <table className="ui-table ui-mt-6">
               {shareHead('Zone')}
               <tbody>
                 {byGrade.map((z) => shareRow(z.zone.key, z.zone.label, z, z.zone.range))}

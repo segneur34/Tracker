@@ -120,7 +120,7 @@ function RepGradientLegend({ count }: { count: number }) {
   if (count < 2) return null;
   const band = `linear-gradient(to right, ${repColor(0, 3)}, ${repColor(1, 3)}, ${repColor(2, 3)})`;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>
+    <span className="ui-inline-row-6 ui-center ui-muted ui-text-xs ui-weight-normal">
       rép. 1
       <span aria-hidden="true" style={{ width: '48px', height: '6px', borderRadius: '3px', background: band }} />
       rép. {count}
@@ -245,10 +245,10 @@ function IntervalAnalysis({
   const seriesTitle = (s: IntervalSeriesView, index: number, legend = false) => {
     const isOpen = !folded.has(index);
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+      <div className="ui-row-10 ui-center ui-wrap ui-mb-6">
         <button type="button" aria-expanded={isOpen} onClick={() => toggleFold(index)}
           title={isOpen ? 'Replier cette séance' : 'Déplier cette séance'}
-          style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink)', fontWeight: 600, fontSize: 'inherit', textAlign: 'left' }}>
+          className="an-ivl-toggle">
           <IconChevronRight size={14} style={{ transform: `rotate(${isOpen ? 90 : 0}deg)`, transition: 'transform 0.15s', flexShrink: 0 }} />
           {title(s)}
         </button>
@@ -258,7 +258,7 @@ function IntervalAnalysis({
   };
   /** Séance repliée : son titre seul. */
   const foldedSeries = (s: IntervalSeriesView, index: number) => (
-    <div key={index} style={{ marginBottom: '8px' }}>{seriesTitle(s, index)}</div>
+    <div key={index} className="ui-mb-8">{seriesTitle(s, index)}</div>
   );
   /** Titre d'un des trois panneaux ; `helpKey` : son « ? », dont le texte vient juste dessous. */
   const heading = (label: string, helpKey?: string) => <PanelHeading label={label} open={open} onToggle={onToggle} helpKey={helpKey} padRight />;
@@ -267,7 +267,7 @@ function IntervalAnalysis({
     return (
       <ResizablePanel id={panelId('fractionne')} style={ANALYSIS_PANEL_STYLE}>
         {heading('Fractionné')}
-        <div style={{ color: 'var(--muted)' }}>{emptyText}</div>
+        <div className="ui-muted">{emptyText}</div>
       </ResizablePanel>
     );
   }
@@ -288,7 +288,7 @@ function IntervalAnalysis({
           carte, en violet.
       </HelpText>
       {samplingS > SPARSE_SAMPLING_S && (
-        <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px', fontSize: 'var(--text-xs)' }}>
+        <div className="ui-alert ui-alert--warning ui-mb-10 ui-text-xs">
           Un point toutes les {formatDecimal(samplingS, 1)} s en médiane : la trace est trop clairsemée pour le détail d'une
           répétition. Les efforts paraissent plus courts et plus lents qu'ils ne l'étaient, une partie tombant dans le long
           segment de la récupération ; lancé, maintien et profils sont approximatifs.
@@ -301,7 +301,7 @@ function IntervalAnalysis({
         </div>
       )}
       {series.length >= 2 && (
-        <div style={{ marginBottom: '8px' }}>
+        <div className="ui-mb-8">
           <Button onClick={toggleFoldAll}>{allFolded ? 'Tout déplier' : 'Tout replier'}</Button>
         </div>
       )}
@@ -315,7 +315,7 @@ function IntervalAnalysis({
         const showDuration = s.detected || s.reps.some((r) => Math.abs(r.work.durationS - s.workout.workS) > 1.5);
         const stat = (label: string, value: ReactNode, detail?: string) => <StatTile label={label} value={value} detail={detail} />;
         return (
-          <div key={seriesIndex} style={{ marginBottom: '14px' }}>
+          <div key={seriesIndex} className="ui-mb-14">
             {seriesTitle(s, seriesIndex)}
             <div className="an-sheet__stats an-sheet__stats--always">
               {stat('Répétitions', s.detected ? `${summary.count}` : `${summary.count} / ${s.workout.reps}`, s.detected ? 'détectées' : undefined)}
@@ -329,11 +329,11 @@ function IntervalAnalysis({
                 summary.accelMs2 !== null ? formatRate(summary.accelMs2) : undefined)}
               {summary.holdRatio !== null && stat('Maintien', signedPercent(summary.holdRatio - 1))}
             </div>
-            <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+            <div className="ui-scroll-x">
               <table className={`ui-table ui-table--cards ${tableClass}`}>
                 <thead>
-                  <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Rép.</th>
+                  <tr className="ui-sunken">
+                    <th className="ui-cell ui-cell--left">Rép.</th>
                     {showDuration && <th style={cellStyle}>Durée</th>}
                     <th style={cellStyle}>Distance</th>
                     <th style={cellStyle}>{inverse ? 'Allure' : 'Vitesse'}</th>
@@ -344,7 +344,7 @@ function IntervalAnalysis({
                     {hasHr && <th style={cellStyle} title={`Baisse de la FC ${recoveryS ?? 60} s après la fin de l'effort`}>Récup.</th>}
                     {hasCadence && <th style={cellStyle} title="Cadence moyenne de l'effort, en pas par minute">Cadence</th>}
                     {hasCadence && <th style={cellStyle} title="Longueur de pas moyenne de l'effort : distance ÷ pas">Pas</th>}
-                    <th style={{ ...cellStyle, fontWeight: 'normal', color: 'var(--muted)' }}>Repos</th>
+                    <th className="ui-cell ui-cell--center ui-weight-normal ui-muted">Repos</th>
                     <th style={cellStyle}>Carte</th>
                   </tr>
                 </thead>
@@ -358,7 +358,7 @@ function IntervalAnalysis({
                         <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700, color: repColor(repIndex, s.reps.length) }}>{rep}</td>
                         {showDuration && <td className="an-ivl-dur num" style={cellStyle}>{formatIntervalClock(Math.round(work.durationS))}</td>}
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
-                        <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 700 }}>{formatLandSpeed(work.speedMs, speedUnit, distanceUnit)}</td>
+                        <td className="an-ivl-speed ui-cell ui-cell--center ui-cell--bold">{formatLandSpeed(work.speedMs, speedUnit, distanceUnit)}</td>
                         <td className="an-ivl-launch" data-label="lancé" style={cellStyle}>{launchS === null ? '—' : `${Math.round(launchS)} s`}</td>
                         <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, { decimals: 0 })}</td>
                         <td className="an-ivl-spark-cell" style={cellStyle}>{sparks.get(rep)?.some((v) => v !== null) && <Sparkline points={sparks.get(rep) ?? []} length={sparkLength} domain={domain} />}</td>
@@ -382,7 +382,7 @@ function IntervalAnalysis({
                             {s.cadences?.[repIndex]?.stepLengthM != null ? `${formatDecimal(s.cadences[repIndex]!.stepLengthM!, 2)} m` : '—'}
                           </td>
                         )}
-                        <td className="an-ivl-rest" style={{ ...cellStyle, color: 'var(--muted)' }}>
+                        <td className="an-ivl-rest ui-cell ui-cell--center ui-muted">
                           {rest ? `${formatIntervalClock(Math.round(rest.durationS))}${rest.distanceM !== null ? ` · ${formatShortDistance(rest.distanceM, distanceUnit)}` : ''}` : '—'}
                         </td>
                         <td className="an-ivl-map" style={cellStyle}>
@@ -448,7 +448,7 @@ function IntervalAnalysis({
           onSelectLap(selectedLap === key ? null : key);
         };
         return (
-          <div key={seriesIndex} style={{ marginBottom: '10px' }}>
+          <div key={seriesIndex} className="ui-mb-10">
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <div style={{ width: '100%', height: `${EVOLUTION_HEIGHT_PX}px` }}>
@@ -477,7 +477,7 @@ function IntervalAnalysis({
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div style={{ color: 'var(--muted)' }}>Une seule répétition : pas d'évolution à montrer.</div>
+              <div className="ui-muted">Une seule répétition : pas d'évolution à montrer.</div>
             )}
           </div>
         );
@@ -499,13 +499,13 @@ function IntervalAnalysis({
         const { rows: data, domain } = charts[seriesIndex].profile;
         const launch = s.summary.launchS;
         return (
-          <div key={seriesIndex} style={{ marginBottom: '10px' }}>
+          <div key={seriesIndex} className="ui-mb-10">
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <IntervalProfileChart data={data} spanS={length * stepS} launchS={launch} reps={s.reps} speedAxis={profileSpeedAxis(domain)}
                 formatMs={(ms) => formatLandSpeed(ms, speedUnit, distanceUnit)} resetKey={`${sessionKey ?? ''}|${seriesIndex}-${s.reps.length}-${length}`} />
             ) : (
-              <div style={{ color: 'var(--muted)' }}>Répétitions trop courtes pour un profil.</div>
+              <div className="ui-muted">Répétitions trop courtes pour un profil.</div>
             )}
           </div>
         );

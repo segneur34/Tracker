@@ -42,13 +42,13 @@ function EffortThresholdEditor({ unit, valueMs, suggestedMs, isOverridden, onCha
   };
 
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+    <label className="ui-row-6 ui-center ui-wrap">
       <strong>Seuil d'effort :</strong>
       <input type="number" min={0} step={unit === 'ms' ? 0.1 : 0.5} value={text} onChange={handleChange}
-        aria-label="Seuil d'effort" className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
+        aria-label="Seuil d'effort" className="ui-field ui-field--s num ui-input-num" />
       {SPEED_UNIT_LABEL[unit]}
       {suggestedMs !== null && (
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+        <span className="ui-muted ui-text-xs">
           {isOverridden ? `tiré de la session : ${formatSpeed(suggestedMs, unit)}` : 'tiré de la session'}
         </span>
       )}

@@ -244,7 +244,7 @@ function NumberField({
 
   const field = (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: label ? '8px' : 0, fontSize: 'var(--text-s)' }}>
-      {label && <span style={{ width: '190px' }}>{label}{helpKey && <HelpToggle helpKey={helpKey} label={label} />}</span>}
+      {label && <span className="ui-field-row__label">{label}{helpKey && <HelpToggle helpKey={helpKey} label={label} />}</span>}
       <input
         type="number"
         step={step}
@@ -255,9 +255,8 @@ function NumberField({
         onChange={handleChange}
         onFocus={() => { focused.current = true; }}
         onBlur={() => { focused.current = false; setDraft(value === null ? '' : String(value)); }}
-        className="ui-field ui-field--s num"
-        style={{ width: '84px', textAlign: 'right' }} />
-      {unit && <span style={{ color: 'var(--muted)' }}>{unit}</span>}
+        className="ui-field ui-field--s num set-input-84" />
+      {unit && <span className="ui-muted">{unit}</span>}
     </label>
   );
   if (!helpKey) return field;
@@ -289,9 +288,9 @@ function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfil
         ? `S1 à ${pct(model.reserveThresholds[0])} et S2 à ${pct(model.reserveThresholds[1])} de la réserve cardiaque, de la FC repos à la FC max${zones.estimated ? ` (estimée par l'âge : ${zones.hrMax} bpm)` : ''}.`
         : `Sans FC repos : S1 à ${pct(model.maxThresholds[0])} et S2 à ${pct(model.maxThresholds[1])} de la FC max${zones.estimated ? ` (estimée par l'âge : ${zones.hrMax} bpm)` : ''} ; avec elle, ils suivraient la réserve cardiaque, plus juste.`;
   return (
-    <div style={{ marginBottom: '8px', fontSize: 'var(--text-s)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
-        <span style={{ width: '190px' }}>Seuils cardio<HelpToggle helpKey="pratiquant:zones" label="Seuils cardio" /></span>
+    <div className="ui-mb-8 ui-text-s">
+      <div className="ui-row-8 ui-center ui-wrap ui-mb-6">
+        <span className="ui-field-row__label">Seuils cardio<HelpToggle helpKey="pratiquant:zones" label="Seuils cardio" /></span>
         {zones ? (
           <>
             <span><strong>S1</strong> {zones.s1} · <strong>S2</strong> {zones.s2} bpm</span>
@@ -300,7 +299,7 @@ function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfil
               : <Button size="s" onClick={() => onChange([zones.s1, zones.s2])}>Personnaliser</Button>}
           </>
         ) : (
-          <span style={{ color: 'var(--muted)' }}>FC max ou année de naissance à saisir</span>
+          <span className="ui-muted">FC max ou année de naissance à saisir</span>
         )}
       </div>
       {entered && (
@@ -312,7 +311,7 @@ function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfil
         </>
       )}
       {zones && (
-        <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
+        <div className="ui-muted ui-mb-6">
           Zones : {zones.bounds.map((b, k) => (
             <span key={k}>{k > 0 && ' · '}<strong>{zoneLabel(k + 1)}</strong> ≥ {b}</span>
           ))}
@@ -549,7 +548,7 @@ const ActivityCard = memo(function ActivityCard({
           <SettingsPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
             {withThreshold && (
             <SettingRow label={thresholdLabel} helpKey={`${id}:seuil`} help={thresholdHelp(treatment, s.foil === true)}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span className="ui-inline-row-6 ui-center">
                 <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
                   value={thresholdEmpty ? null : thresholdShown}
                   placeholder={String(thresholdShown)}
@@ -844,14 +843,14 @@ function SettingsPage() {
 
   return (
     <SettingsScope>
-    <div className="ui-page--backdrop" style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
+    <div className="ui-page--backdrop set-page-box">
       <PageBackdrop variant={backdrop} />
-      <div style={{ marginBottom: '15px' }}>
+      <div className="ui-mb-15">
         <PageHeader title="Réglages" subtitle="Enregistrés sur cet appareil et dans le dossier mémoire."
           aside={<CollapseAllButton onCollapse={collapseAll} />} />
       </div>
 
-      <div style={{ marginBottom: '15px' }}>
+      <div className="ui-mb-15">
         <MemoryStatus detailed collapse={{ open: open.memoire, onToggle: () => toggle('memoire') }} />
       </div>
 
@@ -940,10 +939,10 @@ function SettingsPage() {
           help="Pour l'énergie des analyses à pied et à vélo, les zones cardiaques de toutes les activités, et la racine du Profil. Tout est facultatif." />
         {open.coureur && (
           <div className="settings-block__body">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
-              <span style={{ width: '190px' }}>Nom ou pseudo<HelpToggle helpKey="pratiquant:nom" label="Nom ou pseudo" /></span>
+            <label className="ui-field-row">
+              <span className="ui-field-row__label">Nom ou pseudo<HelpToggle helpKey="pratiquant:nom" label="Nom ou pseudo" /></span>
               <input type="text" value={profile.name ?? ''} maxLength={RUNNER_NAME_MAX} placeholder="ex. Tom" autoComplete="nickname"
-                onChange={(e) => setName(e.target.value)} className="ui-field ui-field--s" style={{ width: '200px', maxWidth: '100%' }} />
+                onChange={(e) => setName(e.target.value)} className="ui-field ui-field--s set-wide-input" />
             </label>
             <HelpText helpKey="pratiquant:nom">En titre de la page Profil et au pied des images partagées.</HelpText>
             <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72"
@@ -952,8 +951,8 @@ function SettingsPage() {
               helpKey="pratiquant:taille" help="Avec le poids, l'âge et le sexe, pour la dépense au repos." />
             <NumberField label="Année de naissance" unit={age !== null ? `${age} ans` : undefined} min={1900} max={2100} value={profile.birthYear} onCommit={profileField('birthYear')} placeholder="ex. 1985"
               helpKey="pratiquant:naissance" help="Pour la dépense au repos, et la FC max estimée quand elle n'est pas saisie." />
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
-              <span style={{ width: '190px' }}>Sexe<HelpToggle helpKey="pratiquant:sexe" label="Sexe" /></span>
+            <label className="ui-field-row">
+              <span className="ui-field-row__label">Sexe<HelpToggle helpKey="pratiquant:sexe" label="Sexe" /></span>
               <select value={profile.sex ?? ''} onChange={(e) => setSex(e.target.value === '' ? null : (e.target.value as 'f' | 'm'))} className="ui-field ui-field--s">
                 <option value="">Non renseigné</option>
                 <option value="f">Femme</option>
@@ -968,7 +967,7 @@ function SettingsPage() {
             <HeartRateThresholdsField profile={profile} onChange={setThresholds} />
             <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200"
               helpKey="pratiquant:economie" help="Oxygène pour courir 1 km sur le plat, donné par un test en laboratoire. Sans valeur, 200 : environ 1 kcal par kilo et par kilomètre." />
-            <p className="ui-eyebrow" style={{ margin: '16px 0 8px' }}>Racine du Profil</p>
+            <p className="ui-eyebrow set-subhead">Racine du Profil</p>
             <NumberField label="Objectif par semaine" unit="min" min={ROOT_GOAL.min} max={ROOT_GOAL.max} value={profile.rootWeeklyGoalMin} onCommit={profileField('rootWeeklyGoalMin')}
               placeholder={String(ROOT_GOAL.defaultMin)} helpKey="pratiquant:racine-objectif"
               help={`Temps d'activité, toutes activités confondues, à faire du lundi au dimanche (de ${ROOT_GOAL.min} min à ${ROOT_GOAL.max / 60} h) : la semaine tenue, la racine gagne une étape, et fait le tour du Profil en 26 semaines. Semaines manquées d'affilée : −3 étapes, puis −6, puis retour à la graine.`} />
@@ -1028,8 +1027,8 @@ function TutorialsSettings() {
   const { state, lessons } = useTutorials();
   const readCount = lessons.filter((l) => state.read.includes(l.id)).length;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 'var(--text-s)' }}>{readCount} {readCount >= 2 ? 'leçons lues' : 'leçon lue'} sur {lessons.length}</span>
+    <div className="set-head-row">
+      <span className="ui-text-s">{readCount} {readCount >= 2 ? 'leçons lues' : 'leçon lue'} sur {lessons.length}</span>
       <Link to="/tutoriels" className="ui-btn ui-btn--secondary ui-btn--s">Voir tous les tutoriels</Link>
     </div>
   );
@@ -1265,8 +1264,7 @@ function ActivityNameField({
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
       <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: shown(activity.color) }} />
-      <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s"
-        style={{ width: '120px', fontWeight: 600 }}
+      <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s set-name-input"
         autoFocus
         onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}
@@ -1304,7 +1302,7 @@ function GearLabelsField({
     <>
       {([0, 1] as const).map((k) => (
         <input key={k} value={draft[k]} maxLength={MAX_GEAR_LABEL_LENGTH} placeholder={DEFAULT_GEAR_LABELS[k]}
-          aria-label={`Intitulé du matériel ${k + 1}`} className="ui-field ui-field--s" style={{ width: '110px' }}
+          aria-label={`Intitulé du matériel ${k + 1}`} className="ui-field ui-field--s set-w-110"
           onChange={(e) => setDraft(k === 0 ? [e.target.value, draft[1]] : [draft[0], e.target.value])}
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
@@ -1341,15 +1339,15 @@ function AddActivityForm({
     <div className="settings-add">
       <strong className="settings-add__title">Ajouter une activité<HelpToggle helpKey="ajout" label="Ajouter une activité" /></strong>
       <input value={name} maxLength={40} placeholder="Nom, ex. Moth à foil" aria-label="Nom de la nouvelle activité"
-        className="ui-field ui-field--s" style={{ width: '180px' }}
+        className="ui-field ui-field--s ui-w-180"
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
       <select value={family} onChange={(e) => pickFamily(e.target.value as SportFamily)} aria-label="Famille" className="ui-field ui-field--s">
         {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
       </select>
       {familySports(family).length > 1 && (
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>calcul</span>
+        <label className="ui-inline-row-6 ui-center">
+          <span className="ui-muted ui-text-xs">calcul</span>
           <select value={base} onChange={(e) => setBase(e.target.value as SportType)} className="ui-field ui-field--s">
             {familySports(family).map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
           </select>
@@ -1381,15 +1379,15 @@ function OfflineMapsSettings() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
-        <span style={{ width: '190px' }}>Place occupée</span>
+      <div className="ui-field-row">
+        <span className="ui-field-row__label">Place occupée</span>
         <span className="num">
           {usage === null ? '…' : `${megabytes(usage.bytes)} Mo (${usage.tiles.toLocaleString('fr-FR')} morceaux)`}
           {satellite && satellite.tiles > 0 && `, dont satellite ${megabytes(satellite.bytes)} Mo`}
         </span>
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
-        <span style={{ width: '190px' }}>Plafond<HelpToggle helpKey="cartes:plafond" label="Plafond" /></span>
+      <label className="ui-field-row">
+        <span className="ui-field-row__label">Plafond<HelpToggle helpKey="cartes:plafond" label="Plafond" /></span>
         <select value={capMb} onChange={(e) => void setCapMb(Number(e.target.value))} className="ui-field ui-field--s">
           {choices.map((mb) => <option key={mb} value={mb}>{mb >= 1000 ? `${mb / 1000} Go` : `${mb} Mo`}</option>)}
         </select>

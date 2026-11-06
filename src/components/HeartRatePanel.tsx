@@ -215,13 +215,13 @@ function HeartRatePanel({
         pas une mesure : comptez 25 % d'écart, davantage par temps froid ou en position de rappel.
       </HelpText>
       {energy?.kind === 'profil-incomplet' && (
-        <p style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', margin: '8px 0' }}>
+        <p className="ui-muted ui-text-s ui-my-8">
           Pour l'énergie estimée, renseignez votre poids et votre année de naissance dans <Link to="/parametres">Réglages › Pratiquant</Link>.
         </p>
       )}
 
       {aboveProfile && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>
+        <div className="ui-row-10 ui-center ui-wrap ui-my-8 ui-text-s">
           <span>
             {profileHrMax === null
               ? `Aucune FC max dans Réglages › Pratiquant : celle de cette sortie est de ${stats.maxBpm} bpm.`
@@ -237,7 +237,7 @@ function HeartRatePanel({
           Zones
         </label>
       )}
-      <div style={{ marginTop: '6px' }}>
+      <div className="ui-mt-6">
         <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
           zoneLines={zones !== null && zoneLines?.on === true} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
       </div>
@@ -247,20 +247,20 @@ function HeartRatePanel({
           <BandShareTable head="Zone" detailHead="FC" shareWidth="30%" marginTop="10px"
             rows={zoneTimes.map((timeS, zone) => ({ color: HEART_ZONE_COLORS[zone], label: zoneLabel(zone), detail: bandRangeLabel(zones.bounds, zone), timeS }))}
             selected={selectedZone} onSelect={mapless ? undefined : onSelectZone} />
-          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
+          <div className="ui-muted ui-text-xs ui-mt-6">
             Zones calées sur {zonesOriginText(zones, runner)}
           </div>
         </>
       ) : (
-        <p style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginTop: '10px' }}>
+        <p className="ui-muted ui-text-s ui-mt-10">
           Pour les zones d'effort, saisir la FC max ou l'année de naissance dans <Link to="/parametres">Réglages</Link>, bloc « Pratiquant ».
         </p>
       )}
 
       {efficiency && scatterUnit !== null && (
-        <div style={{ marginTop: '12px' }}>
-          <div style={{ fontWeight: 700, marginBottom: '4px' }}>Dérive et efficacité</div>
-          <div style={{ fontSize: 'var(--text-s)', marginBottom: '6px' }}>
+        <div className="ui-mt-12">
+          <div className="ui-bold ui-mb-4">Dérive et efficacité</div>
+          <div className="ui-text-s ui-mb-6">
             {drift === null
               ? `Dérive cardiaque : il faut au moins ${Math.round(params.driftMinS / 60)} min en mouvement avec la FC.`
               : Math.abs(drift.driftPct) < params.driftStablePct
@@ -270,7 +270,7 @@ function HeartRatePanel({
                   : `Dérive cardiaque de ${formatDecimal(drift.driftPct, 1)} % : la seconde moitié est plus efficace que la première (échauffement, descente).`}
           </div>
           {blocks && blocks[0].length + blocks[1].length > 1 && (
-            <div style={{ width: '100%', height: '200px' }}>
+            <div className="ui-chart-200">
               <ResponsiveContainer>
                 <ScatterChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid {...CHART_GRID_PROPS} />
@@ -285,7 +285,7 @@ function HeartRatePanel({
               </ResponsiveContainer>
             </div>
           )}
-          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
+          <div className="ui-muted ui-text-xs ui-mt-4">
             Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: SPEED_COLOR }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
           </div>
         </div>

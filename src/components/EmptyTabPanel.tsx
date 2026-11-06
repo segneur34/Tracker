@@ -25,7 +25,7 @@ function EmptyTabPanel({ id, label, open, onToggle, children, action }: {
       <div style={{ marginBottom: 'var(--space-2)' }}>
         <PanelTitle label={label} open={open} onToggle={onToggle} />
       </div>
-      <div className="empty-tab__text" style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{children}</div>
+      <div className="empty-tab__text ui-muted ui-text-s">{children}</div>
       {action && <div style={{ marginTop: 'var(--space-2)' }}>{action}</div>}
     </ResizablePanel>
   );
