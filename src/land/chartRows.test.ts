@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { toFixedNumber } from './basics';
-import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange, type XRange } from './chartZoom';
-import { CHART_MAX_POINTS } from './displayConfig';
+import { toFixedNumber } from '../core/basics';
+import { lastByRange, sampledIndices, sampledIndicesKeeping, visibleIndexRange, type XRange } from '../core/chartZoom';
+import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { trackChartRows, type TrackChartRow } from './chartRows';
-import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from './units';
+import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
 
 /**
  * Corps de `chartData` de `LandModule` avant le lot 60, recopié tel quel

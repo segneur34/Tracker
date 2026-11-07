@@ -1,5 +1,5 @@
 import { inRange } from '../core/basics';
-import { RUNNER_BOUNDS, runnerName, type RunnerNumberField, type RunnerProfile } from '../running/runnerProfile';
+import { RUNNER_BOUNDS, runnerName, type RunnerNumberField, type RunnerProfile } from './athleteProfile';
 import { ROOT_GOAL } from './rootGrowth';
 
 /**

@@ -1,4 +1,4 @@
-import type { GradeRange } from '../core/grade';
+import type { GradeRange } from '../land/grade';
 
 /**
  * Valeurs d'affichage propres au vélo, surchargeables par activité dans

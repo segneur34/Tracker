@@ -1,9 +1,9 @@
 import { partitionPoint } from '../core/search';
-import { integrateEnergy, type EnergyStepCost } from '../core/energy';
+import { integrateEnergy, type EnergyStepCost } from '../land/energy';
 import { J_PER_KCAL } from '../core/units';
 import type { TrackPoint } from '../core/types';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
-import { gradeZones, type GradeZone } from '../core/grade';
+import { gradeZones, type GradeZone } from '../land/grade';
 
 /**
  * Dépense d'énergie de la course à pied, tout en unités SI et par kilo de

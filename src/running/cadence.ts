@@ -6,7 +6,7 @@ import { pathsWhere } from '../core/trackPaths';
 import type { TrackPoint } from '../core/types';
 import type { CadenceDetection } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
-import { classifyGrade, gradeZones, type GradeZone } from '../core/grade';
+import { classifyGrade, gradeZones, type GradeZone } from '../land/grade';
 import { autocorrelation, firstStrongPeak, isPeak, refinedPeak } from '../core/periodicity';
 
 /**

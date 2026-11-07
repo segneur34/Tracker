@@ -6,7 +6,7 @@ import type { TrackPoint } from '../core/types';
 import { computeZoneStats, gradeZonePaths, ungradedMovingS } from './runningAnalytics';
 import { haversineDistance } from '../core/geo';
 import { eastwardTrack } from '../test/track.fixture';
-import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../core/grade';
+import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../land/grade';
 
 /** Trace d'un point par seconde (ou toutes les `intervalS`), vitesse et altitude imposées ; plate à 100 m par défaut. */
 const buildTrack = (speedsMs: number[], altitudeAt: (distanceM: number) => number = () => 100, intervalS = 1): TrackPoint[] =>

@@ -6,7 +6,7 @@ import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { getSportProfile, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import type { TerrainSamples } from '../core/terrainElevation';
+import type { TerrainSamples } from '../land/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
 import { readSessionTest, type SessionTest } from '../recording/fitnessTest';
 import type { SummaryTest } from '../running/fitnessTestResults';
@@ -360,7 +360,7 @@ export interface SessionSurfaces extends SurfaceRuns {
 /**
  * Altitude du terrain, demandée à l'IGN (`planning/ignAltimetry.ts`) à la
  * première ouverture de l'analyse course ou vélo, puis gardée. Un échantillon
- * tous les `stepM` mètres, repéré par son instant (`core/terrainElevation.ts`).
+ * tous les `stepM` mètres, repéré par son instant (`land/terrainElevation.ts`).
  */
 export interface SessionTerrainElevation extends TerrainSamples {
   source: 'ign';

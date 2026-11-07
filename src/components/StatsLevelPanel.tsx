@@ -7,7 +7,7 @@ import { formatDecimal, formatShortDuration } from '../core/units';
 import { THRESHOLD_FROM_20MIN } from '../cycling/powerLevels';
 import { AGE_GRADE_BELOW_LABEL, AGE_GRADE_CLASSES } from '../running/ageGradeTables';
 import { VO2MAX_PERCENTILES, type Vo2maxStanding } from '../running/vo2maxNorms';
-import type { RunnerProfile } from '../running/runnerProfile';
+import type { RunnerProfile } from '../library/athleteProfile';
 import type { StatSession } from '../library/stats';
 import { cyclingLevel, levelProfileOf, runningLevel, type LevelProfile, type RaceLevel } from '../library/statsLevel';
 

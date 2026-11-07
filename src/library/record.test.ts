@@ -988,9 +988,9 @@ describe('réglages portés par le résumé (Q57)', () => {
   });
 
   it('ancienne fiche : lu dans l\'empreinte, sans seuil propre ; foil en surf seulement', () => {
-    expect(carriedSettings(sessionRecord({ sport: 'running' }, { optionsKey: '[9,null,null,null]' }))).toEqual({ threshold: 9 });
-    expect(carriedSettings(sessionRecord({ sport: 'running' }, { optionsKey: '[null,null,null,null]' }))).toEqual({ threshold: null });
-    expect(carriedSettings(sessionRecord({ sport: 'running', analysis: analysis(12) }, { optionsKey: '[12,null,null,null]' }))).toEqual({});
+    expect(carriedSettings(sessionRecord({ sport: 'wingfoil' }, { optionsKey: '[9,null,null,null]' }))).toEqual({ threshold: 9 });
+    expect(carriedSettings(sessionRecord({ sport: 'wingfoil' }, { optionsKey: '[null,null,null,null]' }))).toEqual({ threshold: null });
+    expect(carriedSettings(sessionRecord({ sport: 'wingfoil', analysis: analysis(12) }, { optionsKey: '[12,null,null,null]' }))).toEqual({});
     expect(carriedSettings(sessionRecord({ sport: 'surf' }, { optionsKey: '[9,null,true,null]' }))).toEqual({ threshold: 9, foil: true });
     expect(carriedSettings(sessionRecord({ sport: 'surf', analysis: analysis(null, false) }, { optionsKey: '[9,null,false,null]' }))).toEqual({ threshold: 9 });
     expect(carriedSettings(sessionRecord({}, { optionsKey: 'abîmée' }))).toEqual({});
@@ -1005,27 +1005,27 @@ describe('réglages portés par le résumé (Q57)', () => {
   });
 
   it('seuil propre changé sur une ancienne fiche : le porté est figé avant', () => {
-    const old = sessionRecord({ sport: 'running' }, { optionsKey: '[9,null,null,null]' });
+    const old = sessionRecord({ sport: 'wingfoil' }, { optionsKey: '[9,null,null,null]' });
     const { record } = applyRecordPatch(old, { analysis: analysis(12) });
     expect(record.summary.activitySettings).toEqual({ threshold: 9 });
     expect(carriedSettings(applyRecordPatch(record, { analysis: analysis(null) }).record)).toEqual({ threshold: 9 });
   });
 
   it('seuil propre retiré sur une ancienne fiche : inconnu, jamais le seuil retiré', () => {
-    const old = sessionRecord({ sport: 'running', analysis: analysis(12) }, { optionsKey: '[12,null,null,null]' });
+    const old = sessionRecord({ sport: 'wingfoil', analysis: analysis(12) }, { optionsKey: '[12,null,null,null]' });
     const { record, resummarize } = applyRecordPatch(old, { analysis: analysis(null) });
     expect(resummarize).toBe(true);
     expect(carriedSettings(record)).toEqual({});
   });
 
   it("nom ou notes changés : pas de champ ajouté, l'ancienne fiche reste telle quelle", () => {
-    const old = sessionRecord({ sport: 'running' }, { optionsKey: '[9,null,null,null]' });
+    const old = sessionRecord({ sport: 'wingfoil' }, { optionsKey: '[9,null,null,null]' });
     expect(applyRecordPatch(old, { name: 'Sortie' }).record.summary).toBe(old.summary);
   });
 
   it('activité ou calcul changés : empreinte et champ retirés', () => {
-    const record = sessionRecord({ sport: 'running', activityId: 'running' }, { optionsKey: '[9,null,null,null]', activitySettings: { threshold: 9 } });
-    for (const patch of [{ activityId: 'autre' }, { sport: 'cycling' as const }]) {
+    const record = sessionRecord({ sport: 'wingfoil', activityId: 'wingfoil' }, { optionsKey: '[9,null,null,null]', activitySettings: { threshold: 9 } });
+    for (const patch of [{ activityId: 'autre' }, { sport: 'kite' as const }]) {
       const { summary } = applyRecordPatch(record, patch).record;
       expect(summary.optionsKey).toBeUndefined();
       expect(summary.activitySettings).toBeUndefined();

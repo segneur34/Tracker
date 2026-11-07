@@ -13,7 +13,7 @@ import { isTestSport } from '../core/sportProfiles';
 import { formatDecimal, kmhToMs, msToKmh } from '../core/units';
 import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
-import type { RunnerProfile } from '../running/runnerProfile';
+import type { RunnerProfile } from '../library/athleteProfile';
 import { lastRecordedOrFirst, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
 import { WORKOUT_LISTS, recordPath } from '../recording/workoutLists';

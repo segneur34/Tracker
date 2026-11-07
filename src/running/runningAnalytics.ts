@@ -1,4 +1,4 @@
-import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from '../core/grade';
+import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from '../land/grade';
 import { segmentDistanceM } from '../core/sessionStats';
 import { consecutiveSteps, pathsWhere } from '../core/trackPaths';
 import type { GradeProfile } from '../core/sportProfiles';
@@ -7,7 +7,7 @@ import { formatDuration } from '../core/units';
 
 /**
  * Analyse propre à la course à pied : zones de terrain et allures par zone.
- * La pente et ses zones sont au noyau (`core/grade.ts`) ; la fenêtre et les
+ * La pente et ses zones sont communes à la terre (`land/grade.ts`) ; la fenêtre et les
  * seuils des zones viennent du profil (`SportProfile.grade`).
  */
 

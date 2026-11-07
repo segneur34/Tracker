@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { energyCases, withGapSpeeds } from '../core/energyTestTracks';
-import { classifyGrade, gradeZones, type GradeZoneKey } from '../core/grade';
+import { energyCases, withGapSpeeds } from '../land/energyTestTracks';
+import { classifyGrade, gradeZones, type GradeZoneKey } from '../land/grade';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import {
@@ -9,7 +9,7 @@ import {
 } from './energy';
 
 /**
- * Neutralité de la mise en commun de l'intégration (`core/energy.ts`) : copie
+ * Neutralité de la mise en commun de l'intégration (`land/energy.ts`) : copie
  * gelée de `computeEnergy` avant le lot 70, comparée bit à bit ; sur un trou,
  * à la vitesse du pas (`withGapSpeeds`, lot 81).
  */

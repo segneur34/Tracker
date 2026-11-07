@@ -4,7 +4,7 @@ import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import { subscribeHeartRate, type HeartRateSample } from '../platform/heartRate';
 import { jsonStore } from '../platform/storage';
-import { TEST_SIGNAL_TONES } from '../recording/fitnessTest';
+import { TEST_SIGNAL_TONES } from '../recording/signalTones';
 import { readableBpm } from '../recording/heartRate';
 import { isRecordingSession } from '../recording/session';
 import {

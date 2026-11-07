@@ -1,7 +1,7 @@
 import { computeGrades } from './grade';
-import { buildCumulativeTrack, segmentDistanceM } from './sessionStats';
-import { GRADE_ANALYSIS } from './sportProfiles';
-import type { TrackPoint } from './types';
+import { buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
+import { GRADE_ANALYSIS } from '../core/sportProfiles';
+import type { TrackPoint } from '../core/types';
 
 /**
  * Traces synthétiques des tests de neutralité de l'énergie (copies gelées de

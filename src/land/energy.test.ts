@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { integrateEnergy, type EnergyStepCost } from './energy';
-import { GRADE_ANALYSIS } from './sportProfiles';
-import type { TrackPoint } from './types';
+import { GRADE_ANALYSIS } from '../core/sportProfiles';
+import type { TrackPoint } from '../core/types';
 
 const START = Date.parse('2026-01-01T10:00:00Z');
 

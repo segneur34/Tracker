@@ -1,4 +1,4 @@
-import type { PlanePoint } from './geo';
+import type { PlanePoint } from '../core/geo';
 
 /**
  * Grille spatiale de segments d'un plan local : retrouver, pour un point, les

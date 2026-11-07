@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ACTIVITIES, type Activity } from '../core/activities';
 import { analysisTabs, isTabShown, toggleTabChoice } from '../core/analysisTabs';
 import { getSportProfile, hasActiveThreshold, TERRAIN_STEP_CHOICES_M } from '../core/sportProfiles';
-import { isValidGradeRange } from '../core/grade';
+import { isValidGradeRange } from '../land/grade';
 import { knotsToMs } from '../core/units';
 import { DEFAULT_PACE_LEVEL } from '../planning/duration';
 import { WAY_TYPES } from '../planning/brouterProfile';

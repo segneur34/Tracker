@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { energyCases } from '../core/energyTestTracks';
+import { energyCases } from '../land/energyTestTracks';
 import { GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { EnergyInputs, EnergyRunner } from '../running/energyView';
 import { cyclingEnergyView } from './energyView';

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { TERRAIN_ELEVATION_VERSION, applyTerrainElevation, roundTerrainZ, terrainSamplePoints } from '../core/terrainElevation';
+import { TERRAIN_ELEVATION_VERSION, applyTerrainElevation, roundTerrainZ, terrainSamplePoints } from '../land/terrainElevation';
 import type { TrackPoint } from '../core/types';
 import type { SessionTerrainElevation } from '../library/record';
 import { IGN_RESOURCE, fetchIgnElevations } from '../planning/ignAltimetry';

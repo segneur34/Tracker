@@ -18,7 +18,7 @@ import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../core/parentPage';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { profilePromptGate } from '../library/profilePrompt';
-import { runnerName } from '../running/runnerProfile';
+import { runnerName } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';

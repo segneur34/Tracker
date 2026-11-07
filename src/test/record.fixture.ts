@@ -67,6 +67,16 @@ export const statSession = (startMs: number, over: Partial<StatSession> = {}): S
   ...over,
 });
 
+/** Session des statistiques d'essai en voile : un wingfoil d'une heure, 25 km, sans foil ni manœuvre (lot 187). */
+export const sailStatSession = (startMs: number, over: Partial<StatSession> = {}): StatSession => statSession(startMs, {
+  distanceM: 25_000, movingDistanceM: 23_500, inMotionS: 3100, maxSpeedMs: 12.4, activityId: 'wingfoil', family: 'voile', treatment: 'voile', ...over,
+});
+
+/** Session des statistiques d'essai en surf : une heure, 4 vagues, la plus longue de 80 m, sans foil (lot 187). */
+export const surfStatSession = (startMs: number, over: Partial<StatSession> = {}): StatSession => statSession(startMs, {
+  distanceM: 3_000, movingDistanceM: 320, movingTimeS: 240, maxSpeedMs: 5, activityId: 'surf', family: 'surf', treatment: 'surf', waveCount: 4, longestWaveM: 80, ...over,
+});
+
 /**
  * Une fiche d'essai par famille (lot 80), pleine de ce que la fiche peut
  * porter : réglages, notes et matériel, résumé détaillé, et les tableaux de

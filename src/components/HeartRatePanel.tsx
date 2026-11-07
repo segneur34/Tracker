@@ -22,7 +22,7 @@ import { estimateHrEnergy, hrEnergyKcal } from '../core/hrEnergy';
 import type { HeartRateProfile, HrEnergyProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit, formatDecimal, commaDecimal } from '../core/units';
 import { useZoomState, type ChartZoomSource } from '../hooks/useChartZoom';
-import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
+import { runnerAge, type RunnerProfile } from '../library/athleteProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getSportProfile } from '../core/sportProfiles';
-import { EMPTY_RUNNER_PROFILE, type RunnerProfile } from '../running/runnerProfile';
+import { EMPTY_RUNNER_PROFILE, type RunnerProfile } from '../library/athleteProfile';
 import { heartRateZones } from '../core/heartRate';
 import { fitnessTestRunner } from './useFitnessTest';
 

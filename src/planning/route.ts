@@ -2,7 +2,7 @@ import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
 import { projectOnSegment } from '../core/geoPlane';
 import { cumulativeDistancesM, haversineDistance, initialBearing } from '../core/geo';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
-import { computeGrades } from '../core/grade';
+import { computeGrades } from '../land/grade';
 import type { WayType } from './brouterProfile';
 import { isWayType, waysMode, wayTypesOf, WAYS_SEPARATOR, type WaysMode } from './wayTypes';
 import { isWaysMode, joinLegs, samePlace } from './legJoin';

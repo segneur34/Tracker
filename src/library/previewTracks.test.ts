@@ -21,9 +21,9 @@ const track = (points: PreviewTrack['points']): PreviewTrack => ({
 });
 
 const fpOf = (overrides: Partial<Parameters<typeof previewFingerprint>[0]> = {}) => previewFingerprint({
-  sport: 'running',
+  sport: 'wingfoil',
   referenceOverrideMs: null,
-  family: 'course',
+  family: 'voile',
   summary: { startMs: 1_000, endMs: 601_000, pointCount: 600 },
   ...overrides,
 });
@@ -32,9 +32,9 @@ describe('empreinte d’une vignette gardée', () => {
   it('change avec le calcul, l’allure imposée, la famille et la trace', () => {
     const base = fpOf();
     expect(fpOf()).toBe(base);
-    expect(fpOf({ sport: 'cycling' })).not.toBe(base);
+    expect(fpOf({ sport: 'kite' })).not.toBe(base);
     expect(fpOf({ referenceOverrideMs: 4 })).not.toBe(base);
-    expect(fpOf({ family: 'fractionne' })).not.toBe(base);
+    expect(fpOf({ family: 'surf' })).not.toBe(base);
     expect(fpOf({ summary: { startMs: 1_000, endMs: 601_000, pointCount: 3000 } })).not.toBe(base);
     expect(fpOf({ summary: { startMs: 2_000, endMs: 601_000, pointCount: 600 } })).not.toBe(base);
   });

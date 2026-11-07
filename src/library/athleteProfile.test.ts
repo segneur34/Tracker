@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHrSource, runnerName, sanitizeRunnerProfile, type RunnerAvatar, type RunnerProfile,
-} from './runnerProfile';
+} from './athleteProfile';
 
 describe('runnerName', () => {
   it('rend le nom saisi, sans les espaces autour', () => {

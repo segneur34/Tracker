@@ -1,6 +1,6 @@
 import { median } from '../core/basics';
 import { cumulativeDistancesM } from '../core/geo';
-import { terrainSamplePoints } from '../core/terrainElevation';
+import { terrainSamplePoints } from '../land/terrainElevation';
 import type { LatLon } from '../core/types';
 import { routePoints, type PlannedRoute, type RouteLeg, type RoutePoint } from './route';
 

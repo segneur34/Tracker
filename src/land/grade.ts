@@ -1,6 +1,6 @@
-import { SLOW_COLOR, gradientColor } from './speedGradient';
-import type { GradeProfile } from './sportProfiles';
-import type { CumulativeTrack } from './types';
+import { SLOW_COLOR, gradientColor, type GradientStop } from '../core/speedGradient';
+import type { GradeProfile } from '../core/sportProfiles';
+import type { CumulativeTrack } from '../core/types';
 
 /**
  * Pente locale, zones de pente et couleurs de pente, communes à la course, au
@@ -180,12 +180,6 @@ export const gradeColorPaths = (
   }
   return paths;
 };
-
-/** Arrêt d'un dégradé SVG horizontal : position de 0 à 1 et couleur. */
-export interface GradientStop {
-  offset: number;
-  color: string;
-}
 
 /**
  * Arrêts du dégradé horizontal qui colore la courbe d'altitude, un par ligne

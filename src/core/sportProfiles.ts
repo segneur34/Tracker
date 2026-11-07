@@ -270,6 +270,13 @@ const HEART_RATE: HeartRateProfile = {
   scatterBlockS: 30,
 };
 
+/**
+ * Réglage cardio de référence, sans décalage (lot 187) : celui du Pratiquant (seuils et zones affichés dans Réglages
+ * et dans Statistiques hors activité), et la base que chaque calcul décale de `thresholdOffsetBpm`. C'est le même
+ * objet que celui de la course, qui reste la référence des décalages ; le transverse le lit ici, sans nommer un calcul.
+ */
+export const REFERENCE_HEART_RATE: HeartRateProfile = HEART_RATE;
+
 /** Coefficients d'une équation de Keytel : débit en kJ/min = intercept + hr·FC + weight·poids + age·âge (bpm, kg, ans). */
 export interface KeytelCoefficients {
   intercept: number;
@@ -685,6 +692,17 @@ const COMMON_DEFAULTS = {
   grade: GRADE_ANALYSIS,
   foilDefault: false,
   recording: DEFAULT_RECORDING,
+};
+
+/**
+ * Profil d'une session sans calcul connu (`sport` null : fiche non classée, lot 187) pour le peu que son résumé
+ * calcule : dénivelé, fenêtre de la vitesse max et FC. Les valeurs communes à tous les calculs, et le cardio de
+ * référence : le même résumé qu'avec le calcul de la course, qui tenait ce rôle avant (test d'identité).
+ */
+export const UNCLASSIFIED_PROFILE: Pick<SportProfile, 'elevation' | 'maxSpeedWindowS' | 'heartRate'> = {
+  elevation: COMMON_DEFAULTS.elevation,
+  maxSpeedWindowS: COMMON_DEFAULTS.maxSpeedWindowS,
+  heartRate: HEART_RATE,
 };
 
 /** Réglages communs aux supports à voile, surchargés au cas par cas. */

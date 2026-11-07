@@ -3,11 +3,11 @@
  * vélo : la plage zoomée de la trace, au plus `CHART_MAX_POINTS` lignes, en
  * unités affichées (sortie du noyau, `core/units`).
  */
-import { toFixedNumber } from './basics';
-import { sampledIndicesKeeping, visibleIndexRange } from './chartZoom';
-import type { XRange } from './chartZoom';
-import { CHART_MAX_POINTS } from './displayConfig';
-import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from './units';
+import { toFixedNumber } from '../core/basics';
+import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
+import type { XRange } from '../core/chartZoom';
+import { CHART_MAX_POINTS } from '../core/displayConfig';
+import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
 
 /** Une ligne des graphes : `index` renvoie au point de trace d'origine. */
 export interface TrackChartRow {

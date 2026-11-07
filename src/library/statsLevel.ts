@@ -9,7 +9,7 @@
 import { powerLevel, thresholdWkg } from '../cycling/powerLevels';
 import { ageGradeClass, ageGradePercent } from '../running/ageGrade';
 import { AGE_GRADE_DISTANCES_M, type AgeGradeSex } from '../running/ageGradeTables';
-import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
+import { runnerAge, type RunnerProfile } from './athleteProfile';
 import { vdotFromRace } from '../running/vdot';
 import { vo2maxPercentile, type Vo2maxStanding } from '../running/vo2maxNorms';
 import type { StatSession } from './stats';

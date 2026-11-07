@@ -1,10 +1,10 @@
 import { haversineDistance } from '../core/geo';
 import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
-import { BRIEF_SPACING_MS } from '../core/beepDurations';
-import type { ClockTone } from '../platform/beeper';
+import { windowMean, type WindowSample } from '../core/windowMean';
 import type { LocationFix } from '../platform/location';
 import { finiteOr, isFiniteNumber } from '../core/basics';
+import type { TestSignal } from './signalTones';
 
 /**
  * Tests guidés par bips (Entraînement › Tests, 24/10), d'abord la FC max :
@@ -237,8 +237,6 @@ export const resolveFitnessTestParams = (
 
 // --- Fiche ---
 
-export type TestSignal = 'debut' | 'bien' | 'trop' | 'accelere' | 'palier' | 'finRampe' | 'finTest';
-
 const TEST_SIGNALS: readonly TestSignal[] = ['debut', 'bien', 'trop', 'accelere', 'palier', 'finRampe', 'finTest'];
 
 /** Ce que dit chaque signal, en clair. */
@@ -331,12 +329,6 @@ export interface TestSample {
   hrBpm?: number;
 }
 
-export interface WindowSample {
-  activeMs: number;
-  speedMs?: number;
-  hrBpm?: number;
-}
-
 export interface FitnessTestState {
   params: FitnessTestParams;
   phase: TestPhase;
@@ -384,32 +376,6 @@ export const startFitnessTest = (params: FitnessTestParams): FitnessTestState =>
   lastSignal: null,
   test: null,
 });
-
-/**
- * Moyenne pondérée par le temps d'un champ sur les `windowS` dernières
- * secondes actives : chaque mesure vaut depuis la précédente. `null` si la
- * fenêtre n'en couvre pas la moitié (départ, reprise après un trou).
- * `endMs` : fenêtre finissant à cet instant passé plutôt qu'à `nowMs`.
- */
-export const windowMean = (
-  window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS: number, nowMs: number, endMs: number = nowMs
-): number | null => {
-  const fromMs = endMs - windowS * 1000;
-  let sum = 0;
-  let dur = 0;
-  for (let i = window.length - 1; i > 0; i--) {
-    const cur = window[i];
-    const prevMs = window[i - 1].activeMs;
-    if (cur.activeMs <= fromMs) break;
-    if (prevMs >= endMs) continue;
-    const value = cur[field];
-    if (value === undefined) continue;
-    const w = Math.min(cur.activeMs, endMs) - Math.max(prevMs, fromMs);
-    sum += value * w;
-    dur += w;
-  }
-  return dur >= (windowS * 1000) / 2 ? sum / dur : null;
-};
 
 /**
  * Tendance de la vitesse : moyenne des `recentS` dernières secondes moins
@@ -708,24 +674,6 @@ export const guideReadings = (state: FitnessTestState): { speedMs: number | null
   speedMs: windowMean(state.window, 'speedMs', state.params.protocol.smoothS, state.activeMs),
   hrBpm: windowMean(state.window, 'hrBpm', state.params.protocol.smoothS, state.activeMs),
 });
-
-// --- Sons ---
-
-/** Écart entre les débuts des sons de la fin de rampe, comme la fin de séance du compteur. */
-const END_SPACING_MS = 1000;
-
-/** Un bip court seul, ou n bips brefs rapprochés (« bip-bip ») pour trop vite et trop lent. */
-const briefs = (n: number): ClockTone[] => Array.from({ length: n }, (_, i) => ({ delayMs: i * BRIEF_SPACING_MS, tone: 'bref' as const }));
-
-export const TEST_SIGNAL_TONES: Record<TestSignal, ClockTone[]> = {
-  debut: [{ delayMs: 0, tone: 'court' }],
-  bien: [{ delayMs: 0, tone: 'court' }],
-  trop: briefs(2),
-  accelere: briefs(3),
-  palier: [{ delayMs: 0, tone: 'long' }],
-  finRampe: [{ delayMs: 0, tone: 'court' }, { delayMs: END_SPACING_MS, tone: 'long' }, { delayMs: 2 * END_SPACING_MS, tone: 'final' }],
-  finTest: [{ delayMs: 0, tone: 'long' }],
-};
 
 // --- Plan, pour le graphique du protocole ---
 

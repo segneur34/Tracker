@@ -1,5 +1,5 @@
 import { roundTo } from '../core/basics';
-import type { GradeZone } from '../core/grade';
+import type { GradeZone } from '../land/grade';
 import type { BikeType } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';

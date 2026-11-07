@@ -1,5 +1,5 @@
 import type { ClockTone } from '../platform/beeper';
-import { TEST_SIGNAL_TONES } from './fitnessTest';
+import { TEST_SIGNAL_TONES } from './signalTones';
 
 /**
  * Test de FC repos (Entraînement › Tests, 24/10) : 3 minutes immobile, la FC

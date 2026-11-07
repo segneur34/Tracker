@@ -4,12 +4,12 @@ import {
   type Activity,
 } from '../core/activities';
 import {
-  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, hasPositions, isLandTreatment, sportFamily,
-  sportTreatment, usesMarkCourse,
+  LOOP_RETURN_RATIO_RANGE, REFERENCE_HEART_RATE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, hasPositions,
+  isLandTreatment, sportFamily, sportTreatment, usesMarkCourse,
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
 import { activityTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
-import { isValidGradeRange } from '../core/grade';
+import { isValidGradeRange } from '../land/grade';
 import type { SportType } from '../core/types';
 import {
   DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, speedUnitSymbol, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
@@ -22,7 +22,7 @@ import { Link } from 'react-router-dom';
 import { useTileCache } from '../hooks/useTileCache';
 import { useThemedShade, useThemeSettings } from '../hooks/useTheme';
 import { THEME_CHOICES } from '../theme/theme';
-import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, type RunnerNumberField, type RunnerProfile } from '../running/runnerProfile';
+import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, type RunnerNumberField, type RunnerProfile } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { ROOT_GOAL } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
@@ -268,8 +268,8 @@ function NumberField({
   );
 }
 
-/** Seuils et zones de Pratiquant : ceux de la course, sans décalage (chaque activité décale les siens). */
-const RUNNING_HEART_RATE = SPORT_PROFILES.running.heartRate;
+/** Seuils et zones de Pratiquant : le cardio de référence, sans décalage (chaque activité décale les siens). */
+const RUNNING_HEART_RATE = REFERENCE_HEART_RATE;
 
 const pct = (f: number): string => `${Math.round(f * 100)} %`;
 

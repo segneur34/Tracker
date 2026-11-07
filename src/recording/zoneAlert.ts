@@ -1,5 +1,5 @@
 import { MAX_PLAUSIBLE_BPM, MIN_PLAUSIBLE_BPM } from '../core/heartRate';
-import { windowMean, type WindowSample } from './fitnessTest';
+import { windowMean, type WindowSample } from '../core/windowMean';
 
 /**
  * Bips de sortie de zone cardiaque pendant un enregistrement (lot 28) : la

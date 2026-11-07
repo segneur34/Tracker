@@ -1,6 +1,6 @@
-import { roundTo } from './basics';
-import { median } from './basics';
-import type { TrackPoint } from './types';
+import { roundTo } from '../core/basics';
+import { median } from '../core/basics';
+import type { TrackPoint } from '../core/types';
 
 /**
  * Altitude du terrain (IGN, `planning/ignAltimetry.ts`) substituée à celle du

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { heartRateZonePaths, type HeartRatePoint, type HeartRateZones } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
-import { runnerHeartRateZones } from '../running/runnerProfile';
+import { runnerHeartRateZones } from '../library/athleteProfile';
 import { useRunnerProfile } from './useRunnerProfile';
 import { useSessionHeartRate, type SessionHeartRate } from './useSessionHeartRate';
 

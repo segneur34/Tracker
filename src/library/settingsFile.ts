@@ -1,6 +1,6 @@
 import { readActivities } from '../core/activities';
 import { isObject, parseJson, stringifyJson } from '../core/basics';
-import { sanitizeRunnerProfile } from '../running/runnerProfile';
+import { sanitizeRunnerProfile } from './athleteProfile';
 import { ROOT_GOAL } from './rootGrowth';
 
 /**

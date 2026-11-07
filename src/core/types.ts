@@ -58,7 +58,7 @@ export interface RawTrackPoint {
 /**
  * Point sans position, lu dans le GPX d'une session sans trace (muscu, lot I
  * du 25/10) : l'heure, et la FC si la ceinture l'a donnée. Jamais dans la
- * cinématique : seulement l'analyse de la FC (`core/heartRateSession.ts`).
+ * cinématique : seulement l'analyse de la FC (`land/heartRateSession.ts`).
  */
 export interface TimedTrackPoint {
   time: string;

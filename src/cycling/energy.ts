@@ -1,10 +1,10 @@
-import { integrateEnergy, type EnergyStepCost } from '../core/energy';
+import { integrateEnergy, type EnergyStepCost } from '../land/energy';
 import { kmhToMs } from '../core/units';
 import type { BikeType } from '../core/domainTypes';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
-import { gradeZones, type GradeZone } from '../core/grade';
+import { gradeZones, type GradeZone } from '../land/grade';
 
 /**
  * Dépense d'énergie à vélo, tout en unités SI. Contrairement à la course, la

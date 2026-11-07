@@ -7,13 +7,13 @@ import { ROOT_GOAL } from '../library/rootGrowth';
 import {
   EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHeartRateZones, storedRunnerProfile,
   type HrSource, type RunnerAvatar, type RunnerNumberField, type RunnerProfile,
-} from '../running/runnerProfile';
+} from '../library/athleteProfile';
 import { effectiveHrOffset } from './useSportSettings';
 import { readStoredRecord, useStoredRecord } from './useStoredRecord';
 
 /**
  * Profil du pratiquant, persistant (`tracker.runnerProfile`) : sa lecture et
- * ses écritures. Sa forme et ses règles pures sont dans `running/runnerProfile.ts`
+ * ses écritures. Sa forme et ses règles pures sont dans `library/athleteProfile.ts`
  * et `library/profile.ts` (lot 72).
  */
 

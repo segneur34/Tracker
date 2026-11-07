@@ -1,6 +1,6 @@
 import { pointSegmentDistanceM } from '../core/geoPlane';
 import type { PlanePoint } from '../core/geo';
-import { buildSegmentGrid } from '../core/segmentGrid';
+import { buildSegmentGrid } from './segmentGrid';
 import { toRad } from '../core/angles';
 import { EARTH_RADIUS_M, haversineDistance } from '../core/geo';
 import type { Waypoint } from './route';
@@ -77,7 +77,7 @@ export const queryLines = (
  * que la meilleure de plus de `switchMarginM` ; `-1` si aucune voie n'est assez
  * proche. Plan local équirectangulaire centré sur le premier point ; les
  * segments des voies sont rangés dans une grille de pas `radiusM`
- * (`core/segmentGrid.ts`).
+ * (`planning/segmentGrid.ts`).
  */
 export const matchTrackToWays = (
   points: ReadonlyArray<Waypoint>,

@@ -16,7 +16,7 @@ import { libraryPath } from '../core/parentPage';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useProfileRoot } from '../hooks/useProfileRoot';
-import { runnerAvatar, runnerName } from '../running/runnerProfile';
+import { runnerAvatar, runnerName } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';

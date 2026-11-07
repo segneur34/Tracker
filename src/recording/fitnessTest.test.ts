@@ -5,7 +5,6 @@ import { SPORT_PROFILES } from '../core/sportProfiles';
 import { kmhToMs, msToKmh } from '../core/units';
 import {
   FITNESS_TESTS,
-  TEST_SIGNAL_TONES,
   closeFitnessTest,
   closeSessionTest,
   finishRamp,
@@ -19,11 +18,10 @@ import {
   startFitnessTest,
   stepFitnessTest,
   testPlan,
-  windowMean,
   type FitnessTestState,
   type TestSample,
-  type TestSignal,
 } from './fitnessTest';
+import type { TestSignal } from './signalTones';
 import { mPerDegLon } from '../test/geo.fixture';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
@@ -414,19 +412,6 @@ describe('échauffement croisant FC et vitesse (protocole v2)', () => {
   });
 });
 
-describe('windowMean', () => {
-  // Une mesure par seconde, valeur = son heure ; chacune vaut depuis la précédente.
-  const window = Array.from({ length: 11 }, (_, i) => ({ activeMs: i * 1000, speedMs: i }));
-  it('moyenne des dernières secondes, ou d’une fenêtre finie plus tôt', () => {
-    expect(windowMean(window, 'speedMs', 5, 10_000)).toBeCloseTo(8, 9);
-    expect(windowMean(window, 'speedMs', 5, 10_000, 5_000)).toBeCloseTo(3, 9);
-    // Fenêtre (2,5 ; 4,5] : une demi-seconde de 3, une seconde de 4, une demi-seconde de 5.
-    expect(windowMean(window, 'speedMs', 2, 10_000, 4_500)).toBeCloseTo(4, 9);
-    // Pas assez couverte.
-    expect(windowMean(window, 'speedMs', 30, 10_000, 5_000)).toBeNull();
-  });
-});
-
 describe('readSessionTest', () => {
   it('relit un test rangé, écarte un test mal formé', () => {
     const test = run(samples(1)).state.test!;
@@ -446,18 +431,6 @@ describe('readSessionTest', () => {
       signals: [{ t: T0, s: 'debut' }, { t: T0 + 480_000, s: 'palier' }, { t: T0 + 560_000, s: 'finRampe' }],
     };
     expect(readSessionTest(JSON.parse(JSON.stringify(v1)))).toEqual(v1);
-  });
-});
-
-describe('TEST_SIGNAL_TONES', () => {
-  it('un bip court, ou 2 ou 3 bips brefs serrés ; un long au palier ; court, long, long double à la fin de la rampe', () => {
-    expect(TEST_SIGNAL_TONES.bien.map((t) => t.tone)).toEqual(['court']);
-    expect(TEST_SIGNAL_TONES.trop.map((t) => t.tone)).toEqual(['bref', 'bref']);
-    expect(TEST_SIGNAL_TONES.accelere.map((t) => t.tone)).toEqual(['bref', 'bref', 'bref']);
-    expect(TEST_SIGNAL_TONES.accelere[2].delayMs).toBeLessThan(1000);
-    expect(TEST_SIGNAL_TONES.trop.map((t) => t.delayMs)).toEqual([0, 165]);
-    expect(TEST_SIGNAL_TONES.palier.map((t) => t.tone)).toEqual(['long']);
-    expect(TEST_SIGNAL_TONES.finRampe.map((t) => t.tone)).toEqual(['court', 'long', 'final']);
   });
 });
 

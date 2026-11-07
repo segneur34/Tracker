@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildCumulativeTrack } from './sessionStats';
+import { buildCumulativeTrack } from '../core/sessionStats';
 import { applyTerrainElevation, terrainSamplePoints, type TerrainSamples } from './terrainElevation';
-import type { TrackPoint } from './types';
+import type { TrackPoint } from '../core/types';
 import { mPerDegLon } from '../test/geo.fixture';
 
 const START = Date.parse('2026-10-03T08:00:00Z');

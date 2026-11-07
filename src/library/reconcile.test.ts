@@ -7,7 +7,7 @@ import { sessionRecord } from '../test/record.fixture';
 const file = (name: string, size = 100, mtimeMs = 1000): FolderEntry => ({ name, kind: 'file', size, mtimeMs });
 
 const record = (gpx: string): SessionRecord =>
-  sessionRecord({ gpx, sport: 'running', source: 'import', title: null }, { startMs: 1, endMs: 2, distanceM: 3, movingTimeS: 1, maxSpeedMs: 3, pointCount: 2 });
+  sessionRecord({ gpx, source: 'import', title: null }, { startMs: 1, endMs: 2, distanceM: 3, movingTimeS: 1, maxSpeedMs: 3, pointCount: 2 });
 
 describe('planReconcile', () => {
   it('reprend du cache une fiche inchangée et relit une fiche modifiée', () => {

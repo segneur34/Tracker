@@ -8,7 +8,7 @@
 
 import type { Activity } from '../core/activities';
 import { ZONE_COUNT, edwardsLoad, histogramZoneTimes } from '../core/heartRate';
-import { repsDone } from '../core/heartRateSession';
+import { repsDone } from '../land/heartRateSession';
 import { hasPositions, sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { DAY_MS, addDays, addMonths, isoWeek, monthYearLong, monthYearShort, shortDate, stacksByActivity, startOfDay, startOfIsoWeek, startOfMonth } from '../core/calendar';
 import { CHART_PERIODS, chartPeriodBounds, type ChartRange } from './activityChart';

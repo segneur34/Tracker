@@ -18,7 +18,8 @@ import {
   SPEED_UNIT_LABEL, formatClockMinutes, formatShortDuration, formatSpeed, toDisplaySpeed, type SpeedUnit,
 } from '../core/units';
 import { useZoomState, type ChartZoomSource } from '../hooks/useChartZoom';
-import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
+import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason } from '../recording/fitnessTest';
+import type { TestSignal } from '../recording/signalTones';
 import { fitnessTestResults } from '../running/fitnessTestResults';
 import StatTile from './ui/StatTile';
 import { CHART_MARK_COLOR, SPEED_COLOR } from './chartStyle';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanePoint } from './geo';
-import { pointSegmentDistanceM } from './geoPlane';
+import type { PlanePoint } from '../core/geo';
+import { pointSegmentDistanceM } from '../core/geoPlane';
 import { buildSegmentGrid } from './segmentGrid';
 
 type Seg = readonly [PlanePoint, PlanePoint];

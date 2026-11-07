@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ACTIVITIES } from '../core/activities';
-import { EMPTY_RUNNER_PROFILE } from '../running/runnerProfile';
+import { EMPTY_RUNNER_PROFILE } from './athleteProfile';
 import {
   SETTINGS_FORMAT,
   SETTINGS_VERSION,

@@ -1,4 +1,4 @@
-import type { GradientStop } from '../core/grade';
+import type { GradientStop } from '../core/speedGradient';
 
 /**
  * Dégradé horizontal d'une courbe d'altitude, selon la pente

@@ -28,7 +28,7 @@ import type { GearGroup, GearItem } from '../library/notes';
 import type { ActivitySpeedRanges } from '../library/sessionTrack';
 import type { DurationSettings, PaceLevel } from '../planning/duration';
 import type { WayType } from '../planning/brouterProfile';
-import type { GradeRange } from '../core/grade';
+import type { GradeRange } from '../land/grade';
 import { resolveGearGroups, resolveGearLabels, sanitizeGearGroups, withGearItem } from '../settings/gear';
 import {
   DEFAULT_LONG_PRESS_MS, DEFAULT_STOP_HOLD_MS, PRESETS_VERSION, defaultSpeedRangeOf, durationSettingsOf, effectiveHrZoneLines, isValidLongPress, isValidStopHold,

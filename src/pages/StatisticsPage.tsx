@@ -21,7 +21,7 @@ import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE } from '../component
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
-import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
+import { REFERENCE_HEART_RATE, SPORT_FAMILIES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
   formatDistanceAuto, formatDecimal,
   DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatLandSpeed, formatSpeedValue, isInverseUnit,
@@ -33,7 +33,7 @@ import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useNow } from '../hooks/useNow';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { runnerHeartRateZones, type RunnerProfile } from '../running/runnerProfile';
+import { runnerHeartRateZones, type RunnerProfile } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
@@ -93,12 +93,12 @@ const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
 const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, niveau: false, cardio: false };
 
 /** Coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
-const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
+const LOAD_WEIGHTS = REFERENCE_HEART_RATE.loadWeights;
 
 /** Seuils et zones du pratiquant pour une activité (décalés pour elle), ceux de la course sans activité. */
 const zonesFor = (runner: RunnerProfile, activity: Activity | null) => activity
   ? runnerHeartRateZones(runner, getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))
-  : runnerHeartRateZones(runner, SPORT_PROFILES.running.heartRate, 0);
+  : runnerHeartRateZones(runner, REFERENCE_HEART_RATE, 0);
 
 const STORAGE_ID = 'statistiques';
 

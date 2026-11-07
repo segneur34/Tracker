@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { energyCases } from './energyTestTracks';
-import { classifyGrade, type GradeZoneKey } from './grade';
+import { energyCases } from '../land/energyTestTracks';
+import { classifyGrade, type GradeZoneKey } from '../land/grade';
 import { GRADE_ANALYSIS } from './sportProfiles';
 import type { TrackPoint } from './types';
 import { consecutiveSteps, pathsWhere } from './trackPaths';

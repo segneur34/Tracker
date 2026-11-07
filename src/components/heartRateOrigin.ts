@@ -1,6 +1,6 @@
 import { pad2 } from '../core/units';
 import type { HeartRateZones } from '../core/heartRate';
-import { runnerHrSource, type HrSource, type RunnerProfile } from '../running/runnerProfile';
+import { runnerHrSource, type HrSource, type RunnerProfile } from '../library/athleteProfile';
 
 /**
  * D'où viennent les seuils et les zones cardiaques, en clair : dans l'onglet

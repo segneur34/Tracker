@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jsonStore } from '../platform/storage';
 import { getSportProfile } from '../core/sportProfiles';
 import { ROOT_GOAL } from '../library/rootGrowth';
-import { EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerHeartRateZones, storedRunnerProfile, type RunnerProfile } from '../running/runnerProfile';
+import { EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerHeartRateZones, storedRunnerProfile, type RunnerProfile } from '../library/athleteProfile';
 import { missingProfileFields, shouldPromptProfile } from '../library/profilePrompt';
 import { readRunnerProfile } from './useRunnerProfile';
 

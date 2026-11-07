@@ -11,10 +11,11 @@ import {
   computeActiveTimeMs,
   thresholdActivityMask,
 } from '../core/sessionStats';
-import { computeGrades } from '../core/grade';
+import { computeGrades } from '../land/grade';
 import { bestWindowSpeedMs, computeAllTopSegments, computeTopSegments } from '../core/topSegments';
 import {
   SAILING_SPORTS,
+  UNCLASSIFIED_PROFILE,
   defaultActiveThresholdOf,
   getSportProfile,
   hasActiveThreshold,
@@ -25,7 +26,7 @@ import {
 import type { CumulativeTrack, RawTrackPoint, SportType, TimedTrackPoint, TrackPoint } from '../core/types';
 import type { BikeType } from '../core/domainTypes';
 import { computeCyclingEnergy, cyclingEnergyParams } from '../cycling/energy';
-import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
+import { applyTerrainElevation, type TerrainSamples } from '../land/terrainElevation';
 import { msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
@@ -192,15 +193,17 @@ export const summarizeSession = (
   const cum = buildCumulativeTrack(analyzed.track);
   const { cumDist } = cum;
   const track = options.terrainElevation ? applyTerrainElevation(analyzed.track, cumDist, options.terrainElevation).track : analyzed.track;
-  const elevationProfile = options.elevation ?? getSportProfile(sport ?? 'running').elevation;
+  // Sans calcul connu : le profil neutre (valeurs communes, cardio de référence), le même résumé qu'avec la course.
+  const profile = sport === null ? UNCLASSIFIED_PROFILE : getSportProfile(sport);
+  const elevationProfile = options.elevation ?? profile.elevation;
   const elevation = computeElevationStats(track, elevationProfile);
   // Vitesse max : la meilleure moyenne sur 2 s, comme partout (Q34) ; en surf, celle d'une vague, la même que sa
   // page. Aucune fenêtre ne tient (trace clairsemée, chaque pas plus long que `maxGapS` est un trou, règle 10) :
   // la plus haute vitesse lissée.
   const maxSpeedMs = analyzed.surf?.maxSpeedMs
-    ?? bestWindowSpeedMs(analyzed.track, cum, getSportProfile(sport ?? 'running').maxSpeedWindowS)
+    ?? bestWindowSpeedMs(analyzed.track, cum, profile.maxSpeedWindowS)
     ?? maxSmoothedSpeedMs(track);
-  const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
+  const heartRate = summaryHeartRate(track, profile.heartRate);
   const cadenceParams = sport ? getSportProfile(sport).cadence : null;
   const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;
   const test = options.test ? summaryOfTest(fitnessTestResults(track, options.test, FITNESS_TESTS[options.test.protocol])) : null;

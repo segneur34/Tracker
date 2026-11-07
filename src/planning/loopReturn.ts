@@ -1,6 +1,6 @@
 import { planeProjection, type PlanePoint } from '../core/geo';
 import { pointSegmentDistanceM } from '../core/geoPlane';
-import { buildSegmentGrid } from '../core/segmentGrid';
+import { buildSegmentGrid } from './segmentGrid';
 import { simplifyPlane } from '../core/simplify';
 import { joinLegs } from './legJoin';
 import type { RouteLeg, RoutePoint, Waypoint } from './route';
@@ -205,7 +205,7 @@ const SHARED_STEP_M = 5;
  * est près de l'aller en son milieu. `outbound` : les morceaux de l'aller,
  * chacun d'un seul trait (`corridorPaths`), sans relier la fin de l'un au
  * début du suivant. Les segments de l'aller sont rangés dans une grille de
- * pas `toleranceM` (`core/segmentGrid.ts`) : chaque morceau du retour ne
+ * pas `toleranceM` (`planning/segmentGrid.ts`) : chaque morceau du retour ne
  * regarde que quelques segments.
  */
 export const sharedDistanceM = (

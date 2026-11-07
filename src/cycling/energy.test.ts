@@ -6,7 +6,7 @@ import type { SurfaceCategory } from '../planning/surface';
 import {
   BIKE_TYPES, computeCyclingEnergy, cyclingEnergyParams, resistiveForceN, rollingCoefficient, type BikeType, type CyclingEnergyParams,
 } from './energy';
-import { computeGrades } from '../core/grade';
+import { computeGrades } from '../land/grade';
 
 /** Trace synthétique à cadence fixe, en ligne droite, altitude fonction de la distance. */
 const buildTrack = (

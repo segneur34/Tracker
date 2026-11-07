@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_RUNNER_PROFILE } from '../running/runnerProfile';
+import { EMPTY_RUNNER_PROFILE } from './athleteProfile';
 import { PROFILE_PROMPT_FIELDS, missingProfileFields, profilePromptGate, shouldPromptProfile } from './profilePrompt';
 
 describe('missingProfileFields', () => {

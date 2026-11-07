@@ -7,7 +7,8 @@ import { formatLandSpeed } from '../core/units';
 import { finishFitnessRamp, fitnessTestRunner, useFitnessTest, type FitnessTestView } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { effectiveDistanceUnit, effectiveSpeedUnit, useFitnessTestSettings } from '../hooks/useSportSettings';
-import { FITNESS_TESTS, TEST_SIGNAL_LABEL, resolveFitnessTestParams, type FitnessTestId, type TestPhase, type TestSignal } from '../recording/fitnessTest';
+import { FITNESS_TESTS, TEST_SIGNAL_LABEL, resolveFitnessTestParams, type FitnessTestId, type TestPhase } from '../recording/fitnessTest';
+import type { TestSignal } from '../recording/signalTones';
 import { formatIntervalClock } from '../recording/intervalTimer';
 import './IntervalCard.css';
 

@@ -23,6 +23,12 @@ export const isValidSpeedRange = (range: { minMs?: unknown; maxMs?: unknown }): 
 /** Couleur sous la borne basse. */
 export const SLOW_COLOR = '#9e9e9e';
 
+/** Arrêt d'un dégradé SVG horizontal : position de 0 à 1 et couleur (courbe d'altitude colorée par la pente, graphes). */
+export interface GradientStop {
+  offset: number;
+  color: string;
+}
+
 /** Paliers du dégradé, position de 0 à 1 et couleur en composantes RVB. */
 const GRADIENT_STOPS: { at: number; rgb: [number, number, number] }[] = [
   { at: 0, rgb: [30, 136, 229] },

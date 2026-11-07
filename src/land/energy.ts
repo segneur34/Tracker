@@ -1,7 +1,7 @@
 import { classifyGrade, type GradeZoneKey } from './grade';
-import { segmentDistanceM } from './sessionStats';
-import type { GradeProfile } from './sportProfiles';
-import type { TrackPoint } from './types';
+import { segmentDistanceM } from '../core/sessionStats';
+import type { GradeProfile } from '../core/sportProfiles';
+import type { TrackPoint } from '../core/types';
 
 /**
  * Intégration de la dépense d'énergie le long d'une trace, commune à la course

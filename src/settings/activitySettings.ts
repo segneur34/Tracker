@@ -31,7 +31,7 @@ import {
 } from '../planning/duration';
 import type { WayType } from '../planning/brouterProfile';
 import { presetWayTypes, sanitizeWayTypes } from '../planning/wayTypes';
-import { DEFAULT_GRADE_RANGE, isValidGradeRange, type GradeRange } from '../core/grade';
+import { DEFAULT_GRADE_RANGE, isValidGradeRange, type GradeRange } from '../land/grade';
 import { sanitizeGearGroups, sanitizeGearLabels } from './gear';
 
 /**

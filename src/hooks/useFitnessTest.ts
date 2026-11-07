@@ -5,13 +5,14 @@ import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  FITNESS_TESTS, TEST_SIGNAL_TONES, closeFitnessTest, finishRamp, fixSpeedMs, guideReadings, phaseRemainingS, replayFitnessTest, resolveFitnessTestParams,
+  FITNESS_TESTS, closeFitnessTest, finishRamp, fixSpeedMs, guideReadings, phaseRemainingS, replayFitnessTest, resolveFitnessTestParams,
   startFitnessTest, stepFitnessTest, stepTargetMs,
-  type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner, type TestSignal,
+  type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner,
 } from '../recording/fitnessTest';
+import { TEST_SIGNAL_TONES, type TestSignal } from '../recording/signalTones';
 import { getLiveSegments, getRecordedTest, getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
-import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
+import { runnerAge, type RunnerProfile } from '../library/athleteProfile';
 import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
 import { createStore } from './createStore';
 

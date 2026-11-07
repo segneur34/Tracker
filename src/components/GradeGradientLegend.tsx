@@ -1,5 +1,5 @@
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
-import type { GradeRange } from '../core/grade';
+import type { GradeRange } from '../land/grade';
 import './SpeedGradientLegend.css';
 
 /**

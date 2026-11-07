@@ -7,7 +7,7 @@ import {
   gearFilterItems, matchesGear, groupByActivity, readGearParam, gearParamOf, withGearPick, matchesGearSelection, gearFilterRows, gearPickLabel,
 } from './stats';
 import type { GearGroup } from './notes';
-import { statSession } from '../test/record.fixture';
+import { sailStatSession, statSession, surfStatSession } from '../test/record.fixture';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
@@ -150,13 +150,11 @@ describe('metricsOf', () => {
   it('propose les données de la famille qui ont une valeur', () => {
     expect(keys('course', [session(at(2026, 3, 1), { elevationGainM: 80 })])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'denivele']);
     expect(keys('course', [session(at(2026, 3, 1))])).toEqual(['vmax', 'moyenne', 'duree', 'distance']);
-    const voile = { family: 'voile', treatment: 'voile' } as const;
-    expect(keys('voile', [session(at(2026, 3, 1), voile)])).toEqual(['vmax', 'moyenne', 'duree', 'distance']);
-    expect(keys('voile', [session(at(2026, 3, 1), { ...voile, foil: true, maneuverResults: { tackSuccess: 1, tackFail: 0, jibeSuccess: 0, jibeFail: 0 } })]))
+    expect(keys('voile', [sailStatSession(at(2026, 3, 1))])).toEqual(['vmax', 'moyenne', 'duree', 'distance']);
+    expect(keys('voile', [sailStatSession(at(2026, 3, 1), { foil: true, maneuverResults: { tackSuccess: 1, tackFail: 0, jibeSuccess: 0, jibeFail: 0 } })]))
       .toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vol', 'reussite']);
-    const surf = { family: 'surf', treatment: 'surf', waveCount: 4, longestWaveM: 80 } as const;
-    expect(keys('surf', [session(at(2026, 3, 1), surf)])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vagues', 'vague']);
-    expect(keys('surf', [session(at(2026, 3, 1), { ...surf, flightS: 600, longestFlightS: 120 })]))
+    expect(keys('surf', [surfStatSession(at(2026, 3, 1))])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vagues', 'vague']);
+    expect(keys('surf', [surfStatSession(at(2026, 3, 1), { flightS: 600, longestFlightS: 120 })]))
       .toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vol', 'vagues', 'vague', 'volMax']);
   });
 

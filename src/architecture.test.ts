@@ -10,8 +10,10 @@ import { describe, expect, it } from 'vitest';
  *   platform → core seulement ; theme → core seulement
  *
  * Les domaines se lisent du bas vers le haut : sailing et surfing (feuilles),
- * running, cycling, planning, recording, library. Un domaine importe `core/`
- * et les domaines plus bas que lui, jamais l'inverse ; seuls `recording/` et
+ * land (commun à la course, au vélo et à l'Entraînement : pente, dépense,
+ * altitude du terrain, lignes des graphes, séance cardio ; lot 187), running,
+ * cycling, planning, recording, library. Un domaine importe `core/` et les
+ * domaines plus bas que lui, jamais l'inverse ; seuls `recording/` et
  * `library/` lisent `platform/` (position, capteurs, dossier mémoire).
  *
  * Les fichiers de test, les fixtures et `src/test/` ne sont pas contrôlés ;
@@ -31,18 +33,19 @@ const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as Fs;
 
 const SRC = new URL('./', import.meta.url);
 
-/** Les sept domaines, du plus bas au plus haut. */
-const DOMAINS = ['sailing', 'surfing', 'running', 'cycling', 'planning', 'recording', 'library'] as const;
+/** Les huit domaines, du plus bas au plus haut. */
+const DOMAINS = ['sailing', 'surfing', 'land', 'running', 'cycling', 'planning', 'recording', 'library'] as const;
 
 /** Dossiers que chaque dossier a le droit d'importer, en plus de lui-même. */
 const ALLOWED: Record<string, readonly string[]> = {
   core: [],
   sailing: ['core'],
   surfing: ['core'],
-  running: ['core'],
-  cycling: ['core', 'running'],
-  planning: ['core', 'running', 'cycling'],
-  recording: ['core', 'platform', 'sailing', 'surfing', 'running', 'cycling', 'planning'],
+  land: ['core'],
+  running: ['core', 'land'],
+  cycling: ['core', 'land', 'running'],
+  planning: ['core', 'land', 'running', 'cycling'],
+  recording: ['core', 'platform', 'sailing', 'surfing', 'land', 'running', 'cycling', 'planning'],
   library: ['core', 'platform', ...DOMAINS],
   settings: ['core', ...DOMAINS],
   // Programme des tutoriels (lot 147), calcul pur : le noyau seul ; lu par les hooks, les composants et les pages.
@@ -158,6 +161,74 @@ describe("sens des dépendances entre dossiers de src/", () => {
   it("le noyau, la plateforme et le thème n'importent aucun domaine", () => {
     const bad = all.filter((e) => ['core', 'platform', 'theme'].includes(groupOf(e.from)) && DOMAINS.includes(groupOf(e.to) as never));
     expect(bad.map(edgeName)).toEqual([]);
+  });
+});
+
+/**
+ * Couture de la version voile et surf (lot 187, fiche `docs/backlog/154-vente-extraction-voile-surf.md`) : le
+ * transverse (`core/`, `platform/`, `theme/`, `tutorials/`, `library/`, `settings/`, `hooks/`, `components/`, `pages/`,
+ * `recording/`, `planning/`) n'importe ni `running/`, ni `cycling/`, ni `land/`, ce qui part de la version vendue,
+ * sauf deux listes nommées, qui ne font que diminuer : les fichiers de la terre encore rangés dans le transverse
+ * (`LAND_FILES`, ils partiront avec les lots E3 à E5) et la couture des fichiers gardés (`SEAM` : réglages, résumé,
+ * fiche, direct, à découdre un fil à la fois). Une entrée sans objet fait échouer le test : il faut alors la retirer.
+ */
+const TRANSVERSE = ['core', 'platform', 'theme', 'tutorials', 'library', 'settings', 'hooks', 'components', 'pages', 'recording', 'planning'];
+const LAND_TARGETS = ['running', 'cycling', 'land'];
+
+/** Fichiers de la terre rangés dans le transverse (sans extension) : tout ce qu'ils importent de la terre est admis. */
+const LAND_FILES = [
+  'components/CadencePanel', 'components/FitnessTestPanel', 'components/IntervalAnalysis', 'components/KilometerSplitsTable',
+  'components/StatsLevelPanel', 'components/GradeGradientLegend',
+  'hooks/useRestingHrTest', 'hooks/useTerrainElevation',
+  'library/restingHrStore', 'library/statsLevel',
+  'pages/LandModule', 'pages/landModules', 'pages/MuscuModule', 'pages/RestingHrTestPage',
+  'planning/duration',
+];
+
+/** La couture : imports « fichier → cible » des fichiers gardés dans la version vendue. */
+const SEAM = [
+  'hooks/useLiveRecording → running/energy', 'hooks/useLiveRecording → cycling/energy',
+  'hooks/useRecorder → running/cadence',
+  'hooks/useSportSettings → running/energy', 'hooks/useSportSettings → cycling/energy', 'hooks/useSportSettings → land/grade',
+  'library/record → running/fitnessTestResults', 'library/record → running/energy', 'library/record → cycling/energy', 'library/record → land/terrainElevation',
+  'library/summary → running/fitnessTestResults', 'library/summary → running/cadence', 'library/summary → cycling/energy', 'library/summary → land/grade',
+  'library/summary → land/terrainElevation',
+  'library/summaryOptions → cycling/energy',
+  'library/stats → land/heartRateSession',
+  'pages/SessionLibrary → land/heartRateSession',
+  'pages/SettingsPage → running/energy', 'pages/SettingsPage → cycling/energy', 'pages/SettingsPage → land/grade',
+  'pages/PlanningPage → land/grade',
+  'planning/route → land/grade',
+  'planning/importedElevation → land/terrainElevation',
+  'recording/gpxWriter → running/cadence',
+  'recording/liveStats → running/energy', 'recording/liveStats → cycling/energy', 'recording/liveStats → land/grade',
+  'settings/activityPresets → running/energy', 'settings/activityPresets → land/grade',
+  'settings/activitySettings → running/energy', 'settings/activitySettings → cycling/energy', 'settings/activitySettings → cycling/cyclingConfig',
+  'settings/activitySettings → land/grade',
+];
+
+describe('couture de la version voile et surf : le transverse n’importe ni running/, ni cycling/, ni land/ (lot 187)', () => {
+  const seams = edges().filter((e) => TRANSVERSE.includes(groupOf(e.from)) && LAND_TARGETS.includes(groupOf(e.to)));
+  const names = seams.map(edgeName);
+
+  it('lit bien la couture (garde-fou du test lui-même)', () => {
+    expect(names).toContain('library/summary → land/grade');
+    expect(LAND_FILES.every((f) => !f.includes('.'))).toBe(true);
+  });
+
+  it('aucun import de la terre hors des fichiers de la terre et de la couture nommée', () => {
+    const unexpected = seams.filter((e) => !LAND_FILES.includes(e.from)).map(edgeName).filter((name) => !SEAM.includes(name));
+    expect(unexpected).toEqual([]);
+  });
+
+  it('chaque fichier de la terre listé importe encore la terre (la liste ne fait que diminuer)', () => {
+    const importing = new Set(seams.map((e) => e.from));
+    expect(LAND_FILES.filter((f) => !importing.has(f))).toEqual([]);
+  });
+
+  it('chaque fil de la couture existe encore (la liste ne fait que diminuer)', () => {
+    const present = new Set(names);
+    expect(SEAM.filter((name) => !present.has(name))).toEqual([]);
   });
 });
 

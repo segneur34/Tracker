@@ -11,7 +11,7 @@ import type { CumulativeTrack, RawTrackPoint, TrackPoint } from '../core/types';
 import { computeCyclingEnergy, type CyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { computeEnergy, type EnergyParams } from '../running/energy';
-import { computeGrades } from '../core/grade';
+import { computeGrades } from '../land/grade';
 import { EMPTY_LIVE_LEGS, combineLiveLegs, splitLiveLegs, type LiveLegSplit, type LiveLegs } from './liveLegs';
 
 /**
