@@ -24,3 +24,7 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Questions
 
 - Q4 de l'audit : céder l'historique git (adresse e-mail sur chaque commit) ou un dépôt neuf en un commit ? `.claude/`, BACKLOG, MODELES, HISTORIQUE livrés ou non ? Par défaut : dépôt neuf, atelier retiré, HISTORIQUE nettoyé et livré (seule source des « point N » du code).
+
+## Réponse du 07/11 (Q4)
+
+- **Dépôt neuf, un seul commit**, sans l'historique ni l'adresse e-mail de l'utilisateur. Conséquence acceptée : après le fork, une correction du code commun ne passe plus d'une version à l'autre par git, elle se refait à la main dans les deux dépôts ; d'où la liste des travaux faits **avant** le fork (n° 187 à 190, le 07/11). Atelier (`.claude/`, BACKLOG, MODELES) retiré ; HISTORIQUE nettoyé et livré, par défaut.

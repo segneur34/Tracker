@@ -42,3 +42,25 @@ Noté le 03/11 (audit avant vente, synthèse `~/.claude/plans/audit-vente-0111/R
 ## Réponse du 04/11 (Q55)
 
 - **Option (b)** : dans la version vendue, le planificateur routier (BRouter, Overpass, IGN, revêtements, profil, boucle de retour, durée par tronçon) est retiré, la planification se réduit au parcours de balises en ligne droite et aux itinéraires importés ; les anciens itinéraires restent lisibles. **À faire après le fork** : sur la copie destinée à la vente, une fois séparée du dépôt de l'utilisateur, jamais avant ; la version de l'utilisateur garde le routeur complet.
+
+## Réponse du 07/11 : ce qui se fait avant le fork
+
+- Principe : tout ce qui est commun aux deux applications se fait avant le fork (une seule fois), **sans changer le fonctionnement de l'application actuelle**. Le dépôt vendu sera neuf, en un seul commit (Q4, fiche 153) : après, chaque correction commune se refait à la main des deux côtés.
+- **E1 seul**, sorti au n° 187 du reste à faire, avec les trois tests de garde de « Les trois risques » (écrits dans ce lot, avant E2, pour qu'ils existent au fork). E2 change des écrans (FC repos sous le Profil, pop-up réduit) : il reste pour après le fork, avec E3 à E8.
+- Aussi avant le fork, lots à part : cartes au minimum (n° 188, fiche 152), `react-leaflet` remplacé (n° 189), renvois d'atelier et glossaire (n° 190, fiche 160).
+- Validation sur vraies sorties à la charge de l'utilisateur, rappelée sans être réclamée : essais 46 (seuils du surf), 65 (planche, kite, bateau) et 48 (faux sauts en wing), dans « Ça attend une occasion ».
+
+### Brief du lot 187 (E1 + gardes) · Fable | high
+
+Neutre : aucun écran, aucun chiffre, aucune clé de stockage ne change ; banc identique avant et après sur general, statistiques, profil, cardio, balises, surf, sauts.
+
+1. `running/runnerProfile.ts` → `library/athleteProfile.ts`, clé `tracker.runnerProfile` gardée telle quelle ; `running/runnerProfile.ts` devient un simple réexport ou disparaît si tous les appelants sont mis à jour (préférer la mise à jour).
+2. `windowMean`, `WindowSample`, `TEST_SIGNAL_TONES` sortis de `recording/fitnessTest.ts` vers un module transverse (`core/windowMean.ts`, `recording/signalTones.ts` ou l'existant qui convient) ; `fitnessTest.ts` les réimporte.
+3. Référence cardio neutre : là où le transverse lit `SPORT_PROFILES.running.heartRate`, une constante ou fonction `library/athleteProfile.ts` (ou `core/heartRateReference.ts`) donne les mêmes valeurs.
+4. Profil neutre d'une session sans calcul : `summary.ts` `sport ?? 'running'` remplacé par un profil neutre qui donne le **même résumé** pour les sessions existantes (sinon `SUMMARY_CALC_VERSION` à augmenter : à éviter, à signaler si inévitable).
+5. `grade`, `energy`, `terrainElevation`, `chartRows`, `segmentGrid`, `heartRateSession` sortis de `core/` vers `running/`, `cycling/` ou un dossier `land/` partagé des deux (au choix du plan ; un seul déplacement par fichier, imports mis à jour, tests déplacés avec eux).
+6. Règle d'architecture nouvelle dans CLAUDE.md (section « Règles d'architecture »), proposée à l'utilisateur au commit : « Le transverse (`core/`, `library/`, `components/`, `hooks/`, `pages/` communes, `recording/`, `platform/`) n'importe ni `running/` ni `cycling/`, sauf les exceptions nommées ici : … » ; un test qui liste les imports et refuse tout import hors exceptions.
+7. Fixtures de test sur la voile et le surf : `src/test/record.fixture.ts` (« une course d'une heure ») doublé d'une fixture voile et d'une fixture surf ; les tests transverses qui ne dépendent pas de la course passent sur la fixture voile.
+8. Trois tests de garde (fichiers de réglages synthétiques, pas de GPX réel) : (a) un fichier de réglages de la 0.4.61 réglé à la main en voile et surf traverse les migrations d'activités (`ACTIVITIES_VERSION`) et `PRESET_RESETS` sans changer ; (b) résumés voile et surf identiques à l'octet (JSON figé dans le test, calcul rejoué) ; (c) import d'un fichier de réglages complet : une famille ou une activité inconnue est ignorée, les réglages de voile et de surf sont retrouvés, l'objet n'est jamais rejeté en bloc.
+
+Vérification : `npm run verif`, relecture, banc des sept scripts ; `grep` des imports de `running/` et `cycling/` depuis le transverse ne rend que les exceptions.

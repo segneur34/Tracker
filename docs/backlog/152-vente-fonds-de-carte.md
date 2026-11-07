@@ -25,4 +25,11 @@ Les deux fonds de carte sont le cœur visuel de la voile et du surf ; une coupur
 
 ## Questions
 
-- Q5 de l'audit : fournisseur sous contrat, tuiles servies par l'acheteur, ou plan seul sans satellite ? Par défaut : fournisseur sous contrat qui autorise le hors ligne, satellite retiré en attendant une clé.
+- Q5 de l'audit : fournisseur sous contrat, tuiles servies par l'acheteur, ou plan seul sans satellite ? Par défaut : fournisseur sous contrat qui autorise le hors ligne, satellite retiré en attendant une clé. **Après le fork**, sur la copie vendue.
+
+## Réponse du 07/11 : la partie « tout de suite » devient le n° 188, avant le fork
+
+- Contact de l'agent envoyé à OpenStreetMap : la page GitHub publique de l'utilisateur, `https://github.com/segneur34` ; **jamais son adresse e-mail**. Forme : `Tracker/<version> (+https://github.com/segneur34)`, version lue de `package.json` dans `capacitor.config.ts` (`android.appendUserAgent`), avec un test qui vérifie la forme. L'acheteur mettra son propre contact après le fork.
+- Libellé d'Esri : « Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri », dans `core/mapBase.ts`, lu par les cartes, les vignettes de la bibliothèque et l'image de partage (vérifier que les trois lisent le même champ `attribution` ; sinon les y brancher). Seule différence visible du lot : pas de maquette (texte légal sur la ligne d'attribution, tranché par l'orchestrateur).
+- Adresse des tuiles réglable sans nouvelle version : un champ texte par fond (plan, satellite) dans Réglages › Cartes hors ligne, vide = adresse d'origine, réglage par appareil (`platform/storage.ts`), lu là où `mapBase` donne l'adresse ; aucune autre disposition changée. Une adresse changée n'invalide pas les tuiles gardées (elles restent rangées par fond, pas par adresse).
+- Le reste (fournisseur sous contrat, drapeau `offlineAllowed`, satellite par compte ArcGIS) attend le fork.
