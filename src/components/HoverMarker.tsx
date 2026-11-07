@@ -1,17 +1,18 @@
 import { CircleMarker } from 'react-leaflet';
 import { useHoveredIndex } from '../hooks/useChartHover';
+import { HOVER_MARKER_COLOR } from './mapStyles';
 
 /**
  * Repère du survol d'un graphe sur la carte, le même partout (analyses,
  * planification) : un rond blanc cerclé de noir, posé sur le point de trace
- * survolé. Couleurs de données, en dur comme celles de la trace.
+ * survolé.
  */
 function HoverMarker({ position }: { position: [number, number] }) {
   return (
     <CircleMarker
       center={position}
       radius={8}
-      pathOptions={{ color: '#1b1f24', weight: 3, fillColor: '#ffffff', fillOpacity: 1 }} />
+      pathOptions={{ color: HOVER_MARKER_COLOR.stroke, weight: 3, fillColor: HOVER_MARKER_COLOR.fill, fillOpacity: 1 }} />
   );
 }
 

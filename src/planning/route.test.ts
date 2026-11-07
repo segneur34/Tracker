@@ -3,7 +3,7 @@ import {
   DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isLooped, isWaysMode, legKey,
   moveWaypoint, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   reverseRoute, routeFromTrack, routeModeLabel, routePoints, toggleWayType,
-  routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
+  profileGradeStops, routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   nextReturnVariant, openLoop, outboundKey, removeLoopStart, returnRequest, withLoopReturn, withReturnError, withReturnResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
@@ -294,6 +294,15 @@ describe('totaux et profil', () => {
     const rows = routeProfileRows([{ ...A, eleM: 100 }, { ...B }]);
     expect(rows.every((r) => r.eleM === null)).toBe(true);
     expect(routeProfileRows([])).toEqual([]);
+  });
+
+  it('les arrêts du dégradé d\'un profil sont placés selon la distance, et rien sans ligne', () => {
+    const range = { min: 0, max: 0.25 };
+    const stops = profileGradeStops([{ dist: 0, grade: 0 }, { dist: 1, grade: 0.25 }, { dist: 4, grade: 0.25 }], range);
+    expect(stops.map((s) => s.offset)).toEqual([0, 0.25, 1]);
+    expect(stops[1].color).toBe(stops[2].color);
+    expect(stops[0].color).not.toBe(stops[1].color);
+    expect(profileGradeStops([], range)).toEqual([]);
   });
 });
 

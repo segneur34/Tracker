@@ -11,6 +11,7 @@ import type { SessionMark } from '../core/sessionMarks';
 import type { SportFamily } from '../core/sportProfiles';
 import { useMapBase } from '../hooks/useMapBase';
 import BaseTileLayer from './BaseTileLayer';
+import { HoveredTrackMarker } from './HoverMarker';
 import { SessionMarksLayer } from './SessionMarks';
 import MapAutoResize from './MapAutoResize';
 import { divIconCache, haloStyle } from './mapStyles';
@@ -44,6 +45,8 @@ interface LiveMapProps {
   validationRadiusM?: number;
   /** Repères du bouton « Note » posés pendant l'enregistrement, en fanions numérotés comme dans l'analyse. */
   notes?: ReadonlyArray<SessionMark>;
+  /** Points lus par le survol d'un graphe : le repère se pose sur celui survolé. Sans eux, aucun repère. */
+  hoverPoints?: ReadonlyArray<{ lat: number; lon: number }>;
 }
 
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
@@ -171,7 +174,7 @@ const segmentPath = (segment: LocationFix[]): [number, number][] => {
  * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
  * suivie. Sans réseau, le fond manque mais traces et position restent.
  */
-function LiveMap({ segments, position, positionSegment = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
+function LiveMap({ segments, position, positionSegment = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes, hoverPoints }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
   const halo = useMapBase(family)[0] === 'satellite';
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
@@ -226,6 +229,7 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
         ))}
         <SessionMarksLayer located={numberedNotes} shownMs={null} />
         {position && <PositionMarker position={position} color={color} travel={travel} />}
+        {hoverPoints && <HoveredTrackMarker points={hoverPoints} />}
         <FollowPosition position={position} following={following} onUserMove={() => setFollowing(false)} />
       </MapContainer>
       {overlay && (

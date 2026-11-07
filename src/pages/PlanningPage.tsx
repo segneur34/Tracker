@@ -2,15 +2,14 @@ import { roundBearingDeg } from '../core/angles';
 import { toFixedNumber } from '../core/basics';
 import { pushBackLayer } from '../platform/backButton';
 import { plainError } from '../platform/errorText';
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import { Link, useSearchParams } from 'react-router-dom';
 import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
-import type { Readout } from '../components/ChartReadout';
-import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
+import ElevationProfileMini from '../components/ElevationProfileMini';
 import MapAutoResize from '../components/MapAutoResize';
 import { divIconCache, haloStyle } from '../components/mapStyles';
 import BaseTileLayer from '../components/BaseTileLayer';
@@ -20,28 +19,25 @@ import { useHelp } from '../components/helpContext';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
+import { useRouteProfileChart } from '../components/routeProfileChart';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SurfaceBar from '../components/SurfaceBar';
 import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
 import { HoveredTrackMarker } from '../components/HoverMarker';
-import { inChartView } from '../components/chartHover';
-import { ALTITUDE_COLOR } from '../components/chartStyle';
 import { useResetChartHover } from '../hooks/useChartHover';
 import { IconChevronRight, IconFile, IconPencil, IconPencilOff, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { activityFamily, activityTreatment, findActivity, type Activity } from '../core/activities';
-import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
-import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
+import { DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, getSportProfile, usesMarkCourse } from '../core/sportProfiles';
 import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
 import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatLandSpeed, toDisplayDistance, formatMeters, commaDecimal } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
-import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import { useMapBase } from '../hooks/useMapBase';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -71,7 +67,7 @@ import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
 import { routeSurfacePaths, routeSurfaces, type SurfaceCategory } from '../planning/surface';
 import { beepStartM, simulatedApproachMs, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
-import { gradeColorPaths, gradeGradientStops } from '../land/grade';
+import { gradeColorPaths } from '../land/grade';
 import { canDownloadFiles, downloadTextFile, readPickedFile, safeFileName } from '../platform/files';
 import { currentPosition, locationPermissionGranted } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
@@ -521,23 +517,7 @@ function PlanningPage() {
   const profile = useMemo(() => routeProfileRows(points), [points]);
   /** Temps estimé, sur les totaux et le profil déjà calculés. */
   const durationS = useMemo(() => estimateDurationFromProfile(totals, profile, durationSettings), [totals, profile, durationSettings]);
-  /** Distance de chaque ligne du profil, dans l'unité affichée : l'axe du graphe et de son zoom. */
-  const profileDist = useMemo(() => profile.map((row) => toDisplayDistance(row.distM, distanceUnit)), [profile, distanceUnit]);
-  const zoom = useChartZoom(profileDist.length > 1 ? { min: profileDist[0], max: profileDist[profileDist.length - 1] } : null);
-  /** Lignes tracées : celles de la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
-  const profileEle = useMemo(() => profile.map((row) => row.eleM), [profile]);
-  const chartRows = useMemo<ElevationProfileRow[]>(() => {
-    const [first, last] = visibleIndexRange(profileDist, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS, profileEle).map((i) => {
-      const { eleM, grade } = profile[i];
-      return { index: i, dist: toFixedNumber(profileDist[i], 3), altitude: eleM !== null ? Math.round(eleM) : null, grade };
-    });
-  }, [profile, profileDist, profileEle, zoom.view]);
-  const gradeStops = useMemo(
-    () => (gradeRange ? gradeGradientStops(chartRows.filter((r) => r.altitude !== null), gradeRange) : []),
-    [chartRows, gradeRange]
-  );
-  const gradientId = `${useId()}-profil`;
+  const { zoom, chartRows, gradeStops, gradientId, readProfile } = useRouteProfileChart(profile, distanceUnit, gradeRange);
   const hasElevation = totals.gainM !== null && chartRows.some((r) => r.altitude !== null);
   /** Tracé coloré par la pente, sur les lignes du profil (tous les 10 m), tant que le bloc Général est ouvert. */
   const gradePaths = useMemo(
@@ -546,21 +526,6 @@ function PlanningPage() {
       : null),
     [markCourse, open.profil, gradeOnMap, surfaceShown, hasElevation, gradeRange, profile]
   );
-
-  /** Altitude et pente lues au-dessus du profil (`HoverReadout`), à la ligne survolée de la plage zoomée. */
-  const readProfile = (i: number): Readout | null => {
-    const row = profile[i];
-    if (!row || !inChartView(zoom.view, profileDist[i])) return null;
-    return {
-      values: [{
-        text: row.eleM !== null
-          ? `${Math.round(row.eleM)} m${row.grade !== null && isFinite(row.grade) ? `, pente ${Math.round(row.grade * 100)} %` : ''}`
-          : '—',
-        color: ALTITUDE_COLOR,
-      }],
-      at: `${commaDecimal(toFixedNumber(profileDist[i], 2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
-    };
-  };
 
   // --- Carte ---
 

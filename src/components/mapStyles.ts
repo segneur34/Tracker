@@ -13,6 +13,9 @@ import L from 'leaflet';
  */
 export const haloStyle = (weight: number) => ({ color: '#ffffff', weight: weight + 3, opacity: 0.85, interactive: false }) as const;
 
+/** Couleurs du repère du survol (`HoverMarker`), tour et fond, et de la position sur un graphe qui lui répond. */
+export const HOVER_MARKER_COLOR = { stroke: '#1b1f24', fill: '#ffffff' } as const;
+
 /**
  * Cache de repères `divIcon`, un par endroit : un repère est fabriqué une fois
  * par clé et gardé d'un rendu à l'autre, et Leaflet ne le redessine que s'il

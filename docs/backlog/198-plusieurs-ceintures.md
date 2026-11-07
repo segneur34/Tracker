@@ -59,11 +59,12 @@ Enregistrer, avant le départ :
 
 « Changer » ouvre `ui/ChoiceSheet.tsx`. Une fois lancé : tuile BPM inchangée, pas de « Changer ».
 
-## Questions pour l'utilisateur
+## Réponses de l'utilisateur (07/11)
 
-1. « Et appareils » : que vouliez-vous dire ? Par défaut : une montre qui diffuse son cardio, dans la même liste ; les capteurs de vélo restent à part (idée 36).
-2. Autre ceinture que la dernière : la choisir d'un geste à Enregistrer, ou que l'application la trouve seule ? Par défaut : d'un geste.
-3. Changer de ceinture une fois l'enregistrement lancé ? Par défaut : non.
+- « Et appareils » : l'application se souvient de plusieurs appareils et n'en lit qu'un à la fois, pas plusieurs en même temps.
+- Changer de ceinture une fois l'enregistrement lancé : non, on choisit avant de partir.
+- Demandé en plus, le 07/11 : pouvoir annuler d'un bouton la recherche d'un appareil, si on n'en veut finalement plus. Aujourd'hui : recherche de 6 s dans Réglages sans arrêt possible (`scan` du greffon sans commande d'arrêt : Java à compléter) ; avant le départ, décocher « Ceinture cardio » rend déjà la ceinture ; en route, la reprise seule continue sans arrêt possible. Endroits à préciser avec l'utilisateur.
+- Reste à préciser : le choix de l'appareil au départ, d'un geste (« Changer ») ou trouvé seul parmi ceux retenus. Réponse « autre », sans texte, à reposer avec la maquette.
 
 ## Fichiers
 

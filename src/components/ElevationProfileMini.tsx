@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { GradientStop } from '../core/speedGradient';
 import { HoverReadout, type Readout } from './ChartReadout';
@@ -27,10 +28,11 @@ const PROFILE_AXIS: TrackYAxis[] = [{ color: ALTITUDE_COLOR, domain: ['auto', 'a
  * là, zoomé ou non ; le survol déplace le repère sur la carte. Les lignes sont celles de
  * la plage zoomée, chacune avec son `index` de trace. Repris par la page
  * Itinéraires pour le profil de son bloc Général, plus haut, avec sa grille,
- * sans « +carte » (la carte est déjà au-dessus).
+ * sans « +carte » (la carte est déjà au-dessus). Repris aussi pendant
+ * l'enregistrement, pour la trace suivie, avec sa position par-dessus la courbe (`front`).
  */
 function ElevationProfileMini({
-  rows, stops, gradientId, distanceSymbol, zoom, read, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
+  rows, stops, gradientId, distanceSymbol, zoom, read, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false, front,
 }: {
   rows: ElevationProfileRow[];
   stops: GradientStop[];
@@ -46,6 +48,8 @@ function ElevationProfileMini({
   height?: number;
   /** Grille en pointillés derrière la courbe. */
   grid?: boolean;
+  /** Repères posés par-dessus la courbe (`TrackChart`). */
+  front?: ReactNode;
 }) {
   return (
     <div className="ui-mt-10">
@@ -53,7 +57,7 @@ function ElevationProfileMini({
       <TrackChart rows={rows} zoom={zoom} x={distanceX(distanceSymbol)} yAxes={PROFILE_AXIS}
         series={[{ kind: 'area', key: 'altitude', name: 'Altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 4, fillOpacity: 0.35, gradient: { id: gradientId, stops } }]}
         margin={{ top: 4, right: 6, left: 0, bottom: 0 }} grid={grid}
-        onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }} />
+        onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }} front={front} />
     </div>
   );
 }

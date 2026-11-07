@@ -3,13 +3,13 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
-import { hasPositions } from '../core/sportProfiles';
+import { hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
-import { followedTraceFromPoints, followedTraceFromRoute, type FollowedTrace } from '../recording/followedTrace';
+import { followedTraceFromRoute, followedTraceFromSession, type FollowedTrace } from '../recording/followedTrace';
 import ActivitySelect from './ActivitySelect';
 import Button from './ui/Button';
 import Card from './ui/Card';
@@ -90,13 +90,13 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
     onClose();
   };
 
-  const pickSession = async (file: string, name: string, activityId: string | null) => {
+  const pickSession = async (file: string, name: string, activityId: string | null, land: boolean) => {
     setLoading(file);
     setError(null);
     try {
       const text = await readSessionGpx(file);
       if (text === null) throw new Error('Session introuvable dans la mémoire.');
-      const trace = followedTraceFromPoints(parseGpx(text).rawPoints, name, 'session', activityId);
+      const trace = followedTraceFromSession(parseGpx(text).rawPoints, name, activityId, { land });
       if (!trace) throw new Error('Cette session n\'a pas assez de points.');
       followTrace(trace);
       onPicked?.(trace);
@@ -157,7 +157,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
                 return (
                   <li key={file}>
                     <button type="button" style={ROW_STYLE} disabled={loading !== null}
-                      onClick={() => void pickSession(file, name, activity?.id ?? null)}>
+                      onClick={() => void pickSession(file, name, activity?.id ?? null, record.sport !== null && isLandTreatment(sportTreatment(record.sport)))}>
                       <strong>{name}</strong>
                       <span style={DETAIL_STYLE}>
                         {loading === file ? 'Lecture…' : [activity?.name, formatDate(record.summary.startMs)].filter(Boolean).join(' · ')}

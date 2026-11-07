@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_ROUTE, addWaypoint, legKey, withLegResult } from '../planning/route';
 import { routeToRecord } from '../planning/routeRecord';
+import { accumulateElevation } from '../core/elevation';
+import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import {
-  FOLLOWED_TRACE_TOLERANCE_M, FOLLOW_DEFAULTS, createFollowCursor, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
+  createFollowCursor, FOLLOW_DEFAULTS, FOLLOWED_TRACE_ELEVATION_TOLERANCE_M, FOLLOWED_TRACE_TOLERANCE_M,
+  followedTraceFromPoints, followedTraceFromRoute, followedTraceFromSession, followedTraceLengthM, followProgress,
   splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
 import { M_PER_DEG_LAT, ORIGIN, at, fixesAlong, mPerDegLon } from '../test/geo.fixture';
@@ -364,5 +367,104 @@ describe('trace suivie amincie pour être gardée', () => {
     expect(thin.points.length).toBe(3);
     const fixes = [walk([[0, 0], [0, 500], [200, 700]], 5)];
     expect(followProgress(thin, fixes)!.progressM).toBeCloseTo(followProgress(line, fixes)!.progressM, -1);
+  });
+});
+
+describe('altitude de la trace suivie', () => {
+  const MIN_GAIN = ELEVATION_PRESETS.route.minGainM;
+  const gainOf = (trace: FollowedTrace): number => accumulateElevation(trace.points.map((p) => p.eleM ?? NaN), MIN_GAIN).gainM;
+
+  /** Générateur pseudo-aléatoire à graine fixe. */
+  const noiseFrom = (start: number) => {
+    let seed = start;
+    return () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31 - 0.5;
+    };
+  };
+
+  /** Deux bosses de 60 et 40 m, sur 6 km : altitude à `d` mètres. */
+  const twoHills = (d: number): number => 100 + (d < 3000 ? 60 * Math.sin((Math.PI * d) / 3000) : 40 * Math.sin((Math.PI * (d - 3000)) / 3000));
+
+  /** Session sur une route vers le nord à 3 m/s, à `hz` points par seconde, bruit d'altitude de ±`noiseM` mètres. */
+  const session = (hz: number, noiseM: number) => {
+    const noise = noiseFrom(7);
+    return Array.from({ length: 2000 * hz + 1 }, (_, i) => {
+      const d = (3 * i) / hz;
+      return { ...at(0, d), ele: twoHills(d) + 2 * noiseM * noise() };
+    });
+  };
+
+  it('garde l\'altitude d\'un itinéraire calculé', () => {
+    let route = [A, B].reduce((r, p) => addWaypoint(r, p, 'sentier'), EMPTY_ROUTE);
+    route = withLegResult(route, legKey(route, 0)!, [{ ...A, eleM: 100 }, { lat: 43.605, lon: 3.801, eleM: 120 }, { ...B, eleM: 110 }]);
+    const trace = followedTraceFromRoute(routeToRecord(route, META));
+    expect(trace?.points.map((p) => p.eleM)).toEqual([100, 120, 110]);
+    // Les balises restent des positions.
+    expect(trace?.marks).toEqual([A, B]);
+  });
+
+  it('écarte une altitude illisible, sans écarter le point', () => {
+    const stored = [{ ...A, eleM: 100 }, { ...B, eleM: NaN }, { ...C, eleM: 'haut' as unknown as number }];
+    expect(followedTraceFromPoints(stored, 'Relue', 'route')?.points).toEqual([{ ...A, eleM: 100 }, B, C]);
+  });
+
+  it('relit à l\'identique une ancienne trace sans altitude, amincie comme avant', () => {
+    const old = traceOf([[0, 0], [0, 500], [400, 900]]);
+    expect(old.points.every((p) => !('eleM' in p))).toBe(true);
+    expect(thinFollowedTrace(old, FOLLOWED_TRACE_TOLERANCE_M).points.every((p) => !('eleM' in p))).toBe(true);
+    expect(thinFollowedTrace(old, FOLLOWED_TRACE_TOLERANCE_M).points).toHaveLength(3);
+  });
+
+  it('une session à terre porte son altitude lissée, le même D+ à 1 Hz et à 5 Hz', () => {
+    const at1Hz = followedTraceFromSession(session(1, 3), 'Sortie', 'course', { land: true })!;
+    const at5Hz = followedTraceFromSession(session(5, 3), 'Sortie', 'course', { land: true })!;
+    // Sans lissage, le bruit gonfle le D+ ; lissé, il reste celui des deux bosses (100 m).
+    const rough = accumulateElevation(session(1, 3).map((p) => p.ele), MIN_GAIN).gainM;
+    expect(gainOf(at1Hz)).toBeLessThan(rough);
+    expect(gainOf(at1Hz)).toBeGreaterThan(90);
+    expect(gainOf(at1Hz)).toBeLessThan(115);
+    expect(Math.abs(gainOf(at1Hz) - gainOf(at5Hz))).toBeLessThan(5);
+  });
+
+  it('une session hors terre garde ses positions seules', () => {
+    const trace = followedTraceFromSession(session(1, 0), 'Sortie', 'wingfoil', { land: false })!;
+    expect(trace.points.every((p) => !('eleM' in p))).toBe(true);
+    expect(trace.source).toBe('session');
+    expect(trace.activityId).toBe('wingfoil');
+  });
+
+  it('une session à terre sans altitude reste sans altitude', () => {
+    const flat = session(1, 0).map(({ lat, lon }) => ({ lat, lon }));
+    expect(followedTraceFromSession(flat, 'Sortie', 'course', { land: true })!.points.every((p) => !('eleM' in p))).toBe(true);
+  });
+
+  it('amincir garde les sommets, et deux fois garde le D+ à 1 m près', () => {
+    const full = followedTraceFromSession(session(1, 0), 'Sortie', 'course', { land: true })!;
+    const once = thinFollowedTrace(full, FOLLOWED_TRACE_TOLERANCE_M);
+    const twice = thinFollowedTrace(once, FOLLOWED_TRACE_TOLERANCE_M);
+    // La route est droite : seul le relief garde des points.
+    expect(once.points.length).toBeGreaterThan(5);
+    expect(once.points.length).toBeLessThan(full.points.length / 5);
+    expect(Math.abs(gainOf(once) - gainOf(full))).toBeLessThanOrEqual(FOLLOWED_TRACE_ELEVATION_TOLERANCE_M);
+    expect(Math.abs(gainOf(twice) - gainOf(once))).toBeLessThanOrEqual(FOLLOWED_TRACE_ELEVATION_TOLERANCE_M);
+  });
+
+  it('trois heures à 1 Hz sur un parcours sinueux et vallonné : moins de 80 Ko, altitude comprise', () => {
+    const noise = noiseFrom(42);
+    const points = Array.from({ length: 10_800 }, (_, i) => {
+      const a = (2 * Math.PI * i) / 10_800;
+      const d = 3 * i;
+      return {
+        ...at(3000 * Math.cos(a) + 40 * Math.sin(d / 60) + 2 * noise(), 2000 * Math.sin(2 * a) + 40 * Math.cos(d / 45) + 2 * noise()),
+        eleM: 200 + 80 * Math.sin(d / 900) + 40 * Math.sin(d / 170),
+      };
+    });
+    const trace = followedTraceFromPoints(points, 'Boucle', 'route')!;
+    const flat = followedTraceFromPoints(points.map(({ lat, lon }) => ({ lat, lon })), 'Boucle', 'route')!;
+    const size = (t: FollowedTrace): number => JSON.stringify(thinFollowedTrace(t, FOLLOWED_TRACE_TOLERANCE_M)).length;
+    expect(size(trace)).toBeLessThan(80_000);
+    expect(size(trace)).toBeLessThan(2.5 * size(flat));
+    expect(size(trace)).toBeLessThan(JSON.stringify(trace).length / 5);
   });
 });

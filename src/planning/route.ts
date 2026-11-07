@@ -2,7 +2,8 @@ import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
 import { projectOnSegment } from '../core/geoPlane';
 import { cumulativeDistancesM, haversineDistance, initialBearing } from '../core/geo';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
-import { computeGrades } from '../land/grade';
+import type { GradientStop } from '../core/speedGradient';
+import { computeGrades, gradeGradientStops, type GradeRange } from '../land/grade';
 import type { WayType } from './brouterProfile';
 import { isWayType, waysMode, wayTypesOf, WAYS_SEPARATOR, type WaysMode } from './wayTypes';
 import { isWaysMode, joinLegs, samePlace } from './legJoin';
@@ -875,3 +876,13 @@ export const routeProfileRows = (points: RoutePoint[], stepM = PROFILE_STEP_M): 
     grade: isFinite(grades[i]) ? grades[i] : null,
   }));
 };
+
+export type { GradeRange };
+
+/**
+ * Arrêts du dégradé de pente d'un profil (`gradeGradientStops`), pour la pièce
+ * commune du profil, qui n'a pas à lire la terre (règle 13). `rows` : lignes du
+ * graphe, `dist` dans l'unité affichée.
+ */
+export const profileGradeStops = (rows: { dist: number; grade: number | null }[], range: GradeRange): GradientStop[] =>
+  gradeGradientStops(rows, range);
