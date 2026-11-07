@@ -35,11 +35,26 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" />
                 <data android:mimeType="application/gpx+xml" />
+                <data android:mimeType="application/gpx" />
                 <data android:mimeType="application/vnd.ant.fit" />
                 <data android:mimeType="application/fit" />
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="text/xml" />
                 <data android:mimeType="application/xml" />
+            </intent-filter>
+
+            <!-- « Ouvrir avec » d'un .gpx dont le gestionnaire de fichiers donne un type inattendu (text/plain, application/gpx,
+                 type vide ou générique selon l'application) : Tracker est proposé d'après l'extension du nom. Forme connue d'Android
+                 (type générique, hôte joker, motifs de chemin), limitée au GPX ; le JSON n'est jamais proposé. Seul content:// : la
+                 réception refuse file://. Le FIT passe par ses types, plus fiables. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.gpx" />
+                <data android:pathPattern=".*\\.GPX" />
             </intent-filter>
 
             <!-- « Partager vers Tracker » : le fichier est dans EXTRA_STREAM, l'intention n'a pas d'adresse. Déclarer un schéma ici

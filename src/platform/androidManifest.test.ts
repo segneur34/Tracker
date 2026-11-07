@@ -97,7 +97,10 @@ describe('manifeste Android : sauvegarde', () => {
 describe('manifeste Android : fichiers reçus d\'une autre application (lot 35)', () => {
   const activity = MANIFEST.match(/<activity\b[\s\S]*?<\/activity>/)?.[0] ?? '';
   const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map((m) => m[1]);
-  const withAction = (action: string): string => filters.find((f) => f.includes(`android.intent.action.${action}"`)) ?? '';
+  const allWithAction = (action: string): string[] => filters.filter((f) => f.includes(`android.intent.action.${action}"`));
+  const withAction = (action: string): string => allWithAction(action)[0] ?? '';
+  /** Le filtre VIEW du « Ouvrir avec » par l'extension : le seul qui porte le type générique. */
+  const extensionFilter = allWithAction('VIEW').find((f) => f.includes('android:mimeType="*/*"')) ?? '';
   const TYPES = ['application/gpx+xml', 'application/vnd.ant.fit', 'application/fit', 'application/octet-stream', 'text/xml', 'application/xml'];
 
   it('l\'activité reste seule de sa tâche, et le lanceur ne change pas : une ouverture normale reste la même', () => {
@@ -111,6 +114,30 @@ describe('manifeste Android : fichiers reçus d\'une autre application (lot 35)'
     expect(filter).toContain('android.intent.category.DEFAULT');
     expect(filter).not.toContain('BROWSABLE');
     expect(filter, 'json').not.toContain('json');
+  });
+
+  it('VIEW : application/gpx en plus, pour un gestionnaire qui nomme ainsi le GPX', () => {
+    expect(withAction('VIEW')).toContain('android:mimeType="application/gpx"');
+  });
+
+  it('un seul filtre VIEW à type générique, borné à l’extension .gpx (Tracker ne se propose pas pour tout)', () => {
+    const generic = allWithAction('VIEW').filter((f) => f.includes('*/*'));
+    expect(generic).toHaveLength(1);
+    expect(extensionFilter).toContain('android:mimeType="*/*"');
+    const patterns = [...extensionFilter.matchAll(/android:pathPattern="([^"]*)"/g)].map((m) => m[1]);
+    expect(patterns.sort()).toEqual(['.*\\\\.GPX', '.*\\\\.gpx']);
+    expect(extensionFilter).toContain('android:host="*"');
+    expect(extensionFilter).toContain('android:scheme="content"');
+    expect(extensionFilter).not.toContain('android:scheme="file"');
+    expect(extensionFilter).toContain('android.intent.category.DEFAULT');
+    expect(extensionFilter).not.toContain('BROWSABLE');
+    expect(extensionFilter, 'json').not.toMatch(/json/i);
+  });
+
+  it('aucun filtre SEND ni autre filtre à type générique : le partage reste borné par ses types', () => {
+    expect(allWithAction('SEND')).toHaveLength(1);
+    expect(withAction('SEND')).not.toContain('*/*');
+    expect(withAction('SEND')).not.toContain('pathPattern');
   });
 
   it('VIEW en content:// seulement, SEND sans schéma : une intention SEND n\'a pas d\'adresse, un schéma l\'exclurait', () => {
