@@ -41,7 +41,7 @@ Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemi
 - **Noyau `core/`** : sans notion de sport, en unités SI, du parseur GPX aux profils de support, en passant par la cinématique, les filtres, l'allure de la session, les cumuls, le masque d'activité, le dénivelé et les tops.
 - **Famille et traitement** (`core/sportProfiles.ts`, point 89) : la famille d'un calcul range ses sessions (bibliothèque, accueil, barre, listes d'activités, Réglages : `sportFamily`) ; son traitement dit comment elles se calculent et s'affichent (unités, énergie, vélo, altitude du terrain, revêtement, chiffres du direct : `sportTreatment`). Les deux se confondent, sauf pour le fractionné, rangé à part et traité comme la course ou le vélo. Le surf (point 97) est une famille et un traitement à lui : ni vent, ni dénivelé, ni énergie (`isLandTreatment` désigne la course et le vélo).
 - **Briques communes** (point 168) : `core/geoPlane.ts` (plan local, projection sur un segment), `core/search.ts` (dichotomies), `core/basics.ts` (`clamp`, `isObject`, `isFiniteNumber`, `plural`), `core/units.ts` (seul lieu des conversions) et `hooks/createStore.ts` (magasins hors des composants) ; `platform/files.ts` expose l'unique `filesystem()`. Une nouvelle copie de l'une d'elles est une dette.
-- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `sailing/pointData.ts`, règle 5), `running/`, `cycling/` et `surfing/` en SI.
+- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `sailing/pointData.ts`, règle 5), `running/`, `cycling/` et `surfing/` en SI. `land/` (pente, énergie, altitude du terrain, lignes des graphes, FC d'une session sans position) est ce que la version voile et surf n'emportera pas : il n'importe que `core/`, et le code commun ne l'importe, comme `running/` et `cycling/`, que par les fils nommés dans `architecture.test.ts` (règle 13, lot 187, point 307).
 - **Logique pure de l'application**, testée en node : `recording/` (positions, journal, GPX, direct, trace suivie), `library/` (fiche, résumé, rapprochement, réglages qui voyagent) et `planning/` (itinéraires).
 - **Plateforme `platform/`** : seul accès au stockage, aux fichiers, à la position, au son, au vibreur, aux capteurs et à la notification (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
 - **Hooks** :
@@ -61,7 +61,7 @@ Dépendances entre dossiers :
 |---|---|
 | `core` | `core` seulement (les types de domaine qu'il lit sont dans `core/domainTypes`) |
 | `sailing`, `surfing` | `core` |
-| `running` | `core` |
+| `running`, `land` | `core` |
 | `cycling` | `core`, `running` |
 | `planning` | `core`, `running`, `cycling` |
 | `recording` | `core`, `platform`, `sailing`, `surfing`, `running`, `cycling`, `planning` |
@@ -72,7 +72,7 @@ Dépendances entre dossiers :
 | composants | les mêmes et `hooks` |
 | pages | tout |
 
-`src/architecture.test.ts` garde ce sens et liste dix exceptions nommées, qui ne doivent que diminuer : revêtement (`planning/surface`) lu par `cycling/energy`, `cycling/energyView` et `running/energyView` ; `running/*` lisant des types et bornes de `recording` (`fitnessTest`, `restingHrTest`, `intervalTimer`) ; `planning/routeRecord` lisant `recording/markGuide` ; `hooks/useTimeChartAxis` lisant deux fichiers de graphe des composants.
+`src/architecture.test.ts` garde ce sens et liste des exceptions nommées, qui ne doivent que diminuer (dix pour le sens des dépendances ci-dessous ; en plus, `LAND_FILES`, 15 fichiers de la terre encore rangés dans le transverse, et `SEAM`, 34 fils par lesquels le transverse lit `running/`, `cycling/` ou `land/` : réglages, résumé, fiche, direct) : revêtement (`planning/surface`) lu par `cycling/energy`, `cycling/energyView` et `running/energyView` ; `running/*` lisant des types et bornes de `recording` (`fitnessTest`, `restingHrTest`, `intervalTimer`) ; `planning/routeRecord` lisant `recording/markGuide` ; `hooks/useTimeChartAxis` lisant deux fichiers de graphe des composants.
 
 Plus de cycle entre dossiers : `recording` lit `planning`, jamais l'inverse hors l'exception de `routeRecord`.
 
@@ -386,7 +386,7 @@ Des faits sur le code, sans intention : ce qui reste à faire est dans `docs/BAC
   - cadence à pied (points 124 et 292) : seuils relus le 06/11 sur six courses et une marche (foulée à 5 m/s²), `keepCapture` gardé vrai par décision du 06/11 (§2) ; les sessions déjà enregistrées gardent la cadence écrite dans leur GPX ; l'unité d'un GPX importé se devine depuis le point 164, sans confirmation sur une marche en pas par minute → reste à faire n° 26, essai 4 ;
   - cardio (point 116) : zones communes à tous les sports, gardées (Q28), alors que la FC à vélo est plus basse qu'à pied ; FC moyenne dans « général » et bips de sortie de zone venus au point 226, et, en voile et en surf, une énergie estimée par la FC (Keytel 2005, tuile de l'onglet cardio, point 293 : ordre de grandeur à 25 % près, jamais éprouvée sur l'eau avec une ceinture → essai 75), mais ni splits ni allure par kilomètre (les tops à pied sont venus au point 113) → reste à faire n° 97 ; un bip de zone peut se superposer à un bip de balise ou du compteur (`playPattern` n'enchaîne pas les motifs, rare, accepté).
 - **Capteurs Bluetooth** (point 118) : seule la ceinture cardio est lue → reste à faire n° 36 ; une montre Garmin diffuse sa FC comme une ceinture, mais la diffusion se coupe quand la montre lance sa propre course.
-- **Fichiers de montre** (point 306) : le FIT reçu d'une autre application se partage en type binaire ; le type JSON ajouté en 0.5.05 semble inutile et doit être retiré (reste à faire n° 185). Toucher un FIT dans Fichiers de Google n'a jamais envoyé de demande à Android : ce geste n'est pas prouvé, le partage et l'envoi direct le sont. Un seul vrai FIT essayé (Garmin), aucun d'une Suunto. Seuls temps, positions, altitude, FC, cadence et vitesse sont gardés.
+- **Fichiers de montre** (points 306 et 308) : le FIT reçu d'une autre application se partage en type binaire ; le type JSON, ajouté en 0.5.05 et inutile, est retiré du manifeste (0.5.08, un test refuse son retour). Un GPX ne s'ouvre pas par « Ouvrir avec » (il se partage), défaut ouvert à part (reste à faire n° 191). Toucher un FIT dans Fichiers de Google n'a jamais envoyé de demande à Android : ce geste n'est pas prouvé, le partage et l'envoi direct le sont. Un seul vrai FIT essayé (Garmin), aucun d'une Suunto. Seuls temps, positions, altitude, FC, cadence et vitesse sont gardés.
 - **Sauts à terre** (point 96) : les seuils de détection, réglés sur le wingfoil, n'ont été éprouvés ni en VTT ni en course (la foulée ne doit pas passer pour un saut) → essai 64. Le comptage en wing (une dizaine de sauts les 08/10 et 21/10) est juste depuis l'écart des rebonds (point 291).
 - **Pumping en voile** (points 186 et 291) : réglé le 06/11 sur la wing du 02/11, capturée entière ; il faut 4 ou 5 coups bien marqués pour parler de série. Rien n'a noté quand l'utilisateur pompait (lecture du signal) → essai 130. Le 01/11 (aucun saut), la part réelle de pumping est inconnaissable (7 passages gardés par la capture). La part de vol pompée de la fiche ne se réécrit qu'à l'ouverture de l'analyse ; les petits vols isolés du 08/10 (0,2 à 0,3 m) restent à l'essai 48.
 - **Surf** (point 97) :
@@ -439,10 +439,11 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`), puis les petites largeurs, la taille du texte d'Android jusqu'à 130 % et le téléphone tourné (point 139, relevé `tailles.mjs`). Restent :
   - toucher au lieu du survol : fait pour les graphes de vitesse, d'altitude et du vent (points 73, 94) ; restent la courbe d'un saut et les mini-courbes du fractionné ;
   - `accept=".gpx"` de la bibliothèque, qui grise parfois les GPX sous Android.
+- **Préparation de la version voile et surf vendue** (fiche 154, décision du 07/11 : tout ce qui est commun aux deux applications se fait avant le fork, sans changer le fonctionnement ; dépôt vendu neuf en un commit) : E1 faite (lot 187, point 307, 0.5.09), séparation de la terre dans `land/` et couture gardée par `architecture.test.ts` ; E2 à E8 après le fork.
 - **Suite possible** : calcul des itinéraires hors ligne.
 - **Phase 3** :
   - partage et export GPX : le GPX d'une session se télécharge depuis son analyse (point 95, `DownloadsPlugin.java`, dossier Téléchargements par MediaStore), complet avec sa fiche et ses capteurs (point 98) ; une image de la session (1080 × 1920, point 176) se partage vers une autre application (point 126) ; reste le GPX partagé de même ;
-  - réception d'un GPX ou d'un FIT partagé depuis une autre application : faite (lot 35, point 306), essais 137 et 138 validés le 07/11 ;
+  - réception d'un GPX ou d'un FIT partagé depuis une autre application : faite (lot 35, point 306), essais 137 et 138 validés le 07/11 ; type JSON retiré des filtres (lot 185, point 308) ; « Ouvrir avec » ne marche pas pour un GPX (n° 191) ;
   - cartes hors ligne : faites le 28/09 (point 67), par les tuiles vues en ligne ; le téléchargement d'une zone à l'avance reste exclu par les règles d'OSM ;
   - capteur cardiaque Bluetooth : capté (point 115) et analysé (point 116).
 
