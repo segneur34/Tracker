@@ -2,7 +2,8 @@
 // sous-domaine) et d'Esri sont interceptées (`Fetch`) et servies par une image synthétique de 256 × 256, après
 // un délai réglable, sans jamais toucher au réseau ; chaque requête et chaque annulation sont notées.
 // Usage : `const tuiles = await fakeTiles(b, { delayMs })` après `connect`, puis `b.blockNetwork(BLOCKED_EXCEPT_TILES)`
-// (les tuiles ne doivent pas être bloquées) ; `tuiles.stats()` et `tuiles.reset()` autour d'une séquence.
+// (les tuiles ne doivent pas être bloquées) ; `tuiles.stats()`, `tuiles.list()` et `tuiles.reset()` autour d'une séquence ;
+// `tuiles.setMode('panne')` fait échouer les requêtes comme un réseau coupé, `'absent'` répond 404, `'normal'` rend les images.
 import { deflateSync } from 'node:zlib';
 import { BLOCKED_URLS } from './cdp.mjs';
 
@@ -70,11 +71,14 @@ export const tileOfUrl = (url) => {
 /**
  * Intercepte les tuiles de l'onglet `b` (rendu de `connect`) : chacune servie après `delayMs`, avec les en-têtes qu'il
  * faut à un `fetch` d'une autre origine, sans cache HTTP. Rend `stats()` (requêtes, tuiles distinctes, doubles :
- * requêtes d'une tuile déjà demandée, annulées : coupées par la page avant la réponse ; par fond) et `reset()`.
+ * requêtes d'une tuile déjà demandée, annulées : coupées par la page avant la réponse ; par fond), `list()` (les
+ * requêtes depuis `reset`, en « fond/z/x/y »), `reset()` et `setMode(mode)` (`normal`, `panne` ou `absent`, lu au moment
+ * de répondre).
  */
 export const fakeTiles = async (b, { delayMs = 0 } = {}) => {
   let requests = [];
   let canceled = 0;
+  let mode = 'normal';
   const tileRequests = new Map();
   b.onMessage((msg) => {
     const p = msg.params;
@@ -93,12 +97,14 @@ export const fakeTiles = async (b, { delayMs = 0 } = {}) => {
       const tile = tileOfUrl(p.request.url);
       const answer = () => {
         if (!tile) return b.send('Fetch.continueRequest', { requestId: p.requestId });
-        const body = IMAGES[tile.base][(tile.x + tile.y) % 2];
+        if (mode === 'panne') return b.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'InternetDisconnected' });
+        const absent = mode === 'absent';
+        const body = absent ? '' : IMAGES[tile.base][(tile.x + tile.y) % 2];
         return b.send('Fetch.fulfillRequest', {
           requestId: p.requestId,
-          responseCode: 200,
+          responseCode: absent ? 404 : 200,
           responseHeaders: [
-            { name: 'Content-Type', value: 'image/png' },
+            { name: 'Content-Type', value: absent ? 'text/plain' : 'image/png' },
             { name: 'Access-Control-Allow-Origin', value: '*' },
             { name: 'Cache-Control', value: 'no-store' },
           ],
@@ -122,7 +128,9 @@ export const fakeTiles = async (b, { delayMs = 0 } = {}) => {
       const byZoom = [...zooms].sort((a, b) => a[0] - b[0]).map(([z, n]) => `z${z} : ${n}`).join(', ');
       return { requests: requests.length, distinct: seen.size, doubles: requests.length - seen.size, canceled, byZoom };
     },
+    list: () => requests.map((t) => `${t.base}/${t.z}/${t.x}/${t.y}`),
     reset: () => { requests = []; canceled = 0; },
+    setMode: (next) => { mode = next; },
   };
 };
 

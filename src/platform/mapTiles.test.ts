@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { tileUrl } from '../core/mapBase';
 import { tileKey, type AncestorTile } from '../core/tiles';
-import { createTileResolver, isAbsentStatus, type FetchedTile } from './mapTiles';
+import { createTileResolver, isAbsentStatus, onNetworkBack, type FetchedTile } from './mapTiles';
 import type { StoredTile } from './tileCache';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -208,5 +208,117 @@ describe('réponse d’erreur du serveur', () => {
     expect(await resolver.resolveTile(TILE, 'plan', 256)).toBeNull();
     expect(calls).toHaveLength(1);
     expect(kept).toEqual([]);
+  });
+});
+
+describe('reprise d’une case', () => {
+  it('après un échec, une nouvelle demande repart au serveur et rend la tuile', async () => {
+    const blob = image('reçue');
+    const answers: FetchedTile[] = ['echec', blob];
+    const { resolver, calls } = setup({ serve: () => answers.shift() ?? 'echec' });
+    expect(await resolver.resolveTile(TILE, 'plan', 256)).toBeNull();
+    expect(await resolver.resolveTile(TILE, 'plan', 256)).toBe(blob);
+    expect(calls.map((c) => c.url)).toEqual([tileUrl('plan', TILE), tileUrl('plan', TILE)]);
+  });
+
+  it('une tuile absente, reprise, ne repart pas au serveur, d’aucune des deux façons', async () => {
+    const { resolver, calls } = setup({ serve: () => 'absent' });
+    expect(await resolver.resolveTile(TILE, 'plan', 256)).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(await resolver.resolveTile(TILE, 'plan', 256)).toBeNull();
+    expect(await resolver.resolveExactTile(TILE, 'plan')).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('une demande coupée à son tour laisse une nouvelle demande repartir, avec sa propre coupure', async () => {
+    const blob = image('reçue');
+    const { resolver, calls } = setup();
+    const first = new AbortController();
+    const cut = resolver.resolveTile(TILE, 'plan', 256, first.signal);
+    await flush();
+    first.abort();
+    expect(await cut).toBeNull();
+    expect(calls[0].signal.aborted).toBe(true);
+    const again = resolver.resolveTile(TILE, 'plan', 256, new AbortController().signal);
+    await flush();
+    expect(calls).toHaveLength(2);
+    expect(calls[1].signal.aborted).toBe(false);
+    calls[1].answer(blob);
+    expect(await again).toBe(blob);
+  });
+});
+
+describe('resolveExactTile : la vraie tuile seulement', () => {
+  const PARENT = { z: 14, x: 8404, y: 5976 };
+  const storedParent = { [tileKey(PARENT)]: { blob: image('parente'), savedAtMs: NOW } };
+
+  it('rend la tuile reçue et la garde', async () => {
+    const blob = image('reçue');
+    const { resolver, kept, crops } = setup({ stored: storedParent, serve: () => blob });
+    expect(await resolver.resolveExactTile(TILE, 'plan')).toBe(blob);
+    await flush();
+    expect(kept).toEqual([tileKey(TILE)]);
+    expect(crops).toEqual([]);
+  });
+
+  it('rend la tuile gardée sans rien demander', async () => {
+    const blob = image('gardée');
+    const { resolver, calls } = setup({ stored: { [tileKey(TILE)]: { blob, savedAtMs: NOW } } });
+    expect(await resolver.resolveExactTile(TILE, 'plan')).toBe(blob);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('en échec, rend null plutôt qu’un agrandissement, et ne remonte pas aux parentes', async () => {
+    const { resolver, calls, crops } = setup({ stored: storedParent, serve: () => 'echec' });
+    expect(await resolver.resolveExactTile(TILE, 'plan')).toBeNull();
+    expect(calls.map((c) => c.url)).toEqual([tileUrl('plan', TILE)]);
+    expect(crops).toEqual([]);
+  });
+
+  it('sans réseau, ne lit que la mémoire', async () => {
+    const { resolver, calls, crops } = setup({ stored: storedParent, online: false });
+    expect(await resolver.resolveExactTile(TILE, 'plan')).toBeNull();
+    expect(calls).toHaveLength(0);
+    expect(crops).toEqual([]);
+  });
+
+  it('une tuile absente rend null, sans requête, même au large en satellite', async () => {
+    const { resolver, calls } = setup({ serve: () => 'absent' });
+    expect(await resolver.resolveExactTile(TILE, 'satellite')).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(await resolver.resolveExactTile(TILE, 'satellite')).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('coupée, rend null et coupe la requête', async () => {
+    const { resolver, calls } = setup();
+    const gone = new AbortController();
+    const asked = resolver.resolveExactTile(TILE, 'plan', gone.signal);
+    await flush();
+    gone.abort();
+    expect(await asked).toBeNull();
+    expect(calls[0].signal.aborted).toBe(true);
+  });
+});
+
+describe('onNetworkBack', () => {
+  it('prévient au retour du réseau, jusqu’au désabonnement', () => {
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: () => void) => { if (type === 'online') listeners.add(listener); },
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    });
+    const listener = vi.fn();
+    const stop = onNetworkBack(listener);
+    listeners.forEach((l) => l());
+    expect(listener).toHaveBeenCalledTimes(1);
+    stop();
+    expect(listeners.size).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('sans fenêtre, sans effet', () => {
+    const stop = onNetworkBack(() => { throw new Error('non attendu'); });
+    expect(() => stop()).not.toThrow();
   });
 });

@@ -1,9 +1,10 @@
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { onAppResume } from './permissions';
 import { isNativeApp } from './runtime';
 
 /**
- * Écran allumé, orientation figée et thème clair ou sombre du téléphone : seul accès au verrou d'écran, à
- * l'orientation et au thème du système (règle 12). L'écran allumé
+ * Écran allumé, orientation figée, thème clair ou sombre du téléphone et retour au premier plan : seul accès au
+ * verrou d'écran, à l'orientation et au thème du système (règle 12). L'écran allumé
  * empêche la mise en veille automatique, pas le verrouillage par le bouton du téléphone.
  *
  * Sur le téléphone, le greffon maison `ScreenPlugin.java` pose ou retire
@@ -59,6 +60,35 @@ export const keepScreenOn = (on: boolean): void => {
     browserLock = null;
     if (lock) void lock.release().catch(() => undefined);
   }
+};
+
+/** Vrai si l'application est à l'écran (écran allumé, page montrée). */
+export const isForeground = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
+
+/** Écart sous lequel deux signaux sont un seul retour : `resume` et `visibilitychange` arrivent ensemble, dans un ordre ou l'autre. */
+const SAME_RETURN_MS = 1000;
+
+/**
+ * Prévenu à chaque retour au premier plan (déverrouillage, retour d'une autre application) ; rend le désabonnement.
+ * Le signal du système (`onAppResume`, téléphone) et celui de la page (`visibilitychange`) ne préviennent qu'une
+ * fois. Un `resume` reçu page encore cachée est laissé à `visibilitychange`, qui le suit. Sans page : sans effet.
+ */
+export const onForeground = (listener: () => void): (() => void) => {
+  if (typeof document === 'undefined') return () => undefined;
+  let lastMs = -Infinity;
+  const notify = (): void => {
+    if (!isForeground()) return;
+    const now = Date.now();
+    if (now - lastMs < SAME_RETURN_MS) return;
+    lastMs = now;
+    listener();
+  };
+  document.addEventListener('visibilitychange', notify);
+  const stopResume = onAppResume(notify);
+  return () => {
+    document.removeEventListener('visibilitychange', notify);
+    stopResume();
+  };
 };
 
 /**

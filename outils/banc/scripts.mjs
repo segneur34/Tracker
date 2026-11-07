@@ -46,6 +46,8 @@ export const SCRIPTS = [
   // Carte du direct en pause manuelle, trous de position et page cachée (lot 104) ; relevés détaillés sur la sortie d'erreur.
   { nom: 'carte-direct', args: ['{port}', '{travail}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
   { nom: 'carte-perf', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'bibliotheque'], sansCache: true, delaiMin: 15 },
+  // Le fond de carte revient seul après une veille : tuiles coupées, cases en échec, page cachée puis gelée ; relevés détaillés sur la sortie d'erreur.
+  { nom: 'carte-reveil', args: ['{port}', '{travail}'], pages: ['course'], solo: true },
   { nom: 'cardio', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'fractionne', 'voile', 'reglages', 'statistiques'] },
   // Sans `Network.enable`, rien n'est bloqué : l'altitude de l'IGN remplace la côte (SCRIPTS.md, « Scripts à revoir »).
   { nom: 'charge', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'reglages'], reseau: true },

@@ -5,8 +5,10 @@ import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import type { SportFamily } from '../core/sportProfiles';
+import { TILE_CACHE_DEFAULTS, tilesToRetry, tileViewOf, type TileCoord, type TileView } from '../core/tiles';
 import { useMapBase } from '../hooks/useMapBase';
-import { resolveTile } from '../platform/mapTiles';
+import { onNetworkBack, resolveExactTile, resolveTile } from '../platform/mapTiles';
+import { isForeground, onForeground } from '../platform/screen';
 import { IconLayers } from './icons';
 // La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification) :
 // aucune page chargée à la demande ne peut l'oublier (27/10).
@@ -36,17 +38,44 @@ import './BaseTileLayer.css';
  * demandé au serveur qui n'ait été affiché. Une case que Leaflet retire avant
  * qu'elle soit prête (zoom ou déplacement rapides) abandonne sa demande : la
  * requête est coupée si aucune autre case ni image ne l'attend.
+ *
+ * Leaflet marque une case chargée même en erreur et ne redemande que les cases
+ * qu'il n'a plus : sans reprise, une case échouée (réseau endormi au
+ * déverrouillage) resterait vide jusqu'à ce qu'un zoom la retire. La couche
+ * retient donc ses cases et reprend celles qui manquent, vides, agrandies ou
+ * en attente trop longue : trois fois après un retour au premier plan ou du
+ * réseau, une fois par minute au plus au déplacement de la carte. Seulement
+ * les cases visibles, le téléphone allumé, sur une carte qui a une taille ;
+ * une case déjà chargée n'est pas touchée (pas de `redraw`, qui clignote) et
+ * une tuile que le serveur n'a pas ne repart jamais (`platform/mapTiles.ts`).
  */
 
 /** Demande en cours d'une case, et l'adresse d'objet de son image tant qu'elle est posée. */
 interface TileLoad {
   controller: AbortController;
   objectUrl: string | null;
+  /** Agrandissement à remettre si la vraie tuile, posée par-dessus, ne se lit pas. */
+  fallbackSrc: string | null;
 }
+
+/** Une case tenue par Leaflet, de sa création à son retrait. */
+interface TileSlot {
+  tile: HTMLImageElement;
+  coords: TileCoord;
+  done: L.DoneCallback;
+  /** `done` déjà appelé : un nouvel échec n'a plus rien à lui apprendre. */
+  told: boolean;
+  shows: 'rien' | 'agrandie' | 'tuile';
+  load: TileLoad | null;
+  triedAtMs: number;
+}
+
+/** Vrai pour une image finie et sans contenu : jamais posée, en erreur, ou perdue. */
+const isBlank = (tile: HTMLImageElement): boolean => tile.complete && tile.naturalWidth === 0;
 
 class CachedTileLayer extends L.TileLayer {
   private readonly base: MapBase;
-  private readonly loads = new WeakMap<HTMLElement, TileLoad>();
+  private readonly slots = new Map<HTMLElement, TileSlot>();
 
   constructor(base: MapBase) {
     super(MAP_BASES[base].url, { attribution: MAP_BASES[base].attribution });
@@ -58,40 +87,137 @@ class CachedTileLayer extends L.TileLayer {
   }
 
   private release(tile: HTMLElement): void {
-    const load = this.loads.get(tile);
-    if (!load) return;
-    this.loads.delete(tile);
-    load.controller.abort();
+    const slot = this.slots.get(tile);
+    if (!slot) return;
+    this.slots.delete(tile);
+    // Leaflet a déjà vidé l'image : rien à lui remettre.
+    if (slot.load) slot.load.fallbackSrc = null;
+    this.cut(slot);
+  }
+
+  private startLoad(slot: TileSlot): TileLoad {
+    const load: TileLoad = { controller: new AbortController(), objectUrl: null, fallbackSrc: null };
+    slot.load = load;
+    slot.triedAtMs = Date.now();
+    return load;
+  }
+
+  /** Demande finie : l'image ne l'attend plus, son adresse d'objet est rendue. */
+  private endLoad(slot: TileSlot, load: TileLoad): void {
+    slot.tile.onload = null;
+    slot.tile.onerror = null;
     if (load.objectUrl) URL.revokeObjectURL(load.objectUrl);
+    load.objectUrl = null;
+    slot.load = null;
+  }
+
+  /** Coupe la demande en cours de la case : celle-ci ne touchera plus à l'image. */
+  private cut(slot: TileSlot): void {
+    const load = slot.load;
+    if (!load) return;
+    this.endLoad(slot, load);
+    load.controller.abort();
+    if (load.fallbackSrc) slot.tile.src = load.fallbackSrc;
+  }
+
+  /** Remplit la case, même image à chaque reprise ; `done` n'est rappelé que pour une image neuve, que Leaflet fait entrer en fondu. */
+  private fill(slot: TileSlot): void {
+    const { tile } = slot;
+    const load = this.startLoad(slot);
+    const settle = (shows: TileSlot['shows'], error?: Error): void => {
+      this.endLoad(slot, load);
+      slot.shows = shows;
+      if (error && slot.told) return;
+      slot.told = true;
+      slot.done(error, tile);
+    };
+    void resolveTile(slot.coords, this.base, this.getTileSize().x, load.controller.signal).then((content) => {
+      if (slot.load !== load) return;
+      if (content === null) {
+        settle('rien', new Error('tuile absente'));
+        return;
+      }
+      const src = typeof content === 'string' ? content : URL.createObjectURL(content);
+      if (typeof content !== 'string') load.objectUrl = src;
+      tile.onload = () => settle(typeof content === 'string' ? 'agrandie' : 'tuile');
+      tile.onerror = () => settle('rien', new Error('tuile illisible'));
+      tile.src = src;
+    });
+  }
+
+  /** Remplace l'agrandissement par la vraie tuile, si elle arrive : ni `done` ni fondu, l'ancienne image reste jusqu'à la nouvelle. */
+  private upgrade(slot: TileSlot): void {
+    const { tile } = slot;
+    const load = this.startLoad(slot);
+    void resolveExactTile(slot.coords, this.base, load.controller.signal).then((blob) => {
+      if (slot.load !== load) return;
+      if (!blob) {
+        this.endLoad(slot, load);
+        return;
+      }
+      load.fallbackSrc = tile.getAttribute('src');
+      load.objectUrl = URL.createObjectURL(blob);
+      tile.onload = () => {
+        this.endLoad(slot, load);
+        slot.shows = 'tuile';
+      };
+      tile.onerror = () => {
+        this.endLoad(slot, load);
+        if (load.fallbackSrc) tile.src = load.fallbackSrc;
+      };
+      tile.src = load.objectUrl;
+    });
   }
 
   override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     const tile = document.createElement('img');
     tile.alt = '';
     tile.setAttribute('role', 'presentation');
-    const size = this.getTileSize().x;
-    const load: TileLoad = { controller: new AbortController(), objectUrl: null };
-    this.loads.set(tile, load);
-    const { signal } = load.controller;
-    void resolveTile({ z: coords.z, x: coords.x, y: coords.y }, this.base, size, signal).then((content) => {
-      if (signal.aborted) return;
-      if (content === null) {
-        done(new Error('tuile absente'), tile);
-        return;
-      }
-      const src = typeof content === 'string' ? content : URL.createObjectURL(content);
-      if (typeof content !== 'string') load.objectUrl = src;
-      const settle = (error?: Error) => {
-        if (load.objectUrl) URL.revokeObjectURL(load.objectUrl);
-        load.objectUrl = null;
-        this.loads.delete(tile);
-        done(error, tile);
-      };
-      tile.onload = () => settle();
-      tile.onerror = () => settle(new Error('tuile illisible'));
-      tile.src = src;
-    });
+    const slot: TileSlot = {
+      tile,
+      coords: { z: coords.z, x: coords.x, y: coords.y },
+      done,
+      told: false,
+      shows: 'rien',
+      load: null,
+      triedAtMs: 0,
+    };
+    this.slots.set(tile, slot);
+    this.fill(slot);
     return tile;
+  }
+
+  /** Vrai pour une case à reprendre : sans vraie tuile, ou dont la demande traîne. */
+  private isMissing(slot: TileSlot, nowMs: number): boolean {
+    if (slot.load) return nowMs - slot.triedAtMs >= TILE_CACHE_DEFAULTS.stuckLoadMs;
+    return slot.shows !== 'tuile' || isBlank(slot.tile);
+  }
+
+  /** Cases que Leaflet montre pour cette carte, au même arrondi du zoom et du centre que lui. */
+  private viewOf(map: L.Map): TileView {
+    const zoom = map.getZoom();
+    const z = Math.round(zoom);
+    const center = map.project(map.getCenter(), z).floor();
+    const half = map.getSize().divideBy(map.getZoomScale(zoom, z) * 2);
+    return tileViewOf(z, center.subtract(half), center.add(half), this.getTileSize().x);
+  }
+
+  /**
+   * Reprend les cases manquantes de la vue, dont la dernière demande date d'au moins `minIntervalMs`. Une carte
+   * repliée ou sans taille ne demande rien.
+   */
+  retryMissing(map: L.Map, minIntervalMs: number): void {
+    if (this.slots.size === 0) return;
+    const container = map.getContainer();
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+    const nowMs = Date.now();
+    const missing = [...this.slots.values()].filter((slot) => this.isMissing(slot, nowMs));
+    for (const slot of tilesToRetry(missing, this.viewOf(map), nowMs, minIntervalMs)) {
+      const keepsImage = slot.shows === 'agrandie' && !isBlank(slot.tile);
+      this.cut(slot);
+      if (keepsImage) this.upgrade(slot);
+      else this.fill(slot);
+    }
   }
 }
 
@@ -100,7 +226,30 @@ function TileLayer({ base }: { base: MapBase }) {
   useEffect(() => {
     map.attributionControl?.setPrefix(false);
     const layer = new CachedTileLayer(base).addTo(map);
+    // Écran éteint, aucune reprise : la position qui déplace la carte ne demande que les cases neuves, comme Leaflet.
+    const retry = (minIntervalMs: number): void => {
+      if (isForeground()) layer.retryMissing(map, minIntervalMs);
+    };
+    let timers: number[] = [];
+    const clearTimers = (): void => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [];
+    };
+    const scheduleRetries = (): void => {
+      clearTimers();
+      if (!isForeground()) return;
+      timers = TILE_CACHE_DEFAULTS.retryDelaysMs.map((delayMs) =>
+        window.setTimeout(() => retry(TILE_CACHE_DEFAULTS.retryGapMs), delayMs));
+    };
+    const onMoveEnd = (): void => retry(TILE_CACHE_DEFAULTS.moveRetryGapMs);
+    const stopForeground = onForeground(scheduleRetries);
+    const stopNetwork = onNetworkBack(scheduleRetries);
+    map.on('moveend', onMoveEnd);
     return () => {
+      stopForeground();
+      stopNetwork();
+      map.off('moveend', onMoveEnd);
+      clearTimers();
       layer.remove();
     };
   }, [map, base]);

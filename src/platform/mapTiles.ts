@@ -14,7 +14,8 @@ import { keepTile, tileStore, tileUrlOverrides, type StoredTile } from './tileCa
  * la requête que si plus personne ne l'attend, et seule une image reçue
  * entière est gardée. Une tuile que le serveur n'a pas (404) n'est plus
  * redemandée le temps de la page ; après un premier échec du réseau, la
- * remontée vers les zooms inférieurs ne lit plus que la mémoire.
+ * remontée vers les zooms inférieurs ne lit plus que la mémoire. Une case
+ * agrandie s'améliore par `resolveExactTile`, sans retomber sur une parente.
  */
 
 /** Ce qu'une case affiche : la tuile (image), un agrandissement découpé (URL de données), ou rien. */
@@ -44,6 +45,8 @@ export interface TileResolverDeps {
 export interface TileResolver {
   /** Ce qu'affiche la case `coords` de `size` pixels ; `signal` : la case n'est plus voulue. */
   resolveTile: (coords: TileCoord, base: MapBase, size: number, signal?: AbortSignal) => Promise<TileContent | null>;
+  /** La tuile `coords` elle-même, gardée ou reçue, jamais un agrandissement ; `null` si on ne l'a pas (une tuile que le serveur n'a pas ne part pas). */
+  resolveExactTile: (coords: TileCoord, base: MapBase, signal?: AbortSignal) => Promise<Blob | null>;
 }
 
 /** Requête en cours d'une tuile, partagée par ceux qui l'attendent. */
@@ -130,17 +133,31 @@ export const createTileResolver = (deps: TileResolverDeps): TileResolver => {
     return null;
   };
 
+  /** Tuile gardée ; vieillie, elle est montrée aussitôt et redemandée en arrière-plan (sans demandeur à abandonner). */
+  const storedTile = async (key: string, url: string): Promise<Blob | null> => {
+    const stored = await deps.store.read(key);
+    if (!stored) return null;
+    if (deps.isOnline() && isStale(stored.savedAtMs, deps.now(), TILE_CACHE_DEFAULTS.refreshAgeMs) && !pending.has(key)) {
+      void request(key, url);
+    }
+    return stored.blob;
+  };
+
+  const resolveExactTile: TileResolver['resolveExactTile'] = async (coords, base, signal) => {
+    const key = tileKey(coords, MAP_BASES[base].keyPrefix);
+    const url = urlOf(base, coords);
+    const stored = await storedTile(key, url);
+    if (stored) return stored;
+    if (signal?.aborted || absent.has(key) || !deps.isOnline()) return null;
+    const fresh = await request(key, url, signal);
+    return typeof fresh === 'string' ? null : fresh;
+  };
+
   const resolveTile: TileResolver['resolveTile'] = async (coords, base, size, signal) => {
     const key = tileKey(coords, MAP_BASES[base].keyPrefix);
     const url = urlOf(base, coords);
-    const stored = await deps.store.read(key);
-    if (stored) {
-      // Vieillie : montrée aussitôt, redemandée en arrière-plan (sans demandeur à abandonner).
-      if (deps.isOnline() && isStale(stored.savedAtMs, deps.now(), TILE_CACHE_DEFAULTS.refreshAgeMs) && !pending.has(key)) {
-        void request(key, url);
-      }
-      return stored.blob;
-    }
+    const stored = await storedTile(key, url);
+    if (stored) return stored;
     if (signal?.aborted) return null;
     let network = deps.isOnline();
     if (network && !absent.has(key)) {
@@ -151,7 +168,7 @@ export const createTileResolver = (deps: TileResolverDeps): TileResolver => {
     return overzoomedTile(coords, size, base, network, signal);
   };
 
-  return { resolveTile };
+  return { resolveTile, resolveExactTile };
 };
 
 /**
@@ -224,6 +241,16 @@ const resolver = createTileResolver({
 
 /** Ce qu'une case de la carte affiche : une tuile (gardée ou reçue), un agrandissement, ou rien. */
 export const resolveTile = resolver.resolveTile;
+
+/** La tuile elle-même, pour remplacer l'agrandissement d'une case. */
+export const resolveExactTile = resolver.resolveExactTile;
+
+/** Prévenu quand le navigateur retrouve le réseau ; rend le désabonnement. Sans fenêtre : sans effet. */
+export const onNetworkBack = (listener: () => void): (() => void) => {
+  if (typeof window === 'undefined') return () => undefined;
+  window.addEventListener('online', listener);
+  return () => window.removeEventListener('online', listener);
+};
 
 /**
  * Tuile d'un fond hors de Leaflet (image de partage, vignettes) : gardée,

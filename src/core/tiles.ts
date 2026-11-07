@@ -25,6 +25,18 @@ export const TILE_CACHE_DEFAULTS = {
   evictIntervalMs: 60_000,
   /** Attente maximale d'une tuile demandée au serveur, avant de se replier sur la mémoire. */
   fetchTimeoutMs: 8000,
+  /**
+   * Reprises des cases manquantes après un retour au premier plan ou du réseau, qui met parfois longtemps à se
+   * réveiller. Chacune suit la précédente de plus que `fetchTimeoutMs` : une reprise perdue dans l'attente du serveur
+   * ne fait pas manquer la suivante, sinon une carte immobile resterait vide.
+   */
+  retryDelaysMs: [3000, 12_000, 30_000],
+  /** Attente minimale, par case, avant une de ces reprises. */
+  retryGapMs: 2000,
+  /** Attente minimale, par case, avant une reprise au déplacement de la carte : sans réseau, ou si le serveur limite, plus souvent ferait trop de demandes. */
+  moveRetryGapMs: 60_000,
+  /** Durée d'une demande au-delà de laquelle elle est coupée puis relancée : plus que les deux attentes du serveur qu'une case peut enchaîner (la tuile, puis une parente). */
+  stuckLoadMs: 20_000,
 } as const;
 
 /** Nom de fichier d'une tuile, sans extension, précédé du préfixe de son fond (`core/mapBase.ts`). */
@@ -58,6 +70,44 @@ export const shouldCheckCap = (lastMs: number, nowMs: number, intervalMs: number
 
 /** Vrai si une tuile gardée à `savedAtMs` est à redemander. */
 export const isStale = (savedAtMs: number, nowMs: number, maxAgeMs: number): boolean => nowMs - savedAtMs > maxAgeMs;
+
+/** Cases visibles d'une carte, au zoom `z` des tuiles ; colonnes comptées sans repli, comme Leaflet (elles peuvent sortir de 0 à 2^z - 1). */
+export interface TileView {
+  z: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** Cases touchées par le rectangle de pixels donné, au zoom `z`, pour des tuiles de `tileSize` pixels. */
+export const tileViewOf = (z: number, minPx: { x: number; y: number }, maxPx: { x: number; y: number }, tileSize: number): TileView => ({
+  z,
+  minX: Math.floor(minPx.x / tileSize),
+  maxX: Math.ceil(maxPx.x / tileSize) - 1,
+  minY: Math.floor(minPx.y / tileSize),
+  maxY: Math.ceil(maxPx.y / tileSize) - 1,
+});
+
+/** Vrai si la case est dans la vue ; la colonne d'une case est repliée sur le monde, pas celle de la vue, d'où le modulo. */
+const inTileView = ({ z, x, y }: TileCoord, view: TileView): boolean => {
+  if (z !== view.z || y < view.minY || y > view.maxY) return false;
+  const columns = 2 ** z;
+  return ((x - view.minX) % columns + columns) % columns <= view.maxX - view.minX;
+};
+
+/** Case manquante d'une carte, et l'instant de sa dernière demande. */
+export interface TileRetryEntry {
+  coords: TileCoord;
+  triedAtMs: number;
+}
+
+/**
+ * Cases à redemander parmi `entries`, les manquantes d'une carte : seulement celles de la vue, au zoom courant,
+ * dont la dernière demande date d'au moins `minIntervalMs`.
+ */
+export const tilesToRetry = <T extends TileRetryEntry>(entries: readonly T[], view: TileView, nowMs: number, minIntervalMs: number): T[] =>
+  entries.filter((entry) => inTileView(entry.coords, view) && nowMs - entry.triedAtMs >= minIntervalMs);
 
 export interface CachedTileEntry {
   key: string;
