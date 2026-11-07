@@ -24,6 +24,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import MoreMenu from '../components/ui/MoreMenu';
 import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
+import { MAP_BASES } from '../core/mapBase';
 import { coloredSegments } from '../core/trackColor';
 import { createHeldCache } from '../core/heldCache';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
@@ -56,6 +57,10 @@ import bannerSurf from '../assets/bandeaux/surf.webp';
 import bannerVelo from '../assets/bandeaux/velo.webp';
 import bannerVoile from '../assets/bandeaux/voile.webp';
 import './SessionLibrary.css';
+
+/** Mention des vignettes (toujours sur le plan, `drawTrackPreview`), « © » puis le nom, en couleur de lien comme sur la carte. */
+const [PREVIEW_CREDIT_MARK, ...previewCreditName] = MAP_BASES.plan.credit.split(' ');
+const PREVIEW_CREDIT_NAME = previewCreditName.join(' ');
 
 /**
  * Bibliothèque d'une famille : Voile, À pied, Vélo, Surf, Entraînement (l'ancien Fractionné, 24/10). La liste des
@@ -407,8 +412,8 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
       {image ? (
         <>
           <img className="lib-row__preview-image" src={image} alt="" draggable={false} />
-          {/* Mention qu'exigent les conditions d'usage d'OSM, comme celle de Leaflet (`MAP_BASES.plan.attribution`), sans lien : un toucher ouvre l'analyse. */}
-          {!eco && <span className="lib-row__preview-credit">© <span className="lib-row__preview-credit-name">OpenStreetMap</span></span>}
+          {/* Mention qu'exigent les conditions d'usage du plan, celle de l'image de partage, sans lien : un toucher ouvre l'analyse. */}
+          {!eco && <span className="lib-row__preview-credit">{PREVIEW_CREDIT_MARK} <span className="lib-row__preview-credit-name">{PREVIEW_CREDIT_NAME}</span></span>}
         </>
       ) : (
         <span className="lib-row__preview-status">{failed ? 'Carte indisponible' : 'Carte…'}</span>

@@ -19,10 +19,11 @@ interface Call {
 }
 
 /** Résolveur sur une mémoire et un serveur factices ; `serve` répond tout de suite, sinon la requête attend `answer`. */
-const setup = ({ stored = {}, serve, online = true }: {
+const setup = ({ stored = {}, serve, online = true, template }: {
   stored?: Record<string, StoredTile>;
   serve?: (url: string) => FetchedTile;
   online?: boolean;
+  template?: (base: 'plan' | 'satellite') => string;
 } = {}) => {
   const memory = new Map(Object.entries(stored));
   const calls: Call[] = [];
@@ -46,6 +47,7 @@ const setup = ({ stored = {}, serve, online = true }: {
       return `data:agrandie-${ancestor.tile.z}`;
     },
     now: () => NOW,
+    template,
   });
   return { resolver, calls, kept, crops, memory };
 };
@@ -54,6 +56,20 @@ const setup = ({ stored = {}, serve, online = true }: {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('resolveTile', () => {
+  it('demande à l’adresse choisie, et garde la tuile sous la clé de son fond (lot 188)', async () => {
+    const { resolver, calls, kept } = setup({ serve: () => image('reçue'), template: () => 'https://autre.example.org/{z}/{x}/{y}.png' });
+    await resolver.resolveTile(TILE, 'plan', 256);
+    expect(calls.map((c) => c.url)).toEqual(['https://autre.example.org/15/16808/11953.png']);
+    expect(kept).toEqual([tileKey(TILE)]);
+  });
+
+  it('une tuile gardée avec l’ancienne adresse reste servie', async () => {
+    const blob = image('gardée');
+    const { resolver, calls } = setup({ stored: { [tileKey(TILE)]: { blob, savedAtMs: NOW } }, template: () => 'https://autre.example.org/{z}/{x}/{y}.png' });
+    expect(await resolver.resolveTile(TILE, 'plan', 256)).toBe(blob);
+    expect(calls).toHaveLength(0);
+  });
+
   it('rend la tuile gardée sans rien demander au serveur', async () => {
     const blob = image('gardée');
     const { resolver, calls } = setup({ stored: { [tileKey(TILE)]: { blob, savedAtMs: NOW } } });

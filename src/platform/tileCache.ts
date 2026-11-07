@@ -1,5 +1,6 @@
 import { base64ToBlob, blobToBase64 } from '../core/base64';
 import { inRange } from '../core/basics';
+import { isMapBase, type MapBase, type TileUrlOverrides } from '../core/mapBase';
 import { shouldCheckCap, TILE_CACHE_DEFAULTS, tilesToEvict, type CachedTileEntry } from '../core/tiles';
 import { filesystem } from './files';
 import { isNativeApp } from './runtime';
@@ -354,6 +355,32 @@ export const tileCapMb = (): number => {
 /** Plafond retenu sur l'appareil ; `null` revient au défaut. */
 export const writeTileCapMb = (next: number | null): void => {
   jsonStore.write(CAP_STORAGE_KEY, next === null ? {} : { capMb: next });
+};
+
+/** Clé des adresses de tuiles choisies, propre à l'appareil (hors de `reglages.json`), comme le plafond. */
+const URL_STORAGE_KEY = 'tracker.tileUrls';
+
+/**
+ * Adresses de tuiles saisies dans Réglages, par fond, telles quelles ; `core/mapBase.ts` (`tileTemplate`) dit
+ * laquelle sert. Les tuiles gardées restent rangées par fond : changer d'adresse ne les efface pas.
+ */
+export const tileUrlOverrides = (): TileUrlOverrides => {
+  const stored = jsonStore.read<Record<string, unknown>>(URL_STORAGE_KEY);
+  const out: TileUrlOverrides = {};
+  if (stored && typeof stored === 'object') {
+    for (const [base, url] of Object.entries(stored)) {
+      if (isMapBase(base) && typeof url === 'string' && url.trim() !== '') out[base] = url.trim();
+    }
+  }
+  return out;
+};
+
+/** Adresse d'un fond retenue sur l'appareil ; vide revient à celle d'origine. */
+export const writeTileUrlOverride = (base: MapBase, url: string): void => {
+  const next: TileUrlOverrides = { ...tileUrlOverrides() };
+  if (url.trim() === '') delete next[base];
+  else next[base] = url.trim();
+  jsonStore.write(URL_STORAGE_KEY, next);
 };
 
 /** Efface les tuiles les plus anciennes jusqu'à repasser sous le plafond. */

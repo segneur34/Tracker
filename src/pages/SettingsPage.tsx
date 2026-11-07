@@ -20,6 +20,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTutorials } from '../hooks/useTutorials';
 import { Link } from 'react-router-dom';
 import { useTileCache } from '../hooks/useTileCache';
+import { isTileTemplate, type MapBase } from '../core/mapBase';
 import { useThemedShade, useThemeSettings } from '../hooks/useTheme';
 import { THEME_CHOICES } from '../theme/theme';
 import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, type RunnerNumberField, type RunnerProfile } from '../library/athleteProfile';
@@ -1368,7 +1369,7 @@ const megabytes = (bytes: number): string => (bytes / 1e6).toLocaleString('fr-FR
  * seulement bloc ouvert, parce que compter les tuiles lit tout leur dossier.
  */
 function OfflineMapsSettings() {
-  const { usage, satellite, capMb, setCapMb, clear } = useTileCache();
+  const { usage, satellite, capMb, setCapMb, clear, urls, setUrl } = useTileCache();
   const choices = TILE_CAP_CHOICES_MB.includes(capMb) ? TILE_CAP_CHOICES_MB : [...TILE_CAP_CHOICES_MB, capMb].sort((a, b) => a - b);
 
   const askClear = () => {
@@ -1396,6 +1397,38 @@ function OfflineMapsSettings() {
       <Button size="s" onClick={askClear} disabled={usage?.tiles === 0}>
         Vider
       </Button>
+      <TileUrlField base="plan" label="Adresse des tuiles du plan" value={urls.plan ?? ''} onCommit={setUrl} />
+      <TileUrlField base="satellite" label="Adresse des tuiles du satellite" value={urls.satellite ?? ''} onCommit={setUrl} />
+    </>
+  );
+}
+
+/**
+ * Adresse des tuiles d'un fond, propre à l'appareil, pour changer de serveur sans nouvelle version. Retenue en
+ * quittant le champ ; vide, ou sans `{z}`, `{x}` et `{y}`, l'adresse d'origine sert (`core/mapBase.ts`).
+ */
+function TileUrlField({ base, label, value, onCommit }: {
+  base: MapBase;
+  label: string;
+  value: string;
+  onCommit: (base: MapBase, url: string) => void;
+}) {
+  // `value` ne change que par ce champ : le brouillon n'a pas à le suivre.
+  const [draft, setDraft] = useState(value);
+  const helpKey = `cartes:adresse-${base}`;
+  const ignored = value !== '' && !isTileTemplate(value);
+  return (
+    <>
+      <label className="ui-field-row">
+        <span className="ui-field-row__label">{label}<HelpToggle helpKey={helpKey} label={label} /></span>
+        <input type="url" value={draft} placeholder="Adresse d'origine" autoComplete="off" spellCheck={false}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (draft.trim() !== value) onCommit(base, draft); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+          className="ui-field ui-field--s set-wide-input" />
+      </label>
+      {ignored && <p className="settings-display__note">Adresse non retenue : il y manque {'{z}'}, {'{x}'} ou {'{y}'}, ou elle ne commence pas par https://. L'adresse d'origine sert.</p>}
+      <HelpText helpKey={helpKey}>Vide : l'adresse d'origine. Dans l'adresse, {'{z}'}, {'{x}'} et {'{y}'} sont remplacés par le zoom et la place du morceau de carte. Les cartes déjà gardées restent.</HelpText>
     </>
   );
 }

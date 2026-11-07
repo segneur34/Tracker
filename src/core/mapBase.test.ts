@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseOfTileKey, isMapBase, MAP_BASES, tileCacheUsageByBase, tileUrl } from './mapBase';
+import { baseOfTileKey, isMapBase, isTileTemplate, MAP_BASES, tileCacheUsageByBase, tileTemplate, tileUrl } from './mapBase';
 import { tileKey } from './tiles';
 
 describe('tileUrl', () => {
@@ -41,5 +41,47 @@ describe('isMapBase', () => {
     expect(isMapBase('satellite')).toBe(true);
     expect(isMapBase('hybride')).toBe(false);
     expect(isMapBase(undefined)).toBe(false);
+  });
+});
+
+describe('adresse des tuiles réglable (lot 188)', () => {
+  const tile = { z: 15, x: 16808, y: 11953 };
+  const custom = 'https://tuiles.example.org/{z}/{x}/{y}.png';
+
+  it('vide ou absente : l’adresse d’origine', () => {
+    expect(tileTemplate('plan')).toBe(MAP_BASES.plan.url);
+    expect(tileTemplate('plan', {})).toBe(MAP_BASES.plan.url);
+    expect(tileTemplate('satellite', { satellite: '' })).toBe(MAP_BASES.satellite.url);
+    expect(tileTemplate('satellite', { satellite: '   ' })).toBe(MAP_BASES.satellite.url);
+  });
+
+  it('renseignée : la sienne, espaces autour retirés, et pour son fond seulement', () => {
+    expect(tileTemplate('plan', { plan: `  ${custom} ` })).toBe(custom);
+    expect(tileTemplate('satellite', { plan: custom })).toBe(MAP_BASES.satellite.url);
+    expect(tileUrl('plan', tile, tileTemplate('plan', { plan: custom }))).toBe('https://tuiles.example.org/15/16808/11953.png');
+  });
+
+  it('sans les trois repères, ou pas une adresse web : l’adresse d’origine', () => {
+    expect(tileTemplate('plan', { plan: 'https://tuiles.example.org/{z}/{x}.png' })).toBe(MAP_BASES.plan.url);
+    expect(tileTemplate('plan', { plan: 'tuiles.example.org/{z}/{x}/{y}.png' })).toBe(MAP_BASES.plan.url);
+    expect(isTileTemplate('ftp://a/{z}/{x}/{y}')).toBe(false);
+    expect(isTileTemplate('https://a b/{z}/{x}/{y}')).toBe(false);
+  });
+
+  it('un repère répété ou un repère inconnu ({s}) est refusé : il resterait en clair dans l’adresse demandée', () => {
+    expect(isTileTemplate('https://a.example/{z}/{x}/{y}@{z}x.png')).toBe(false);
+    expect(isTileTemplate('https://{s}.example/{z}/{x}/{y}.png')).toBe(false);
+    expect(isTileTemplate('https://a.example/{z}/{x}/{y}?r={r}')).toBe(false);
+    expect(isTileTemplate('https://a.example/{y}/{x}/{z}.png')).toBe(true);
+  });
+
+  it('les adresses d’origine sont valides', () => {
+    expect(isTileTemplate(MAP_BASES.plan.url)).toBe(true);
+    expect(isTileTemplate(MAP_BASES.satellite.url)).toBe(true);
+  });
+
+  it('libellé d’Esri complet, sur la carte et sur l’image de partage', () => {
+    expect(MAP_BASES.satellite.attribution).toBe('Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community &middot; Powered by Esri');
+    expect(MAP_BASES.satellite.credit).toBe('© Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri');
   });
 });

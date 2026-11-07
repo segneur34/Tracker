@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { tileCacheUsageByBase } from '../core/mapBase';
+import { tileCacheUsageByBase, type MapBase, type TileUrlOverrides } from '../core/mapBase';
 import { tileCacheUsage, type TileCacheUsage } from '../core/tiles';
-import { evictTiles, isValidTileCap, tileCapMb, tileStore, writeTileCapMb } from '../platform/tileCache';
+import { evictTiles, isValidTileCap, tileCapMb, tileStore, tileUrlOverrides, writeTileCapMb, writeTileUrlOverride } from '../platform/tileCache';
 
 /**
  * Cartes sans réseau, pour la page Réglages : place occupée par les tuiles
@@ -15,6 +15,8 @@ export const useTileCache = () => {
   /** Part du fond satellite, dont les photos pèsent plus que le plan. */
   const [satellite, setSatellite] = useState<TileCacheUsage | null>(null);
   const [capMb, setCapMbState] = useState(tileCapMb);
+  /** Adresses des tuiles saisies, par fond (vide : celle d'origine). */
+  const [urls, setUrls] = useState<TileUrlOverrides>(tileUrlOverrides);
   /** Incrémenté après chaque changement : la place occupée est recomptée. */
   const [version, setVersion] = useState(0);
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
@@ -45,5 +47,11 @@ export const useTileCache = () => {
     refresh();
   }, [refresh]);
 
-  return { usage, satellite, capMb, setCapMb, clear };
+  /** Adresse d'un fond retenue sur l'appareil, servie dès la tuile suivante ; les tuiles gardées restent. */
+  const setUrl = useCallback((base: MapBase, url: string) => {
+    writeTileUrlOverride(base, url);
+    setUrls(tileUrlOverrides());
+  }, []);
+
+  return { usage, satellite, capMb, setCapMb, clear, urls, setUrl };
 };

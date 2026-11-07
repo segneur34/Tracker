@@ -55,7 +55,7 @@ const choose = async (label, scope = '', ms = 1000) => {
   await wait(ms);
 };
 const attribution = () => evaluate(`document.querySelector('.leaflet-control-attribution')?.textContent ?? ''`);
-const pageText = () => evaluate(`document.body.innerText.replace(/(Imagerie © Esri, Vantor, Earthstar Geographics|© OpenStreetMap)/g, '<mention>')`);
+const pageText = () => evaluate(`document.body.innerText.replace(/(Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri|Imagerie © Esri, Vantor, Earthstar Geographics|© OpenStreetMap)/g, '<mention>')`);
 const storedBases = () => evaluate(`JSON.parse(localStorage.getItem('tracker.fondCarte') ?? '{}')`);
 /** Tuiles de la carte compacte affichées (image chargée). */
 const loadedTiles = () => evaluate(`[...document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile')].filter((i) => i.complete && i.naturalWidth > 0).length`);

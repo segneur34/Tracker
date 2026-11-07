@@ -1,6 +1,6 @@
-import { MAP_BASES, tileUrl, type MapBase } from '../core/mapBase';
+import { MAP_BASES, tileTemplate, tileUrl, type MapBase } from '../core/mapBase';
 import { ancestorTile, isStale, TILE_CACHE_DEFAULTS, tileKey, type AncestorTile, type TileCoord } from '../core/tiles';
-import { keepTile, tileStore, type StoredTile } from './tileCache';
+import { keepTile, tileStore, tileUrlOverrides, type StoredTile } from './tileCache';
 
 /**
  * Tuiles d'un fond de carte (`core/mapBase.ts`), gardées sur l'appareil ou
@@ -37,6 +37,8 @@ export interface TileResolverDeps {
   /** Case `ancestor` découpée dans l'image de sa parente, agrandie à `size` pixels ; `null` si l'image est illisible. */
   crop: (blob: Blob, ancestor: AncestorTile, size: number) => Promise<string | null>;
   now: () => number;
+  /** Gabarit d'adresse du fond, lu à chaque demande (Réglages peut le changer) ; sans lui, celui d'origine. */
+  template?: (base: MapBase) => string;
 }
 
 export interface TileResolver {
@@ -55,6 +57,7 @@ export const createTileResolver = (deps: TileResolverDeps): TileResolver => {
   const pending = new Map<string, Pending>();
   /** Tuiles que le serveur n'a pas, le temps de la page. */
   const absent = new Set<string>();
+  const urlOf = (base: MapBase, tile: TileCoord): string => tileUrl(base, tile, deps.template?.(base));
 
   /**
    * Tuile `key` demandée au serveur ; une même tuile en cours est partagée.
@@ -103,7 +106,7 @@ export const createTileResolver = (deps: TileResolverDeps): TileResolver => {
     const stored = await deps.store.read(key);
     if (stored) return stored.blob;
     if (!network || !MAP_BASES[base].fetchAncestors || absent.has(key) || !deps.isOnline()) return null;
-    const fresh = await request(key, tileUrl(base, tile), signal);
+    const fresh = await request(key, urlOf(base, tile), signal);
     return fresh === 'absent' ? null : fresh;
   };
 
@@ -129,7 +132,7 @@ export const createTileResolver = (deps: TileResolverDeps): TileResolver => {
 
   const resolveTile: TileResolver['resolveTile'] = async (coords, base, size, signal) => {
     const key = tileKey(coords, MAP_BASES[base].keyPrefix);
-    const url = tileUrl(base, coords);
+    const url = urlOf(base, coords);
     const stored = await deps.store.read(key);
     if (stored) {
       // Vieillie : montrée aussitôt, redemandée en arrière-plan (sans demandeur à abandonner).
@@ -216,6 +219,7 @@ const resolver = createTileResolver({
   isOnline: () => navigator.onLine !== false,
   crop: cropAncestor,
   now: () => Date.now(),
+  template: (base) => tileTemplate(base, tileUrlOverrides()),
 });
 
 /** Ce qu'une case de la carte affiche : une tuile (gardée ou reçue), un agrandissement, ou rien. */

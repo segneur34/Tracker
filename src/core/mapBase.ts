@@ -42,8 +42,8 @@ export const MAP_BASES: Record<MapBase, MapBaseSource> = {
   satellite: {
     // Attention à l'ordre : y puis x.
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false',
-    attribution: 'Imagerie &copy; Esri, Vantor, Earthstar Geographics',
-    credit: '© Esri, Vantor, Earthstar',
+    attribution: 'Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community &middot; Powered by Esri',
+    credit: '© Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri',
     keyPrefix: 'sat_',
     overzoomDepth: 6,
     fetchAncestors: true,
@@ -54,12 +54,34 @@ export const MAP_BASE_DEFAULT: MapBase = 'plan';
 
 export const isMapBase = (value: unknown): value is MapBase => value === 'plan' || value === 'satellite';
 
-/** Adresse d'une tuile. */
-export const tileUrl = (base: MapBase, { z, x, y }: TileCoord): string =>
-  MAP_BASES[base].url
-    .replace('{z}', String(z))
-    .replace('{x}', String(x))
-    .replace('{y}', String(y));
+/** Adresses choisies sur l'appareil (Réglages › Cartes hors ligne), par fond ; absente ou vide : celle d'origine. */
+export type TileUrlOverrides = Partial<Record<MapBase, string>>;
+
+const TILE_MARKS = ['{z}', '{x}', '{y}'] as const;
+
+/** Vrai pour une adresse web qui porte `{z}`, `{x}` et `{y}` une fois chacun, et aucun autre repère entre accolades (`{s}`…). */
+export const isTileTemplate = (value: string): boolean => {
+  if (!/^https?:\/\/\S+$/.test(value)) return false;
+  const marks = value.match(/\{[^}]*\}/g) ?? [];
+  return marks.length === TILE_MARKS.length && TILE_MARKS.every((mark) => marks.filter((m) => m === mark).length === 1);
+};
+
+/**
+ * Gabarit d'adresse retenu pour un fond : celui saisi, s'il est une adresse web qui porte `{z}`, `{x}` et `{y}`,
+ * sinon celui d'origine. Une adresse sans les trois repères donnerait la même image à toutes les cases, et la
+ * garderait sous chacune de leurs clés.
+ */
+export const tileTemplate = (base: MapBase, overrides?: TileUrlOverrides): string => {
+  const custom = overrides?.[base]?.trim() ?? '';
+  return isTileTemplate(custom) ? custom : MAP_BASES[base].url;
+};
+
+/** Adresse d'une tuile, d'après le gabarit d'origine du fond ou `template`. */
+export const tileUrl = (base: MapBase, { z, x, y }: TileCoord, template: string = MAP_BASES[base].url): string =>
+  template
+    .replaceAll('{z}', String(z))
+    .replaceAll('{x}', String(x))
+    .replaceAll('{y}', String(y));
 
 /** Fond d'une tuile gardée, d'après sa clé. */
 export const baseOfTileKey = (key: string): MapBase =>
