@@ -439,6 +439,7 @@ Onglets des analyses (lot 145, 05/11) : l'application ne retient plus les onglet
 
 Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à compléter ; pas des défauts du code. Lot 91 (31/10) : `test-fcmax`, `marche`, `glisser`, `satellite`, `partage`, `reglages-aide`, `onglets`, `library`, `library3`, `prereglages`, `brouillon-voile` et `recherche-sans-reponse` remis d'aplomb ; `test-fcrepos` passe depuis le lot 107 (31/10, courbe du test gardé corrigée dans l'application).
 
+- `timer.mjs` (vu le 07/11, identique avant et après le lot 198) : échoue sur « tuiles : Fractionné et tests, Muscu et timer » et « tuile Muscu et timer : aucune séance gardée » ; tuiles de l'accueil changées depuis l'écriture du script, à remettre à jour.
 - `barre.mjs` et `miseajour.mjs` (vu le 06/11, sans rapport avec les lots du paquet, identiques avant et après) : `barre` échoue sur « course : barre visible, flèche en fin de rangée », `miseajour` s’arrête sur une erreur (code 1) au bout de 4 s.
 - `planning.mjs` attend la fin de « Calcul du tracé… » avant « Enregistrer » (bouton grisé pendant le calcul).
 - `fractionne.mjs` en rejeu temps réel donne des vitesses de répétitions qui bougent de 0,1 km/h d'un passage à l'autre (analyse déterministe identique nombre à nombre) : pas un écart.

@@ -1,5 +1,6 @@
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { isNativeApp } from './runtime';
+import { addBelt, beltEntry, forgetBelt, isBelt, learnBeltAddressType, readBeltList } from './beltList';
 import { jsonStore } from './storage';
 
 /**
@@ -11,9 +12,13 @@ import { jsonStore } from './storage';
  *
  * La connexion est partagée : Réglages (essai de la ceinture) et
  * l'enregistreur la prennent chacun sous leur nom (`holdBelt`) et la rendent ;
- * elle tombe quand plus personne ne la tient. La ceinture choisie est retenue
- * sur l'appareil, pas dans les réglages recopiés dans le dossier mémoire :
- * c'est un objet à portée de ce téléphone.
+ * elle tombe quand plus personne ne la tient. Un seul appareil est tenu à la
+ * fois : en demander un autre pendant qu'il l'est est refusé. Les appareils
+ * retenus (ceintures, montres en diffusion, lot 198) sont gardés sur
+ * l'appareil, pas dans les réglages recopiés dans le dossier mémoire : ce sont
+ * des objets à portée de ce téléphone. L'application s'en souvient de
+ * plusieurs (`savedBelts`) et n'en lit qu'un, l'actif (`savedBelt`), pris au
+ * prochain départ.
  *
  * Une ceinture perdue (hors de portée, retirée, Bluetooth éteint puis
  * rallumé) passe à `lost` sans être lâchée : personne ne rend la connexion,
@@ -78,12 +83,13 @@ interface HeartRatePlugin {
   availability(): Promise<{ bluetooth: boolean; enabled: boolean; permitted: boolean; permission?: string }>;
   requestPermission(): Promise<{ permission: string }>;
   scan(options: { durationMs: number }): Promise<{ devices: FoundBelt[] }>;
+  stopScan(): Promise<void>;
   connect(options: { address: string; name: string; random?: boolean }): Promise<void>;
   disconnect(): Promise<void>;
   openBluetoothSettings(): Promise<void>;
   keepAlive(options: { title: string; text: string }): Promise<void>;
   stopKeepAlive(): Promise<void>;
-  connection(): Promise<{ wanted: boolean; state: BeltState }>;
+  connection(): Promise<{ wanted: boolean; state: BeltState; address?: string }>;
   addListener(event: 'heartRate', listener: (data: { bpm: number; timeMs: number; contact?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'status', listener: (data: { state: BeltState; address?: string; random?: boolean }) => void): Promise<PluginListenerHandle>;
 }
@@ -127,31 +133,77 @@ export const scanBelts = async (durationMs = 6000): Promise<FoundBelt[]> => {
   return [...devices].sort((a, b) => b.rssi - a.rssi);
 };
 
-// --- Ceinture retenue ---
+/**
+ * Arrête la recherche de `scanBelts` avant son terme : sa promesse rend
+ * aussitôt les appareils déjà trouvés. Sans recherche en cours, ou dans le
+ * navigateur, sans effet.
+ */
+export const stopBeltScan = async (): Promise<void> => {
+  if (isNativeApp()) await plugin.stopScan().catch(() => undefined);
+};
 
+// --- Appareils retenus ---
+
+/** Appareil actif, celui du prochain départ : l'ancienne clé, d'avant la liste, dont le sens ne change pas. */
 const BELT_KEY = 'tracker.heartRateBelt';
+/** Tous les appareils retenus, l'actif compris (lot 198). */
+const BELTS_KEY = 'tracker.heartRateBelts';
 
-const isBelt = (value: unknown): value is HeartRateBelt =>
-  typeof value === 'object' && value !== null &&
-  typeof (value as HeartRateBelt).address === 'string' && typeof (value as HeartRateBelt).name === 'string' &&
-  ((value as HeartRateBelt).random === undefined || typeof (value as HeartRateBelt).random === 'boolean');
-
-/** Ceinture choisie dans Réglages, ou `null`. */
+/** Appareil actif, choisi dans Réglages ou par « Changer » à Enregistrer : celui que l'enregistrement prendra, ou `null`. */
 export const savedBelt = (): HeartRateBelt | null => {
   const value = jsonStore.read<unknown>(BELT_KEY);
   return isBelt(value) ? value : null;
 };
 
-/** Retient la ceinture (`null` : l'oublie). */
-export const saveBelt = (belt: HeartRateBelt | null): void => jsonStore.write(BELT_KEY, belt);
+/** Retient l'appareil actif (`null` : aucun). */
+const saveBelt = (belt: HeartRateBelt | null): void => jsonStore.write(BELT_KEY, belt);
+
+/**
+ * Appareils retenus, dans l'ordre où ils ont été ajoutés, l'actif compris.
+ * Avant la liste, la ceinture choisie en est le seul élément : rien n'est
+ * perdu, rien n'est effacé (`readBeltList`).
+ */
+export const savedBelts = (): HeartRateBelt[] => readBeltList(jsonStore.read<unknown>(BELTS_KEY), savedBelt());
+
+const saveBelts = (list: readonly HeartRateBelt[]): void => jsonStore.write(BELTS_KEY, list);
+
+/** Fait de `belt` l'appareil actif ; il rejoint la liste s'il n'y était pas. */
+export const chooseSavedBelt = (belt: HeartRateBelt): void => {
+  const list = addBelt(savedBelts(), belt);
+  saveBelts(list);
+  saveBelt(list.find((b) => b.address === belt.address) ?? beltEntry(belt));
+};
+
+/**
+ * Retient `belt`, trouvé par une recherche. `activate` : il devient aussi
+ * l'appareil actif ; il le devient de toute façon s'il n'y en avait aucun.
+ */
+export const addSavedBelt = (belt: HeartRateBelt, activate: boolean): void => {
+  const list = addBelt(savedBelts(), belt);
+  saveBelts(list);
+  const active = savedBelt();
+  const entry = list.find((b) => b.address === belt.address) ?? beltEntry(belt);
+  // Déjà actif : l'ancienne clé suit son entrée (nom, type d'adresse).
+  if (activate || active === null || active.address === belt.address) saveBelt(entry);
+};
+
+/** Oublie l'appareil d'adresse `address` ; si c'était l'actif, le suivant de la liste le devient (aucun si elle est vide). */
+export const forgetSavedBelt = (address: string): void => {
+  const { list, active } = forgetBelt(savedBelts(), address, savedBelt());
+  saveBelts(list);
+  saveBelt(active);
+};
 
 /** Ouvre les réglages Bluetooth d'Android : le secours d'une ceinture introuvable. */
 export const openBluetoothSettings = async (): Promise<void> => {
   if (isNativeApp()) await plugin.openBluetoothSettings();
 };
 
-/** Retient le type d'adresse que la recherche du greffon a appris, si la ceinture retenue ne l'avait pas. */
+/** Retient le type d'adresse que la recherche du greffon a appris, pour l'appareil retenu qui ne l'avait pas (l'actif compris). */
 const learnAddressType = (address: string | undefined, random: boolean | undefined): void => {
+  const list = savedBelts();
+  const learned = learnBeltAddressType(list, address, random);
+  if (learned !== list) saveBelts(learned);
   const belt = savedBelt();
   if (belt && random !== undefined && belt.random === undefined && belt.address === address) saveBelt({ ...belt, random });
 };
@@ -161,6 +213,8 @@ const learnAddressType = (address: string | undefined, random: boolean | undefin
 let state: BeltState = 'off';
 let latest: HeartRateSample | null = null;
 const holders = new Set<string>();
+/** Adresse de l'appareil tenu ; `null` quand personne ne le tient, ou adresse inconnue d'une connexion reprise. */
+let heldAddress: string | null = null;
 const sampleListeners = new Set<(sample: HeartRateSample) => void>();
 const stateListeners = new Set<(state: BeltState) => void>();
 let listening: Promise<void> | null = null;
@@ -204,26 +258,40 @@ const listen = (): Promise<void> => {
   return listening;
 };
 
+/** Refus d'un second appareil pendant qu'un autre est tenu. */
+export const OTHER_BELT_HELD = "un autre appareil cardio est déjà utilisé : l'application n'en lit qu'un à la fois";
+
+/** `holder` prend la connexion à `belt`, refusée si un autre appareil est tenu ; vrai s'il est le premier. */
+const addHolder = (holder: string, belt: HeartRateBelt): boolean => {
+  if (holders.size > 0 && heldAddress !== null && heldAddress !== belt.address) throw new Error(OTHER_BELT_HELD);
+  const first = holders.size === 0;
+  holders.add(holder);
+  if (first) heldAddress = belt.address;
+  return first;
+};
+
 /**
  * Prend la connexion à `belt` sous le nom `holder`. Rend la fonction qui la
  * rend. Lève une erreur si la connexion ne peut pas être demandée
- * (permission refusée, Bluetooth éteint).
+ * (permission refusée, Bluetooth éteint), ou si un autre appareil est déjà
+ * tenu (`OTHER_BELT_HELD`) : celui-là n'est jamais lâché sans le dire. Le
+ * même appareil, déjà tenu, n'est pas reconnecté.
  */
 export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() => void> => {
   if (!isNativeApp()) {
     if (belt.address !== EXAMPLE_BELT.address) throw new Error("Ceinture cardio sur l'application Android seulement.");
-    holders.add(holder);
+    addHolder(holder, belt);
     startExampleBelt();
     return () => releaseBelt(holder);
   }
   await listen();
-  const first = holders.size === 0;
-  holders.add(holder);
+  const first = addHolder(holder, belt);
   if (first || state === 'off' || state === 'unsupported') {
     try {
       await plugin.connect({ address: belt.address, name: belt.name, ...(belt.random !== undefined && { random: belt.random }) });
     } catch (err) {
       holders.delete(holder);
+      if (holders.size === 0) heldAddress = null;
       throw err;
     }
   }
@@ -238,8 +306,9 @@ export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() 
 export const adoptBelt = async (holder: string): Promise<(() => void) | null> => {
   if (!isNativeApp()) return null;
   await listen();
-  const { wanted, state: current } = await plugin.connection();
+  const { wanted, state: current, address } = await plugin.connection();
   if (!wanted) return null;
+  if (holders.size === 0) heldAddress = typeof address === 'string' ? address : null;
   holders.add(holder);
   setState(current);
   return () => releaseBelt(holder);
@@ -263,6 +332,7 @@ const startExampleBelt = (): void => {
 /** Rend la connexion prise sous `holder` ; la dernière rendue la coupe. */
 export const releaseBelt = (holder: string): void => {
   if (!holders.delete(holder) || holders.size > 0) return;
+  heldAddress = null;
   setState('off');
   if (exampleTimer !== null) {
     clearInterval(exampleTimer);
@@ -304,6 +374,9 @@ export const beltState = (): BeltState => state;
 
 /** Nom sous lequel l'enregistreur tient la connexion. */
 export const RECORDING_BELT_HOLDER = 'enregistrement';
+
+/** Adresse de l'appareil tenu, ou `null` (personne ne le tient, ou connexion reprise sans adresse connue). */
+export const heldBeltAddress = (): string | null => heldAddress;
 
 /** Vrai si `holder` tient la connexion (l'enregistreur, `RECORDING_BELT_HOLDER`, par exemple). */
 export const beltHeldBy = (holder: string): boolean => holders.has(holder);

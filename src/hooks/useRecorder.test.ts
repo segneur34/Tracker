@@ -58,12 +58,16 @@ const belt = vi.hoisted(() => {
     listeners,
     keepAlive: 0,
     stopKeepAlive: 0,
+    /** Ceintures rendues par l'enregistreur. */
+    releases: 0,
     emit: (timeMs: number, bpm: number, contact: boolean | null = true) => listeners.forEach((l) => l({ bpm, timeMs, contact })),
   };
 });
 vi.mock('../platform/heartRate', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../platform/heartRate')>()),
-  holdBelt: async () => () => undefined,
+  holdBelt: async () => () => {
+    belt.releases += 1;
+  },
   subscribeHeartRate: (listener: (sample: { bpm: number; timeMs: number; contact: boolean | null }) => void) => {
     belt.listeners.add(listener);
     return () => belt.listeners.delete(listener);
@@ -595,6 +599,43 @@ describe('prévenir quand ça rate (lot 115)', () => {
     beltWatch.expire?.();
     expect(recorder.getRecorderState().beltLost).toBe(true);
     await recorder.stopRecording();
+  });
+
+  it("« Arrêter de chercher » (lot 198) : la ceinture est rendue, alerte et tuile retirées, plus rien ne la suit jusqu'à l'arrêt", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    source.emit(0);
+    belt.emit(T0, 100);
+    vi.setSystemTime(T0 + 61_000);
+    beltWatch.expire?.();
+    expect(recorder.getRecorderState().beltLost).toBe(true);
+    const releases = belt.releases;
+    recorder.stopRecordingBeltSearch();
+    expect(belt.releases).toBe(releases + 1);
+    expect(recorder.getRecorderState().heartRate).toBeNull();
+    expect(recorder.getRecorderState().beltLost).toBe(false);
+    expect(recorder.getRecorderState().error ?? '').not.toContain(recorder.BELT_LOST_ERROR);
+    expect(recorder.getRecorderState().status).toBe('recording');
+    // Plus suivie : une mesure qui arriverait encore ne réarme rien, et la pause ne la reprend pas.
+    beltWatch.arms = [];
+    belt.emit(T0 + 62_000, 100);
+    expect(beltWatch.arms).toEqual([]);
+    await recorder.pauseRecording();
+    await recorder.resumeRecording();
+    expect(recorder.getRecorderState().heartRate).toBeNull();
+    // Un second appui ne rend rien de plus.
+    recorder.stopRecordingBeltSearch();
+    expect(belt.releases).toBe(releases + 1);
+  });
+
+  it('muscu : « Arrêter de chercher » est sans effet, la session se fait avec la ceinture', async () => {
+    await recorder.startRecording(baseActivity('muscu'), null, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    const releases = belt.releases;
+    recorder.stopRecordingBeltSearch();
+    expect(belt.releases).toBe(releases);
+    expect(recorder.getRecorderState().heartRate).not.toBeNull();
   });
 
   it("l'arrêt efface la perte de la FC : rien ne reste à la session suivante, et le minuteur est désarmé", async () => {

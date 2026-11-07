@@ -14,6 +14,7 @@ import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
+import { ChoiceOption, ChoiceSheet } from '../components/ui/ChoiceSheet';
 import SavedSessionShare from '../components/SavedSessionShare';
 import SessionEndGear from '../components/SessionEndGear';
 import { IconFlag, IconLock, IconPause, IconPlay, IconRoute } from '../components/icons';
@@ -47,7 +48,8 @@ import {
   effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, effectiveTurns, lastRecordActivity, lastRecordedOrFirst, readHeartBandPicks, rememberHeartBandPicks, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
-import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../platform/heartRate';
+import { beltLabels } from '../platform/beltList';
+import { BELT_STATE_LABEL, EXAMPLE_BELT, chooseSavedBelt, savedBelt, savedBelts, type BeltState, type HeartRateBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
@@ -56,7 +58,7 @@ import { EMPTY_NOTES, type GearChoice } from '../library/notes';
 import {
   addRecordingMark, analyzePendingSession, changeRecordingActivity, continuePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
   getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
-  resumeRecording, startRecording, stopRecording, type RecorderState,
+  resumeRecording, startRecording, stopRecording, stopRecordingBeltSearch, type RecorderState,
   useLivePosition, useRecordingClock, useRecorderSelector, useRecorderStatus,
 } from '../hooks/useRecorder';
 import { followedProfile, hasFollowedElevation } from '../recording/followedProfile';
@@ -588,6 +590,16 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
 
       <Card heading="En cours">
         {heartRate && <BpmTile belt={heartRate} target={zoneAlert.active ? zoneAlert.target : 0} />}
+        {heartRate && (heartRate.state === 'searching' || heartRate.state === 'lost') && liveActivity && hasPositions(liveActivity.base) && (
+          // Ceinture perdue ou jamais trouvée (lot 198) : on peut renoncer à elle, l'enregistrement continue sans cardio.
+          <div className="rec-belt-stop">
+            <span className="ui-muted">Sans elle, l'enregistrement continue, sans cardio.</span>
+            <Button size="s" onClick={() => {
+              // Sans retour possible pendant la sortie : un appui par mégarde, en courant, ne doit pas suffire.
+              if (window.confirm("Arrêter de chercher la ceinture ? L'enregistrement continue sans cardio jusqu'à la fin de la sortie.")) stopRecordingBeltSearch();
+            }}>Arrêter de chercher</Button>
+          </div>
+        )}
         {zoneAlert.active && zoneAlert.band && liveActivity && <LiveHeartBand activity={liveActivity} band={zoneAlert.band} />}
         <div style={STAT_GRID}>
           <Stat label="Durée" value={formatClock(durationMs)} />
@@ -758,9 +770,20 @@ function RecordingScreen() {
   // la case vaut pour cet enregistrement.
   const heartRateOffered = chosen ? effectiveHeartRate(chosen) : null;
   const heartRateSetting = heartRateOffered === null ? null : heartRateOffered || isTest;
-  const retainedBelt = useMemo(() => savedBelt(), []);
+  // Appareil actif, changé d'un geste par « Changer » s'il y en a plusieurs de retenus (lot 198) ; jamais une fois parti.
+  const [retainedBelt, setRetainedBelt] = useState<HeartRateBelt | null>(savedBelt);
+  const retainedBelts = useMemo(() => savedBelts(), []);
+  const [choosingBelt, setChoosingBelt] = useState(false);
+  const pickBelt = (next: HeartRateBelt) => {
+    chooseSavedBelt(next);
+    setRetainedBelt(savedBelt());
+    setChoosingBelt(false);
+  };
   // Dans le navigateur, la muscu prend la FC d'exemple.
   const belt = heartOnly && !native ? EXAMPLE_BELT : retainedBelt;
+  // Noms montrés : un nom porté par deux appareils prend la fin de leur adresse.
+  const retainedLabels = useMemo(() => beltLabels(retainedBelts), [retainedBelts]);
+  const beltLabel = belt === null ? '' : retainedLabels[retainedBelts.findIndex((b) => b.address === belt.address)] ?? belt.name;
   const [heartRatePicked, setHeartRatePicked] = usePerActivityChoice(chosenActivityId, heartRateSetting ?? false);
   const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null && !restingChosen && (heartOnly || heartRatePicked);
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
@@ -1028,9 +1051,14 @@ function RecordingScreen() {
                 ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ' La muscu se fait avec elle.'}</>
                 : belt === EXAMPLE_BELT
                   ? "FC d'exemple du navigateur, pour éprouver la muscu : la vraie ceinture est sur le téléphone."
-                  : heartOnly
-                    ? `${belt.name}, portée et humidifiée : la muscu se fait avec elle, sans GPS.`
-                    : `${belt.name}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}>
+                  : <>
+                    {heartOnly
+                      ? `${beltLabel}, portée et humidifiée : la muscu se fait avec elle, sans GPS.`
+                      : `${beltLabel}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
+                    {retainedBelts.length >= 2 && (
+                      <>{' '}<Button size="s" onClick={() => setChoosingBelt(true)}>Changer</Button></>
+                    )}
+                  </>}>
               {measureHeartRate && (sourceChoice === 'device' || heartOnly) && (
                 <span className="ui-text-s rec-indent">
                   <BeltStatus state={beltLive.state} bpm={beltLive.bpm}
@@ -1038,10 +1066,23 @@ function RecordingScreen() {
                     {beltWarmup.error && (
                       <Button size="s" onClick={beltWarmup.retry}>Réessayer</Button>
                     )}
+                    {/* Ceinture encore cherchée (lot 198) : on peut y renoncer, comme en décochant la case (pas en muscu, qui se fait avec elle). */}
+                    {!heartOnly && (beltLive.state === 'connecting' || beltLive.state === 'searching' || beltLive.state === 'lost') && (
+                      <Button size="s" onClick={() => setHeartRatePicked(false)}>Annuler la recherche</Button>
+                    )}
                   </BeltStatus>
                 </span>
               )}
             </CaptureOption>
+          )}
+          {choosingBelt && (
+            // Appareil du prochain départ, parmi ceux retenus dans Réglages › Capteurs : liste dessinée, jamais le menu d'Android.
+            <ChoiceSheet label="Appareil cardio" onClose={() => setChoosingBelt(false)}>
+              <div className="activity-select__heading"><strong>Appareil cardio</strong></div>
+              {retainedBelts.map((b, i) => (
+                <ChoiceOption key={b.address} label={retainedLabels[i]} selected={b.address === retainedBelt?.address} onClick={() => pickBelt(b)} />
+              ))}
+            </ChoiceSheet>
           )}
 
           {chosen && guideOffered && (

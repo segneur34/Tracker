@@ -184,8 +184,10 @@
   text-align: right;
 }
 
-/* Course à bornes en cours, sous la tuile BPM (05/11) : la bande et « Modifier » ; boutons de sa fenêtre. */
-.rec-band {
+/* Course à bornes en cours, sous la tuile BPM (05/11) : la bande et « Modifier » ; boutons de sa fenêtre.
+   Même ligne pour « Arrêter de chercher » une ceinture perdue (lot 198). */
+.rec-band,
+.rec-belt-stop {
   display: flex;
   align-items: center;
   justify-content: space-between;

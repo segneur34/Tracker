@@ -688,7 +688,7 @@ const ActivityCard = memo(function ActivityCard({
             )}
             {positions ? (
               <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
-                help="La ceinture du bloc « Capteurs » est proposée, cochée, à chaque enregistrement ; la fréquence cardiaque est écrite dans la trace.">
+                help="La ceinture du bloc « Capteurs » (celle « utilisée au prochain départ » s'il y en a plusieurs) est proposée, cochée, à chaque enregistrement ; la fréquence cardiaque est écrite dans la trace.">
                 <label className="settings-sports__pair">
                   <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
                   <span>Proposer la ceinture cardio</span>
@@ -696,7 +696,7 @@ const ActivityCard = memo(function ActivityCard({
               </SettingRow>
             ) : (
               <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
-                help="Une session sans GPS se fait avec la ceinture du bloc « Capteurs » : « Démarrer » attend qu'elle soit connectée.">
+                help="Une session sans GPS se fait avec la ceinture du bloc « Capteurs » (celle « utilisée au prochain départ » s'il y en a plusieurs) : « Démarrer » attend qu'elle soit connectée.">
                 <span className="settings-sports__mark">obligatoire</span>
               </SettingRow>
             )}

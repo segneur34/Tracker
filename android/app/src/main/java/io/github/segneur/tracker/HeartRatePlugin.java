@@ -157,6 +157,14 @@ public class HeartRatePlugin extends Plugin {
     };
     private boolean receiving = false;
 
+    // Recherche lancée par `scan`, lue et écrite sur le fil principal ; `null` hors recherche.
+    /** Appel à résoudre à la fin de la recherche (son terme, ou `stopScan`). */
+    private PluginCall scanCall;
+    private ScanCallback scanCallback;
+    /** Appareils trouvés par la recherche en cours, par adresse. */
+    private Map<String, JSObject> scanFound;
+    private final Runnable scanEnd = this::finishScan;
+
     @Override
     public void load() {
         super.load();
@@ -232,7 +240,7 @@ public class HeartRatePlugin extends Plugin {
         call.resolve(ret);
     }
 
-    /** Cherche les ceintures pendant `durationMs` ; rend leur adresse, leur nom et la force du signal. */
+    /** Cherche les ceintures pendant `durationMs`, ou jusqu'à `stopScan` ; rend leur adresse, leur nom et la force du signal. */
     @PluginMethod
     public void scan(PluginCall call) {
         withPermission(call, "scanAfterPermission");
@@ -258,43 +266,82 @@ public class HeartRatePlugin extends Plugin {
         // Un nombre JSON arrive en Integer ou en Long selon sa taille : lu comme Number.
         Object rawDuration = call.getData().opt("durationMs");
         long durationMs = Math.max(1000, rawDuration instanceof Number ? ((Number) rawDuration).longValue() : DEFAULT_SCAN_MS);
-        Map<String, JSObject> found = new LinkedHashMap<>();
-        // Sans filtre : certaines ceintures n'annoncent pas leur service, on les reconnaît alors à leur nom.
-        ScanCallback callback = new ScanCallback() {
-            @Override
-            public void onScanResult(int callbackType, ScanResult result) {
-                BluetoothDevice device = result.getDevice();
-                ScanRecord record = result.getScanRecord();
-                String deviceName = record != null && record.getDeviceName() != null ? record.getDeviceName() : device.getName();
-                if (!isHeartRateDevice(record, deviceName)) return;
-                JSObject belt = new JSObject();
-                belt.put("address", device.getAddress());
-                belt.put("name", deviceName != null ? deviceName : device.getAddress());
-                belt.put("rssi", result.getRssi());
-                Boolean random = randomAddress(device);
-                if (random != null) belt.put("random", random);
-                main.post(() -> found.put(device.getAddress(), belt));
-            }
-        };
-        try {
-            scanner.startScan(callback);
-        } catch (Exception e) {
-            Log.w(TAG, "recherche impossible : " + e.getMessage());
-            call.reject("recherche impossible");
-            return;
-        }
-        main.postDelayed(() -> {
+        // Sur le fil principal, comme `stopScan` : la recherche en cours n'est lue et écrite que là.
+        main.post(() -> {
+            // Une recherche encore en cours rend d'abord ce qu'elle a trouvé.
+            finishScan();
+            Map<String, JSObject> found = new LinkedHashMap<>();
+            // Sans filtre : certaines ceintures n'annoncent pas leur service, on les reconnaît alors à leur nom.
+            ScanCallback callback = new ScanCallback() {
+                @Override
+                public void onScanResult(int callbackType, ScanResult result) {
+                    BluetoothDevice device = result.getDevice();
+                    ScanRecord record = result.getScanRecord();
+                    String deviceName = record != null && record.getDeviceName() != null ? record.getDeviceName() : device.getName();
+                    if (!isHeartRateDevice(record, deviceName)) return;
+                    JSObject belt = new JSObject();
+                    belt.put("address", device.getAddress());
+                    belt.put("name", deviceName != null ? deviceName : device.getAddress());
+                    belt.put("rssi", result.getRssi());
+                    Boolean random = randomAddress(device);
+                    if (random != null) belt.put("random", random);
+                    main.post(() -> found.put(device.getAddress(), belt));
+                }
+            };
             try {
-                scanner.stopScan(callback);
-            } catch (Exception ignored) {
-                // Bluetooth coupé pendant la recherche : les ceintures déjà vues sont rendues.
+                scanner.startScan(callback);
+            } catch (Exception e) {
+                Log.w(TAG, "recherche impossible : " + e.getMessage());
+                call.reject("recherche impossible");
+                return;
             }
-            JSArray devices = new JSArray();
-            for (JSObject belt : found.values()) devices.put(belt);
-            JSObject ret = new JSObject();
-            ret.put("devices", devices);
-            call.resolve(ret);
-        }, durationMs);
+            scanCall = call;
+            scanCallback = callback;
+            scanFound = found;
+            main.postDelayed(scanEnd, durationMs);
+        });
+    }
+
+    /**
+     * Arrête la recherche de `scan` avant son terme (« Annuler » de Réglages) :
+     * sa promesse est résolue aussitôt avec les appareils déjà trouvés, jamais
+     * rejetée. Sans recherche en cours, sans effet.
+     */
+    @PluginMethod
+    public void stopScan(PluginCall call) {
+        main.post(() -> {
+            finishScan();
+            call.resolve();
+        });
+    }
+
+    /**
+     * Fin de la recherche en cours, à son terme ou arrêtée par `stopScan` :
+     * recherche Bluetooth arrêtée, appareils trouvés rendus à son appel. Sur le
+     * fil principal ; sans recherche en cours, rien.
+     */
+    @SuppressLint("MissingPermission")
+    private void finishScan() {
+        main.removeCallbacks(scanEnd);
+        if (scanCall == null) return;
+        PluginCall call = scanCall;
+        ScanCallback callback = scanCallback;
+        Map<String, JSObject> found = scanFound;
+        scanCall = null;
+        scanCallback = null;
+        scanFound = null;
+        try {
+            BluetoothAdapter adapter = adapter();
+            BluetoothLeScanner scanner = adapter == null ? null : adapter.getBluetoothLeScanner();
+            if (scanner != null && callback != null) scanner.stopScan(callback);
+        } catch (Exception ignored) {
+            // Bluetooth coupé pendant la recherche : les ceintures déjà vues sont rendues.
+        }
+        JSArray devices = new JSArray();
+        if (found != null) for (JSObject belt : found.values()) devices.put(belt);
+        JSObject ret = new JSObject();
+        ret.put("devices", devices);
+        call.resolve(ret);
     }
 
     private static boolean isHeartRateDevice(ScanRecord record, String deviceName) {
@@ -421,6 +468,8 @@ public class HeartRatePlugin extends Plugin {
             JSObject ret = new JSObject();
             ret.put("wanted", wanted);
             ret.put("state", lastStatus);
+            // L'appareil tenu : la page n'en laisse pas prendre un autre par-dessus.
+            if (wanted && address != null) ret.put("address", address);
             call.resolve(ret);
         });
     }
@@ -458,6 +507,7 @@ public class HeartRatePlugin extends Plugin {
         main.post(() -> {
             wanted = false;
             disarm();
+            finishScan();
         });
         super.handleOnDestroy();
     }

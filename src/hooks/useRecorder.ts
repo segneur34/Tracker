@@ -1063,6 +1063,20 @@ const releaseRecordingBelt = (): void => {
 };
 
 /**
+ * « Arrêter de chercher » (lot 198), ceinture perdue ou jamais trouvée en route : l'enregistrement la rend et continue
+ * sans cardio, tuile BPM et alerte de FC perdue retirées. Plus rien ne la recherche jusqu'à la fin de la sortie : le
+ * greffon n'est plus demandé (fin de sa reprise seule), la pause ne la reprend pas, et une reprise après une chute de
+ * la page la trouve lâchée (`adoptBelt` rend `null`). Seul « Continuer l'enregistrement », après une application
+ * tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu), qui n'a qu'elle.
+ */
+export const stopRecordingBeltSearch = (): void => {
+  if (heartOnly || dropBelt === null) return;
+  if (state.status === 'idle' || state.status === 'stopping') return;
+  releaseRecordingBelt();
+  setState({ heartRate: null, beltLost: false, error: withoutBeltLost(state.error) });
+};
+
+/**
  * Suite du départ d'une session sans position (muscu) : journal, ceinture,
  * puis service au premier plan qui tient l'application écran éteint. Sans
  * ceinture qui réponde, pas de session : le départ est annulé.
