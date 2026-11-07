@@ -96,6 +96,3 @@ APK 0.5.05 installée le 06/11 (versionCode 5005, tag local v0.5.05 ; 0.5.04 vou
 ## Questions
 
 
-
-- Q64 · lot 35 · Garder le fichier d’origine de la montre à côté de la session ? Seuls les temps, positions, altitude, FC, cadence et vitesse sont gardés ; puissance, température et foulée détaillée seraient perdues · par défaut : non, le GPX seul · posée le 06/11
-- Q65 · lot 35 · Importer depuis un dossier de la montre prêtée ferait entrer toutes les activités de la personne qui la prête : une confirmation suffit-elle ? · par défaut : confirmation dès plus d’une activité, et l’aide conseille de copier d’abord ses seuls fichiers · posée le 06/11

@@ -39,8 +39,8 @@ Comportements :
 - Sans mémoire ou en lecture seule : refus avec la phrase existante.
 - Pas de ZIP. Dépose d'un `.fit` à la main dans `sessions/` non gérée : le balayage reste GPX.
 
-**Question Q64, réponse par défaut appliquée** : le `.fit` d'origine n'est pas gardé, le GPX seul (§8). Le code n'y fait rien de plus.
-**Question Q65, réponse par défaut appliquée** : dès qu'un dossier contient plus d'un FIT activité, confirmation « N activités de montre dans ce dossier, tout importer ? » dans l'application (écran dessiné, pas `confirm()` natif si un patron existe), et l'aide conseille de copier d'abord ses seuls fichiers dans un dossier du PC ou de les choisir un par un. Refus = rien importé. Pas d'écran de sélection. Raison : la montre est prêtée, les activités de la personne qui la prête ne doivent pas entrer par mégarde.
+**Question Q64, réponse de l'utilisateur le 07/11, conforme au défaut** : le `.fit` d'origine n'est pas gardé, le GPX seul (§8). Le code n'y fait rien de plus.
+**Question Q65, réponse de l'utilisateur le 07/11 : un dossier complet doit pouvoir s'importer, ce que « Tout importer » fait** : dès qu'un dossier contient plus d'un FIT activité, confirmation « N activités de montre dans ce dossier, tout importer ? » dans l'application (écran dessiné, pas `confirm()` natif si un patron existe), et l'aide conseille de copier d'abord ses seuls fichiers dans un dossier du PC ou de les choisir un par un. Refus = rien importé. Pas d'écran de sélection. Raison : la montre est prêtée, les activités de la personne qui la prête ne doivent pas entrer par mégarde.
 
 Vérification de A :
 - Tests purs sur FIT fabriqué : unités, semi-cercles, époque 1989, deux boutismes, temps compressé, champs développeur, valeurs invalides, redéfinition d'un message local ; pause en deux `<trkseg>`, cadence aller-retour, fichier coupé, signature fausse, fichier vide, type non activité ; même résultat à 1 Hz et à intervalles variables ; `importEntries` : doublon FIT/GPX, sans dossier, illisible parmi des bons, confirmation du dossier.
