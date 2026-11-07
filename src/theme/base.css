@@ -50,3 +50,18 @@ a {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* Cadre des mentions des cartes, sur téléphone (même condition que `NARROW_QUERY`) : plus petit, plus serré,
+   borné à une part de la carte, sur deux lignes au plus. Les mentions restent entières (conditions d'OSM et d'Esri).
+   Doublé pour passer devant `leaflet.css`. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .leaflet-container .leaflet-control-attribution.leaflet-control-attribution {
+    box-sizing: border-box;
+    max-width: 65%;
+    padding: 0 var(--space-1);
+    font-size: var(--text-2xs);
+    line-height: 1.25;
+    white-space: normal;
+    text-align: right;
+  }
+}
