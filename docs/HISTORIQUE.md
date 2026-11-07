@@ -1483,3 +1483,22 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
 308. Retirer le type JSON des filtres Android (lot 185, validé le 07/11 sur téléphone, essai 139).
     - **Décision** : `application/json` n'est plus dans « Ouvrir avec » ni « Partager vers Tracker » du manifeste, et un test refuse son retour ; le FIT s'ouvre et se partage, le GPX se partage, le JSON n'est plus proposé.
     - **Piège** : l'essai a montré qu'un GPX ne s'ouvre pas par « Ouvrir avec » : ce n'est pas ce lot, défaut ouvert à part (n° 191).
+
+309. Cartes, le minimum avant le fork (lot 188, validé le 07/11 sur téléphone).
+    - **Décision** : l'application s'annonce aux serveurs de tuiles par « Tracker/<version> (+https://github.com/segneur34) », jamais une adresse e-mail ; la mention d'Esri est complète (« GIS User Community · Powered by Esri ») sur la carte, l'image de partage et les vignettes, d'un même texte tiré de `mapBase` ; l'adresse des tuiles se règle par appareil et par fond (Réglages › Cartes hors ligne), vide = adresse d'origine.
+    - **Pourquoi** : le dépôt vendu aura son propre serveur de tuiles, ou une clé, sans toucher au code ; les conditions d'OSM et d'Esri demandent un agent identifiable et la mention.
+    - **Piège** : une adresse est refusée sans `{z}`, `{x}`, `{y}` une fois chacun ou sans http(s) ; les tuiles gardées sont rangées par fond, donc changer d'adresse ne perd rien.
+
+310. « Ouvrir avec » d'un GPX (lot 191, validé le 07/11 sur téléphone, essai 141).
+    - **Décision** : un second filtre VIEW du manifeste vise l'extension `.gpx` (schéma `content`, hôte `*`, type `*/*`, motifs `.gpx` et `.GPX`, sans BROWSABLE), en plus du type `application/gpx` ; le JSON reste exclu (n° 308). Un test fige ces formes.
+    - **Piège** : la cause exacte n'a pas été lue sur le téléphone (le type annoncé par le gestionnaire de fichiers n'est pas connu) ; les deux filtres ensemble ont réglé l'essai, sans qu'on sache lequel servait.
+
+311. Fond de carte propre à chaque analyse (lot 193, validé le 07/11 sur téléphone, Q66).
+    - **Décision** : le fond d'une analyse est un champ de la fiche de la session (`mapBase`), changé tout de suite par le bouton Plan · Satellite, sans passer par « Enregistrer la session » ; sans choix, celui de la famille. Le bouton n'écrit plus le fond de la famille (planification et direct seulement). L'image de partage suit le fond de la session, les vignettes restent en plan. Un GPX ouvert hors de la mémoire garde son choix en mémoire vive seulement.
+    - **Pourquoi** : une session vue en satellite ne doit pas faire basculer toutes les autres de la même famille ; la fiche voyage avec la session d'un appareil à l'autre.
+    - **Piège** : changer le fond ne doit pas recalculer le résumé (`updateSessionRecord` sans recalcul), et le champ est relu avec garde (`GUARDED_FIELDS`) pour qu'une fiche abîmée ne l'emporte pas.
+
+312. Partager et importer un itinéraire planifié (lot 194, validé le 07/11 sur téléphone).
+    - **Décision** : le GPX d'un itinéraire (points nommés, trace sans heure) porte sa fiche JSON dans un bloc d'extensions, comme le GPX complet d'une session ; c'est à la fois le fichier rangé dans `itineraires/` et le fichier partagé. Un GPX reçu d'une autre application va dans les itinéraires s'il porte cette fiche ou n'a aucun point daté ; une trace datée reste une session. Page Itinéraires : « Importer un itinéraire » et « Partager » par itinéraire, bandeau avec « Voir l'itinéraire ».
+    - **Pourquoi** : un seul format, lisible par toute application de cartes et sans perte pour Tracker (voies, bips de voile) ; pas de second format à maintenir.
+    - **Piège** : un itinéraire importé deux fois ne doit doubler ni son nom ni son fichier ; la réception, qui sert maintenant aux deux, a sorti le rangement des itinéraires de `useRouteLibrary` vers `hooks/routeFiles.ts`.

@@ -284,10 +284,11 @@ Tracker/
 | `tracker.permissionsSeenVersion` | `platform/permissions.ts` | version de l'application pour laquelle la carte « Autorisations » a été vue (« Plus tard » ou tout accordé) ; la carte revient à la version suivante s'il manque une autorisation (point 119) |
 | `tracker.statistiques` | `pages/StatisticsPage.tsx` | `Record<'affichage', { famille; activite; periode; donnee }>`, dernier affichage des statistiques, repris quand l'adresse n'a pas de paramètre (point 121), et donnée du graphique (`donnee`, point 122) ; propre à l'appareil |
 | `tracker.profil` | `pages/ProfilePage.tsx`, `components/ProfileRoot.tsx` | `affichage` : `{ periode }`, période de la page Profil, l'année au départ (point 128) ; et le dernier état de la racine vu sur l'appareil, pour rejouer ce qui a changé depuis (point 138) ; propre à l'appareil |
-| `tracker.fondCarte` | `hooks/useMapBase.ts` | `Partial<Record<SportFamily, 'plan' \| 'satellite'>>`, fond des cartes de chaque famille, plan sans valeur (point 134) ; propre à l'appareil |
+| `tracker.fondCarte` | `hooks/useMapBase.ts` | `Partial<Record<SportFamily, 'plan' \| 'satellite'>>`, fond de la famille, plan sans valeur (point 134) ; ne sert plus qu'à la planification, au direct et aux sessions sans choix propre : le fond d'une analyse est le champ `mapBase` de sa fiche (point 311) ; propre à l'appareil |
 | `tracker.tutoriels` | `hooks/useTutorials.ts` | `{ days; read; dismissed }` : jours d'ouverture de l'application (`AAAA-MM-JJ` locaux, 400 au plus), leçons lues, jour où la carte de l'accueil a été fermée ; propre à l'appareil (point 277) |
 | `tracker.partage` | `components/ShareDialog.tsx` | `Record<activityId, { stats?; map? }>`, chiffres et fond de carte retenus pour l'image de partage (point 126), image de 1080 × 1920 (point 176) ; propre à l'appareil |
 | `tracker.tileCache` | `hooks/useTileCache.ts` | `{ capMb? }`, plafond des cartes gardées (500 Mo par défaut), propre à l'appareil |
+| `tracker.tileUrls` | `platform/tileCache.ts` | `Partial<Record<MapBase, string>>`, adresse des tuiles de chaque fond quand l'utilisateur ne veut pas celle d'origine (point 309), relue à chaque demande ; propre à l'appareil |
 | `tracker.theme` | `theme/theme.ts`, `hooks/useTheme.ts` | `{ choice: 'clair' \| 'sombre' \| 'auto'; eco }`, Auto au départ (point 181) ; propre à l'appareil, hors du fichier de réglages ; lu de façon synchrone avant `initStorage` puis reposé, sans flash |
 | `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
@@ -442,8 +443,8 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
 - **Préparation de la version voile et surf vendue** (fiche 154, décision du 07/11 : tout ce qui est commun aux deux applications se fait avant le fork, sans changer le fonctionnement ; dépôt vendu neuf en un commit) : E1 faite (lot 187, point 307, 0.5.09), séparation de la terre dans `land/` et couture gardée par `architecture.test.ts` ; E2 à E8 après le fork.
 - **Suite possible** : calcul des itinéraires hors ligne.
 - **Phase 3** :
-  - partage et export GPX : le GPX d'une session se télécharge depuis son analyse (point 95, `DownloadsPlugin.java`, dossier Téléchargements par MediaStore), complet avec sa fiche et ses capteurs (point 98) ; une image de la session (1080 × 1920, point 176) se partage vers une autre application (point 126) ; reste le GPX partagé de même ;
-  - réception d'un GPX ou d'un FIT partagé depuis une autre application : faite (lot 35, point 306), essais 137 et 138 validés le 07/11 ; type JSON retiré des filtres (lot 185, point 308) ; « Ouvrir avec » ne marche pas pour un GPX (n° 191) ;
+  - partage et export GPX : le GPX d'une session se télécharge depuis son analyse (point 95, `DownloadsPlugin.java`, dossier Téléchargements par MediaStore), complet avec sa fiche et ses capteurs (point 98) ; une image de la session (1080 × 1920, point 176) se partage vers une autre application (point 126) ;
+  - réception d'un GPX ou d'un FIT partagé depuis une autre application : faite (lot 35, point 306), essais 137 et 138 validés le 07/11 ; type JSON retiré des filtres (lot 185, point 308) ; « Ouvrir avec » d'un GPX : filtre ajouté, validé le 07/11 (lot 191, point 310) ; un itinéraire planifié se partage et s'importe de même, sa fiche dans le GPX (lot 194, point 312) ;
   - cartes hors ligne : faites le 28/09 (point 67), par les tuiles vues en ligne ; le téléchargement d'une zone à l'avance reste exclu par les règles d'OSM ;
   - capteur cardiaque Bluetooth : capté (point 115) et analysé (point 116).
 
