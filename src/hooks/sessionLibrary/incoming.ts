@@ -6,6 +6,8 @@ import { NO_FOLDER_IMPORT_MESSAGE, READ_ONLY_MEMORY_MESSAGE, type ImportEntry } 
 import { libraryState, sentence, setState, subscribe, type IncomingNotice } from './store';
 import { lib } from './memory';
 import { canImportSessions, importEntries } from './importer';
+import { isGpxFileName } from '../../library/record';
+import { isRouteGpx } from '../../planning/routeImport';
 
 /**
  * Fichiers reçus d'une autre application (« Ouvrir avec Tracker », « Partager vers Tracker », lot 35), côté page : la
@@ -19,6 +21,9 @@ import { canImportSessions, importEntries } from './importer';
  * être retirée donne « déjà présente », jamais un double (début de trace, `addGpx`).
  *
  * Pendant un enregistrement, la copie native se fait, et la page ne touche à rien : la file reprend à l'arrêt.
+ *
+ * Un GPX qui est un itinéraire (lot 194 : fiche d'un itinéraire de Tracker, ou tracé sans aucun point daté,
+ * `isRouteGpx`) est rangé dans `itineraires/` au lieu des sessions (`routeArrival`) ; tout autre fichier suit l'import.
  */
 
 /** Verdict d'un fichier passé par `importEntries` : `retry` garde la copie, les autres la retirent. */
@@ -61,7 +66,12 @@ const refusalText = (name: string, refusal: IncomingRefusal): string => {
   }
 };
 
+/** Range l'itinéraire d'un GPX (`hooks/routeFiles.ts`, passé par `main.tsx`) ; rend le nom de ses fichiers et son nom. */
+export type IncomingRouteImporter = (text: string, fileName: string) => Promise<{ base: string; record: { name: string } }>;
+
 let port: IncomingFilesPort = incomingFiles;
+/** Absent : un GPX d'itinéraire suit l'import des sessions, comme avant le lot 194. */
+let importRoute: IncomingRouteImporter | null = null;
 let isRecording: () => boolean = () => false;
 /** Fichiers déjà passés pendant ce lancement : gardés pour le suivant, ou dont le retrait a échoué. */
 const handled = new Set<string>();
@@ -72,16 +82,19 @@ let waitingForImport = false;
 let running: Promise<void> | null = null;
 let again = false;
 
-/** La copie privée, lue seulement au moment de la ranger (`ImportEntry`). */
-const entryOf = (file: IncomingFile): ImportEntry => ({
-  name: file.name,
-  key: file.id,
-  readBytes: () => port.read(file.id),
-  readText: async () => {
-    const bytes = await port.read(file.id);
-    return bytes === null ? null : new TextDecoder().decode(bytes);
-  },
-});
+/** La copie privée, lue seulement au moment de la ranger (`ImportEntry`) ; `read` : son contenu, déjà lu une fois. */
+const entryOf = (file: IncomingFile, read?: Uint8Array): ImportEntry => {
+  const readBytes = () => (read ? Promise.resolve(read) : port.read(file.id));
+  return {
+    name: file.name,
+    key: file.id,
+    readBytes,
+    readText: async () => {
+      const bytes = await readBytes();
+      return bytes === null ? null : new TextDecoder().decode(bytes);
+    },
+  };
+};
 
 const notify = (notice: IncomingNotice): void => {
   setState({ incomingNotices: [...libraryState().incomingNotices, notice] });
@@ -90,6 +103,38 @@ const notify = (notice: IncomingNotice): void => {
 /** Retire la copie. Un échec n'est pas une perte : au lancement suivant, le rangement dira « déjà présente ». */
 const forget = async (file: IncomingFile): Promise<void> => {
   await port.remove(file.id).catch((err: unknown) => console.warn('Fichier reçu non retiré', err));
+};
+
+/**
+ * GPX reçu, lu une fois pour savoir si c'est un itinéraire : rangé dans les itinéraires, `'route'` ; sinon son contenu,
+ * que l'import des sessions reprend sans relire la copie. Ni GPX, ni rangement d'itinéraire injecté, ou copie illisible :
+ * `undefined`, et l'import la lit lui-même (une lecture en échec y garde la copie pour le lancement suivant). Un échec du
+ * rangement de l'itinéraire est dit, la copie gardée pour le lancement suivant, comme une session.
+ */
+const routeArrival = async (file: IncomingFile): Promise<'route' | Uint8Array | undefined> => {
+  const { id, name } = file;
+  if (!importRoute || !isGpxFileName(name)) return undefined;
+  let bytes: Uint8Array | null;
+  try {
+    bytes = await port.read(id);
+  } catch {
+    return undefined;
+  }
+  if (bytes === null) return undefined;
+  if (!isRouteGpx(new TextDecoder().decode(bytes))) return bytes;
+  try {
+    const saved = await importRoute(new TextDecoder().decode(bytes), name);
+    notify({ id, text: `${quoted(name)} est rangé dans les itinéraires, sous « ${saved.record.name} ».`, file: null, route: saved.base, trouble: false });
+    await forget(file);
+  } catch (err) {
+    notify({
+      id,
+      text: `${quoted(name)} n'a pas pu être rangé dans les itinéraires (${errorMessage(err, 'erreur inconnue')}). Tracker le garde et réessaiera au prochain lancement.`,
+      file: null,
+      trouble: true,
+    });
+  }
+  return 'route';
 };
 
 const handle = async (file: IncomingFile): Promise<void> => {
@@ -106,7 +151,9 @@ const handle = async (file: IncomingFile): Promise<void> => {
     await forget(file);
     return;
   }
-  const verdict = incomingVerdict(await importEntries([entryOf(file)], { quiet: true }), name);
+  const arrival = await routeArrival(file);
+  if (arrival === 'route') return;
+  const verdict = incomingVerdict(await importEntries([entryOf(file, arrival)], { quiet: true }), name);
   switch (verdict.kind) {
     case 'added':
       notify({ id, text: `${quoted(name)} est rangé dans la mémoire.`, file: verdict.file, trouble: false });
@@ -169,15 +216,18 @@ export const drainIncomingFiles = (): Promise<void> => {
 
 /**
  * Lance la file, une fois l'enregistrement interrompu tranché (`main.tsx`). `isRecordingActive` et
- * `subscribeRecording` viennent de l'enregistreur, injectés comme pour `startLibraryUi`. Une ouverture normale, file vide,
+ * `subscribeRecording` viennent de l'enregistreur, injectés comme pour `startLibraryUi` ; `routeImporter` range les
+ * itinéraires reçus (lot 194), injecté pour que la bibliothèque n'importe pas celle des itinéraires, qui l'importe. Une ouverture normale, file vide,
  * ne fait que lire une liste vide.
  */
 export const startIncomingFiles = (
   isRecordingActive: () => boolean,
   subscribeRecording: (listener: () => void) => unknown,
   source: IncomingFilesPort = incomingFiles,
+  routeImporter: IncomingRouteImporter | null = null,
 ): Promise<void> => {
   port = source;
+  importRoute = routeImporter;
   isRecording = isRecordingActive;
   source.subscribe(() => void drainIncomingFiles());
   // À chaque position : un seul test tant que rien n'attend.

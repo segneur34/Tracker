@@ -47,6 +47,10 @@ const fakePort: IncomingFilesPort = {
   },
 };
 
+/** Itinéraire de Komoot : une `<rte>` seule, sans heure. */
+const ROUTE_ONLY_GPX = '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte><name>Tour du lac</name>'
+  + '<rtept lat="43.60" lon="3.80"/><rtept lat="43.61" lon="3.80"/><rtept lat="43.61" lon="3.81"/></rte></gpx>';
+
 let nextId = 1;
 const receive = (name: string, content: Uint8Array | string | null, refusal: IncomingFile['refusal'] = null): string => {
   const id = `${nextId++}__${refusal ?? 'ok'}__${name}`;
@@ -78,7 +82,8 @@ const launch = async ({ recording = () => false, subscribeRecording = () => unde
   const library = await import('../useSessionLibrary');
   await library.openLibrary();
   await settle(library);
-  await library.startIncomingFiles(recording, subscribeRecording, fakePort);
+  const { importRouteGpx } = await import('../routeFiles');
+  await library.startIncomingFiles(recording, subscribeRecording, fakePort, importRouteGpx);
   const { drainIncomingFiles } = await import('./incoming');
   const notices = () => library.readLibraryState().incomingNotices;
   return { library, notices, drain: drainIncomingFiles };
@@ -374,6 +379,30 @@ describe('fichiers reçus d\'une autre application', () => {
       fakePort.list = list;
       warn.mockRestore();
     }
+  });
+
+  it("un GPX d'itinéraire (route seule, sans heure) est rangé dans les itinéraires, pas en session (lot 194)", async () => {
+    const id = receive('komoot.gpx', ROUTE_ONLY_GPX);
+    const { notices } = await launch();
+    expect(sessionGpx()).toEqual([]);
+    expect(removed).toEqual([id]);
+    expect([...files.keys()].filter((path) => path.startsWith('itineraires/')).sort()).toEqual(['itineraires/Tour du lac.gpx', 'itineraires/Tour du lac.json']);
+    expect(notices()).toEqual([{
+      id, text: '« komoot.gpx » est rangé dans les itinéraires, sous « Tour du lac ».', file: null, route: 'Tour du lac', trouble: false,
+    }]);
+  });
+
+  it("itinéraire reçu sous un nom déjà pris : ni fichier ni nom doublé (lot 194)", async () => {
+    files.set('itineraires/Tour du lac.json', JSON.stringify({
+      format: 'tracker-itineraire', version: 3, name: 'Tour du lac', activityId: null,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      waypoints: [{ lat: 43, lon: 3 }, { lat: 43.01, lon: 3 }], legs: [],
+    }));
+    receive('komoot.gpx', ROUTE_ONLY_GPX);
+    const { notices } = await launch();
+    expect(files.has('itineraires/Tour du lac (2).json')).toBe(true);
+    expect(JSON.parse(files.get('itineraires/Tour du lac (2).json') ?? '{}').name).toBe('Tour du lac (2)');
+    expect(notices()[0].route).toBe('Tour du lac (2)');
   });
 
   it('dans le navigateur, la vraie plateforme est sans effet', async () => {

@@ -1,73 +1,23 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import { activityFamily, findActivity } from '../core/activities';
-import { usesMarkCourse } from '../core/sportProfiles';
-import { plainError } from '../platform/errorText';
-import { ROUTES_DIR, routePath } from '../library/folderLayout';
 import type { PlannedRoute } from '../planning/route';
 import type { MarkGuideSettings } from '../recording/markGuide';
-import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
-import {
-  isWritableRouteRecord, parseRouteRecord, routeFileBase, routeToRecord, serializeRouteRecord,
-  type RouteRecord,
-} from '../planning/routeRecord';
-import { createLoadedListStore } from './loadedListStore';
-import { currentMemoryFolder, useLibraryFields } from './useSessionLibrary';
-import { readStoredActivities } from './useSportSettings';
+import { importRouteGpx, removeRoute, routeShareFile, routeStore, saveRoute, type SavedRoute } from './routeFiles';
+import { useLibraryFields } from './useSessionLibrary';
+
+export type { SavedRoute } from './routeFiles';
 
 /**
- * Itinéraires rangés dans `itineraires/` du dossier mémoire, à côté des
- * sessions : une fiche JSON qui fait foi et son GPX, réécrits ensemble. Le
- * nom de fichier est tiré du nom de l'itinéraire à son premier rangement et
- * ne change plus.
+ * Itinéraires rangés dans `itineraires/` du dossier mémoire, pour les pages :
+ * la lecture et l'écriture sont dans `routeFiles.ts`, partagées avec la file
+ * des fichiers reçus.
  */
-
-/** Noms des points dans le GPX : numéros des balises (voile, surf), lettres ailleurs. */
-const gpxLabel = (activityId: string | null): ((index: number) => string) => {
-  const activity = findActivity(readStoredActivities(), activityId);
-  return activity && usesMarkCourse(activityFamily(activity)) ? markLabel : waypointLabel;
-};
-
-export interface SavedRoute {
-  /** Nom des fichiers, sans extension : la clé de stockage. */
-  base: string;
-  record: RouteRecord;
-  /** Fiche d'une version plus récente de l'application : lue, jamais réécrite. */
-  readOnly: boolean;
-}
 
 /** Liste vide partagée : une référence stable tant que la mémoire n'est pas ouverte. */
 const NO_ROUTES: SavedRoute[] = [];
 
-const NO_FOLDER = 'Aucun dossier mémoire accessible : choisissez-le dans Réglages pour enregistrer vos itinéraires.';
-
-const requireFolder = async () => {
-  const folder = await currentMemoryFolder();
-  if (!folder) throw new Error(NO_FOLDER);
-  return folder;
-};
-
-/** Itinéraires du dossier, du plus récemment rangé au plus ancien. Une fiche illisible est ignorée. */
-const listRoutes = async (): Promise<SavedRoute[]> => {
-  const folder = await currentMemoryFolder();
-  if (!folder) return [];
-  const entries = await folder.list(ROUTES_DIR);
-  const routes: SavedRoute[] = [];
-  for (const entry of entries) {
-    if (entry.kind !== 'file' || !/\.json$/i.test(entry.name)) continue;
-    const text = await folder.readText(routePath(entry.name));
-    const record = text === null ? null : parseRouteRecord(text);
-    if (record) routes.push({ base: entry.name.replace(/\.json$/i, ''), record, readOnly: !isWritableRouteRecord(record) });
-  }
-  return routes.sort((a, b) => (a.record.updatedAt < b.record.updatedAt ? 1 : a.record.updatedAt > b.record.updatedAt ? -1 : 0));
-};
-
-/** Itinéraires de la mémoire ouverte, lus une fois pour toutes les pages (lot 158) et relus après chaque rangement ou suppression. */
-const routeStore = createLoadedListStore(listRoutes, (err) => plainError(err, 'Lecture des itinéraires impossible.'));
-
 export const useRouteLibrary = () => {
   const { status, folderLabel, revision } = useLibraryFields('status', 'folderLabel', 'revision');
   const { items, loaded, error } = useSyncExternalStore(routeStore.store.subscribe, routeStore.store.get);
-  const reload = routeStore.reload;
 
   // Lu quand la mémoire s'ouvre, change de dossier ou est relue (« Mettre à jour ») : une seule lecture pour toutes les pages.
   useEffect(() => {
@@ -79,37 +29,15 @@ export const useRouteLibrary = () => {
    * un nouveau nom. Rend l'itinéraire rangé.
    */
   const save = useCallback(
-    async (
+    (
       route: PlannedRoute,
       meta: { name: string; activityId: string | null; markGuide?: MarkGuideSettings | null },
       existing?: SavedRoute
-    ): Promise<SavedRoute> => {
-      if (existing?.readOnly) throw new Error('Cet itinéraire vient d\'une version plus récente de l\'application : rangez-le sous un autre nom.');
-      const folder = await requireFolder();
-      const base = existing?.base ?? routeFileBase(meta.name, (await folder.list(ROUTES_DIR)).map((e) => e.name));
-      const now = new Date().toISOString();
-      const record = routeToRecord(
-        route,
-        { ...meta, createdAt: existing?.record.createdAt ?? now, updatedAt: now },
-        existing?.record
-      );
-      await folder.writeText(routePath(`${base}.gpx`), buildRouteGpx(route, meta.name, gpxLabel(meta.activityId)));
-      await folder.writeText(routePath(`${base}.json`), serializeRouteRecord(record));
-      reload();
-      return { base, record, readOnly: false };
-    },
-    [reload]
+    ): Promise<SavedRoute> => saveRoute(route, meta, existing),
+    []
   );
 
-  const remove = useCallback(
-    async (saved: SavedRoute) => {
-      const folder = await requireFolder();
-      await folder.remove(routePath(`${saved.base}.json`));
-      await folder.remove(routePath(`${saved.base}.gpx`));
-      reload();
-    },
-    [reload]
-  );
+  const remove = useCallback((saved: SavedRoute) => removeRoute(saved), []);
 
   return {
     /** Faux tant qu'aucun dossier mémoire n'est accessible : l'itinéraire se planifie, mais ne se range pas. */
@@ -121,5 +49,9 @@ export const useRouteLibrary = () => {
     error,
     save,
     remove,
+    /** Range l'itinéraire d'un GPX choisi dans les fichiers (lot 194) ; lève, message en clair. */
+    importGpx: importRouteGpx,
+    /** GPX à partager d'un itinéraire rangé, avec sa fiche en extension (lot 194). */
+    shareFileOf: routeShareFile,
   };
 };

@@ -17,6 +17,8 @@ import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { getRecorderState, isRecordingActive, recoverInterruptedRecording, subscribeToRecorder } from './hooks/useRecorder';
 import { openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi } from './hooks/useSessionLibrary';
+import { importRouteGpx } from './hooks/routeFiles';
+import { incomingFiles } from './platform/incomingFile';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { forgetFormerAnalysisTabs } from './hooks/useOpenSections';
 import { startTheme } from './hooks/useTheme';
@@ -94,7 +96,8 @@ void initStorage()
       startIntervalTimer(isRecordingSession(getRecorderState()));
       if (!isRecordingActive()) clearStaleScreenOn();
       // Fichiers reçus d'une autre application : rangés hors enregistrement, un enregistrement repris les fait attendre.
-      void startIncomingFiles(isRecordingActive, subscribeToRecorder);
+      // Un GPX d'itinéraire va dans les itinéraires (lot 194).
+      void startIncomingFiles(isRecordingActive, subscribeToRecorder, incomingFiles, importRouteGpx);
     };
     void recovered.then(afterRecovery, afterRecovery);
     // Chronomètre de la carte du compteur, repris s'il était lancé.

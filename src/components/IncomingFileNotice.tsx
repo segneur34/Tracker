@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import { confirmLeave } from '../hooks/leaveGuard';
@@ -13,14 +14,15 @@ import Button from './ui/Button';
  * Résultat d'un fichier reçu d'une autre application (« Ouvrir avec Tracker », `hooks/sessionLibrary/incoming.ts`), dans le
  * cadre de toutes les pages : la carte de la mémoire n'est pas montée partout. Pas de navigation automatique, un brouillon
  * peut être ouvert : « Voir la session » y passe par `confirmLeave`, comme tout départ. Une session à classer demande son
- * activité avant l'analyse, comme dans une bibliothèque.
+ * activité avant l'analyse, comme dans une bibliothèque. Un itinéraire reçu (lot 194) s'ouvre de même dans la planification.
  */
 
 /** Module d'une session à classer en lecture seule, qui ne peut pas garder d'activité : aucun n'est plus juste qu'un autre. */
 const UNCLASSIFIED_FAMILY: SportFamily = 'course';
 
-function NoticeRow({ id, text, file, trouble }: { id: string; text: string; file: string | null; trouble: boolean }) {
+function NoticeRow({ id, text, file, route, trouble }: { id: string; text: string; file: string | null; route?: string; trouble: boolean }) {
   const openSession = useOpenSession();
+  const navigate = useNavigate();
   const { activities } = useVisibility();
   const [asking, setAsking] = useState(false);
 
@@ -36,6 +38,12 @@ function NoticeRow({ id, text, file, trouble }: { id: string; text: string; file
     openSession(file, UNCLASSIFIED_FAMILY);
   };
 
+  const seeRoute = () => {
+    if (route === undefined || !confirmLeave()) return;
+    dismissIncomingNotice(id);
+    navigate(`/itineraires?itineraire=${encodeURIComponent(route)}`);
+  };
+
   const classifyAndOpen = (chosen: Activity) => {
     setAsking(false);
     if (file === null || !confirmLeave()) return;
@@ -49,6 +57,7 @@ function NoticeRow({ id, text, file, trouble }: { id: string; text: string; file
       <span className="shell-notice__text">{text}</span>
       <span className="shell-notice__actions">
         {file !== null && <Button size="s" variant="primary" onClick={see}>Voir la session</Button>}
+        {route !== undefined && <Button size="s" variant="primary" onClick={seeRoute}>Voir l'itinéraire</Button>}
         <Button size="s" variant="ghost" aria-label="Fermer" title="Fermer" onClick={() => dismissIncomingNotice(id)}>
           <IconClose size={16} />
         </Button>

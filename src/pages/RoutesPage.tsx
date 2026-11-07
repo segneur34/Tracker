@@ -1,16 +1,21 @@
 import { plural } from '../core/basics';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import MemoryStatus from '../components/MemoryStatus';
 import ActivityFilterTabs from '../components/ActivityFilterTabs';
 import RouteList from '../components/RouteList';
-import { IconRoute } from '../components/icons';
+import { IconFile, IconRoute, IconShare } from '../components/icons';
+import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import { activityCounts } from '../core/activities';
-import { useRouteLibrary } from '../hooks/useRouteLibrary';
+import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, shownRoutes, sortRoutes, type RouteSort } from '../planning/routeList';
+import { plainError } from '../platform/errorText';
+import { readPickedFile } from '../platform/files';
+import { isNativeApp } from '../platform/runtime';
+import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -19,6 +24,10 @@ import { jsonStore } from '../platform/storage';
  * l'appareil (`tracker.routeList`), et onglets par activité. Chaque ligne
  * ouvre l'itinéraire, ou part dessus (« Partir »). Ceux d'une activité
  * cachée dans Réglages n'y sont pas (§10, point 100).
+ *
+ * Lot 194 : « Partager » envoie le GPX d'un itinéraire, sa fiche en extension,
+ * vers une autre application ; « Importer un itinéraire » range celui d'un GPX
+ * choisi dans les fichiers, souligné dans la liste.
  */
 
 const PREFS_KEY = 'tracker.routeList';
@@ -31,7 +40,9 @@ const readSort = (): RouteSort => {
 };
 
 function RoutesPage() {
-  const { routes: allRoutes, loaded, error } = useRouteLibrary();
+  const { routes: allRoutes, loaded, error, canSave, importGpx, shareFileOf } = useRouteLibrary();
+  const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
+  const [imported, setImported] = useState<string | null>(null);
   const { activities, isShown } = useVisibility();
   const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   const [sort, setSortState] = useState<RouteSort>(readSort);
@@ -50,6 +61,34 @@ function RoutesPage() {
       : routes.filter((r) => (routeActivity(r, activities)?.id ?? WITHOUT_ACTIVITY) === filter);
     return sortRoutes(filtered, sort, (r) => distances.get(r.base) ?? 0);
   }, [routes, activities, filter, sort, distances]);
+  /** Range l'itinéraire du GPX choisi ; le champ est vidé pour accepter de reprendre le même fichier. */
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    setNote(null);
+    try {
+      const saved = await importGpx(await readPickedFile(file), file.name);
+      setFilter(null);
+      setImported(saved.base);
+      setNote({ text: `« ${saved.record.name} » est rangé dans vos itinéraires.`, error: false });
+    } catch (err) {
+      setNote({ text: plainError(err, 'Import impossible.'), error: true });
+    }
+  };
+
+  const share = async (saved: SavedRoute) => {
+    setNote(null);
+    try {
+      const { fileName, text } = await shareFileOf(saved);
+      const outcome = await shareFile(new Blob([text], { type: 'application/gpx+xml' }), fileName, "Partager l'itinéraire");
+      if (outcome === 'downloaded') setNote({ text: 'Ce navigateur ne partage pas de fichier : le GPX est téléchargé.', error: false });
+    } catch (err) {
+      setNote({ text: `Partage impossible : ${plainError(err, 'erreur inconnue')}`, error: true });
+    }
+  };
+
   const tabCount = counts.length + (withoutActivity > 0 ? 1 : 0);
 
   return (
@@ -71,10 +110,22 @@ function RoutesPage() {
             </select>
           </label>
         )}
-        <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--s ui-ml-auto">
-          <IconRoute size={18} /> Planifier
-        </Link>
+        <span className="ui-row-s2 ui-wrap ui-ml-auto">
+          {canSave && (
+            <label className="ui-btn ui-btn--secondary ui-btn--s">
+              <IconFile size={16} />
+              Importer un itinéraire
+              {/* Sur le téléphone, pas de filtre : Android grise parfois les GPX. Le contenu est vérifié à la lecture. */}
+              <input type="file" accept={isNativeApp() ? undefined : '.gpx'} hidden onChange={(e) => void importFile(e)} />
+            </label>
+          )}
+          <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--s">
+            <IconRoute size={18} /> Planifier
+          </Link>
+        </span>
       </div>
+
+      {note && <div className={`ui-alert ${note.error ? 'ui-alert--danger' : 'ui-alert--success'}`}>{note.text}</div>}
 
       {tabCount > 1 && (
         <ActivityFilterTabs total={routes.length} counts={counts} selected={filter} onSelect={setFilter}
@@ -83,7 +134,12 @@ function RoutesPage() {
 
       <Card>
         {shown.length > 0 ? (
-          <RouteList routes={shown} activities={activities} />
+          <RouteList routes={shown} activities={activities} currentBase={imported}
+            actions={(saved) => (
+              <Button size="s" variant="ghost" onClick={() => void share(saved)} aria-label={`Partager ${saved.record.name}`}>
+                <IconShare size={16} /> Partager
+              </Button>
+            )} />
         ) : (
           <p className="ui-hint ui-hint--m">
             Aucun itinéraire pour l'instant. <Link to="/itineraires">Planifiez-en un</Link> : il apparaîtra ici, prêt à suivre.

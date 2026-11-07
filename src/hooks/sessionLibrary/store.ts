@@ -16,6 +16,8 @@ export interface IncomingNotice {
   text: string;
   /** Session à ouvrir (« Voir la session »), rangée ou déjà présente. */
   file: string | null;
+  /** Itinéraire rangé (lot 194), à ouvrir dans la planification (« Voir l'itinéraire ») : nom de ses fichiers. */
+  route?: string;
   /** Rien n'a été rangé. */
   trouble: boolean;
 }
