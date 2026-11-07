@@ -1464,3 +1464,8 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
 304. Vérification GitHub : Node 26 et plancher 22.18 (élément 186, validé le 07/11).
     - **Décision** : la vérification tourne sous Node 26 comme le poste, plancher 22.18, actions GitHub en v5 (les v4 tournaient sur un Node 20 en fin de vie).
     - **Piège** : « npx cap sync android » échouait sous Node 22.12 : TypeScript 7 a retiré l'API par laquelle Capacitor lisait `capacitor.config.ts`, et Node ne lit seul le TypeScript qu'à partir de 22.18. `gh` absent du poste : l'échec se reproduit par `npx -y -p node@<version>`.
+
+305. Prévenir quand la fréquence cardiaque se coupe (lot 177, validé le 07/11 sur téléphone, famille Entraînement).
+    - **Décision** : la veille du GPS (`gpsWatch.ts`) sert aussi à la ceinture, sur ses mesures lisibles : 1 min sans mesure d'une ceinture qui en donnait, une alerte par coupure, nouvelle alerte après 2 min de retour, rien en pause manuelle. Trois notes descendantes et vibration (le GPS en a deux), « FC perdue » au titre de la notification et dans l'alerte de la page.
+    - **Pourquoi** : course du 06/11, 32 min sans FC et sans aucune alerte.
+    - **Piège** : écran éteint, les minuteurs du WebView ralentissent, d'où le même minuteur natif que le GPS ; une ceinture jamais jointe n'a pas de première mesure, donc n'est pas « perdue » (elle garde sa recherche à part).
