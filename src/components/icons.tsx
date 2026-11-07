@@ -223,6 +223,23 @@ export const IconUndo = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+/** Crayon : modifier (l'itinéraire est verrouillé, le toucher le rend modifiable). */
+export const IconPencil = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+    <path d="M15 5l4 4" />
+  </svg>
+);
+
+/** Crayon barré : ne plus modifier (le toucher verrouille). */
+export const IconPencilOff = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+    <path d="M15 5l4 4" />
+    <path d="M3 3l18 18" />
+  </svg>
+);
+
 export const IconRoute = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <circle cx="6" cy="19" r="2" />

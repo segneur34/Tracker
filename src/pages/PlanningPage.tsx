@@ -29,7 +29,7 @@ import { HoveredTrackMarker } from '../components/HoverMarker';
 import { inChartView } from '../components/chartHover';
 import { ALTITUDE_COLOR } from '../components/chartStyle';
 import { useResetChartHover } from '../hooks/useChartHover';
-import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
+import { IconChevronRight, IconFile, IconPencil, IconPencilOff, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
@@ -99,6 +99,12 @@ import { jsonStore } from '../platform/storage';
  * rouvre sans. On y arrive depuis l'accueil (« Planifier ») et, sur
  * ordinateur, depuis la barre du haut ; `?itineraire=<base>` ouvre un
  * itinéraire rangé (listes de l'accueil et des bibliothèques).
+ *
+ * Le crayon, sur la carte, verrouille l'itinéraire : verrouillé, la carte ne fait
+ * que se déplacer et se zoomer (ni point posé, ni point déplacé ou touché, ni
+ * tronçon touché) ; le reste de la page, listes de points, « Précédent », boucle,
+ * recherche, reste actif. Un nouvel itinéraire part modifiable, un itinéraire
+ * rangé qu'on ouvre part verrouillé ; cet état n'est ni rangé ni une modification.
  */
 
 /**
@@ -393,6 +399,8 @@ function PlanningPage() {
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  /** Carte verrouillée : un toucher ou un glissement n'y change pas l'itinéraire. */
+  const [locked, setLocked] = useState(false);
   /** Le point survolé sur le profil vit dans le magasin du survol : la page ne se redessine pas à chaque mouvement. */
   useResetChartHover(null);
   const helpOpen = useHelp('plan:trace')?.open ?? false;
@@ -564,7 +572,17 @@ function PlanningPage() {
       setResults(null);
       return;
     }
+    if (locked) return;
     planner.add(w, editMode);
+  };
+
+  /** Le verrouillage ferme le bandeau d'un point ou d'un lieu proposé : plus rien à modifier sur la carte. */
+  const toggleLock = () => {
+    if (!locked) {
+      setSelected(null);
+      setCandidate(null);
+    }
+    setLocked(!locked);
   };
 
   /** Point choisi dans la liste : même bandeau qu'au toucher sur la carte, carte centrée dessus. */
@@ -598,13 +616,13 @@ function PlanningPage() {
   })), [legCount, insertPoint]);
   const waypointCount = route.waypoints.length;
   const movePoint = planner.move;
-  const markerHandlers = useMemo(() => Array.from({ length: waypointCount }, (_, i): L.LeafletEventHandlerFnMap => ({
+  const markerHandlers = useMemo(() => Array.from({ length: waypointCount }, (_, i): L.LeafletEventHandlerFnMap => (locked ? {} : {
     click: () => {
       setCandidate(null);
       setSelected(i);
     },
     dragend: (e) => movePoint(i, toWaypoint((e.target as L.Marker).getLatLng()), editMode),
-  })), [waypointCount, movePoint, editMode]);
+  })), [waypointCount, movePoint, editMode, locked]);
 
   // --- Recherche ---
 
@@ -709,6 +727,7 @@ function PlanningPage() {
     // Les cases sont celles de l'activité de l'itinéraire ; rien n'est recalculé.
     planner.replace(openedMarkCourse ? straightenRoute(opened) : opened, known ? activityMode(known) : undefined, looping);
     setCourseGuide(routeMarkGuide(saved.record));
+    setLocked(true);
     setCurrent(saved);
     setSavedRoute(opened);
     setName(saved.record.name);
@@ -722,6 +741,7 @@ function PlanningPage() {
   const startNew = () => {
     if (!confirmDiscard()) return;
     planner.replace(EMPTY_ROUTE);
+    setLocked(false);
     setCurrent(null);
     setSavedRoute(EMPTY_ROUTE);
     setName('');
@@ -757,6 +777,7 @@ function PlanningPage() {
       const target = guessed ?? activity;
       const terrainStepM = target ? resolveTerrainStepM(readStoredSettings(), target) : getSportProfile('running').terrainElevationStepM;
       planner.loadImported(loaded, terrainStepM, guessed ? activityMode(guessed) : undefined, false);
+      setLocked(false);
       setCurrent(null);
       setSavedRoute(EMPTY_ROUTE);
       setCourseGuide(null);
@@ -780,6 +801,7 @@ function PlanningPage() {
       await library.remove(saved);
       if (current?.base === saved.base) {
         planner.replace(EMPTY_ROUTE);
+        setLocked(false);
         setCurrent(null);
         setSavedRoute(EMPTY_ROUTE);
         setName('');
@@ -927,7 +949,7 @@ function PlanningPage() {
                       ? <SurfaceLayer paths={surfacePaths} />
                       : gradePaths && leg.status === 'ready' ? null
                         : <Polyline positions={positions} pathOptions={legStyle(leg.status)} />}
-                    <Polyline positions={positions} pathOptions={HIT_STYLE} eventHandlers={legHandlers[i]} />
+                    {!locked && <Polyline positions={positions} pathOptions={HIT_STYLE} eventHandlers={legHandlers[i]} />}
                   </Fragment>
                 );
               })}
@@ -937,7 +959,7 @@ function PlanningPage() {
                 <Marker
                   key={i}
                   position={latLngOf(w)}
-                  draggable
+                  draggable={!locked}
                   icon={waypointIcon(label(i), markerFill(i), selected === i)}
                   eventHandlers={markerHandlers[i]} />
               ))}
@@ -954,6 +976,11 @@ function PlanningPage() {
               <Button size="s" onClick={planner.undo} disabled={!planner.canUndo} aria-label="Précédent : défaire la dernière modification">
                 <IconUndo size={16} />
                 Précédent
+              </Button>
+              <Button size="s" onClick={toggleLock}
+                aria-label={locked ? "Modifier l'itinéraire" : "Verrouiller l'itinéraire"}
+                title={locked ? "Modifier l'itinéraire" : "Verrouiller l'itinéraire : la carte ne pose plus de point"}>
+                {locked ? <IconPencil size={16} /> : <IconPencilOff size={16} />}
               </Button>
             </div>
 
@@ -1141,6 +1168,7 @@ function PlanningPage() {
                 <li>Touchez le parcours pour insérer une balise entre deux autres ; faites glisser une balise pour la déplacer.</li>
                 <li>Touchez une balise pour la retirer ; touchez la 1 pour boucler, retour au départ.</li>
                 <li>« Précédent », sur la carte, défait la dernière modification. La liste des balises permet aussi de changer leur ordre.</li>
+                <li>Le crayon, sur la carte, verrouille le parcours pour la déplacer sans poser de balise ; un parcours rangé s'ouvre verrouillé, le crayon le rend modifiable.</li>
                 <li>
                   En navigation (« Partir »), chaque balise, départ compris, se valide en passant près d'elle, avec des bips de plus en plus
                   rapides à l'approche ; « Passer » saute une balise. Distances, rythme et vibration se règlent dans Réglages.
@@ -1152,6 +1180,7 @@ function PlanningPage() {
               <ul className="plan-help">
                 <li>Touchez la carte pour poser un point : A, puis B, puis C… Le départ est en vert, l'arrivée en rouge.</li>
                 <li>Touchez le tracé pour insérer un point entre deux autres.</li>
+                <li>Le crayon, sur la carte, verrouille l'itinéraire pour la déplacer sans poser de point ; un itinéraire rangé s'ouvre verrouillé, le crayon le rend modifiable.</li>
                 <li>Faites glisser un point pour le déplacer : seuls ses deux tronçons sont recalculés.</li>
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
                 <li>
@@ -1208,7 +1237,7 @@ function PlanningPage() {
                 {/* Sur le téléphone, pas de filtre : Android grise parfois les GPX. Le contenu est vérifié à la lecture. */}
                 <input type="file" accept={isNativeApp() ? undefined : '.gpx'} hidden onChange={(e) => void loadGpx(e)} />
               </label>
-              <Button size="s" variant="ghost" onClick={() => { planner.clear(); setSelected(null); }} disabled={route.waypoints.length === 0}>Tout effacer</Button>
+              <Button size="s" variant="ghost" onClick={() => { planner.clear(); setSelected(null); setLocked(false); }} disabled={route.waypoints.length === 0}>Tout effacer</Button>
             </div>
           </PlanBlock>
 

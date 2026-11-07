@@ -92,6 +92,7 @@ export const SCRIPTS = [
   { nom: 'pentes', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'velo', 'planification'], reseau: true },
   { nom: 'planning', args: ['{port}', '{dossierGpx}', '{captures?}'], pages: ['planification'],
     manuel: 'il faut sans-heure.gpx, route-rte.gpx, boucle.gpx et pas-un-gpx.gpx dans le dossier de --gpx' },
+  { nom: 'planification-verrou', args: ['{port}', '{captures?}'], pages: ['planification'] },
   { nom: 'prereglages', args: ['{port}', '{captures?}'], pages: ['reglages', 'voile', 'course'] },
   { nom: 'profil', args: ['{port}', '{captures?}'], pages: ['profil', 'accueil', 'bibliotheque'] },
   { nom: 'pumping', args: ['{port}', '{captures?}'], pages: ['surf', 'reglages'], dev: true },
