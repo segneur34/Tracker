@@ -136,8 +136,9 @@ function RoutesPage() {
         {shown.length > 0 ? (
           <RouteList routes={shown} activities={activities} currentBase={imported}
             actions={(saved) => (
-              <Button size="s" variant="ghost" onClick={() => void share(saved)} aria-label={`Partager ${saved.record.name}`}>
-                <IconShare size={16} /> Partager
+              <Button size="s" variant="ghost" className="route-list__icon-btn" title="Partager"
+                onClick={() => void share(saved)} aria-label={`Partager ${saved.record.name}`}>
+                <IconShare size={16} />
               </Button>
             )} />
         ) : (

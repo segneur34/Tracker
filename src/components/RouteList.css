@@ -59,3 +59,9 @@
   height: 8px;
   border-radius: 50%;
 }
+
+/* Bouton à icône seule d'une ligne : aussi haut que « Partir » (`.ui-btn--s`), aussi large que haut. */
+.route-list__icon-btn {
+  min-width: 30px;
+  padding: 0 var(--space-2);
+}
