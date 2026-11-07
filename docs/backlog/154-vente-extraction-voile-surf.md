@@ -80,6 +80,10 @@ Vérification : `npm run verif`, relecture, banc des sept scripts ; `grep` des i
 
 Ordre : gardes (b), puis (a) et (c), vertes sur le code actuel ; points 3 et 4 ; 1 ; 2 ; 5 ; 6 ; 7 ; `npm run verif` ; banc : general, statistiques, profil, cardio, balises, surf, sauts, **plus pentes, depense, altitude, muscu, planning** (le point 5 touche `LandModule` et la planification). Non vérifié par le plan : rejet éventuel de tout l'objet par `moduleActivity`, `tabs` et les champs par activité devant une famille inconnue (la garde (c) le dira) ; valeur de `presetOf(kite).tabs.sauts` ; imports multi-lignes dans les tests. Doc à reprendre à la passe `doc` : ETAT 41, 157, 162, 321, 324, 331, 355 ; INVENTAIRE 11, 33, 40, 44, 78, 101, 173, 320.
 
-### Règle d'architecture proposée (à soumettre à l'utilisateur, CLAUDE.md inchangé tant qu'il n'a pas dit oui)
+### Règle d'architecture proposée (07/11 : l'utilisateur s'en remet au conseil de Claude ; retenu : la forme courte ci-dessous, écrite dans CLAUDE.md à la passe doc du lot 187, après validation sur lecture)
+
+Forme courte retenue : « 13. Le code commun n'importe ni `running/`, ni `cycling/`, ni `land/` (ce qui part de la version voile et surf) ; les exceptions sont nommées dans `src/architecture.test.ts` et ne font que diminuer : on retire un fil, on n'en ajoute pas. » Pourquoi une règle et pas seulement le test : le test refuse un import nouveau, mais une session pressée peut l'ajouter à la liste des exceptions ; la règle dit que la liste ne grandit pas, et pourquoi.
+
+Forme longue, pour mémoire :
 
 « 13. Le transverse (`core/`, `platform/`, `theme/`, `tutorials/`, `library/`, `settings/`, `hooks/`, `components/`, `pages/`, `recording/`, `planning/`) n'importe ni `running/`, ni `cycling/`, ni `land/` (ce qui part de la version voile et surf), sauf les exceptions nommées dans `src/architecture.test.ts` : les fichiers de la terre encore rangés dans le transverse, et la couture (réglages, résumé, fiche, direct). Ces listes ne font que diminuer. »
