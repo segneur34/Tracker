@@ -30,7 +30,7 @@ Ce que les fichiers de configuration ne disent pas :
   - `main` suit `origin/main` (`segneur34/Tracker`, dépôt privé), identifiants mémorisés ;
   - auteur Tom Briere, `core.autocrlf=false` ;
   - fins de ligne fixées par `.gitattributes` (§10, point 45) ;
-  - `.github/workflows/verif.yml` : lint, tests en ordre mélangé, build et `./gradlew --version` à chaque envoi vers `main` ; `dist/` est ignoré.
+  - `.github/workflows/verif.yml` : lint, tests en ordre mélangé, build et `./gradlew --version` à chaque envoi vers `main`, sous Node 26 comme le poste (plancher 22.18 : avant, Node ne lit pas seul `capacitor.config.ts`, et TypeScript 7 a retiré l'API que Capacitor utilisait), actions en v5 ; `dist/` est ignoré.
 - **Terminal** de l'utilisateur : `cmd` sous Windows 11.
 - **Android** (JDK, SDK, signature) : voir le §12.
 
@@ -367,6 +367,7 @@ Plus de fichier mort ni de `any` dans `src/` (nettoyages des points 15, 44 et 16
 - **Brouillon de session** : le retour arrière du navigateur demande confirmation par une entrée d'historique « garde » (`createHistoryGuard`, `leaveGuard.ts`), hors application Android où le retour passe par `installBackButton`. Une garde restée sous la page quittée par un lien est traversée sans bruit au retour : un appui de plus sur « précédent », sans effet visible.
 - **Recharts** type `Payload.payload` en `any` : les `formatter` d'infobulle (voile, course, itinéraires) annotent la ligne du type attendu. C'est une confiance accordée à Recharts, pas une vérification.
 - **Détection des virages encore un peu écrite deux fois** (`analyzeManeuvers` et `observeTurns`) : la prolongation du virage et le point le plus lent sont écrits une fois (lot 112, neutre à l'octet sur 31 traces, test `TURNS_AGREEMENT`). Les deux écarts du lot 112 (cohérence 0,6 contre 0,5, vitesse d'entrée plancher de la polaire contre seuil des manœuvres) sont levés le 04/11 (Q53) : `observeTurns` lit les règles de la détection. Restent distincts son absence de garde-fou de 10 m, de stabilité de sortie et de temps mort.
+- **Styles en ligne** (élément 160) : 268 `style={{` dans `src/` (599 avant la troisième passe), gardés par un cliquet (`outils/styles-en-ligne.mjs`, `theme/inlineStyles.test.ts`) qui refuse tout dépassement par fichier ; un fichier neuf le fait échouer, à refiger après lecture du total. Restent en ligne les valeurs calculées, les objets partagés et les surcharges d'un composant à style de base (`ChartFold`, `CardioCurve`). Pas faits : les 91 styles des panneaux voile (`components/sailing/`), l'alignement des valeurs sur l'échelle `--space-*` (visible, donc à part), les `!important`.
 - **Alertes des outils de développement** : 4 alertes moyennes (`glob` et `minimatch`, tirés par `@capacitor/cli` › `rimraf`), rien dans l'appli ; à lever à la prochaine mise à jour de Capacitor.
 
 ## 10. Historique des décisions et pièges rencontrés

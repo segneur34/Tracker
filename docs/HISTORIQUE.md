@@ -1455,3 +1455,12 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
 302. Papillon de la fleur de la Racine (lot 180, maquette validée le 06/11).
     - **Décision** : monarque orange de 13 px, deux états d'ailes sans transition, à côté de la fleur à 4,6 fois l'objectif et posé à 5 fois ; plus de vol d'approche, moments inchangés. La bulle à 4 fois annonce son arrivée à une durée arrondie au-dessus ; l'animation de fin de semaine n'a pas changé.
     - **Piège** : à 4,3 et à 4,6 fois, les anciennes ailes presque fermées ne faisaient qu'un trait.
+
+303. Dette de l'audit, troisième passe : SailingModule découpé, styles en ligne sortis en classes (élément 160, lots A et B, validés le 07/11 sur lecture).
+    - **Décision** : un composant par onglet voile sous `components/sailing/` (1 430 → 754 lignes), tous les états, la carte et « général » restant dans le module ; les styles en ligne recopiés deviennent des classes aux mêmes valeurs au pixel (599 → 268), sans alignement sur l'échelle `--space-*`. Un cliquet (`outils/styles-en-ligne.mjs`, `theme/inlineStyles.test.ts`) refuse qu'un fichier en gagne.
+    - **Pourquoi** : rien de visible à livrer ; un alignement sur l'échelle déplacerait des pixels, donc se fait à part et se juge à l'œil.
+    - **Piège** : une classe posée sur un composant qui a déjà un style de base en ligne (`ChartFold`, `CardioCurve`) est battue par lui ; la surcharge reste en ligne (le bouton de choix des Statistiques, au texte rétréci, l'a montré). Le cliquet échoue aussi sur tout fichier neuf : refiger après avoir lu le total.
+
+304. Vérification GitHub : Node 26 et plancher 22.18 (élément 186, validé le 07/11).
+    - **Décision** : la vérification tourne sous Node 26 comme le poste, plancher 22.18, actions GitHub en v5 (les v4 tournaient sur un Node 20 en fin de vie).
+    - **Piège** : « npx cap sync android » échouait sous Node 22.12 : TypeScript 7 a retiré l'API par laquelle Capacitor lisait `capacitor.config.ts`, et Node ne lit seul le TypeScript qu'à partir de 22.18. `gh` absent du poste : l'échec se reproduit par `npx -y -p node@<version>`.
