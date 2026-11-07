@@ -33,6 +33,8 @@ const writeChoice = (activityId: string, choice: ShareChoice): void =>
 
 interface ShareDialogProps {
   family: SportFamily;
+  /** Fichier de la session dans la mémoire : son fond de carte (fiche) est celui de l'image ; sans lui, celui de la famille. */
+  file?: string;
   /** Activité de la session (ou son calcul, sans activité) : clé du choix retenu. */
   activityId: string;
   /** Titre de l'image : nom de la session, ou de l'activité. */
@@ -53,7 +55,7 @@ interface ShareDialogProps {
  * sur l'appareil (six chiffres au plus), et le bouton qui ouvre le menu de partage du téléphone
  * (`platform/share.ts`). Ouverte depuis le « … » de l'analyse et des cartes de fin d'enregistrement.
  */
-function ShareDialog({ family, activityId, title, subtitle, fileName, segments, stats, onClose }: ShareDialogProps) {
+function ShareDialog({ family, file, activityId, title, subtitle, fileName, segments, stats, onClose }: ShareDialogProps) {
   const [choice, setChoice] = useState<ShareChoice>(() => readChoice(activityId));
   /** Nom ou pseudo de Réglages, au pied de l'image. */
   const [author] = useState(() => runnerName(readRunnerProfile()));
@@ -62,8 +64,8 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
   /** Échec du dessin, pour ce qu'il devait montrer. */
   const [failure, setFailure] = useState<{ text: string; key: string } | null>(null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
-  /** Fond de carte de la famille, celui de l'analyse : plan ou satellite. */
-  const [base] = useMapBase(family);
+  /** Fond de carte de la session, celui de l'analyse (sinon de la famille) : plan ou satellite. */
+  const [base] = useMapBase(family, file);
   const tileImage = useMemo(() => createTileImageLoader(base), [base]);
   const withMap = choice.map ?? true;
   const chosen = pickShareStats(stats, choice.stats ?? null);

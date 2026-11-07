@@ -1,5 +1,6 @@
 import { normalizeDeg } from '../core/angles';
 import type { HeartRateHistogram } from '../core/heartRate';
+import { isMapBase, type MapBase } from '../core/mapBase';
 import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
@@ -433,6 +434,8 @@ export interface SessionRecord {
   terrainElevation?: SessionTerrainElevation;
   /** `'gps'` : l'utilisateur garde l'altitude du GPS ; absent : celle de l'IGN (course et vélo). */
   elevationSource?: 'gps';
+  /** Fond de carte de cette session (plan ou satellite), changé tout de suite ; absent : celui de la famille (Réglages de l'appareil). */
+  mapBase?: MapBase;
   /**
    * Séances du compteur faites pendant l'enregistrement (fractionné, §10,
    * point 89), datées par l'horloge du téléphone : elles ne se tirent pas du
@@ -759,7 +762,7 @@ export type RecordUnreadable = Readonly<Record<string, UnreadableField>>;
 
 /** Champs de premier niveau dont la lecture peut perdre quelque chose. */
 const GUARDED_FIELDS = [
-  'sport', 'activityId', 'source', 'addedAt', 'title', 'name', 'surfaces', 'terrainElevation', 'elevationSource', 'intervals', 'jumps', 'marks', 'test',
+  'sport', 'activityId', 'source', 'addedAt', 'title', 'name', 'surfaces', 'terrainElevation', 'elevationSource', 'mapBase', 'intervals', 'jumps', 'marks', 'test',
 ] as const;
 /** Objets relus champ par champ : un champ illisible y est gardé seul ; l'objet entier s'il est illisible (sauf le résumé, refait depuis le GPX). */
 const GUARDED_OBJECTS = ['summary', 'analysis', 'notes'] as const;
@@ -830,7 +833,7 @@ const readRecordParts = (raw: unknown): RecordWithoutSummary | null => {
   if (!isObject(raw) || raw.format !== RECORD_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, test: rawTest, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, mapBase: rawMapBase, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, test: rawTest, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
   const intervals = readIntervalSeries(rawIntervals);
@@ -855,6 +858,7 @@ const readRecordParts = (raw: unknown): RecordWithoutSummary | null => {
     ...(surfaces ? { surfaces } : {}),
     ...(terrainElevation ? { terrainElevation } : {}),
     ...(rawSource === 'gps' ? { elevationSource: 'gps' as const } : {}),
+    ...(isMapBase(rawMapBase) ? { mapBase: rawMapBase } : {}),
     ...(intervals ? { intervals } : {}),
     ...(jumps ? { jumps } : {}),
     ...(marks ? { marks } : {}),
@@ -971,6 +975,7 @@ export const completeRecord = (
   if (!existing.surfaces && incoming.surfaces) patch.surfaces = incoming.surfaces;
   if (!existing.terrainElevation && incoming.terrainElevation) patch.terrainElevation = incoming.terrainElevation;
   if (!existing.elevationSource && incoming.elevationSource) patch.elevationSource = incoming.elevationSource;
+  if (!existing.mapBase && incoming.mapBase) patch.mapBase = incoming.mapBase;
   if (Object.keys(patch).length === 0) return { record: existing, resummarize: false };
   const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource', 'test'].some((key) => key in patch);
   // Support ou activité reçus : ce que portait le résumé était à une autre ; réglages reçus : il garde les siens.
@@ -984,7 +989,7 @@ export const completeRecord = (
  * `carryRecordEdits`.
  */
 export const RECORD_EDIT_FIELDS = [
-  'sport', 'activityId', 'name', 'notes', 'analysis', 'marks', 'elevationSource',
+  'sport', 'activityId', 'name', 'notes', 'analysis', 'marks', 'elevationSource', 'mapBase',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 /**
@@ -1002,7 +1007,7 @@ export const carryRecordEdits = (target: SessionRecord, edited: SessionRecord): 
     if (edited[key] === undefined) delete next[key];
     else next[key] = edited[key];
   }
-  const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks');
+  const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks' && key !== 'mapBase');
   const summary = changed.includes('sport') || changed.includes('activityId')
     ? withoutCarriedSettings(target).summary
     : changed.includes('analysis') ? withCarriedSettingsFixed(target).summary : target.summary;
@@ -1057,7 +1062,7 @@ export const findLegacyNotes = (
  */
 export const RECORD_LIGHT_FIELDS = [
   'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
-  'summary', 'notes', 'analysis', 'elevationSource', 'intervals', 'marks', 'test',
+  'summary', 'notes', 'analysis', 'elevationSource', 'mapBase', 'intervals', 'marks', 'test',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 /**
@@ -1162,6 +1167,8 @@ export interface RecordPatch {
   terrainElevation?: SessionTerrainElevation | null;
   /** Source de l'altitude ; `null` : celle de l'IGN. */
   elevationSource?: 'gps' | null;
+  /** Fond de carte de la session ; `null` la remet sur celui de la famille. Ne change pas le résumé. */
+  mapBase?: MapBase | null;
   /** Sauts calculés ; `null` les retire. */
   jumps?: SessionJumps | null;
   /** Repères du bouton « Note » ; `null` ou une liste vide les retire. */
@@ -1213,6 +1220,10 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
     const { elevationSource: _previous, ...others } = next;
     next = patch.elevationSource ? { ...others, elevationSource: patch.elevationSource } : others;
     elevationChanged = true;
+  }
+  if (patch.mapBase !== undefined && (patch.mapBase ?? undefined) !== next.mapBase) {
+    const { mapBase: _previous, ...others } = next;
+    next = patch.mapBase ? { ...others, mapBase: patch.mapBase } : others;
   }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;

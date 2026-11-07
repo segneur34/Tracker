@@ -525,7 +525,7 @@ function SailingModule() {
 
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
-    <AnalysisBaseLayers family="voile" track={trackData} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
+    <AnalysisBaseLayers family="voile" file={sessionFile} track={trackData} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} family={'voile'} />}
       {trackData.length > 0 && <TrackArrows track={trackData} />}

@@ -64,6 +64,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
         segments: track && range ? coloredSegments(track.points, range) : [],
         props: {
           family,
+          file: record && libraryFile !== null ? libraryFile : undefined,
           activityId: record?.activityId ?? activity.id,
           title: labels.title,
           subtitle: labels.subtitle,

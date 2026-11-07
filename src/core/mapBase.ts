@@ -52,6 +52,9 @@ export const MAP_BASES: Record<MapBase, MapBaseSource> = {
 
 export const MAP_BASE_DEFAULT: MapBase = 'plan';
 
+/** Fond d'une session : celui de sa fiche s'il existe, sinon celui de sa famille. */
+export const resolveMapBase = (sessionBase: unknown, familyBase: MapBase): MapBase => (isMapBase(sessionBase) ? sessionBase : familyBase);
+
 export const isMapBase = (value: unknown): value is MapBase => value === 'plan' || value === 'satellite';
 
 /** Adresses choisies sur l'appareil (Réglages › Cartes hors ligne), par fond ; absente ou vide : celle d'origine. */

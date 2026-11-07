@@ -380,6 +380,16 @@ describe('altitude du terrain de la fiche', () => {
     expect(applyRecordPatch(gps.record, { elevationSource: null }).record).not.toHaveProperty('elevationSource');
     expect(applyRecordPatch(record(), { elevationSource: null })).toEqual({ record: record(), resummarize: false });
   });
+
+  it('fond de carte de la session (lot 193) : relu avec garde, changé sans refaire le résumé', () => {
+    expect(parseRecord(serializeRecord(record({ mapBase: 'satellite' })))?.mapBase).toBe('satellite');
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('mapBase');
+    expect(parseRecord(JSON.stringify({ ...record(), mapBase: 'hybride' }))).not.toHaveProperty('mapBase');
+    const sat = applyRecordPatch(record(), { mapBase: 'satellite' });
+    expect(sat).toEqual({ record: { ...record(), mapBase: 'satellite' }, resummarize: false });
+    expect(applyRecordPatch(sat.record, { mapBase: null }).record).not.toHaveProperty('mapBase');
+    expect(applyRecordPatch(record(), { mapBase: null })).toEqual({ record: record(), resummarize: false });
+  });
 });
 
 describe('fiche allégée du cache', () => {

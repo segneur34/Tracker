@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseOfTileKey, isMapBase, isTileTemplate, MAP_BASES, tileCacheUsageByBase, tileTemplate, tileUrl } from './mapBase';
+import { baseOfTileKey, isMapBase, resolveMapBase, isTileTemplate, MAP_BASES, tileCacheUsageByBase, tileTemplate, tileUrl } from './mapBase';
 import { tileKey } from './tiles';
 
 describe('tileUrl', () => {
@@ -41,6 +41,15 @@ describe('isMapBase', () => {
     expect(isMapBase('satellite')).toBe(true);
     expect(isMapBase('hybride')).toBe(false);
     expect(isMapBase(undefined)).toBe(false);
+  });
+});
+
+describe('resolveMapBase (lot 193)', () => {
+  it('prend le fond de la session, sinon celui de la famille', () => {
+    expect(resolveMapBase('satellite', 'plan')).toBe('satellite');
+    expect(resolveMapBase('plan', 'satellite')).toBe('plan');
+    expect(resolveMapBase(undefined, 'satellite')).toBe('satellite');
+    expect(resolveMapBase('hybride', 'plan')).toBe('plan');
   });
 });
 

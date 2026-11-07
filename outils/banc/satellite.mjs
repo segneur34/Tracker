@@ -5,8 +5,9 @@
 //  1. importe une voile, une course, une sortie à vélo et une session de surf ;
 //  2. dans chaque analyse, à 1400×1000 : un bouton « Fond de carte » sous le + et le −, mention OSM ; un toucher ouvre
 //     le choix Plan · Satellite sans rien changer, un toucher ailleurs ou Échap le ferme ; « Satellite » passe à la photo
-//     (mention Esri) et ferme le choix ; le texte de la page ne change pas hors mention ; le fond est rangé pour la
-//     famille seule (`tracker.fondCarte`) et retrouvé après rechargement ; la voile en satellite laisse la course en plan ;
+//     (mention Esri) et ferme le choix ; le texte de la page ne change pas hors mention ; le fond est rangé dans la
+//     fiche de la session (lot 193), pas pour la famille (`tracker.fondCarte`), et retrouvé après rechargement ; la
+//     voile en satellite laisse la course en plan ;
 //  3. bibliothèque (vignettes) : pas de bouton, mention OSM ; planification : le fond de la famille de son activité
 //     (la Voile, en satellite), son bouton qui ne pose pas de point, deux points posés sur la photo ;
 //  4. image de partage de la voile : capture de l'aperçu (photo et mention Esri, à l'œil) ;
@@ -89,12 +90,14 @@ const SESSIONS = [
   { page: 'surf', start: Date.UTC(2026, 9, 8, 8), type: 'surf', seconds: 600, speed: 2 },
 ];
 const paths = {};
+const gpxs = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.page} :`, await importGpx(loopGpx(s.type, s.seconds, s.speed, s.start), `${s.page}.gpx`));
   const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.page}` });
   await settle({ max: 2000, label: `import ${s.page}` });
   paths[s.page] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
+  gpxs[s.page] = rec?.gpx;
   check(`${s.page} rangée`, Boolean(rec));
 }
 
@@ -127,9 +130,10 @@ for (const s of SESSIONS) {
   check(`${s.page} : tuiles satellite affichées`, tiles > 0, tiles);
   check(`${s.page} : Satellite coché`, (await current()) === 'Satellite');
   const stored = await storedBases();
-  // La voile reste en satellite (passée la première) ; les autres familles sont revenues au plan.
-  const others = Object.entries(stored).every(([f, v]) => f === s.page || f === 'voile' || v === 'plan');
-  check(`${s.page} : fond rangé pour la famille seule`, stored[s.page] === 'satellite' && others, JSON.stringify(stored));
+  // Lot 193 (07/11) : le choix fait dans une analyse va dans la fiche de la session ; le fond de la famille
+  // (`tracker.fondCarte`) ne bouge pas, il ne se change plus que depuis la planification ou le direct.
+  const fiche = (await records())?.find((r) => r.gpx === gpxs[s.page]);
+  check(`${s.page} : fond rangé dans la fiche, pas pour la famille`, fiche?.mapBase === 'satellite' && stored[s.page] !== 'satellite', JSON.stringify({ fiche: fiche?.mapBase ?? null, stored }));
   await shoot(`satellite-${s.page}`);
   await go(paths[s.page], 5000);
   check(`${s.page} : satellite retrouvé après rechargement`, (await current()) === 'Satellite' && (await attribution()).includes('Esri'));
@@ -154,15 +158,15 @@ const libMaps = await evaluate(`document.querySelectorAll('.lib-row__preview-ima
 const libCredit = await evaluate(`document.querySelector('.lib-row__preview-credit')?.textContent ?? ''`);
 check('bibliothèque de voile : vignettes sans bouton, en plan', libMaps > 0 && libButtons === 0 && libCredit.includes('OpenStreetMap'), `${libMaps} vignettes, ${libButtons} boutons`);
 await go('/itineraires', 4000);
-// La planification suit la famille de son activité : la Voile (première proposée sur un profil neuf), en satellite.
+// La planification suit la famille de son activité : la Voile (première proposée sur un profil neuf), dont le fond
+// est resté en plan (les analyses ne l'écrivent plus, lot 193) ; c'est ici que le fond de la famille se change.
 const planFamily = await evaluate(`document.querySelector('.plan-map') ? 'ok' : 'absent'`);
-check('planification : un bouton, fond de la famille (voile en satellite)', planFamily === 'ok' && (await buttons()) === 1 && (await current()) === 'Satellite' && (await attribution()).includes('Esri'));
+check('planification : un bouton, fond de la famille (voile en plan)', planFamily === 'ok' && (await buttons()) === 1 && (await current()) === 'Plan' && (await attribution()).includes('OpenStreetMap'));
 const markers = () => evaluate(`document.querySelectorAll('.plan-map .leaflet-marker-icon').length`);
 const markersBefore = await markers();
-await choose('Plan');
-check('planification : « Plan » sans poser de point', (await current()) === 'Plan' && (await markers()) === markersBefore && (await attribution()).includes('OpenStreetMap'));
 await choose('Satellite');
-check('planification : retour au satellite, rangé pour la voile', (await current()) === 'Satellite' && (await storedBases()).voile === 'satellite');
+check('planification : « Satellite » sans poser de point', (await current()) === 'Satellite' && (await markers()) === markersBefore && (await attribution()).includes('Esri'));
+check('planification : satellite rangé pour la voile', (await storedBases()).voile === 'satellite');
 // Deux points posés au toucher, pour voir le tracé sur la photo.
 const box = await evaluate(`(() => { const r = document.querySelector('.plan-map .leaflet-container').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()`);
 for (const [fx, fy] of [[0.3, 0.5], [0.7, 0.6]]) {

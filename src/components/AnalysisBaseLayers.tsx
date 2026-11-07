@@ -3,6 +3,7 @@ import { axisRangePath, zoomPathRange } from '../core/chartZoom';
 import type { LocatedMark } from '../core/sessionMarks';
 import type { SportFamily } from '../core/sportProfiles';
 import { useZoomState } from '../hooks/useChartZoom';
+import { MapBaseSessionContext } from '../hooks/useMapBase';
 import type { ZoomPathSource } from '../hooks/useZoomOnMap';
 import BaseTileLayer from './BaseTileLayer';
 import { HoveredTrackMarker } from './HoverMarker';
@@ -30,8 +31,10 @@ function ZoomPathLayer({ source }: { source: ZoomPathSource }) {
  * propres), la zone cardiaque montrée, le tronçon du graphe zoomé, les
  * fanions des repères et le point survolé des graphes, au-dessus de tout.
  */
-function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, marks, shownMark, children }: {
+function AnalysisBaseLayers({ family, file, track, zonePaths, zonePathsKey, zoomPath, marks, shownMark, children }: {
   family: SportFamily;
+  /** Fichier de la session dans la mémoire (`null` : GPX hors de la mémoire) : son fond de carte est celui de sa fiche. */
+  file: string | null;
   /** Points de la trace : le point survolé des graphes s'y lit. */
   track: ReadonlyArray<{ lat: number; lon: number }>;
   /** Passages de la zone cardiaque montrée (onglet « cardio »), vides sinon. */
@@ -45,7 +48,7 @@ function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, 
   children?: ReactNode;
 }) {
   return (
-    <>
+    <MapBaseSessionContext.Provider value={file}>
       <BaseTileLayer family={family} />
       {children}
       {zonePaths.map((path, idx) => (
@@ -54,7 +57,7 @@ function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, 
       {zoomPath && <ZoomPathLayer source={zoomPath} />}
       <SessionMarksLayer located={marks} shownMs={shownMark} />
       <HoveredTrackMarker points={track} />
-    </>
+    </MapBaseSessionContext.Provider>
   );
 }
 

@@ -113,6 +113,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
         return (
           <ShareDialog
             family={share.family}
+            file={file}
             activityId={record.activityId ?? record.sport ?? share.family}
             title={labels.title}
             subtitle={labels.subtitle}

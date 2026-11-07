@@ -1060,7 +1060,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
-    <AnalysisBaseLayers family={family} track={gpx.track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
+    <AnalysisBaseLayers family={family} file={sessionFile} track={gpx.track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       {/* Pente : ses tronçons colorés sur le même canevas que la vitesse, pas en milliers de traits SVG (27/10). */}
       {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : <TrackSegmentsLayer segments={gradeMapPaths ?? mapSegments} weight={5} family={family} />}

@@ -463,7 +463,7 @@ function SurfModule() {
   };
 
   const mapLayers = (
-    <AnalysisBaseLayers family="surf" track={track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
+    <AnalysisBaseLayers family="surf" file={sessionFile} track={track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
       <TrackArrows track={track} />
