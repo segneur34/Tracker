@@ -10,8 +10,11 @@ import type { MarkGuideSettings } from './markGuide';
 /**
  * Trace suivie pendant un enregistrement : un itinéraire rangé ou une session
  * déjà enregistrée, dessinée sous la trace en cours pour s'y guider, avec la
- * distance restante le long de la trace (`followProgress`). Pas d'alerte hors
- * trace : décision de l'utilisateur.
+ * distance restante le long de la trace (`followProgress`). L'avancement suit
+ * la position de proche en proche ; il ne saute plus loin qu'une fois ce saut
+ * confirmé par une avance réelle le long de la trace, pour qu'un bref hors-piste
+ * près d'une autre partie ne la compte pas comme faite. Pas d'alerte hors trace :
+ * décision de l'utilisateur.
  */
 
 export type FollowedSource = 'route' | 'session';
@@ -92,14 +95,27 @@ export interface FollowOptions {
   maxOffsetM: number;
   /** Recul toléré de l'avancement (bruit du GPS), en mètres. */
   backM: number;
-  /** Avance cherchée au-delà de la distance parcourue depuis le dernier accrochage, en mètres. */
+  /**
+   * Avance cherchée d'une position à la suivante, en plus de la distance entre
+   * les deux, en mètres. Un accrochage dans cette avance est immédiat ; de même
+   * le premier, s'il tombe à cette distance du départ au plus.
+   */
   aheadM: number;
+  /** Avance réelle le long de la trace qui valide un accrochage plus lointain, en mètres. */
+  confirmAheadM: number;
+  /**
+   * Écart à la trace en deçà duquel deux passages à portée se valent, en mètres :
+   * c'est alors la suite attendue qui tranche (demi-tour d'un aller-retour, croisement).
+   */
+  tieOffsetM: number;
 }
 
 export const FOLLOW_DEFAULTS: FollowOptions = {
   maxOffsetM: 60,
   backM: 30,
   aheadM: 100,
+  confirmAheadM: 80,
+  tieOffsetM: 10,
 };
 
 export interface FollowProgress {
@@ -128,6 +144,8 @@ export const followedTraceLengthM = (trace: FollowedTrace): number => {
 };
 
 interface Projection {
+  /** Pied sur le tronçon, de 0 à 1 : 0 ou 1 quand il bute sur un bout. */
+  t: number;
   /** Écart de la position au tronçon, en mètres. */
   offsetM: number;
   /** Distance le long de la trace du point projeté, en mètres. */
@@ -140,7 +158,7 @@ interface Projection {
  */
 const projectOnTrace = (p: LatLon, points: LatLon[], cum: number[], i: number): Projection => {
   const { t, distanceM } = projectOnSegment(p, points[i], points[i + 1]);
-  return { offsetM: distanceM, alongM: cum[i] + t * (cum[i + 1] - cum[i]) };
+  return { t, offsetM: distanceM, alongM: cum[i] + t * (cum[i + 1] - cum[i]) };
 };
 
 /** Premier tronçon dont la fin est au-delà de `alongM` (recherche dichotomique). */
@@ -171,6 +189,43 @@ const anchorFrom = (
   return { anchor: best, minOffsetM };
 };
 
+/**
+ * Passage de la trace retenu entre `loM` et `hiM`. Un tronçon dont le pied bute
+ * sur le bout partagé avec un voisin plus proche n'est pas un passage. À écart
+ * quasi égal (`tieOffsetM`), le plus proche de `expectedM`, ni le premier trouvé
+ * ni celui de devant : l'aller et le retour d'un aller-retour se recouvrent, et
+ * le demi-tour ne doit venir ni trop tôt ni jamais.
+ */
+const closestInWindow = (
+  p: LatLon, points: LatLon[], cum: number[], options: FollowOptions, loM: number, hiM: number, expectedM: number
+): Projection | null => {
+  const seen: Projection[] = [];
+  for (let i = firstSegmentReaching(cum, loM); i < points.length - 1 && cum[i] <= hiM; i++) seen.push(projectOnTrace(p, points, cum, i));
+  const inRange = (f: Projection | undefined): f is Projection =>
+    f !== undefined && f.offsetM <= options.maxOffsetM && f.alongM >= loM && f.alongM <= hiM;
+  const feet = seen.filter((f, k) => {
+    const before = seen[k - 1];
+    const after = seen[k + 1];
+    return inRange(f) && !(f.t === 0 && inRange(before) && before.offsetM < f.offsetM) && !(f.t === 1 && inRange(after) && after.offsetM < f.offsetM);
+  });
+  const minOffsetM = Math.min(...feet.map((f) => f.offsetM));
+  let best: Projection | null = null;
+  for (const f of feet) {
+    if (f.offsetM > minOffsetM + options.tieOffsetM) continue;
+    if (!best || Math.abs(f.alongM - expectedM) < Math.abs(best.alongM - expectedM)) best = f;
+  }
+  return best;
+};
+
+/** Accrochage lointain en attente de validation. */
+interface PendingAnchor {
+  /** Distance le long de la trace où il a été vu, et la plus loin atteinte depuis, en mètres. */
+  startM: number;
+  highM: number;
+  /** Distance réellement faite depuis qu'il a été vu, en mètres. */
+  travelledM: number;
+}
+
 /** État du suivi, position après position : l'avancement, et ce qui le fait bouger. */
 interface FollowState {
   progressM: number | null;
@@ -180,49 +235,73 @@ interface FollowState {
   /** Hors trace : position du dernier essai, et écart minimal alors mesuré. */
   probe: LatLon | null;
   probeOffsetM: number;
+  pending: PendingAnchor | null;
 }
 
-const initialFollowState = (): FollowState => ({ progressM: null, travelledM: 0, previous: null, probe: null, probeOffsetM: 0 });
+const initialFollowState = (): FollowState => ({ progressM: null, travelledM: 0, previous: null, probe: null, probeOffsetM: 0, pending: null });
+
+/** Pose l'avancement. */
+const settleAt = (s: FollowState, alongM: number): void => {
+  s.progressM = alongM;
+  s.travelledM = 0;
+  s.probe = null;
+  s.pending = null;
+};
+
+/**
+ * Position hors de la fenêtre : l'avancement ne bouge pas, sauf accrochage
+ * proche du départ ou accrochage lointain validé. Le candidat est le premier
+ * passage à portée au-delà de la fenêtre, réexaminé à chaque position : perdu
+ * s'il n'est plus à portée, repris de plus tôt s'il recule (au-delà du bruit,
+ * `backM`) ou si un passage antérieur devient à portée. La validation demande
+ * `confirmAheadM` gagnés le long de la trace et autant de distance réellement
+ * faite : un pas de côté entre deux lacets ne compte pas, un long intervalle si.
+ */
+const seekFarAnchor = (s: FollowState, p: LatLon, hopM: number, points: LatLon[], cum: number[], options: FollowOptions): void => {
+  if (s.pending) {
+    s.pending.travelledM += hopM;
+  } else if (s.probe && haversineDistance(s.probe.lat, s.probe.lon, p.lat, p.lon) < s.probeOffsetM - options.maxOffsetM) {
+    // Tant que la position n'a pas bougé de quoi rejoindre la trace, inutile de la chercher.
+    return;
+  }
+  const fromM = s.progressM === null ? 0 : s.progressM + options.aheadM;
+  const { anchor, minOffsetM } = anchorFrom(p, points, cum, options.maxOffsetM, fromM);
+  if (!anchor) {
+    s.pending = null;
+    s.probe = p;
+    s.probeOffsetM = minOffsetM;
+    return;
+  }
+  s.probe = null;
+  if (s.progressM === null && anchor.alongM <= options.aheadM) {
+    settleAt(s, anchor.alongM);
+    return;
+  }
+  const { pending } = s;
+  if (pending && anchor.alongM >= pending.highM - options.backM) {
+    const next = closestInWindow(p, points, cum, options, pending.highM - options.backM, pending.highM + options.aheadM + hopM, pending.highM + hopM);
+    if (next) {
+      pending.highM = Math.max(pending.highM, next.alongM);
+      if (Math.min(pending.highM - pending.startM, pending.travelledM) >= options.confirmAheadM) settleAt(s, next.alongM);
+      return;
+    }
+  }
+  s.pending = { startM: anchor.alongM, highM: anchor.alongM, travelledM: 0 };
+};
 
 /** Avance le suivi d'une position. */
 const stepFollow = (s: FollowState, p: LatLon, points: LatLon[], cum: number[], options: FollowOptions): void => {
-  if (s.previous) s.travelledM += haversineDistance(s.previous.lat, s.previous.lon, p.lat, p.lon);
+  const hopM = s.previous ? haversineDistance(s.previous.lat, s.previous.lon, p.lat, p.lon) : 0;
+  s.travelledM += hopM;
   s.previous = p;
-
-  /** Accroche à la suite de la trace, depuis `fromM` ; rend faux si elle reste hors de portée. */
-  const anchorAhead = (fromM: number): boolean => {
-    // Tant que la position n'a pas bougé de quoi rejoindre la trace, inutile de la chercher.
-    if (s.probe && haversineDistance(s.probe.lat, s.probe.lon, p.lat, p.lon) < s.probeOffsetM - options.maxOffsetM) return false;
-    const { anchor, minOffsetM } = anchorFrom(p, points, cum, options.maxOffsetM, fromM);
-    s.probe = p;
-    s.probeOffsetM = minOffsetM;
-    if (!anchor) return false;
-    s.progressM = anchor.alongM;
-    s.travelledM = 0;
-    s.probe = null;
-    return true;
-  };
-
-  if (s.progressM === null) {
-    anchorAhead(0);
-    return;
+  if (s.progressM !== null) {
+    const near = closestInWindow(p, points, cum, options, s.progressM - options.backM, s.progressM + options.aheadM + hopM, s.progressM + s.travelledM);
+    if (near) {
+      settleAt(s, near.alongM);
+      return;
+    }
   }
-
-  const lo = s.progressM - options.backM;
-  const hi = s.progressM + options.aheadM + s.travelledM;
-  let best: Projection | null = null;
-  for (let i = firstSegmentReaching(cum, lo); i < points.length - 1 && cum[i] <= hi; i++) {
-    const proj = projectOnTrace(p, points, cum, i);
-    if (proj.offsetM <= options.maxOffsetM && proj.alongM >= lo && proj.alongM <= hi
-      && (!best || proj.offsetM < best.offsetM)) best = proj;
-  }
-  if (best) {
-    s.progressM = best.alongM;
-    s.travelledM = 0;
-    s.probe = null;
-  } else {
-    anchorAhead(hi);
-  }
+  seekFarAnchor(s, p, hopM, points, cum, options);
 };
 
 const progressOf = (s: FollowState, totalM: number): FollowProgress | null =>
@@ -231,13 +310,15 @@ const progressOf = (s: FollowState, totalM: number): FollowProgress | null =>
 /**
  * Avancement le long de la trace suivie, rejoué sur toute la trace enregistrée
  * à chaque appel : sans état, il vaut aussi pour une session récupérée après
- * un plantage. Après le premier accrochage, une position cherche d'abord la
- * trace dans une fenêtre autour de l'avancement, élargie de la distance faite
- * depuis le dernier accrochage : l'avancement ne saute ni à un croisement ni
- * sur le retour d'un aller-retour. Hors de cette fenêtre, l'avancement ne
- * bouge pas tant que la position n'approche pas la suite de la trace ; il s'y
- * raccroche alors (raccourci), jamais en arrière. `null` tant que la trace
- * n'a pas été rejointe.
+ * un plantage. Une position cherche d'abord la trace dans une fenêtre autour de
+ * l'avancement, élargie du dernier intervalle seul (cadence variable) : à écart
+ * quasi égal, c'est le passage le plus proche de la suite attendue qui compte,
+ * et l'avancement ne saute ni à un croisement ni sur le retour d'un aller-retour.
+ * Hors de cette fenêtre, il ne bouge pas : un accrochage plus loin (raccourci,
+ * départ en cours de trace) n'est retenu qu'après `confirmAheadM` parcourus vers
+ * l'avant le long de la trace, jamais en arrière, et un premier accrochage n'est
+ * immédiat qu'à `aheadM` du départ au plus. Courir la trace à contresens ne fait
+ * donc pas avancer (limite assumée). `null` tant qu'aucun accrochage n'est retenu.
  */
 export const followProgress = (
   trace: FollowedTrace,

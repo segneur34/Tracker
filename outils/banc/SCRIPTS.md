@@ -27,6 +27,12 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - la carte réduite et ses grands chiffres ;
   - le rangement sous la nouvelle activité ;
   - la bascule course ↔ voile depuis l'analyse, avec confirmation quand un brouillon est ouvert.
+- `trace-suivie.mjs <port> <dossier de travail> [<dossier des captures>]` : la trace suivie sur la carte du direct, à verdict, sur un profil neuf, sans réseau, environ 20 s. Le script écrit lui-même un itinéraire sans heure à deux branches distantes de 100 m et un rejeu à 5 m/s, hors-piste de 70 m vers la seconde compris. Il vérifie :
+  - « Importer un itinéraire », « Partir », puis l'aperçu avant départ : le tracé seul, en pointillé ;
+  - le rejeu à ×10 : « Fait » jamais au-delà de ce qui est couru (36 %, 77 % avec un saut sur la seconde branche) ;
+  - les attributs SVG, en plan : reste `#263238`, 6, `12 8`, bouts droits ; partie faite `#757575`, 4, 0,85 ; leur calque sous celui de la trace enregistrée ;
+  - en satellite, par le bouton de la carte : liseré blanc de 9 et 7 sous les deux tracés, dans un calque plus bas encore ; retiré au retour au plan.
+  Sur le dernier commit d'avant ces calques, le script échoue dès l'aperçu : pas de comparaison `--avant` tant qu'il n'y est pas.
 - `balises.mjs <port> <dossier de travail> [<dossier des captures>]` : parcours de voile et bips d'approche (point 77), à 390×844, sur un profil neuf. Le script écrit lui-même son GPX dans le dossier de travail. Il vérifie :
   - le parcours sur la page Itinéraires : balises numérotées, bloc « Parcours », bips propres au parcours rangés dans la fiche, puis « Partir » ;
   - un rejeu ×1 d'un parcours de trois balises, avec le relevé des bips : la version navigateur de `platform/beeper.ts` consigne chaque son en `console.debug` (« [bips] ») ;

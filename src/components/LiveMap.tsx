@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { divIcon, type Marker as LeafletMarker } from 'leaflet';
 import { trackBounds } from '../core/displayConfig';
-import { Circle, CircleMarker, MapContainer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, Marker, Pane, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import { useCompassHeading } from '../hooks/useCompassHeading';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
@@ -47,12 +47,23 @@ interface LiveMapProps {
 }
 
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
-const GUIDE_STYLE = { color: '#37474f', weight: 5, opacity: 0.6, dashArray: '8 8', interactive: false } as const;
-const GUIDE_DONE_STYLE = { color: '#9e9e9e', weight: 4, opacity: 0.5, interactive: false } as const;
+const GUIDE_WEIGHT = 6;
+const GUIDE_DONE_WEIGHT = 4;
+const GUIDE_STYLE = { color: '#263238', weight: GUIDE_WEIGHT, opacity: 1, dashArray: '12 8', lineCap: 'butt', interactive: false } as const;
+const GUIDE_DONE_STYLE = { color: '#757575', weight: GUIDE_DONE_WEIGHT, opacity: 0.85, interactive: false } as const;
 /** Épaisseur de la trace enregistrée. */
 const TRACK_WEIGHT = 4;
 /** Liseré blanc sous la trace, sur le fond satellite. */
 const HALO_STYLE = haloStyle(TRACK_WEIGHT);
+/** Le même liseré sous la trace suivie, à son épaisseur. */
+const GUIDE_HALO_STYLE = haloStyle(GUIDE_WEIGHT);
+const GUIDE_DONE_HALO_STYLE = haloStyle(GUIDE_DONE_WEIGHT);
+/**
+ * Calques de la trace suivie, sous celui des tracés (400 chez Leaflet) : la partie faite naît en cours de route et
+ * le liseré au passage en satellite, et un tracé monté tard passerait sinon par-dessus la trace enregistrée.
+ */
+const GUIDE_HALO_PANE = { name: 'traceSuivieLisere', style: { zIndex: 380 } };
+const GUIDE_PANE = { name: 'traceSuivie', style: { zIndex: 390 } };
 
 /** Balises : fond, bordure et chiffre selon leur état (données de carte, donc en dur). */
 const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; ink: string; dashed?: boolean }> = {
@@ -185,8 +196,16 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
         className="ui-fill">
         <MapAutoResize />
         <BaseTileLayer family={family} />
-        {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_STYLE} />}
-        {guidePath && <Polyline positions={guidePath} pathOptions={GUIDE_STYLE} />}
+        {halo && (
+          <Pane {...GUIDE_HALO_PANE}>
+            {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_HALO_STYLE} />}
+            {guidePath && <Polyline positions={guidePath} pathOptions={GUIDE_HALO_STYLE} />}
+          </Pane>
+        )}
+        <Pane {...GUIDE_PANE}>
+          {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_STYLE} />}
+          {guidePath && <Polyline positions={guidePath} pathOptions={GUIDE_STYLE} />}
+        </Pane>
         {target && validationRadiusM !== undefined && validationRadiusM > 0 && (
           <Circle center={[target.lat, target.lon]} radius={validationRadiusM} pathOptions={TARGET_CIRCLE_STYLE} />
         )}

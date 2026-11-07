@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_ROUTE, addWaypoint, legKey, withLegResult } from '../planning/route';
 import { routeToRecord } from '../planning/routeRecord';
 import {
-  FOLLOWED_TRACE_TOLERANCE_M, createFollowCursor, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
+  FOLLOWED_TRACE_TOLERANCE_M, FOLLOW_DEFAULTS, createFollowCursor, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
   splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
 import { M_PER_DEG_LAT, ORIGIN, at, fixesAlong, mPerDegLon } from '../test/geo.fixture';
@@ -100,6 +100,182 @@ describe('avancement sur la trace suivie', () => {
   it("traverse les pauses : chaque segment continue l'avancement", () => {
     const p = followProgress(line, [walk([[0, 0], [0, 300]], 5), walk([[0, 320], [0, 700]], 5)])!;
     expect(p.progressM).toBeCloseTo(700, -1);
+  });
+});
+
+/** Avancement après chaque position, `null` avant le premier accrochage. */
+const progressAfterEach = (trace: FollowedTrace, fixes: ReadonlyArray<{ lat: number; lon: number }>): (number | null)[] => {
+  const cursor = createFollowCursor(trace);
+  return fixes.map((_, n) => cursor.progress([fixes.slice(0, n + 1)])?.progressM ?? null);
+};
+
+const known = (values: (number | null)[]): number[] => values.filter((v): v is number => v !== null);
+
+/** Plus grand recul de l'avancement, depuis le plus loin atteint. */
+const worstDrop = (values: (number | null)[]): number => {
+  let high = -Infinity;
+  let worst = 0;
+  for (const v of known(values)) {
+    high = Math.max(high, v);
+    worst = Math.max(worst, high - v);
+  }
+  return worst;
+};
+
+/** Bruit du GPS : chaque position décalée de ±`ampM` mètres sur chaque axe, à graine fixe. */
+const withNoise = <P extends { lat: number; lon: number }>(fixes: ReadonlyArray<P>, ampM: number): { lat: number; lon: number }[] => {
+  let seed = 7;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31;
+    return (seed / 2 ** 31 - 0.5) * 2 * ampM;
+  };
+  return fixes.map((p) => ({ lat: p.lat + next() / M_PER_DEG_LAT, lon: p.lon + next() / mPerDegLon(ORIGIN.lat) }));
+};
+
+describe('accrochage lointain, à confirmer le long de la trace', () => {
+  const u = traceOf([[0, 0], [0, 1000], [300, 1000], [300, 0]]);
+  const branches = traceOf([[0, 0], [0, 2000], [100, 2000], [100, 0]]);
+  const loop = traceOf([[0, 0], [400, 0], [400, 400], [0, 400], [0, 0]]);
+  const line = traceOf([[0, 0], [0, 500], [0, 1000]]);
+
+  it("un bref hors-piste près d'une autre branche ne saute pas, et le retour reprend où il en était", () => {
+    const seen = progressAfterEach(branches, walk([[0, 0], [0, 400], [70, 400], [0, 400], [0, 800]], 5));
+    expect(Math.max(...known(seen))).toBeLessThan(805);
+    expect(seen[seen.length - 1]).toBeCloseTo(800, -1);
+    // Le long de l'autre branche, à contresens du sien : rien ne s'y valide. Revenu 120 m plus loin, hors de la
+    // fenêtre, l'avancement attend les 80 m de confirmation, puis repart.
+    const along = progressAfterEach(branches, walk([[0, 0], [0, 400], [70, 400], [70, 520], [0, 520], [0, 620]], 5));
+    expect(Math.max(...known(along))).toBeLessThan(625);
+    expect(along[along.length - 1]).toBeCloseTo(620, -1);
+  });
+
+  it("un échauffement sur le dernier côté d'une boucle, dans le sens de la trace, repart du début", () => {
+    const warmup = walk([[0, 100], [0, 0]], 5);
+    const seen = progressAfterEach(loop, [...warmup, ...walk([[0, 0], [200, 0]], 5)]);
+    expect(seen[0]).toBeNull();
+    expect(Math.max(...known(seen))).toBeLessThan(205);
+    expect(seen[seen.length - 1]).toBeCloseTo(200, -1);
+  });
+
+  it('une boucle à contresens reste à 0 : limite assumée', () => {
+    const fixes = walk([[0, 0], [0, 400], [400, 400], [400, 0], [0, 0]], 5);
+    const seen = progressAfterEach(loop, fixes);
+    // Rien tant qu'on n'approche pas du début par l'autre bout, puis retour à 0.
+    expect(seen[Math.floor(fixes.length * 0.75)]).toBe(0);
+    expect(Math.max(...known(seen))).toBeLessThan(110);
+    expect(seen[seen.length - 1]).toBeLessThan(5);
+  });
+
+  it("un aller simple couru à l'envers n'accroche qu'en arrivant près du départ", () => {
+    const seen = progressAfterEach(line, walk([[0, 1000], [0, 0]], 5));
+    expect(seen.slice(0, 150).every((v) => v === null)).toBe(true);
+    expect(Math.max(...known(seen))).toBeLessThanOrEqual(100);
+    expect(seen[seen.length - 1]).toBeLessThan(5);
+  });
+
+  it('un premier accrochage est immédiat près du départ, à confirmer plus loin', () => {
+    expect(followProgress(line, [[at(0, 90)]])!.progressM).toBeCloseTo(90, 0);
+    expect(followProgress(line, [walk([[0, 400], [0, 470]], 5)])).toBeNull();
+    expect(followProgress(line, [walk([[0, 400], [0, 490]], 5)])!.progressM).toBeCloseTo(490, -1);
+  });
+
+  it('un raccourci réel est validé après 80 m le long de la trace, pas avant', () => {
+    // La trace est à portée dès 240 m à l'est : le candidat naît à 2100 m et y reste jusqu'à la jonction.
+    const before = followProgress(u, [walk([[0, 0], [0, 200], [300, 200], [300, 130]], 5)])!;
+    expect(before.progressM).toBeCloseTo(200, -1);
+    const after = followProgress(u, [walk([[0, 0], [0, 200], [300, 200], [300, 110]], 5)])!;
+    expect(after.progressM).toBeCloseTo(1000 + 300 + 890, -1);
+  });
+
+  it('un candidat quitté repart de zéro : deux morceaux ne se cumulent pas', () => {
+    // 50 m le long de la branche, on la quitte hors de portée, on y revient : il manque encore de la distance.
+    const fixes = [...walk([[0, 0], [0, 200]], 5), at(300, 400), at(300, 350), at(400, 350), ...walk([[360, 330], [300, 300]], 5)];
+    expect(followProgress(u, [fixes])!.progressM).toBeCloseTo(200, -1);
+  });
+
+  it('un seul long intervalle GPS compte en mètres, pas en points', () => {
+    const start = walk([[0, 0], [0, 200]], 5);
+    // Le candidat est vu, puis un seul intervalle de 150 m le long de la trace le valide.
+    expect(followProgress(u, [[...start, at(300, 200)]])!.progressM).toBeCloseTo(200, -1);
+    expect(followProgress(u, [[...start, at(300, 200), at(300, 50)]])!.progressM).toBeCloseTo(1000 + 300 + 950, -1);
+    // Dans le prolongement de la position, la fenêtre s'élargit de l'intervalle : pas d'attente.
+    expect(followProgress(line, [[...start, at(0, 700)]])!.progressM).toBeCloseTo(700, -1);
+  });
+
+  it('un pas de côté entre deux lacets ne vaut pas la distance gagnée sur la trace', () => {
+    // Deux lacets à 20 m : passer de l'un à l'autre gagne 90 m le long de la trace en 20 m de marche.
+    const hairpin = traceOf([[0, 0], [0, 1000], [300, 1000], [300, 100], [320, 100], [320, 1000]]);
+    const start = walk([[0, 0], [0, 200]], 5);
+    const across = [...start, at(300, 135), at(320, 135)];
+    expect(followProgress(hairpin, [across])!.progressM).toBeCloseTo(200, -1);
+    expect(followProgress(hairpin, [[...across, at(320, 175)]])!.progressM).toBeCloseTo(200, -1);
+  });
+});
+
+describe("aller-retour dont le retour recouvre l'aller", () => {
+  const tenMetres = Array.from({ length: 51 }, (_, i): [number, number] => [0, i * 10]);
+  const dense = traceOf([...tenMetres, ...tenMetres.slice(0, -1).reverse()]);
+  const fixes = walk([[0, 0], [0, 500], [0, 0]], 5);
+
+  it("va au bout, à points denses, sans jamais reculer au-delà de la tolérance", () => {
+    const seen = progressAfterEach(dense, fixes);
+    expect(seen[seen.length - 1]).toBeGreaterThan(990);
+    expect(worstDrop(seen)).toBeLessThanOrEqual(FOLLOW_DEFAULTS.backM);
+  });
+
+  it('va au bout avec un bruit de ±3 m', () => {
+    const seen = progressAfterEach(dense, withNoise(fixes, 3));
+    expect(seen[seen.length - 1]).toBeGreaterThan(980);
+    expect(worstDrop(seen)).toBeLessThanOrEqual(FOLLOW_DEFAULTS.backM);
+  });
+
+  it('ne bascule pas sur le retour avant le demi-tour', () => {
+    const going = progressAfterEach(dense, walk([[0, 0], [0, 490]], 5));
+    going.forEach((v, n) => expect(Math.abs(v! - n * 5)).toBeLessThan(5));
+    // Arrêté avant le demi-tour, dans le bruit : l'avancement ne file pas sur le retour.
+    const stopped = withNoise(Array.from({ length: 200 }, () => at(0, 470)), 3);
+    const waited = progressAfterEach(dense, [...walk([[0, 0], [0, 470]], 5), ...stopped]);
+    expect(Math.max(...known(waited))).toBeLessThan(480);
+  });
+
+  it("garde le passage attendu quand aller et retour ne sont qu'à quelques mètres", () => {
+    const lanes = traceOf([[0, 0], [0, 500], [4, 500], [4, 0]]);
+    const seen = progressAfterEach(lanes, walk([[0, 0], [0, 500], [4, 500], [4, 0]], 5));
+    expect(seen[seen.length - 1]).toBeCloseTo(1004, -1);
+    expect(worstDrop(seen)).toBeLessThanOrEqual(FOLLOW_DEFAULTS.backM);
+  });
+});
+
+describe('mêmes trajets, à toute cadence, en direct comme en rejeu', () => {
+  const u = traceOf([[0, 0], [0, 1000], [300, 1000], [300, 0]]);
+  const branches = traceOf([[0, 0], [0, 2000], [100, 2000], [100, 0]]);
+  const loop = traceOf([[0, 0], [400, 0], [400, 400], [0, 400], [0, 0]]);
+  const line = traceOf([[0, 0], [0, 500], [0, 1000]]);
+  const tenMetres = Array.from({ length: 51 }, (_, i): [number, number] => [0, i * 10]);
+  const dense = traceOf([...tenMetres, ...tenMetres.slice(0, -1).reverse()]);
+  const trips: { name: string; trace: FollowedTrace; path: [number, number][] }[] = [
+    { name: 'hors-piste', trace: branches, path: [[0, 0], [0, 400], [70, 400], [0, 400], [0, 800]] },
+    { name: 'échauffement', trace: loop, path: [[0, 100], [0, 0], [200, 0]] },
+    { name: 'contresens', trace: loop, path: [[0, 0], [0, 400], [400, 400], [400, 0], [0, 0]] },
+    { name: "à l'envers", trace: line, path: [[0, 1000], [0, 0]] },
+    { name: 'raccourci', trace: u, path: [[0, 0], [0, 200], [300, 200], [300, 50]] },
+    { name: 'aller-retour', trace: dense, path: [[0, 0], [0, 500], [0, 100]] },
+  ];
+
+  it.each(trips)('$name : 1 Hz et 5 Hz donnent le même avancement', ({ trace, path }) => {
+    // 5 m/s : un point tous les 5 m à 1 Hz, tous les mètres à 5 Hz.
+    const slow = followProgress(trace, [walk(path, 5)])!;
+    const fast = followProgress(trace, [walk(path, 1)])!;
+    expect(Math.abs(slow.progressM - fast.progressM)).toBeLessThan(2);
+  });
+
+  it.each(trips)('$name : le curseur égale followProgress à chaque position', ({ trace, path }) => {
+    const fixes = withNoise(walk(path, 10), 2);
+    const cursor = createFollowCursor(trace);
+    for (let n = 1; n <= fixes.length; n++) {
+      const seen = [fixes.slice(0, n)];
+      expect(cursor.progress(seen)).toEqual(followProgress(trace, seen));
+    }
   });
 });
 
