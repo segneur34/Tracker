@@ -90,6 +90,19 @@ if (SHOT) {
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(SHOT, Buffer.from(shot.result.data, 'base64'));
 }
+// Bulle d'un rond de manœuvre (lot 189, cartes sans react-leaflet) : virements montrés sur la carte, clic sur le premier
+// rond (tous ratés, bord rouge), relevé après le texte des verdicts pour ne pas le changer.
+console.log('virements sur la carte :', await evaluate(`(() => { const b = document.querySelector('button[title="Afficher les virements sur la carte"]'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await settle({ max: 1000 });
+console.log('clic sur un rond :', await evaluate(`(() => {
+  const rond = document.querySelector('.an-map-frame path.leaflet-interactive[stroke="#c62828"], .an-map-frame path.leaflet-interactive[stroke="#2e7d32"]');
+  if (!rond) return 'absent';
+  const r = rond.getBoundingClientRect();
+  rond.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+  return 'ok';
+})()`));
+await settle({ max: 1000 });
+const bulle = await evaluate(`document.querySelector('.an-map-frame .leaflet-popup-content')?.textContent ?? null`);
 console.log('--- console (erreurs, avertissements) ---');
 [...new Set(logs)].slice(0, 10).forEach((l) => console.log(l));
 
@@ -120,4 +133,5 @@ check('vent du nord : entre 350° et 10°', Number.isFinite(vent) && (vent >= 35
 check('manœuvres rouvertes : détails, empannages par amure et liste des virements gardés',
   /replier les virements/i.test(texteDetails) && /^(Tribord|Bâbord)\t\d+ \/ \d+\t11,7\t/m.test(texteDetails),
   texteDetails.match(/^(Tribord|Bâbord)\t[^\n]*/gm)?.join(' | '));
+check('carte : un clic sur un rond de manœuvre ouvre sa bulle (« Réussi » ou « Raté »)', /Réussi|Raté/.test(bulle ?? ''), bulle ?? '(aucune bulle)');
 await finish();

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { CircleMarker, Popup } from 'react-leaflet';
+import Popup from './map/Popup';
+import { CircleMarker } from './map/paths';
 import HighlightPath from './HighlightPath';
 import { HIGHLIGHT_SPAN_OPACITY, highlightDotOptions } from './highlightColors';
 

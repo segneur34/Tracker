@@ -4,7 +4,10 @@ import { pushBackLayer } from '../platform/backButton';
 import { plainError } from '../platform/errorText';
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
-import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
+import MapContainer from '../components/map/MapContainer';
+import Marker from '../components/map/Marker';
+import { CircleMarker, Polyline } from '../components/map/paths';
+import { useMapEvents } from '../components/map/mapContext';
 import { Link, useSearchParams } from 'react-router-dom';
 import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
@@ -568,7 +571,7 @@ function PlanningPage() {
 
   /**
    * Gestionnaires des tracés et des repères, gardés d'un rendu à l'autre :
-   * react-leaflet les redétache et les rattache dès qu'ils changent.
+   * un trait ou un repère les débranche et les rebranche dès qu'ils changent.
    */
   const legCount = route.legs.length;
   const insertPoint = planner.insert;

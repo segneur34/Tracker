@@ -373,6 +373,18 @@ Propres à la voile (les pièces partagées restent dans `components/` à plat) 
 - `sailing/VmgPanel.tsx`, `sailing/WindPanel.tsx`, `sailing/SailingGraphsPanel.tsx`, `sailing/SailingSettingsPanel.tsx` : onglets « vmg », « vent », « graphiques » (vitesse, FC, polaire, repliables à part) et « réglages ».
 - `sailing/sailingPanelIds.test.ts` : les `id` des panneaux de la voile, clé de leur taille mémorisée, figurent chacun une fois.
 
+### `components/map/` : composants maison sur `leaflet`, à la place de `react-leaflet` (lot 189)
+
+Même interface interne que `react-leaflet` pour les pièces employées ; écrits d'après la documentation de Leaflet (licence Hippocratic de `react-leaflet` écartée). Une couche est créée au rendu puis seulement mise à jour (`setLatLngs`, `setStyle`…), jamais recréée : elle garderait sinon sa place dans l'empilement.
+
+- `map/MapContainer.tsx` : la carte (`L.map`), vue posée (`setView` ou `fitBounds`) avant d'être publiée à ses enfants par contexte ; `center`, `zoom` et `bounds` ne servent qu'à la création.
+- `map/mapContext.ts` : contextes de la carte, du calque et de la couche parente ; `useMap`, `useMapEvents` (gestionnaires lus par référence), `useLayer` (ajout et retrait d'une couche), `useOnChange`.
+- `map/Pane.tsx` : calque nommé à `zIndex`, créé une fois par carte, jamais retiré.
+- `map/paths.tsx` : `Polyline`, `CircleMarker`, `Circle`, style par `pathOptions` au constructeur puis `setStyle` à chaque changement de référence.
+- `map/Marker.tsx` : repère (`icon`, `zIndexOffset`, `draggable`, `interactive`, `keyboard`), `ref` vers l'objet Leaflet.
+- `map/Popup.tsx` : bulle au contenu React (portail vers une `div` détachée, `bindPopup` sur la couche parente).
+- `map/layerProps.ts` (+ test) : fonctions pures des options (clés `undefined` retirées, options d'un trait, changements d'un repère, clé des noms d'événements).
+
 ## Racine de `src/`
 
 - `architecture.test.ts` : lit les `import` de `src/` et garde le sens des dépendances (§3 de l'état), avec le domaine `land` ; ses exceptions nommées ne doivent que diminuer : `LAND_FILES` (15 fichiers de la terre encore rangés dans le transverse) et `SEAM` (34 fils par lesquels le transverse lit `running/`, `cycling/` ou `land/`), règle 13 (lot 187).

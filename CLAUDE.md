@@ -67,7 +67,7 @@ Vérifications et banc se lancent depuis la conversation par `npm run verif`, `n
 8. Lecteur GPX maison (`core/gpxParser.ts`) : ne pas réinstaller `gpxparser`, qui ignore les extensions (Doppler, FC, cadence).
 9. Un module ne reprend que les activités de sa famille : `useSportSettings(family)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
-11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
+11. Cartes : composants maison sur `leaflet` (`components/map/`), jamais `react-leaflet` ; le style d'un trait ou d'un rond passe par `pathOptions`, réappliqué (`setStyle`) quand l'objet change : le garder stable (constante ou `useMemo`).
 12. Stockage, fichiers (reçus d'une autre application compris), position, son, vibreur, capteurs, ceinture cardio, autorisations, notification, écran allumé et orientation figée : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `incomingFile.ts`, `memoryFolder.ts`, `location.ts`, `beeper.ts`, `motion.ts`, `notification.ts`, `screen.ts`, `heartRate.ts`, `permissions.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker`, `navigator.geolocation`, Web Audio, `navigator.vibrate`, `navigator.wakeLock`, `screen.orientation` ni `DeviceMotionEvent` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 13. Le code commun n'importe ni `running/`, ni `cycling/`, ni `land/` (ce qui part de la version voile et surf) ; les exceptions sont nommées dans `src/architecture.test.ts` (`LAND_FILES`, `SEAM`) et ne font que diminuer : on retire un fil, on n'en ajoute pas.
 

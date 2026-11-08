@@ -1,4 +1,5 @@
-import { Marker, Popup } from 'react-leaflet';
+import Marker from './map/Marker';
+import Popup from './map/Popup';
 import type { LocatedMark } from '../core/sessionMarks';
 import { formatDistance, formatTimeOfDay, type DistanceUnit } from '../core/units';
 import type { SessionMarksView } from '../hooks/useSessionMarks';

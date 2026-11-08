@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CircleMarker } from 'react-leaflet';
+import { CircleMarker } from './map/paths';
 import { surfaceHighlight, type SurfaceCategory, type SurfacePath } from '../planning/surface';
 import HighlightPath from './HighlightPath';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';

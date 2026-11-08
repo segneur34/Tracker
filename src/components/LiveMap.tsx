@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { divIcon, type Marker as LeafletMarker } from 'leaflet';
 import { trackBounds } from '../core/displayConfig';
-import { Circle, CircleMarker, MapContainer, Marker, Pane, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import MapContainer from './map/MapContainer';
+import Marker from './map/Marker';
+import Pane from './map/Pane';
+import { Circle, CircleMarker, Polyline } from './map/paths';
+import { useMap, useMapEvents } from './map/mapContext';
 import { useCompassHeading } from '../hooks/useCompassHeading';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';

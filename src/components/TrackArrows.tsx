@@ -1,6 +1,7 @@
 import L from 'leaflet';
 import { memo, useMemo, useState } from 'react';
-import { Marker, useMap, useMapEvents } from 'react-leaflet';
+import Marker from './map/Marker';
+import { useMap, useMapEvents } from './map/mapContext';
 import { ARROW_MAX, ARROW_SPACING_PX, arrowIndicesBySpacing, metersPerPixel } from '../core/displayConfig';
 
 /** Icônes de flèche de sens, une par degré, faites une fois pour toutes les traces. */

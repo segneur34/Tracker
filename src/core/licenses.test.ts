@@ -76,8 +76,10 @@ describe('refusedLicenses', () => {
   });
 
   it('laisse passer les exceptions nommées, et elles seules', () => {
-    expect(LICENSE_EXCEPTIONS).toEqual(['react-leaflet', '@react-leaflet/core']);
-    expect(refusedLicenses([pkg('react-leaflet', 'Hippocratic-2.1'), pkg('autre', 'Hippocratic-2.1')]).map((p) => p.name)).toEqual(['autre']);
+    expect(LICENSE_EXCEPTIONS).toEqual([]);
+    const packages = [pkg('nomme', 'Hippocratic-2.1'), pkg('autre', 'Hippocratic-2.1')];
+    expect(refusedLicenses(packages, ['nomme']).map((p) => p.name)).toEqual(['autre']);
+    expect(refusedLicenses(packages).map((p) => p.name)).toEqual(['nomme', 'autre']);
   });
 });
 

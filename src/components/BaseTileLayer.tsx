@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useCloseOnOutsideOrEscape } from '../hooks/useDismiss';
 import { createPortal } from 'react-dom';
-import { useMap } from 'react-leaflet';
+import { useMap } from './map/mapContext';
 import L from 'leaflet';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import type { SportFamily } from '../core/sportProfiles';

@@ -38,8 +38,9 @@ const pathOptionsCache = new Map<string, PathOptions>();
 
 /**
  * Style Leaflet d'un trait de surbrillance, le même objet d'un rendu à l'autre
- * pour une couleur, une opacité et une interactivité données (react-leaflet
- * réapplique le style dès que l'objet change). Toujours par `pathOptions`.
+ * pour une couleur, une opacité et une interactivité données (les traits de
+ * `components/map/` réappliquent le style dès que l'objet change). Toujours
+ * par `pathOptions`.
  */
 export const highlightPathOptions = (color: string, opacity: number = HIGHLIGHT_OPACITY, interactive = true): PathOptions => {
   const key = `${color}|${opacity}|${interactive}`;

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import L from 'leaflet';
-import { MapContainer, useMap } from 'react-leaflet';
+import MapContainer from './map/MapContainer';
+import { useMap } from './map/mapContext';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
 import { useNarrowScreen, usePhoneLandscape } from '../hooks/useNarrowScreen';
 import type { MapFocus } from '../hooks/useZoomOnMap';

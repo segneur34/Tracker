@@ -1,4 +1,4 @@
-import { CircleMarker } from 'react-leaflet';
+import { CircleMarker } from './map/paths';
 import { useHoveredIndex } from '../hooks/useChartHover';
 import { HOVER_MARKER_COLOR } from './mapStyles';
 

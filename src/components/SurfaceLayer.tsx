@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { PathOptions } from 'leaflet';
-import { Polyline } from 'react-leaflet';
+import { Polyline } from './map/paths';
 import { SURFACE_COLOR, type SurfaceCategory, type SurfacePath } from '../planning/surface';
 
 /** Bordure sombre sous le tracé : les teintes claires (Inconnu, Sable, Gravillon) restent lisibles sur le fond de carte. */
@@ -13,7 +13,7 @@ const CASING_COLOR = '#1b1f24';
  * tracé ne capte pas le toucher, laissé aux couches de la page.
  */
 function SurfaceLayer({ paths, weight = 5 }: { paths: SurfacePath[]; weight?: number }) {
-  // Styles stables d'un rendu à l'autre : react-leaflet ne réapplique `setStyle` qu'à un nouvel objet (27/10).
+  // Styles stables d'un rendu à l'autre : un trait réapplique `setStyle` à chaque nouvel objet (27/10).
   const styles = useMemo(() => {
     const casing: PathOptions = { color: CASING_COLOR, weight: weight + 3, opacity: 0.55, interactive: false };
     const byCategory = {} as Record<SurfaceCategory, PathOptions>;

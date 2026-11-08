@@ -56,6 +56,23 @@ const noteButton = () => evaluate(`(() => { const b = [...document.querySelector
 const flags = () => evaluate(`[...document.querySelectorAll('.an-map-panel .leaflet-marker-icon')].filter((m) => /^\\d+$/.test(m.textContent.trim())).map((m) => m.textContent.trim() + (m.innerHTML.includes('#7b1fa2') ? ' (violet)' : '')).join(', ') || '(aucun)'`);
 const marksList = () => evaluate(`(() => { const l = document.querySelector('.an-marks'); return l ? [...l.querySelectorAll('input')].map((i) => i.closest('div').innerText.replace(/\\n+/g, ' ') + ' [' + (i.value || i.placeholder) + ']').join(' | ') : '(pas de liste)'; })()`);
 const refLines = () => evaluate(`document.querySelectorAll('.recharts-reference-line').length`);
+/**
+ * Bulle d'un fanion (lot 189, cartes sans react-leaflet) : clic sur le fanion `n` de la carte, arrêté à la carte pour
+ * que son cadre ne l'agrandisse pas (téléphone) ; texte de la bulle, heure masquée (elle suit l'heure du passage).
+ */
+const flagPopup = async (n) => {
+  const clic = await evaluate(`(() => {
+    const flag = [...document.querySelectorAll('.an-map-panel .leaflet-marker-icon')].find((m) => m.textContent.trim() === ${JSON.stringify(String(n))});
+    if (!flag) return 'absent';
+    flag.closest('.leaflet-container').addEventListener('click', (e) => e.stopPropagation(), { once: true });
+    const r = flag.getBoundingClientRect();
+    flag.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+    return 'ok';
+  })()`);
+  await settle({ max: 1000, label: 'bulle' });
+  const text = await evaluate(`document.querySelector('.an-map-panel .leaflet-popup-content')?.textContent ?? '(aucune bulle)'`);
+  return `${clic} → ${text.replace(/ · .*$/, ' · (heure)')}`;
+};
 const records = () => evaluate(`(async () => {
   const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
   const list = [];
@@ -131,6 +148,7 @@ for (const [family, speedMs, graphTab] of [['À pied', 3, 'graphiques'], ['Voile
   const rec = recs.map((r) => r.record).sort((a, b) => b.summary.startMs - a.summary.startMs)[0];
   diag(`notes ${family} : repères à ${rec?.marks?.map((m) => m.timeMs - rec.summary.startMs).join(', ')} ms du premier point ; Note cliquée à Démarrer + ${note1 - demarre} et + ${note2 - demarre} (page)`);
   console.log('fiche :', rec ? `${rec.sport}, ${rec.marks?.length ?? 0} repères (${rec.marks?.map((m) => `${new Date(m.timeMs).toISOString().slice(11, 19)} ${m.label}`).join(', ')})` : '(aucune)');
+  console.log('bulle du fanion 1 :', await flagPopup(1));
 
   if (family !== 'À pied') continue;
   // Nommer, supprimer, enregistrer.

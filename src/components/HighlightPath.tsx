@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Polyline } from 'react-leaflet';
+import { Polyline } from './map/paths';
 import { HIGHLIGHT_OPACITY, highlightPathOptions } from './highlightColors';
 
 /**

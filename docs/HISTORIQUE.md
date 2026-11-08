@@ -1530,3 +1530,13 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
 
 318. Bouton « Partager » des Itinéraires à icône seule (lot 199, validé le 08/11 sur téléphone).
     - **Décision** : icône de 24 px dans un bouton de 45 px, à la hauteur de « Partir », libellé d'accessibilité et info-bulle gardés (30 px d'abord, trop petit à l'essai du 07/11).
+
+319. Liseré de la trace du direct sous la trace en satellite (lot 202, validé le 08/11 sur lecture, version 0.5.22).
+    - **Décision** : le liseré blanc de la trace enregistrée et de son prolongement a son propre calque (`traceLisere`, z-index 395), au-dessus de la trace suivie et sous le calque par défaut où reste la trace ; couleurs, épaisseurs et ordre des autres couches inchangés.
+    - **Pourquoi** : passer en satellite en route crée le liseré après la trace, et dans un même calque l'ordre d'empilement est l'ordre de création : il se posait par-dessus et la délavait. Même remède que la trace suivie (point 313).
+    - **Piège** : défaut antérieur au lot 196, vu au banc le 07/11 ; le script `trace-suivie` a reçu un verdict qui échouait avant et passe après.
+
+320. Dernière ligne d'un graphe toujours lisible au zoom maximal (lot 203, validé le 08/11 sur lecture, version 0.5.23).
+    - **Décision** : quand la plage zoomée touche la fin, `clampRange` rend exactement la borne du graphe ; la lecture (`inChartView`) tolère en plus un écart relatif de 1e-9 aux deux bornes.
+    - **Pourquoi** : `(fin - largeur) + largeur` arrondissait un ulp sous la fin (0,8999999999999999 pour 0,9 ; aussi 1,7/0,4 et 2,9/0,8) : la dernière ligne restait dessinée mais sans infobulle ni repère sur la carte.
+    - **Piège** : défaut d'abord seulement déduit du calcul, puis prouvé par un test qui boucle sur k/10 et j/10 ; les graphes d'analyse, d'itinéraire et de suivi en profitent tous.

@@ -1,7 +1,8 @@
 import { normalizeDeg } from '../core/angles';
 import { roundTo } from '../core/basics';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { CircleMarker, Popup } from 'react-leaflet';
+import Popup from '../components/map/Popup';
+import { CircleMarker } from '../components/map/paths';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';

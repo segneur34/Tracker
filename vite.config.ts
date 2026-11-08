@@ -48,7 +48,7 @@ export default defineConfig({
             },
             {
               name: 'vendor-map',
-              test: /node_modules[\\/](leaflet|react-leaflet|@react-leaflet)[\\/]/,
+              test: /node_modules[\\/]leaflet[\\/]/,
               priority: 2,
             },
           ],

@@ -1,6 +1,6 @@
 import { memo, useEffect } from 'react';
 import L from 'leaflet';
-import { useMap } from 'react-leaflet';
+import { useMap } from './map/mapContext';
 import type { SportFamily } from '../core/sportProfiles';
 import { useMapBase } from '../hooks/useMapBase';
 import { ColoredTrackPath } from './coloredTrackPath';
@@ -26,7 +26,7 @@ const TRACE_PANE_Z_INDEX = '390';
  * traits ne captent ni clic ni survol. Seul un nouveau tableau `segments`
  * (autre trace, autres bornes de couleur) les redessine : l'appelant le
  * mémorise, et un rendu de la page (survol d'un graphe, surbrillance) ne
- * touche pas à la trace. Le reste de la carte reste en SVG, par react-leaflet.
+ * touche pas à la trace. Le reste de la carte reste en SVG (`components/map/`).
  *
  * Sur le fond satellite de `family` (`useMapBase`), un liseré blanc sous les
  * traits (`haloStyle`), d'un seul tracé : la trace reste lisible sur la mer,

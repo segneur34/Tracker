@@ -8,8 +8,8 @@ import L from 'leaflet';
  * Liseré blanc sous un trait d'épaisseur `weight` sur le fond satellite : la
  * trace reste lisible sur la mer, la forêt ou les toits. Une seule épaisseur
  * partout, trait + 3 (analyses, direct, planification). Un appelant le fige
- * en constante de module : react-leaflet ne réapplique un style que si l'objet
- * change (règle 11).
+ * en constante de module : un trait de `components/map/` réapplique son style
+ * à chaque nouvel objet (règle 11).
  */
 export const haloStyle = (weight: number) => ({ color: '#ffffff', weight: weight + 3, opacity: 0.85, interactive: false }) as const;
 

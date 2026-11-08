@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useMap } from 'react-leaflet';
+import { useMap } from './map/mapContext';
 
 /**
  * Leaflet fige la taille de la carte à sa création. Quand le panneau qui la
