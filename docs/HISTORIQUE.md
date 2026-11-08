@@ -1540,3 +1540,14 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : quand la plage zoomée touche la fin, `clampRange` rend exactement la borne du graphe ; la lecture (`inChartView`) tolère en plus un écart relatif de 1e-9 aux deux bornes.
     - **Pourquoi** : `(fin - largeur) + largeur` arrondissait un ulp sous la fin (0,8999999999999999 pour 0,9 ; aussi 1,7/0,4 et 2,9/0,8) : la dernière ligne restait dessinée mais sans infobulle ni repère sur la carte.
     - **Piège** : défaut d'abord seulement déduit du calcul, puis prouvé par un test qui boucle sur k/10 et j/10 ; les graphes d'analyse, d'itinéraire et de suivi en profitent tous.
+
+
+321. Mentions des cartes à une ligne sur téléphone (lot 195, validé le 08/11 sur téléphone, essai 151, version 0.5.24).
+    - **Décision** : une ligne de 12 px coupée par « … », dépliable d'un toucher (`aria-expanded`), « Powered by Esri » en tête du texte unique de `mapBase` ; « © OpenStreetMap » reste entier ; rien sur ordinateur ni en plan. Choix de l'utilisateur le 07/11 après l'essai 142 (le lot 192 restait trop grand).
+    - **Pourquoi** : Esri demande de pouvoir lire tous les noms sur petit écran, les conditions d'OSM interdisent de cacher la mention.
+    - **Piège** : le `max-width` en pourcentage du lot 192 se résolvait contre le conteneur de Leaflet, non contre la carte : la borne est calculée en pixels (65 % de la carte, `ResizeObserver`). Le coin bas droit des analyses rangeait légende et mention côte à côte et faisait rétrécir « © OpenStreetMap » sur deux lignes à 320 px : la mention passe sous la légende.
+
+322. `react-leaflet` remplacé par des composants maison sur `leaflet` (lot 189, validé le 08/11 sur téléphone, essais 152 et 153, version 0.5.25).
+    - **Décision** : `components/map/` (carte, calque, traits, ronds, repère, bulle à contenu React par portail), écrit d'après la documentation de Leaflet sans recopier `react-leaflet` ; paquets et exception de licence retirés, règle 11 de CLAUDE.md réécrite. Fait avant le fork de la version vendue : licence Hippocratic 2.1, non approuvée OSI.
+    - **Pourquoi** : une couche est créée au rendu puis seulement mise à jour (`set…`), jamais recréée ; recréée, elle repasserait au-dessus des autres et l'empilement ne suivrait plus l'ordre de rendu.
+    - **Piège** : `pathOptions` passé au constructeur rend `interactive: false` effectif en production ; `react-leaflet` l'appliquait après l'ajout, trop tard, et seul le double montage du mode développement le faisait marcher, donc le banc. Changement accepté : un trait non cliquable ne capte plus le toucher (planification : un revêtement montré laisse passer le toucher au tronçon dessous).
