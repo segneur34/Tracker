@@ -48,7 +48,12 @@ export const hoveredTrackIndex = (
 ): number | null => hoveredRow(e, data)?.index ?? null;
 
 /** Vrai si l'abscisse `value` du point survolé est dans la plage zoomée (ou s'il n'y a pas de zoom) : sinon, rien à lire. */
-export const inChartView = (view: XRange | null, value: number): boolean => !view || (value >= view.min && value <= view.max);
+export const inChartView = (view: XRange | null, value: number): boolean => {
+  if (!view) return true;
+  // Tolérance d'arrondi aux deux bornes : la dernière ligne reste lisible.
+  const eps = 1e-9 * (view.max - view.min);
+  return value >= view.min - eps && value <= view.max + eps;
+};
 
 /**
  * Gestionnaire de survol d'un graphe (`onMouseMove` et `onTouchMove`) : pose

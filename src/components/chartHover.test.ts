@@ -52,3 +52,15 @@ describe('trackHover', () => {
     expect(getHoveredIndex()).toBeNull();
   });
 });
+
+describe('inChartView, tolérance d arrondi', () => {
+  const view = { min: 0.7, max: 0.9 };
+  it('accepte une valeur à un ulp hors de la vue, aux deux bornes', () => {
+    expect(inChartView(view, 0.9 + Number.EPSILON)).toBe(true);
+    expect(inChartView(view, 0.7 - Number.EPSILON)).toBe(true);
+  });
+  it('refuse une valeur franchement hors de la vue', () => {
+    expect(inChartView(view, 0.91)).toBe(false);
+    expect(inChartView(view, 0.69)).toBe(false);
+  });
+});

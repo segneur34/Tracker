@@ -22,8 +22,10 @@ export const clampRange = (range: XRange, full: XRange, minSpan: number): XRange
   const span = Math.max(minSpan, range.max - range.min);
   if (!(span < fullSpan)) return null;
   const center = (range.min + range.max) / 2;
-  const min = Math.max(full.min, Math.min(center - span / 2, full.max - span));
-  return { min, max: min + span };
+  const atEnd = full.max - span;
+  const min = Math.max(full.min, Math.min(center - span / 2, atEnd));
+  // Fin atteinte : `max` exactement `full.max` (min + span peut arrondir un ulp dessous).
+  return { min, max: min >= atEnd ? full.max : min + span };
 };
 
 /** Deux plages égales (mêmes bornes), `null` compris : « tout voir » égale « tout voir ». */

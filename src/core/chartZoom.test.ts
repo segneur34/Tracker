@@ -25,6 +25,24 @@ describe('plage bornée', () => {
   });
 });
 
+describe('plage collée à la fin', () => {
+  it('rend exactement full.max (couple fautif figé : 0–0,9, largeur 0,2)', () => {
+    const full = { min: 0, max: 0.9 };
+    // Avant correction : (0,9 - 0,2) + 0,2 = 0,8999999999999999.
+    expect(clampRange({ min: 5, max: 5.2 }, full, 0.01)!.max).toBe(0.9);
+  });
+
+  it('jamais sous full.max quand la plage demandée touche la fin', () => {
+    for (let k = 2; k <= 300; k++) {
+      for (let j = 1; j < k; j++) {
+        const full = { min: 0, max: k / 10 };
+        const r = clampRange({ min: full.max, max: full.max + j / 10 }, full, 0.01);
+        if (r) expect(r.max).toBe(full.max);
+      }
+    }
+  });
+});
+
 describe('geste à deux doigts', () => {
   it('écarter les doigts zoome en gardant les valeurs sous les doigts', () => {
     // Zone de 100 px sur 0–10 : doigts à 40 et 60 px (valeurs 4 et 6), écartés à 20 et 80 px.
