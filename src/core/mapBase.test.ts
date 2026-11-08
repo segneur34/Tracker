@@ -90,7 +90,7 @@ describe('adresse des tuiles réglable (lot 188)', () => {
   });
 
   it('libellé d’Esri complet, sur la carte et sur l’image de partage', () => {
-    expect(MAP_BASES.satellite.attribution).toBe('Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community &middot; Powered by Esri');
-    expect(MAP_BASES.satellite.credit).toBe('© Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri');
+    expect(MAP_BASES.satellite.attribution).toBe('Powered by Esri &middot; Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community');
+    expect(MAP_BASES.satellite.credit).toBe('Powered by Esri · Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community');
   });
 });

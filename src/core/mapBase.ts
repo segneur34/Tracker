@@ -17,7 +17,10 @@ export type MapBase = 'plan' | 'satellite';
 export interface MapBaseSource {
   /** Gabarit d'adresse : `{z}`, `{x}`, `{y}`. */
   url: string;
-  /** Mention exigée par les conditions d'usage, en HTML (carte). */
+  /**
+   * Mention exigée par les conditions d'usage, en HTML (carte). Esri en tête : sur téléphone la mention tient sur
+   * une ligne coupée à droite, « Powered by Esri » reste lisible (`theme/base.css`).
+   */
   attribution: string;
   /** Mention en texte, pour l'image de partage. */
   credit: string;
@@ -42,8 +45,8 @@ export const MAP_BASES: Record<MapBase, MapBaseSource> = {
   satellite: {
     // Attention à l'ordre : y puis x.
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false',
-    attribution: 'Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community &middot; Powered by Esri',
-    credit: '© Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri',
+    attribution: 'Powered by Esri &middot; Imagerie &copy; Esri, Vantor, Earthstar Geographics, GIS User Community',
+    credit: 'Powered by Esri · Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community',
     keyPrefix: 'sat_',
     overzoomDepth: 6,
     fetchAncestors: true,

@@ -9,6 +9,7 @@ import { TILE_CACHE_DEFAULTS, tilesToRetry, tileViewOf, type TileCoord, type Til
 import { useMapBase } from '../hooks/useMapBase';
 import { onNetworkBack, resolveExactTile, resolveTile } from '../platform/mapTiles';
 import { isForeground, onForeground } from '../platform/screen';
+import { NARROW_QUERY } from '../hooks/useNarrowScreen';
 import { IconLayers } from './icons';
 // La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification) :
 // aucune page chargée à la demande ne peut l'oublier (27/10).
@@ -221,10 +222,99 @@ class CachedTileLayer extends L.TileLayer {
   }
 }
 
+/** Classes du cadre des mentions (`theme/base.css`) : repliable (satellite, téléphone), puis ouvert. */
+const FOLDABLE_CLASS = 'is-foldable';
+const OPEN_CLASS = 'is-open';
+
+/** Part de la largeur de la carte que le cadre des mentions ne dépasse pas, sur téléphone. */
+const ATTRIBUTION_MAX_SHARE = 0.65;
+
+/**
+ * Largeur maximale du cadre des mentions, sur téléphone, pour tous les fonds : une part de la carte, posée en pixels.
+ * Le CSS ne peut pas la dire : le cadre est dans un conteneur de Leaflet en position absolue, à largeur automatique,
+ * et un pourcentage se résoudrait contre lui, pas contre la carte. Recalculée quand la carte change de taille ;
+ * une carte pas encore mesurée (largeur nulle) ne reçoit rien, l'observateur de taille s'en charge. Rend le retrait.
+ */
+function boundAttribution(map: L.Map): () => void {
+  const box = map.attributionControl?.getContainer();
+  if (!box) return () => {};
+  const query = window.matchMedia(NARROW_QUERY);
+  const container = map.getContainer();
+  // Largeur réelle du conteneur : `map.getSize()` reste périmé tant qu'`invalidateSize` n'a pas tourné.
+  const apply = (): void => {
+    const width = query.matches ? container.clientWidth : 0;
+    box.style.maxWidth = width > 0 ? `${Math.round(width * ATTRIBUTION_MAX_SHARE)}px` : '';
+  };
+  apply();
+  map.whenReady(apply);
+  map.on('resize', apply);
+  // La mise en page change la taille de la carte sans que Leaflet le sache (carte mesurée en cours de composition).
+  const observer = new ResizeObserver(apply);
+  observer.observe(container);
+  query.addEventListener('change', apply);
+  return () => {
+    observer.disconnect();
+    map.off('resize', apply);
+    query.removeEventListener('change', apply);
+    box.style.maxWidth = '';
+  };
+}
+
+/**
+ * Mention du satellite, sur téléphone : une ligne coupée, qu'un toucher déplie en entier puis replie (Esri demande
+ * qu'on puisse lire tous les noms sur petit écran). Leaflet 1.9 n'a pas de contrôle repliable. Sur ordinateur, ou
+ * en plan (la règle d'OSM interdit de cacher la mention), rien n'est posé. Rend le retrait de tout ce qui l'a été.
+ */
+function foldAttribution(map: L.Map, base: MapBase): () => void {
+  const box = map.attributionControl?.getContainer();
+  if (!box || base !== 'satellite') return () => {};
+  box.classList.add(FOLDABLE_CLASS);
+  const query = window.matchMedia(NARROW_QUERY);
+  const toggle = (): void => {
+    if (!query.matches) return;
+    box.setAttribute('aria-expanded', String(box.classList.toggle(OPEN_CLASS)));
+  };
+  const onClick = (e: Event): void => {
+    // Un lien de la mention (s'il y en avait un) s'ouvre sans plier le cadre.
+    if ((e.target as HTMLElement | null)?.closest('a')) return;
+    toggle();
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    toggle();
+  };
+  const sync = (): void => {
+    if (query.matches) {
+      box.setAttribute('role', 'button');
+      box.setAttribute('tabindex', '0');
+      box.setAttribute('aria-expanded', String(box.classList.contains(OPEN_CLASS)));
+    } else {
+      box.classList.remove(OPEN_CLASS);
+      box.removeAttribute('role');
+      box.removeAttribute('tabindex');
+      box.removeAttribute('aria-expanded');
+    }
+  };
+  sync();
+  query.addEventListener('change', sync);
+  box.addEventListener('click', onClick);
+  box.addEventListener('keydown', onKey);
+  return () => {
+    query.removeEventListener('change', sync);
+    box.removeEventListener('click', onClick);
+    box.removeEventListener('keydown', onKey);
+    box.classList.remove(FOLDABLE_CLASS, OPEN_CLASS);
+    for (const name of ['role', 'tabindex', 'aria-expanded']) box.removeAttribute(name);
+  };
+}
+
 function TileLayer({ base }: { base: MapBase }) {
   const map = useMap();
   useEffect(() => {
     map.attributionControl?.setPrefix(false);
+    const unbound = boundAttribution(map);
+    const unfold = foldAttribution(map, base);
     const layer = new CachedTileLayer(base).addTo(map);
     // Écran éteint, aucune reprise : la position qui déplace la carte ne demande que les cases neuves, comme Leaflet.
     const retry = (minIntervalMs: number): void => {
@@ -250,6 +340,8 @@ function TileLayer({ base }: { base: MapBase }) {
       stopNetwork();
       map.off('moveend', onMoveEnd);
       clearTimers();
+      unfold();
+      unbound();
       layer.remove();
     };
   }, [map, base]);

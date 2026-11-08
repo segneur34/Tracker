@@ -326,7 +326,8 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - vignettes de la bibliothèque : images fixes (aucune carte Leaflet), pas de bouton, plan ; planification : le fond de la famille de son activité (la Voile, en satellite), son bouton, qui ne pose pas de point, et deux points posés sur la photo ;
   - l'aperçu de l'image de partage de la voile (capture, à regarder : photo et mention Esri) ;
   - hors ligne : tuiles `sat_…` gardées, réaffichées sans Esri ;
-  - à 390×844 : bouton présent, rien ne déborde, un toucher sur le bouton n'ouvre pas le plein écran, la vue agrandie suit le fond avec son bouton.
+  - à 390×844 : bouton présent, rien ne déborde, un toucher sur le bouton n'ouvre pas le plein écran, la vue agrandie suit le fond avec son bouton ;
+  - mentions sur téléphone (lot 195), à 390×844 puis 320×640 : en satellite, une seule ligne de 12 px, « Powered by Esri » en tête, bornée à 65 % de la carte, repliée avec `role="button"` et `aria-expanded="false"` ; un toucher la déplie (`is-open`, hauteur qui grandit, tous les noms lisibles, `aria-expanded="true"`), un second la replie, sans ouvrir le plein écran ; en plan, « © OpenStreetMap » entier sur une ligne, sans bouton ; à 1400 px, rien de replié ni d'aria, un clic ne change rien. Le texte de la mention filtré de `pageText` suit le nouvel ordre Esri.
 
   Il finit par « Tout passe. » ou le nombre d'échecs.
 - `prereglages.mjs <port> [<dossier des captures>]` : pré-réglages du bateau, puis de tous les sports hors surf (demandes du 21/10), sur un profil neuf, sans réseau, environ 1 min. Le script écrit dans `localStorage` des réglages d'avant (bateau, Voile, Course, kite), puis il vérifie :

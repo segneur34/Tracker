@@ -13,7 +13,10 @@
 //  4. image de partage de la voile : capture de l'aperçu (photo et mention Esri, à l'œil) ;
 //  5. hors ligne : les tuiles satellite vues sont gardées (`sat_…`) et réaffichées après rechargement sans Esri ;
 //  6. à 390×844 : bouton présent, rien ne déborde, choix ouvert compris ; ni le bouton ni le choix n'ouvrent la carte
-//     en plein écran ; la vue agrandie suit le même fond, avec son bouton.
+//     en plein écran ; la vue agrandie suit le même fond, avec son bouton ;
+//  7. mentions sur téléphone (lot 195), à 390×844 puis 320×640 : satellite sur une seule ligne de 12 px, « Powered by Esri »
+//     en tête, un toucher déplie (classe is-open, hauteur qui grandit, aria-expanded) et un second replie ; plan : « © OpenStreetMap »
+//     entier et sur une ligne ; à 1400 px, rien de replié ni d'aria sur la mention.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
 
@@ -56,7 +59,7 @@ const choose = async (label, scope = '', ms = 1000) => {
   await wait(ms);
 };
 const attribution = () => evaluate(`document.querySelector('.leaflet-control-attribution')?.textContent ?? ''`);
-const pageText = () => evaluate(`document.body.innerText.replace(/(Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community · Powered by Esri|Imagerie © Esri, Vantor, Earthstar Geographics|© OpenStreetMap)/g, '<mention>')`);
+const pageText = () => evaluate(`document.body.innerText.replace(/(Powered by Esri · Imagerie © Esri, Vantor, Earthstar Geographics, GIS User Community|Powered by Esri · Imagerie © Esri, Vantor, Earthstar Geographics|© OpenStreetMap)/g, '<mention>')`);
 const storedBases = () => evaluate(`JSON.parse(localStorage.getItem('tracker.fondCarte') ?? '{}')`);
 /** Tuiles de la carte compacte affichées (image chargée). */
 const loadedTiles = () => evaluate(`[...document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile')].filter((i) => i.complete && i.naturalWidth > 0).length`);
@@ -222,6 +225,45 @@ await settle({ max: 2000 });
 check('390 : vue agrandie avec son bouton', (await buttons('.an-map-overlay')) === 1);
 check('390 : vue agrandie en satellite', (await current('.an-map-overlay')) === 'Satellite');
 await shoot('satellite-390-agrandie');
+
+// --- 7. Mentions sur téléphone (lot 195) ---
+const mention = () => evaluate(`(() => {
+  const el = document.querySelector('.an-map-frame .leaflet-control-attribution') ?? document.querySelector('.leaflet-control-attribution');
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  return { h: r.height, w: r.width, font: parseFloat(cs.fontSize), line: parseFloat(cs.lineHeight), clipped: el.scrollWidth > el.clientWidth + 1,
+    open: el.classList.contains('is-open'), foldable: el.classList.contains('is-foldable'), role: el.getAttribute('role'),
+    expanded: el.getAttribute('aria-expanded'), text: el.textContent, visibleText: el.innerText, mapW: el.closest('.leaflet-container').getBoundingClientRect().width, style: el.style.maxWidth };
+})()`);
+const tap = () => evaluate(`document.querySelector('.an-map-frame .leaflet-control-attribution, .leaflet-control-attribution').click()`);
+for (const [w, h] of [[390, 844], [320, 640]]) {
+  await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+  await go(paths.voile, 6000);
+  const closed = await mention();
+  check(`${w} : satellite, une ligne de 12 px`, closed.foldable && closed.font === 12 && closed.h <= closed.line + 2, JSON.stringify(closed));
+  check(`${w} : satellite, « Powered by Esri » en tête, bouton accessible replié`, closed.text.startsWith('Powered by Esri') && closed.role === 'button' && closed.expanded === 'false' && !closed.open, closed.text);
+  check(`${w} : satellite, cadre borné à 65 % de la carte`, closed.w <= closed.mapW * 0.65 + 1, `${closed.w} / ${closed.mapW}`);
+  await tap();
+  await wait(300);
+  const opened = await mention();
+  check(`${w} : un toucher déplie (is-open, hauteur qui grandit, tous les noms)`, opened.open && opened.expanded === 'true' && opened.h > closed.h && !opened.clipped && opened.visibleText.includes('GIS User Community'), JSON.stringify(opened));
+  await shoot(`satellite-${w}-mention-ouverte`);
+  await tap();
+  await wait(300);
+  const again = await mention();
+  check(`${w} : un second toucher replie`, !again.open && again.expanded === 'false' && again.h <= again.line + 2, JSON.stringify(again));
+  check(`${w} : le toucher sur la mention ne déplace pas la carte ni n'ouvre le plein écran`, !(await fullscreen()));
+  await go(paths.course, 5000);
+  const plan = await mention();
+  check(`${w} : plan, « © OpenStreetMap » entier sur une ligne, sans bouton`, plan.visibleText.includes('OpenStreetMap') && !plan.clipped && plan.h <= plan.line + 2 && !plan.foldable && plan.role === null, JSON.stringify(plan));
+}
+// Ordinateur : rien de replié, pas d'aria sur la mention satellite.
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await go(paths.voile, 6000);
+const wide = await mention();
+check('1400 : satellite, mention entière, rien de replié, pas d\'aria', wide.role === null && wide.expanded === null && !wide.clipped && wide.visibleText.startsWith('Powered by Esri'), JSON.stringify(wide));
+await tap();
+check('1400 : un clic sur la mention ne la change pas', !(await mention()).open);
 
 console.log('\nconsole :', logs.length ? `\n  ${logs.slice(0, 15).join('\n  ')}` : 'rien');
 console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);

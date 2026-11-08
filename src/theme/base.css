@@ -51,17 +51,32 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
-/* Cadre des mentions des cartes, sur téléphone (même condition que `NARROW_QUERY`) : plus petit, plus serré,
-   borné à une part de la carte, sur deux lignes au plus. Les mentions restent entières (conditions d'OSM et d'Esri).
-   Doublé pour passer devant `leaflet.css`. */
+/* Cadre des mentions des cartes, sur téléphone (même condition que `NARROW_QUERY`) : plus petit, plus serré. Sa largeur
+   maximale (65 % de la carte) est posée en pixels par `BaseTileLayer.tsx` (`boundAttribution`), qu'un pourcentage
+   ne sait pas dire ici. Le plan garde sa mention entière, au besoin sur deux lignes (« © OpenStreetMap » est courte et
+   la règle d'OSM interdit de la cacher). Le satellite (`is-foldable`, aussi posé par `BaseTileLayer.tsx`) est à 12 px,
+   « Powered by Esri » en tête, sur une ligne coupée par des points de suspension ; un toucher le déplie (`is-open`) pour
+   lire tous les noms, un second le replie. Doublé pour passer devant `leaflet.css`. */
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .leaflet-container .leaflet-control-attribution.leaflet-control-attribution {
     box-sizing: border-box;
-    max-width: 65%;
     padding: 0 var(--space-1);
     font-size: var(--text-2xs);
     line-height: 1.25;
     white-space: normal;
     text-align: right;
+  }
+
+  .leaflet-container .leaflet-control-attribution.leaflet-control-attribution.is-foldable {
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .leaflet-container .leaflet-control-attribution.leaflet-control-attribution.is-foldable.is-open {
+    white-space: normal;
+    overflow: visible;
   }
 }

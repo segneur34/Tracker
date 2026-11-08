@@ -53,15 +53,22 @@
 }
 
 /* Coin bas droit d'une carte d'analyse (`AnalysisMap`) : la légende de couleur, puis la mention OSM,
-   côte à côte sur une ligne plutôt qu'empilées. */
+   côte à côte sur une ligne plutôt qu'empilées ; si les deux ne tiennent pas, la mention passe sous la légende
+   (jamais écrasée : la mention d'OSM ne doit pas être coupée, `flex-shrink: 0`). */
 .an-map-corner .leaflet-bottom.leaflet-right {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: flex-end;
 }
 
 .an-map-corner .leaflet-bottom.leaflet-right > .leaflet-control {
   float: none;
   clear: none;
+}
+
+.an-map-corner .leaflet-bottom.leaflet-right > .leaflet-control-attribution {
+  flex: 0 0 auto;
 }
 
 .an-map-corner .leaflet-control.an-map-legend {
