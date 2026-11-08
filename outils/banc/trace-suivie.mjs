@@ -142,6 +142,11 @@ const inSat = await pathsIn('traceSuivie');
 check('satellite : les deux tracés inchangés', same(inSat, inPlan), JSON.stringify(inSat));
 const orderSat = { lisere: await paneOrder('traceSuivieLisere'), suivie: await paneOrder('traceSuivie'), traces: await paneOrder('overlay') };
 check('satellite : liseré, puis trace suivie, puis trace enregistrée', orderSat.lisere < orderSat.suivie && orderSat.suivie < orderSat.traces, JSON.stringify(orderSat));
+// Le liseré de la trace enregistrée naît après elle (satellite activé après le départ) : il doit rester dessous.
+const trackHalos = await pathsIn('traceLisere');
+const orderTrack = { lisereTrace: await paneOrder('traceLisere'), suivie: await paneOrder('traceSuivie'), traces: await paneOrder('overlay') };
+check('satellite activé après le départ : le liseré de la trace est dans un calque sous la trace',
+  trackHalos.length > 0 && trackHalos.every((h) => h.couleur === '#ffffff') && orderTrack.suivie < orderTrack.lisereTrace && orderTrack.lisereTrace < orderTrack.traces, JSON.stringify(orderTrack));
 await shoot('trace-suivie-satellite');
 
 await evaluate(`document.querySelector('[aria-label="Fond de carte"]').click(); 'ok'`);

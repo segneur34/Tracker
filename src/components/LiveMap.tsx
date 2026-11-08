@@ -67,6 +67,12 @@ const GUIDE_DONE_HALO_STYLE = haloStyle(GUIDE_DONE_WEIGHT);
  */
 const GUIDE_HALO_PANE = { name: 'traceSuivieLisere', style: { zIndex: 380 } };
 const GUIDE_PANE = { name: 'traceSuivie', style: { zIndex: 390 } };
+/**
+ * Calque du liseré de la trace enregistrée et de son prolongement : au-dessus de la trace suivie, sous celui des
+ * tracés (400) où reste la trace. Passer en satellite en cours de route crée le liseré après la trace : sans ce
+ * calque, il se poserait par-dessus elle.
+ */
+const TRACK_HALO_PANE = { name: 'traceLisere', style: { zIndex: 395 } };
 
 /** Balises : fond, bordure et chiffre selon leur état (données de carte, donc en dur). */
 const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; ink: string; dashed?: boolean }> = {
@@ -215,9 +221,13 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
         {target && position && (
           <Polyline positions={[[position.lat, position.lon], [target.lat, target.lon]]} pathOptions={AIM_STYLE} />
         )}
-        {halo && paths.map((positions, i) => <Polyline key={`halo-${i}`} positions={positions} pathOptions={HALO_STYLE} />)}
-        {halo && tail && (
-          <Polyline positions={[[tail[0].lat, tail[0].lon], [tail[1].lat, tail[1].lon]]} pathOptions={HALO_STYLE} />
+        {halo && (
+          <Pane {...TRACK_HALO_PANE}>
+            {paths.map((positions, i) => <Polyline key={`halo-${i}`} positions={positions} pathOptions={HALO_STYLE} />)}
+            {tail && (
+              <Polyline positions={[[tail[0].lat, tail[0].lon], [tail[1].lat, tail[1].lon]]} pathOptions={HALO_STYLE} />
+            )}
+          </Pane>
         )}
         {paths.map((positions, i) => <Polyline key={i} positions={positions} pathOptions={trackStyle} />)}
         {tail && (
