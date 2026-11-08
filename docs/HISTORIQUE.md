@@ -1502,3 +1502,31 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : le GPX d'un itinéraire (points nommés, trace sans heure) porte sa fiche JSON dans un bloc d'extensions, comme le GPX complet d'une session ; c'est à la fois le fichier rangé dans `itineraires/` et le fichier partagé. Un GPX reçu d'une autre application va dans les itinéraires s'il porte cette fiche ou n'a aucun point daté ; une trace datée reste une session. Page Itinéraires : « Importer un itinéraire » et « Partager » par itinéraire, bandeau avec « Voir l'itinéraire ».
     - **Pourquoi** : un seul format, lisible par toute application de cartes et sans perte pour Tracker (voies, bips de voile) ; pas de second format à maintenir.
     - **Piège** : un itinéraire importé deux fois ne doit doubler ni son nom ni son fichier ; la réception, qui sert maintenant aux deux, a sorti le rangement des itinéraires de `useRouteLibrary` vers `hooks/routeFiles.ts`.
+
+313. Trace suivie : l'avancement ne saute plus après un hors-piste (lot 196, validé le 08/11 sur téléphone).
+    - **Décision** : un accrochage sur une partie lointaine de la trace n'est validé qu'après 80 m gagnés le long de la trace et réellement parcourus (candidat réexaminé à chaque position) ; à écart quasi égal, le passage le plus proche de l'avancement plus la distance faite l'emporte. Couleurs choisies par l'utilisateur : reste en gris foncé, partie faite plus claire.
+    - **Pourquoi** : toute partie à moins de 60 m était prise, sans retour : la partie sautée s'affichait comme faite et le « restant » était faux ; l'aller-retour retombait à 0 au retour.
+    - **Piège** : limites assumées, boucle courue à contresens (avancement 0) et retour bien plus loin mis à jour après 80 m. Le rejeu de vraies sessions a fait disparaître des sauts de plus de 10 km.
+
+314. Fond de carte qui revient seul après un déverrouillage (lot 197, validé le 08/11 ; essai 146).
+    - **Décision** : `BaseTileLayer` reprend elle-même les cases manquantes de la vue, à 3, 12 et 30 s après un retour au premier plan ou du réseau, et au plus une fois par minute et par case quand la carte bouge ; écran éteint, carte sans taille, tuile absente du serveur : aucune demande.
+    - **Pourquoi** : Leaflet marque une case chargée même échouée et ne la redemande qu'après un zoom qui l'a retirée, d'où un fond vide.
+    - **Piège** : le déclencheur (réseau endormi au réveil) est resté probable, jamais observé ; limite : carte immobile dont le réseau dort plus de 30 s, reprise au retour du réseau ou au déplacement.
+
+315. Plusieurs ceintures et montres retenues, une seule lue à la fois (lot 198, validé le 08/11 sur téléphone, version 0.5.21).
+    - **Décision** : Réglages › Capteurs garde une liste (Utiliser, Essayer, Oublier ; « Ajouter » sur sa ligne) ; l'appareil du prochain départ est marqué, et un appareil ajouté le devient, sauf pendant un enregistrement. Pas de changement d'appareil une fois parti. Un bouton annule la recherche aux trois endroits (Réglages, avant le départ, en route après confirmation, sans reprise jusqu'à la fin de la sortie).
+    - **Pourquoi** : ceinture et montre servent selon la sortie ; une seule lecture à la fois.
+    - **Piège** : nouvelle clé de liste avec migration sans perte (la ceinture reliée y est d'office, l'ancienne clé garde l'appareil actif) ; une connexion tenue n'est jamais rendue en silence pour une autre (`holdBelt`). Banc : le script « timer » échoue sur deux tuiles de l'accueil, déjà avant le lot.
+
+316. Verrou de la carte de planification (lot 201, validé le 08/11 sur téléphone).
+    - **Décision** : un bouton sur la carte montre l'action (crayon : modifier ; crayon barré : verrouiller). Verrouillé, la carte ne pose, ne déplace ni ne sélectionne rien, mais se déplace et se zoome ; la liste des points, « Précédent » et la recherche restent actifs. Un nouvel itinéraire est modifiable, un itinéraire rangé s'ouvre verrouillé ; « Tout effacer », un GPX chargé et « Nouvel itinéraire » repartent modifiables.
+    - **Pourquoi** : se déplacer sur la carte sans poser de point par erreur.
+    - **Piège** : l'état n'est ni dans la fiche ni dans le GPX.
+
+317. Dénivelé pendant le suivi d'un itinéraire (lot 200, validé le 08/11 sur téléphone).
+    - **Décision** : bouton « Dénivelé » sur la ligne « Trace suivie » (état retenu) ; graphe sous la carte, coloré par la pente, avec le zoom des analyses (`ElevationProfileMini`), repère de position et « reste … m D+ ». Absent sans altitude, en parcours de balises, en voile et en surf. Téléphone debout, graphe ouvert : la carte se raccourcit pour que les deux tiennent sans défiler (170 px à 390×844) ; à 360×640 ça ne tient pas, le graphe se rejoint en défilant.
+    - **Pourquoi** : la trace suivie garde son altitude à l'amincissement (1 m près, moins de 80 Ko dans le pire cas mesuré) ; session suivie lissée sur 100 m.
+    - **Piège** : le repère est dessiné à part, sinon le graphe se redessinait à chaque avancée ; le banc mesure le temps de tâches, plus un rapport ×6 au verdict instable.
+
+318. Bouton « Partager » des Itinéraires à icône seule (lot 199, validé le 08/11 sur téléphone).
+    - **Décision** : icône de 24 px dans un bouton de 45 px, à la hauteur de « Partir », libellé d'accessibilité et info-bulle gardés (30 px d'abord, trop petit à l'essai du 07/11).
