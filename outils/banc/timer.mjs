@@ -15,7 +15,7 @@
 //     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
 //     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » absent (lot 102) ;
 //  4 ter. (lot 103) la même séance passée jusqu'au bout pendant l'enregistrement : « Séance terminée » propose « Arrêter
-//     l'enregistrement » à côté de « Tout clore » (ex-« Fermer », lot 143), la session continue ; appui court : le geste rappelé ; tenu 2 s : « Session terminée » ;
+//     l'enregistrement » à côté de « Clore le timer » (ex-« Fermer », lot 143), la session continue ; appui court : le geste rappelé ; tenu 2 s : « Session terminée » ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { connect } from './lib/cdp.mjs';
 
@@ -251,8 +251,8 @@ await wait(2500);
 const skips = await evaluate(`(async () => { let n = 0; while (n < 60 && !document.querySelector('.ivl-done')) { const b = [...document.querySelectorAll('.ivl button')].find((x) => x.textContent.trim() === 'Passer'); if (!b) break; b.click(); n++; await new Promise((r) => setTimeout(r, 60)); } return n; })()`);
 await wait(800);
 const endActions = await evaluate(`[...document.querySelectorAll('.ivl .ivl-actions button')].map((b) => b.textContent.trim()).join(', ')`);
-check("séance terminée pendant l'enregistrement : « Arrêter l'enregistrement » à côté de « Tout clore »", /Séance terminée/.test(await text('.ivl-done'))
-  && endActions === "Tout clore, Arrêter l'enregistrement", `${skips} passe(s) | ${await text('.ivl-done')} | ${endActions}`);
+check("séance terminée pendant l'enregistrement : « Arrêter l'enregistrement » à côté de « Clore le timer »", /Séance terminée/.test(await text('.ivl-done'))
+  && endActions === "Clore le timer, Arrêter l'enregistrement", `${skips} passe(s) | ${await text('.ivl-done')} | ${endActions}`);
 check("l'enregistrement continue après la fin de la séance", (await evaluate(`[...document.querySelectorAll('button.ui-btn--danger')].some((b) => b.textContent.trim() === 'Arrêter' && !b.closest('.ivl'))`)) === true
   && !/Session terminée/i.test(await text('.ui-page')));
 // Un appui court ne fait que rappeler le geste.

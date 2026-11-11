@@ -61,6 +61,7 @@ import {
 } from '../recording/session';
 import { saveRecordedSession } from './useSessionLibrary';
 import { createListeners } from './createStore';
+import { resetStopwatch } from './useStopwatch';
 
 /**
  * Enregistreur de session. Il vit hors des composants, dans ce module : on
@@ -1163,6 +1164,8 @@ export const startRecording = exclusive(async (
   // Journal mis de côté à l'instant : son message reste affiché au départ.
   const recoveryNotice = recovery === 'setAside' ? state.error : null;
 
+  // Chronomètre libre vide au départ (et à la fin) d'un enregistrement ; le compteur d'intervalles, lui, ne bouge pas.
+  resetStopwatch();
   const profile = effectiveRecordingProfile(activity);
   resetSession({ withPositions, source, profile, startedAtMs: Date.now() });
   setState({
@@ -1457,6 +1460,8 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
   const activity = state.activity;
   const stoppedAtMs = Date.now();
+  // Ses tours ne vont pas dans la fiche (DECISIONS §5) : rien à écrire avant la remise à zéro.
+  resetStopwatch();
   const wasRecording = state.status === 'recording';
   stopGpsWatch();
   stopBeltWatch();

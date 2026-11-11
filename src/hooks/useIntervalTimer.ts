@@ -166,7 +166,7 @@ export const closeIntervals = (): void => {
 };
 
 /**
- * Oublie une séance close (finie ou arrêtée), comme « Tout clore » : la carte du
+ * Oublie une séance close (finie ou arrêtée), comme « Clore le timer » : la carte du
  * compteur l'appelle en s'ouvrant et en se fermant, pour qu'on ne revienne
  * jamais sur l'écran « terminée » (26/10). Sans effet sur une séance qui
  * court ou attend en pause, celle d'un enregistrement comprise, ni sans séance.
@@ -177,7 +177,7 @@ export const forgetClosedIntervals = (): void => {
 
 /**
  * « Modifier » du Timer (26/10) : la séance s'arrête et se ferme, la carte rend l'éditeur sur elle (dernière lancée).
- * Aussi « Tout clore » d'une séance finie ou arrêtée (lot 143) : le compteur fermé, le téléphone se tait et
+ * Aussi « Clore le timer » d'une séance finie ou arrêtée (lot 143) : le compteur fermé, le téléphone se tait et
  * retire la notification du compteur ; l'enregistrement, lui, continue.
  */
 export const stopAndCloseIntervals = (): void => {
@@ -244,7 +244,7 @@ export const subscribeToIntervalCommands = (listener: () => void): (() => void) 
 /** Le compteur, relu à chaque changement et, pendant une séance qui avance, au quart de seconde. */
 export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(subscribe, ticking.get);
 
-/** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Tout clore » ; ne redessine qu'à ce changement. */
+/** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Clore le timer » ; ne redessine qu'à ce changement. */
 export const useIntervalTimerOpen = (): boolean => useSyncExternalStore(subscribe, () => ticking.get().run !== null);
 
 /** Vrai tant qu'une séance avance ou est en pause, pas une fois finie : l'écran reste allumé ; ne redessine qu'à ce changement. */
