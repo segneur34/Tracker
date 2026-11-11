@@ -276,7 +276,7 @@ describe('addGpx : résumé par le worker', () => {
     const { activitySummarySettings } = await import('./summarySettings');
     expect(request.options).toMatchObject({ sport: 'running', activitySettings: { running: activitySummarySettings('a-marche')('running') } });
     expect(Object.keys((request.options as { activitySettings: object }).activitySettings)).toEqual(['running']);
-    // Rien n'est détaché : `analyzePendingSession` réutilise ces octets à chaque essai.
+    // Rien n'est détaché : `savePendingSession` (« Réessayer ») réutilise ces octets à chaque essai.
     expect(motion.buffer).toBe(buffer);
     expect(motion.byteLength).toBe(4);
     expect([...motion]).toEqual([1, 2, 3, 4]);

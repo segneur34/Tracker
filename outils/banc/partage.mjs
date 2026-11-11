@@ -15,6 +15,7 @@
 //  4. à 390×844 : la fenêtre tient dans l'écran, sans débordement de la page ;
 //  5. fin d'enregistrement, à 390×844 : rejeu ×600 de la boucle en À pied, Arrêter, puis « … » › « Partager » de la
 //     carte « Session terminée » : aperçu en 1080 × 1920, chiffres du résumé, choix de la course repris (même activité).
+//     La Course reçoit une liste de matériel : sans rien à demander, la carte laisserait place à l'analyse (lot 212).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -212,6 +213,13 @@ const holdStop = async () => {
 };
 const replayPath = join(workDir, 'partage-rejeu.gpx');
 writeFileSync(replayPath, loopGpx(Date.now() - 1800 * 1000));
+// Une liste de matériel en Course : la carte « Session terminée » reste à l'écran, au lieu d'ouvrir l'analyse (lot 212).
+await evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
+  s.gearGroups = { ...s.gearGroups, running: [{ id: 'g1', name: 'Chaussures', items: [{ id: 'i1', name: 'Trail rouge' }] }] };
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return 'ok';
+})()`);
 await go('/enregistrer', 4000);
 console.log('famille :', await clickText('À pied', '[aria-label=Famille] button'));
 await wait(300);
@@ -223,7 +231,8 @@ await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find
 console.log('Démarrer :', await clickText('Démarrer'));
 await wait(6000);
 console.log('Arrêter :', await holdStop());
-await waitFor("[...document.querySelectorAll('.ui-card')].some((c) => c.textContent.includes('Session terminée') && c.querySelector('.ui-more__button'))", { timeout: 2500, label: 'session terminée' });
+// Carte de la session rangée (« Ouvrir l'analyse ») : celle du rangement en cours, remplacée ensuite, perdrait son menu.
+await waitFor("[...document.querySelectorAll('.ui-card')].some((c) => c.textContent.includes('Session terminée') && c.querySelector('.ui-more__button') && c.textContent.includes(\"Ouvrir l'analyse\"))", { timeout: 8000, label: 'session terminée' });
 const cardMenu = await evaluate(`(() => {
   const card = [...document.querySelectorAll('.ui-card')].find((c) => c.textContent.includes('Session terminée'));
   const b = card?.querySelector('.ui-more__button');

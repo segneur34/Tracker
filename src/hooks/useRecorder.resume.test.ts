@@ -78,6 +78,8 @@ const sensors = vi.hoisted(() => ({
   found: null as null | { path: string; bytes: number; durationS: number; samples: number; longestGapS: number; error: null },
   /** La lecture de la capture attend ceci : la reprise reste en `starting` le temps d'une commande. */
   gate: null as Promise<void> | null,
+  /** Captures lues au rangement, par chemin. */
+  reads: [] as string[],
 }));
 vi.mock('../platform/motion', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../platform/motion')>()),
@@ -101,7 +103,10 @@ vi.mock('../platform/motion', async (importOriginal) => ({
     return path ? { path, bytes: 10, durationS: 1, samples: 2, longestGapS: 0, error: null } : null;
   },
   findMotionCapture: async () => sensors.found,
-  readMotionCapture: async () => null,
+  readMotionCapture: async (path: string) => {
+    sensors.reads.push(path);
+    return null;
+  },
   removeMotionCapture: async () => undefined,
 }));
 
@@ -168,9 +173,19 @@ vi.mock('../platform/beeper', async (importOriginal) => ({
   onGpsLost: () => () => undefined,
 }));
 
+/**
+ * Rangement simulé : le journal tel qu'il était à chaque rangement (il est effacé ensuite) ; `fails` : l'écriture est
+ * refusée ; `gate` : le rangement attend cette promesse.
+ */
+const library = vi.hoisted(() => ({ journals: [] as (string | null)[], fails: false, gate: null as Promise<void> | null }));
 vi.mock('./useSessionLibrary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useSessionLibrary')>()),
-  saveRecordedSession: async () => ({ file: 'rangee.gpx', location: 'ici' }),
+  saveRecordedSession: async () => {
+    library.journals.push(journal.text);
+    if (library.gate) await library.gate;
+    if (library.fails) throw new Error('écriture refusée');
+    return { file: 'rangee.gpx', location: 'ici' };
+  },
 }));
 
 const memory = new Map<string, string>();
@@ -229,8 +244,9 @@ const run = (emit: (s: number) => void, from: number, to: number, hz: number) =>
   }
 };
 
-const lineCount = (marker: string): number => (journal.text ?? '').split('\n').filter((l) => l.startsWith(`["${marker}"`)).length;
-const headerCount = (): number => (journal.text ?? '').split('\n').filter((l) => l.startsWith('{"format"')).length;
+/** Lignes de ce genre dans le journal du disque, ou dans `text` (le journal tel qu'au rangement). */
+const lineCount = (marker: string, text = journal.text): number => (text ?? '').split('\n').filter((l) => l.startsWith(`["${marker}"`)).length;
+const headerCount = (text = journal.text): number => (text ?? '').split('\n').filter((l) => l.startsWith('{"format"')).length;
 
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -253,6 +269,10 @@ beforeEach(async () => {
   sensors.running = null;
   sensors.found = null;
   sensors.gate = null;
+  sensors.reads = [];
+  library.journals = [];
+  library.fails = false;
+  library.gate = null;
   belt.listeners.clear();
   belt.adoptable = false;
   belt.holds = 0;
@@ -324,14 +344,16 @@ describe.each([[1], [5]])('reprise silencieuse après une chute du moteur, à %i
     run((s) => { uncut = addFixToStats(uncut, fixAt(s)); }, 0, 40, hz);
     expect(fresh.getRecorderState().stats).toEqual(uncut);
 
-    // À l'arrêt, le GPX a tous les points, en deux segments.
+    // À l'arrêt, le GPX a tous les points, en deux segments ; la session est rangée.
     await fresh.stopRecording();
-    const pending = fresh.getRecorderState().pending!;
-    expect(pending.pointCount).toBe(40 * hz + 1);
-    expect((pending.content.match(/<trkseg>/g) ?? []).length).toBe(2);
+    const saved = fresh.getRecorderState().saved!;
+    expect(saved.pointCount).toBe(40 * hz + 1);
+    expect((saved.content.match(/<trkseg>/g) ?? []).length).toBe(2);
     expect(gpsService.stops).toBe(1);
-    expect(pending.canContinue).toBe(false);
-    const parsed = parseJournal(journal.text!);
+    expect(fresh.getRecorderState().pending).toBeNull();
+    // Le journal tel qu'au rangement, effacé ensuite.
+    expect(journal.text).toBeNull();
+    const parsed = parseJournal(library.journals[0]!);
     expect(parsed.fixes).toHaveLength(40 * hz + 1);
     expect(parsed.stoppedAtMs).not.toBeNull();
   });
@@ -477,17 +499,51 @@ describe('reprise silencieuse, cas limites', () => {
     expect(journal.writes).toBe(1);
   });
 
-  it('ligne « stop » et service vivant : en attente, service arrêté, ni reprise ni offre', async () => {
+  it('ligne « stop » et service vivant : service arrêté, ni reprise ni offre, rangée d’office (lot 212)', async () => {
     const live = source();
     await recorder.startRecording(activity, live);
     run(live.emit, 0, 10, 1);
+    // Rangement refusé à l'arrêt : le journal reste, ligne d'arrêt comprise.
+    library.fails = true;
     await recorder.stopRecording();
+    expect(recorder.getRecorderState().rangeFailed).toBe(true);
+    expect(lineCount('stop')).toBe(1);
+    library.fails = false;
     services.gps = true;
     const fresh = await reload();
     await fresh.recoverInterruptedRecording();
     expect(gpsService.adoptions).toBe(0);
     expect(gpsService.orphanStops).toBe(1);
-    expect(fresh.getRecorderState().pending?.canContinue).toBe(false);
+    const state = fresh.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.saved).toMatchObject({ recovered: true, rangedBy: 'recovery', pointCount: 11, libraryFile: 'rangee.gpx' });
+    // Ni Enregistrer imposé, ni analyse ouverte : la carte attend qu'on y passe.
+    expect(state.landOnRecording).toBe(false);
+    expect(journal.text).toBeNull();
+  });
+
+  it('rangée d’office mais écriture refusée : la session attend, journal gardé, « Réessayer » la range', async () => {
+    const live = source();
+    await recorder.startRecording(activity, live);
+    run(live.emit, 0, 10, 1);
+    await settle();
+    // Tuée, rouverte bien plus tard, sans service : trop tard pour continuer.
+    vi.setSystemTime(T0 + 3_600_000);
+    library.fails = true;
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    let state = fresh.getRecorderState();
+    expect(state.saved).toBeNull();
+    expect(state.pending?.canContinue).toBe(false);
+    expect(state.rangeFailed).toBe(true);
+    expect(state.analyzing).toBe(false);
+    expect(journal.text).not.toBeNull();
+    library.fails = false;
+    expect((await fresh.savePendingSession())?.recovered).toBe(true);
+    state = fresh.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.saved?.rangedBy).toBe('finish');
+    expect(journal.text).toBeNull();
   });
 
   it('sans journal et service vivant : service arrêté, rien d\'autre', async () => {
@@ -531,7 +587,8 @@ describe('reprise silencieuse, cas limites', () => {
     expect(sensors.stops).toBe(0);
     await fresh.stopRecording();
     expect(sensors.stops).toBe(1);
-    expect(fresh.getRecorderState().pending?.motion?.path).toBe(`capteurs/${startedAtMs}.imu`);
+    // Lue au rangement, avec la session.
+    expect(sensors.reads).toContain(`capteurs/${startedAtMs}.imu`);
   });
 
   it('capture et pause manuelle : un ordre perdu avec la page est rattrapé', async () => {
@@ -668,15 +725,17 @@ describe('commandes pendant le `starting` d\'une reprise silencieuse', () => {
     await Promise.all([recovered, stop]);
     const state = fresh.getRecorderState();
     expect(state.status).toBe('idle');
-    expect(state.pending?.pointCount).toBe(11);
-    expect(state.pending?.recovered).toBe(false);
+    expect(state.saved?.pointCount).toBe(11);
+    expect(state.saved?.recovered).toBe(false);
     expect(gpsService.adoptions).toBe(1);
     expect(gpsService.stops).toBe(1);
     expect(gpsService.orphanStops).toBe(0);
-    expect(headerCount()).toBe(1);
+    // Le journal tel qu'au rangement.
+    const kept = library.journals[0];
+    expect(headerCount(kept)).toBe(1);
     expect(journal.writes).toBe(1);
-    expect(lineCount('stop')).toBe(1);
-    expect(lineCount('break')).toBe(0);
+    expect(lineCount('stop', kept)).toBe(1);
+    expect(lineCount('break', kept)).toBe(0);
   });
 
   it('une pause, une reprise ou la bascule sont refusées sans dégât : la session reprend, en enregistrement', async () => {
@@ -750,11 +809,59 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     expect(fresh.getRecorderState().pending?.recovered).toBe(true);
     expect(fresh.getRecorderState().landOnRecording).toBe(true);
 
+    // Au-delà : rangée d'office, sans mener à Enregistrer (lot 212).
     vi.setSystemTime(T0 + 20_000 + 601_000);
     fresh = await reload();
     await fresh.recoverInterruptedRecording();
-    expect(fresh.getRecorderState().pending?.canContinue).toBe(false);
+    expect(fresh.getRecorderState().pending).toBeNull();
+    expect(fresh.getRecorderState().saved).toMatchObject({ recovered: true, rangedBy: 'recovery' });
     expect(fresh.getRecorderState().landOnRecording).toBe(false);
+  });
+
+  it('proposé : pas rangée tant qu’on peut continuer (elle passerait pour un doublon d’elle-même), journal gardé', async () => {
+    await killedAt20(1);
+    vi.setSystemTime(T0 + 60_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(library.journals).toEqual([]);
+    expect(fresh.getRecorderState().saved).toBeNull();
+    expect(fresh.getRecorderState().analyzing).toBe(false);
+    expect(journal.text).not.toBeNull();
+  });
+
+  it('« Finir » au lieu de « Continuer » : rangée, journal effacé ; « Continuer » ne fait plus rien', async () => {
+    await killedAt20(1);
+    vi.setSystemTime(T0 + 60_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    const saved = await fresh.savePendingSession();
+    expect(saved).toMatchObject({ recovered: true, rangedBy: 'finish', pointCount: 21, libraryFile: 'rangee.gpx' });
+    expect(fresh.getRecorderState().pending).toBeNull();
+    expect(journal.text).toBeNull();
+    const next = fakeSource();
+    await fresh.continuePendingSession(next);
+    expect(next.starts).toBe(0);
+    expect(fresh.getRecorderState().status).toBe('idle');
+  });
+
+  it('« Continuer » pendant le rangement de « Finir » : refusé, rien de relu ni de relancé', async () => {
+    await killedAt20(1);
+    vi.setSystemTime(T0 + 60_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    let open!: () => void;
+    library.gate = new Promise((resolve) => {
+      open = resolve;
+    });
+    const finishing = fresh.savePendingSession();
+    expect(fresh.getRecorderState().analyzing).toBe(true);
+    const next = fakeSource();
+    await fresh.continuePendingSession(next);
+    expect(next.starts).toBe(0);
+    expect(fresh.getRecorderState().status).toBe('idle');
+    open();
+    expect((await finishing)?.libraryFile).toBe('rangee.gpx');
+    expect(journal.text).toBeNull();
   });
 
   it.each([[1], [5]])('même journal, segment neuf, source relancée par le geste, durée sans saut, à %i Hz', async (hz) => {
@@ -778,9 +885,14 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     expect(lineCount('break')).toBe(1);
     // 20 s, puis 9 s : les 3 min hors de l'application ne comptent pas.
     expect(displayedDurationMs(fresh.getRecorderState().stats, null, T0)).toBe(29_000);
+    // « Arrêter » ensuite : rangée comme une autre, en une seule session.
     await fresh.stopRecording();
-    expect(fresh.getRecorderState().pending?.pointCount).toBe(20 * hz + 1 + 9 * hz + 1);
-    expect((fresh.getRecorderState().pending?.content.match(/<trkseg>/g) ?? []).length).toBe(2);
+    const saved = fresh.getRecorderState().saved;
+    expect(saved?.pointCount).toBe(20 * hz + 1 + 9 * hz + 1);
+    expect((saved?.content.match(/<trkseg>/g) ?? []).length).toBe(2);
+    expect(saved?.rangedBy).toBe('finish');
+    expect(library.journals).toHaveLength(1);
+    expect(journal.text).toBeNull();
   });
 
   it('une chute après « Continuer » : la durée reste juste', async () => {
@@ -833,10 +945,11 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     run(next.emit, 61, 65, 1);
     await fresh.stopRecording();
     expect(sensors.starts).toBe(starts);
-    expect(fresh.getRecorderState().pending?.motion?.path).toBe(path);
+    // Le fichier d'avant la coupure est lu au rangement, avec la session.
+    expect(sensors.reads).toContain(path);
   });
 
-  it('sans offre : le bouton ne fait rien', async () => {
+  it('sans offre : rangée d’office, le bouton ne fait rien', async () => {
     await killedAt20(1);
     vi.setSystemTime(T0 + 3_600_000);
     const fresh = await reload();
@@ -844,7 +957,8 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     const next = fakeSource();
     await fresh.continuePendingSession(next);
     expect(next.starts).toBe(0);
-    expect(fresh.getRecorderState().pending).not.toBeNull();
+    expect(fresh.getRecorderState().pending).toBeNull();
+    expect(fresh.getRecorderState().saved?.recovered).toBe(true);
   });
 });
 

@@ -98,7 +98,7 @@ export interface PumpDetection extends AttitudeParams {
   /** …à cette durée après, en secondes. */
   liftoffSearchAfterS: number;
   /**
-   * Élagage du `.imu` à « Analyser » autour des glisses ; coupé tant que les seuils ne sont pas réglés sur des
+   * Élagage du `.imu` au rangement autour des glisses ; coupé tant que les seuils ne sont pas réglés sur des
    * sessions réelles : une session sans vol (départ raté) garderait à peine ses mesures.
    */
   pruneCapture: boolean;

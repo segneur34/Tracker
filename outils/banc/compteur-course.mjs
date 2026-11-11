@@ -2,8 +2,9 @@
 // Usage : node compteur-course.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, environ 40 s, 12 s avec `TEMPS=10` (horloge de la page accélérée). Le compteur est
 // lancé depuis l'onglet Fractionné d'Enregistrer, puis une Course est enregistrée en rejeu ×10. Le script vérifie :
-//  1. « Analyser » demande si la session passe en « Fractionné à pied » ;
-//  2. oui : fiche en run-intervals, séances gardées, analyse ouverte dans le Fractionné, onglet « fractionné » ;
+//  1. la carte « Session terminée » demande, par un choix dessiné (lot 212, plus de fenêtre du navigateur), si la
+//     session passe en « Fractionné à pied » ; elle est déjà rangée, l'analyse ne s'ouvre pas d'elle-même ;
+//  2. oui : fiche en run-intervals, séances gardées, « Ouvrir l'analyse » dans le Fractionné, onglet « fractionné » ;
 //  3. non : fiche en running, séances gardées quand même, analyse à pied sans onglet « fractionné ».
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,17 +24,11 @@ const { send, evaluate, go, settle, waitFor, wait, vwait, blockNetwork, importFi
 const pageNow = () => evaluate('Date.now()');
 const sounds = [];
 const dialogs = [];
-/**
- * Réponse aux confirmations de la page : la bibliothèque les accepte ; pour en refuser une (`setAnswer(false)`), un
- * script posé avant chaque page fait répondre non à `confirm` (le message est alors noté comme un dialogue).
- */
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const real = window.confirm.bind(window); window.confirm = (m) => { if (sessionStorage.getItem('banc.refuse') === '1') { console.debug('[banc-refus] ' + m); return false; } return real(m); }; })()` });
-const setAnswer = async (value) => { await evaluate(`sessionStorage.setItem('banc.refuse', ${value ? "'0'" : "'1'"}); 'ok'`); };
+// Une fenêtre du navigateur (plus aucune depuis le lot 212 : la question du fractionné est sur la carte de fin) est notée.
 onMessage((msg) => {
   if (msg.method === 'Runtime.consoleAPICalled') {
     const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
     if (msg.params.type === 'debug' && /^\[(bips|compteur)\]/.test(text)) sounds.push(text);
-    if (msg.params.type === 'debug' && text.startsWith('[banc-refus] ')) dialogs.push(text.slice('[banc-refus] '.length));
   }
   if (msg.method === 'Page.javascriptDialogOpening') {
     dialogs.push(msg.params.message);
@@ -95,17 +90,28 @@ const recordCourse = async (tag, offsetMin) => {
   await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`);
   await wait(300);
   const before = dialogs.length;
-  console.log(`[${tag}] Analyser :`, await clickText('Analyser'));
+  // Session rangée dès l'arrêt ; la question du fractionné est sur la carte de fin (lot 212).
+  await waitFor(`Boolean(document.querySelector('[data-testid=rec-end-intervals] [role=radiogroup]'))`, { timeout: 8000, label: 'question du fractionné' });
+  const question = await evaluate(`(() => {
+    const box = document.querySelector('[data-testid=rec-end-intervals]');
+    return JSON.stringify({ page: location.pathname, text: box?.innerText.replace(/\\n/g, ' / ') ?? null, choix: [...(box?.querySelectorAll('[role=radio]') ?? [])].map((b) => b.textContent.trim()) });
+  })()`);
+  console.log(`[${tag}] question :`, question);
+  const pick = tag === 'oui' ? 'Fractionné à pied' : 'Course';
+  console.log(`[${tag}] choix « ${pick} » :`, await evaluate(`(() => { const b = [...document.querySelectorAll('[data-testid=rec-end-intervals] [role=radio]')].find((x) => x.textContent.trim() === ${JSON.stringify(pick)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+  await wait(300);
+  console.log(`[${tag}] Ouvrir l'analyse :`, await clickText("Ouvrir l'analyse"));
   // L'analyse se calcule en vrai temps : l'adresse de l'analyse, puis une page immobile.
   await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 6000, label: 'analyse' });
   await settle({ max: 6000, label: 'analyse' });
-  return dialogs.slice(before);
+  return { question: JSON.parse(question ?? '{}'), dialogs: dialogs.slice(before) };
 };
 
 // Oui : rangée en Fractionné à pied, ouverte dans le Fractionné, onglet « fractionné ».
-await setAnswer(true);
 const asked = await recordCourse('oui', -30);
-check('question posée à « Analyser »', asked.length === 1 && asked[0].includes('Fractionné à pied'), asked.join(' | '));
+check('question posée sur « Session terminée », sans fenêtre du navigateur', asked.question.page === '/enregistrer'
+  && asked.question.choix?.includes('Fractionné à pied') && asked.question.choix?.includes('Course') && asked.dialogs.length === 0,
+JSON.stringify(asked));
 let tabs = await evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent).join(', ')`);
 check('oui : ouverte dans le Fractionné, onglet fractionné', (await evaluate('location.pathname')).startsWith('/fractionne') && /fractionné/.test(tabs ?? ''), `${await evaluate('location.pathname')} | ${tabs}`);
 let recs = await records();
@@ -114,9 +120,8 @@ check('oui : fiche en run-intervals, séances gardées', yes?.record.sport === '
   JSON.stringify(recs.map((r) => [r.name, r.record.sport, r.record.activityId, r.record.intervals?.length ?? 0])));
 
 // Non : reste en Course, sans onglet « fractionné », séances gardées dans la fiche.
-await setAnswer(false);
 const asked2 = await recordCourse('non', -10);
-check('question posée de nouveau', asked2.length === 1, asked2.join(' | '));
+check('question posée de nouveau', asked2.question.choix?.length === 2 && asked2.dialogs.length === 0, JSON.stringify(asked2));
 tabs = await evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent).join(', ')`);
 check('non : ouverte à pied, sans onglet fractionné', (await evaluate('location.pathname')).startsWith('/course') && !/fractionné/.test(tabs ?? ''), `${await evaluate('location.pathname')} | ${tabs}`);
 recs = await records();

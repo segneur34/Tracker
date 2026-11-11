@@ -34,7 +34,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: 'enregistrer',
     title: 'Enregistrer une session',
-    hook: "Le bouton rond, le choix de l'activité, puis « Analyser » à la fin.",
+    hook: "Le bouton rond, le choix de l'activité, puis l'analyse à la fin.",
     icon: 'enregistrer',
     target: '/enregistrer',
     body: [
@@ -42,7 +42,7 @@ export const LESSONS: readonly Lesson[] = [
       "Choisissez d'abord l'activité : la liste ne propose que les vôtres, celles de Réglages. Elle se change encore pendant la sortie.",
       "« Démarrer » lance le GPS. L'écran peut s'éteindre, l'enregistrement continue ; un appui long de deux secondes sur le bouton rond met en pause, puis relance.",
       "Pour finir, tenez « Arrêter » appuyé deux secondes : l'appui long évite un arrêt par mégarde. Ces deux durées se règlent dans Réglages › Enregistrement.",
-      "À l'arrêt, rien n'est encore rangé : « Analyser » range la session dans la mémoire et l'ouvre, « Jeter » l'abandonne.",
+      "À l'arrêt, la session est rangée dans la mémoire, puis son analyse s'ouvre ; si l'activité a une liste de matériel, il se choisit juste avant. Une session ratée se supprime depuis la bibliothèque.",
     ],
   },
   {

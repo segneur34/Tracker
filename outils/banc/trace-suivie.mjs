@@ -155,12 +155,13 @@ check('retour au plan', await clickText('Plan', '.map-base-switch__menu button')
 await wait(500);
 check('plan : plus de liseré', await evaluate(`document.querySelectorAll('.leaflet-traceSuivieLisere-pane svg path').length`) === 0);
 
-// Arrêt tenu puis « Jeter » : le profil reste propre.
+// Arrêt tenu : la session est rangée et son analyse s'ouvre d'elle-même (lot 212) ; plus de « Jeter », le profil du
+// banc est neuf à chaque script.
 const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
 await wait(2300);
 await evaluate(`(() => { const b = window.__stopButton; b?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b?.click(); return 'ok'; })()`);
-await settle({ max: 3000 });
-check('arrêt tenu puis « Jeter »', down === 'ok' && await clickText('Jeter') === 'ok');
+const opened = await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
+check('arrêt tenu : session rangée, analyse ouverte', down === 'ok' && Boolean(opened));
 await settle({ max: 2000 });
 
 console.log('--- console (erreurs, avertissements) ---');

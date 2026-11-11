@@ -263,10 +263,16 @@ const holdStop = async () => {
 };
 const endRecording = async (label) => {
   const stop = await holdStop();
-  await settle({ max: 3000 });
-  const thrown = await clickText('Jeter');
+  // Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212) ; plus de « Jeter » (profil neuf à chaque script).
+  const opened = await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
   await settle({ max: 2000 });
-  check(`${label} : arrêt tenu puis « Jeter »`, stop === 'ok' && thrown === 'ok', `${stop} / ${thrown}`);
+  check(`${label} : arrêt tenu, session rangée, analyse ouverte`, stop === 'ok' && Boolean(opened), `${stop} / ${opened}`);
+  // Retour sur Enregistrer, comme après l'ancien « Jeter », par le lien du haut sans recharger : un rechargement mettrait
+  // le démarrage de la page dans la mesure du temps de tâches qui suit (×6). Trace suivie et graphe ouvert ou fermé sont gardés.
+  const back = await evaluate(`(() => { const a = document.querySelector('.shell-toprecord'); if (!a) return 'absent'; a.click(); return 'ok'; })()`);
+  if (back !== 'ok') await go('/enregistrer', 6000);
+  await waitFor(`[...document.querySelectorAll('label')].some((l) => l.textContent.includes('Rejeu'))`, { timeout: 5000, label: 'retour à Enregistrer' });
+  await settle({ max: 1500 });
 };
 const waitReplayEnd = () => waitFor(`(() => {
   const s = [...document.querySelectorAll('.rec-stat')].find((x) => x.children[0]?.textContent.trim() === 'Points');

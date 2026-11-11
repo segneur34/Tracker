@@ -1,11 +1,12 @@
-// Banc de test : matériel choisi à la fin de la session, juste avant « Analyser » (lot 143, 131).
+// Banc de test : matériel choisi à la fin de la session, sur « Session terminée » (lot 143, 131 ; lot 212 : session
+// rangée dès l'arrêt, choix écrit dans la fiche dès qu'il est fait, puis « Ouvrir l'analyse »).
 // Usage : node materiel-fin.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, environ 40 s, 15 s avec `TEMPS=10`. La liste de matériel de Course est écrite dans
 // les réglages, puis des sessions sont enregistrées en rejeu. Le script vérifie :
-//  1. Course, liste présente : rangée « Matériel » sur « Session terminée », vide d'office ; la pièce choisie entre
-//     dans la fiche à « Analyser » et se retrouve dans l'onglet « matériel et notes » ;
+//  1. Course, liste présente : rangée « Matériel » sur « Session terminée », vide d'office, l'analyse ne s'ouvre pas
+//     d'elle-même ; la pièce choisie entre aussitôt dans la fiche et se retrouve dans l'onglet « matériel et notes » ;
 //  2. Course de nouveau : rangée vide, rien de repris de la session d'avant ; sans choix, pas de matériel dans la fiche ;
-//  3. Voile, sans liste : pas de rangée.
+//  3. Voile, sans liste : pas de rangée, l'analyse s'ouvre d'elle-même.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
@@ -27,7 +28,10 @@ const holdStop = async () => {
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 };
 
-/** Enregistre une session en rejeu jusqu'à l'écran « Session terminée ». `offsetMin` : deux sessions ne partagent pas le même nom de fichier. */
+/**
+ * Enregistre une session en rejeu jusqu'à l'écran « Session terminée », ou jusqu'à l'analyse quand il n'y a rien à
+ * demander (lot 212). `offsetMin` : deux sessions ne partagent pas le même nom de fichier.
+ */
 const recordUntilEnd = async (family, type, tag, offsetMin) => {
   const t0 = (await evaluate('Date.now()')) + offsetMin * 60000;
   const lat = 43.7;
@@ -49,10 +53,10 @@ const recordUntilEnd = async (family, type, tag, offsetMin) => {
   console.log(`[${tag}] Démarrer :`, await clickText('Démarrer'));
   await vwait(6000);
   console.log(`[${tag}] Arrêter :`, await holdStop());
-  await waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Analyser')`, { timeout: 8000, label: 'Session terminée' });
+  await waitFor(`location.pathname.endsWith('/analyse') || [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === "Ouvrir l'analyse")`, { timeout: 8000, label: 'Session terminée' });
 };
 const analyze = async (tag) => {
-  console.log(`[${tag}] Analyser :`, await clickText('Analyser'));
+  console.log(`[${tag}] Ouvrir l'analyse :`, await clickText("Ouvrir l'analyse"));
   await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 6000, label: 'analyse' });
   await settle({ max: 6000, label: 'analyse' });
 };
@@ -78,7 +82,11 @@ console.log('[choix] pièce :', await clickText('Trail rouge', '[data-testid="ge
 await wait(300);
 const chosen = await gearRow();
 check("Course : la pièce choisie s'affiche", chosen.includes('Trail rouge'), chosen);
+check("Course : la carte reste sur Enregistrer, l'analyse ne s'ouvre pas d'elle-même", (await evaluate('location.pathname')) === '/enregistrer', await evaluate('location.pathname'));
 await shoot('materiel-fin');
+// Écrit dans la fiche dès le choix (sa réécriture est différée) : avant même d'ouvrir l'analyse.
+const written = await waitFor(async () => (await allRecords()).find((r) => r.notes?.gear), { timeout: 3000, label: 'matériel dans la fiche' });
+check('Course : le choix est dans la fiche dès qu’il est fait', written?.notes?.gear?.[0]?.itemName === 'Trail rouge', JSON.stringify(written?.notes?.gear ?? null));
 await analyze('choix');
 const first = (await allRecords()).find((r) => r.notes?.gear);
 check('Course : le choix est dans la fiche', first?.notes?.gear?.[0]?.itemName === 'Trail rouge' && first?.notes?.gear?.[0]?.groupName === 'Chaussures', JSON.stringify(first?.notes?.gear ?? null));
@@ -100,6 +108,6 @@ check('Course, session suivante : pas de matériel dans sa fiche', all.length ==
 // 3. Voile, sans liste.
 await recordUntilEnd('Voile', 'wingfoil', 'voile', -50);
 const none = await gearRow();
-check('Voile, sans liste : pas de rangée', none === '(pas de rangée)', none);
+check('Voile, sans liste : pas de rangée, analyse ouverte d’elle-même', none === '(pas de rangée)' && (await evaluate('location.pathname')).endsWith('/analyse'), `${none} | ${await evaluate('location.pathname')}`);
 
 await finish('Tout passe.');

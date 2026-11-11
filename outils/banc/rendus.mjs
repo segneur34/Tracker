@@ -113,7 +113,8 @@ console.log('Accueil :', await click('.shell-brand'));
 await vwait(1000);
 await phase('accueil');
 
-// Retour à Enregistrer par le lien du haut (sans recharger), arrêt tenu, session jetée.
+// Retour à Enregistrer par le lien du haut (sans recharger), arrêt tenu : la session est rangée et son analyse s'ouvre
+// d'elle-même (lot 212) ; plus de « Jeter », le profil du banc est neuf à chaque script.
 console.log('Enregistrer :', await click('.shell-toprecord'));
 await vwait(1000);
 const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
@@ -122,8 +123,7 @@ if (down === 'ok') {
   await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 }
 console.log('Arrêter :', down);
-await settle({ max: 3000 });
-console.log('Jeter :', await clickText('Jeter'));
+console.log('analyse ouverte :', Boolean(await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' })));
 await settle({ max: 2000 });
 
 console.log('--- console ---');

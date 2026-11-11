@@ -120,10 +120,8 @@ console.log('Afficher la carte :', await clickText('Afficher la carte'));
 await wait(1000);
 console.log('carte montée :', await evaluate(`document.querySelectorAll('.leaflet-container').length`));
 console.log('Arrêter :', await holdStop());
-await wait(2500);
-console.log('attente :', await lines('/points\\./'));
-console.log('Analyser :', await clickText('Analyser'));
-await waitFor(`location.pathname.includes('/analyse')`, { timeout: 5000, label: 'analyse ouverte' });
+// Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212).
+await waitFor(`location.pathname.includes('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
 await settle({ max: 5000 });
 console.log('ouverte :', await evaluate(`location.pathname + location.search`), await evaluate(`document.querySelector('h1')?.textContent`));
 

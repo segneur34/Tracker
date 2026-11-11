@@ -1,6 +1,6 @@
 // Banc de test : pilote un Chrome sans fenêtre par le protocole DevTools.
 // Usage : node bench.mjs <port> analyse <gpx>
-// Scénario : rejeu du GPX à ×600 → Arrêter → Analyser, puis relevé de la page d'analyse voile.
+// Scénario : rejeu du GPX à ×600 → Arrêter (session rangée, analyse ouverte d'elle-même, lot 212), puis relevé de la page d'analyse voile.
 // L'ancien scénario « fichier » (ouverture dans /voile) est retiré : depuis le lot 3a, /voile est la bibliothèque.
 // Verdicts (lot 159) : les chiffres de l'analyse sont confrontés à ce que la trace de `make-gpx.mjs` donne par construction
 // (points, durée, distance, top 2 s, manœuvres, vent du nord) ; fin par « Tout passe. » ou le nombre d'échecs, code 0 ou 1.
@@ -61,10 +61,10 @@ await wait(8000); // rejeu en temps réel (×600) : un vrai délai
 console.log('Arrêter :', await holdStop());
 // La session est rangée en mémoire (OPFS) : ni DOM ni réseau, d'où l'attente de la fiche avant `settle`.
 await waitFor(async () => (await records())?.length >= 1, { timeout: 6000, label: 'fiche rangée' });
-await settle({ max: 2000 });
-const pageEnregistrement = await evaluate(`document.body.innerText.split('\\n').filter((l) => /points|Rangée|Session/.test(l)).join(' | ')`);
-console.log('page enregistrement :', pageEnregistrement);
-console.log('Analyser :', await clickText('Analyser'));
+// La carte de fin ne reste plus (lot 212) : le nombre de points se lit dans la fiche rangée.
+const ficheRangee = (await records())?.[0] ?? null;
+// Rien à demander (ni liste de matériel, ni compteur) : l'analyse s'ouvre d'elle-même dès la session rangée (lot 212).
+console.log('analyse ouverte :', await waitFor(`location.pathname.endsWith('/analyse') && location.pathname`, { timeout: 8000, label: 'analyse ouverte' }));
 await settle({ max: 5000 });
 
 console.log('résultat :', await snapshot());
@@ -109,7 +109,7 @@ console.log('--- console (erreurs, avertissements) ---');
 // --- Verdicts ---
 /** Valeur qui suit le libellé `label` sur la ligne suivante du texte de la page. */
 const apres = (label) => texte.match(new RegExp(`^${label}\\n([^\\n]+)`, 'm'))?.[1];
-check(`enregistrement : ${attendu.points} points, autant que de <trkpt> dans le GPX`, pageEnregistrement?.includes(`${attendu.points} points`), pageEnregistrement);
+check(`enregistrement : ${attendu.points} points, autant que de <trkpt> dans le GPX`, ficheRangee?.summary?.pointCount === attendu.points, String(ficheRangee?.summary?.pointCount));
 // 6 × 2 bords de 150 s et 2 virements de 6 s, un empannage de 5 s, puis autant au portant : 3 749 s.
 check('général : temps total 1 h 02', apres('Temps total') === '1 h 02', apres('Temps total'));
 // Seules les quelques secondes sous 8 nds au cœur des virements (3 m/s au plus bas) sont hors du vol : moins de 1 %.

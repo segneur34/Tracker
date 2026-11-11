@@ -66,6 +66,17 @@ const startReplay = async (family, file, speed) => {
   await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(String(speed))}); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
   return clickText('Démarrer');
 };
+/**
+ * Session rangée dès l'arrêt, analyse ouverte d'elle-même (lot 212) : plus de « Jeter », le profil du banc est neuf à
+ * chaque script. Vrai une fois l'analyse ouverte.
+ */
+const analysisOpened = async () => {
+  for (let i = 0; i < 80; i++) {
+    if ((await evaluate('location.pathname'))?.endsWith('/analyse')) return true;
+    await wait(100);
+  }
+  return false;
+};
 /** Trace à 1 Hz datée de maintenant : `n` points vers l'est, entre 1,5 et 4,5 m/s, pour que les chiffres changent. */
 const nowTrace = (path, n, type) => {
   const t0 = Date.now();
@@ -173,7 +184,7 @@ mark = sent.length;
 console.log('Arrêter :', await holdStop());
 await wait(1500);
 check('arrêt : notification effacée', sent.slice(mark).some((s) => s.text === 'effacée'), sent.slice(mark).map((s) => s.text).join(' // '));
-console.log('Jeter :', await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`), await clickText('Jeter'));
+console.log('analyse ouverte :', await analysisOpened());
 await wait(800);
 
 // 6, joué ici : la moyenne active dans un rejeu de voile, avant le compteur.
@@ -192,7 +203,7 @@ check('voile : « Moy. act. » dans la notification, jamais « Moy. » seul', av
   averages.slice(-3).join(' // '));
 console.log('Arrêter :', await holdStop());
 await wait(1500);
-console.log('Jeter :', await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`), await clickText('Jeter'));
+console.log('analyse ouverte :', await analysisOpened());
 await wait(800);
 
 // 5. Compteur pendant un enregistrement de fractionné.
@@ -214,9 +225,10 @@ check('étape d\'office : 0/2 au départ, 1/2 au premier travail', counter.some(
   && counter.some((t) => t.includes('· Travail 1/2 |') && t.includes('Étape 1/2')), counter.filter((t) => /Travail|Départ/.test(t)).join(' // ').slice(0, 300));
 console.log('Arrêter :', await holdStop());
 await wait(1500);
-await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`);
-await clickText('Jeter');
-await wait(500);
+await analysisOpened();
+// Retour sur Enregistrer par le lien du haut, sans recharger : le compteur, encore ouvert, s'y arrête.
+await evaluate(`(() => { const a = document.querySelector('.shell-toprecord'); if (!a) return 'absent'; a.click(); return 'ok'; })()`);
+await wait(1000);
 // « Arrêter » du compteur se tient 1 s (25/10).
 await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`);
 

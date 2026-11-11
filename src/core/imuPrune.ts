@@ -17,8 +17,8 @@ export const pruneImu = async (bytes: Uint8Array, windowsOf: (recording: ImuReco
 };
 
 /**
- * Élagage du `.imu` d'un enregistrement (« Analyser », ou sortie de
- * l'attente) autour des vols (`pruneWindows`) : les sauts calculés ensuite
+ * Élagage du `.imu` d'un enregistrement (à son rangement, dès l'arrêt,
+ * ou sortie de l'attente) autour des vols (`pruneWindows`) : les sauts calculés ensuite
  * sont les mêmes.
  */
 export const pruneImuFile = (bytes: Uint8Array, d: JumpDetection): Promise<Uint8Array> =>

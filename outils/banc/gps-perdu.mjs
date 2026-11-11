@@ -116,9 +116,8 @@ await wait(Math.max(0, startedAt + 135_000 - Date.now()));
 check('toujours un seul son', lostTones.length === 1, `${lostTones.length} son(s)`);
 
 console.log('Arrêter :', await holdStop());
-await wait(1500);
-await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`);
-console.log('Jeter :', await clickText('Jeter'));
+// Rangée dès l'arrêt, analyse ouverte d'elle-même (lot 212) ; plus de « Jeter », le profil du banc est neuf à chaque script.
+console.log('analyse ouverte :', (await waitFor(async () => (await evaluate('location.pathname'))?.endsWith('/analyse'), 8000)) !== null);
 await wait(500);
 
 console.log(logs.length ? `console :\n  ${logs.join('\n  ')}` : 'console : rien');

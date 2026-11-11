@@ -131,10 +131,9 @@ for (const [family, speedMs, graphTab] of [['À pied', 3, 'graphiques'], ['Voile
   console.log('Note :', await clickText('Note'), '→', await noteButton());
   await jusqua(demarre + 20_520);
   console.log('Arrêter :', await holdStop());
-  await vwait(2500);
-  console.log('Analyser :', await clickText('Analyser'));
-  // L'analyse se calcule en vrai temps : l'adresse de l'analyse, puis une page immobile.
-  await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 6000, label: 'analyse' });
+  // Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212). Elle se calcule en vrai temps :
+  // l'adresse de l'analyse, puis une page immobile.
+  await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse' });
   await settle({ max: 6000, label: 'analyse' });
   console.log('page :', await evaluate('location.pathname + location.search'));
   console.log('fanions :', await flags());

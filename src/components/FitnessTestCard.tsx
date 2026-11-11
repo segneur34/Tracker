@@ -88,7 +88,7 @@ function TestLive({ view, activity }: { view: FitnessTestView; activity: Activit
           <Button variant="secondary" size="l" className="ivl-launch" onClick={askFinish}>Finir la rampe</Button>
         </div>
       )}
-      {phase === 'fini' && <p className="ivl-note">Test fini : arrêtez l'enregistrement, puis « Analyser » pour les résultats.</p>}
+      {phase === 'fini' && <p className="ivl-note">Test fini : arrêtez l'enregistrement, son analyse donne les résultats.</p>}
     </>
   );
 }

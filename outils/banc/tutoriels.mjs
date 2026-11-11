@@ -83,7 +83,7 @@ await homeAt(dayAt(1));
 let c = await card();
 console.log('jour 1 :', JSON.stringify(c));
 check("jour 1 : la carte « Aujourd'hui : Enregistrer une session »", c?.title === "Aujourd'hui : Enregistrer une session", c?.title);
-check('… son accroche', c?.hook === "Le bouton rond, le choix de l'activité, puis « Analyser » à la fin.", c?.hook);
+check('… son accroche', c?.hook === "Le bouton rond, le choix de l'activité, puis l'analyse à la fin.", c?.hook);
 check('… « Lire » vers la leçon, une croix', c?.read === 'Lire' && c?.href === '/tutoriels/enregistrer' && c?.close === true, JSON.stringify(c));
 check('… avant les familles', c?.beforeFamilies === true);
 const s1 = await stored();

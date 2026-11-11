@@ -143,14 +143,18 @@ vi.mock('../platform/motion', async (importOriginal) => {
 });
 
 /**
- * Rangement simulé : les capteurs reçus par la bibliothèque, dans l'ordre. `gate` : le rangement attend cette
- * promesse ; `fails` : il échoue ensuite, comme une écriture refusée.
+ * Rangement simulé : les capteurs reçus par la bibliothèque, dans l'ordre, et le journal tel qu'il était à chaque
+ * rangement (il est effacé une fois la session rangée). `gate` : le rangement attend cette promesse ; `fails` : il
+ * échoue ensuite, comme une écriture refusée.
  */
-const library = vi.hoisted(() => ({ motions: [] as (Uint8Array | null)[], gate: null as Promise<void> | null, fails: false }));
+const library = vi.hoisted(() => ({
+  motions: [] as (Uint8Array | null)[], journals: [] as (string | null)[], gate: null as Promise<void> | null, fails: false,
+}));
 vi.mock('./useSessionLibrary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useSessionLibrary')>()),
   saveRecordedSession: async (_text: string, _sport: unknown, _activityId: unknown, _intervals: unknown, motion: Uint8Array | null) => {
     library.motions.push(motion);
+    library.journals.push(journal.text);
     if (library.gate) await library.gate;
     if (library.fails) throw new Error('écriture refusée');
     return { file: 'rangee.gpx', location: 'ici' };
@@ -209,10 +213,12 @@ const fakeSource = () => {
   return source satisfies LocationSource & object;
 };
 
-/** Ramène l'enregistreur au repos, session jetée. */
+/** Ramène l'enregistreur au repos : session arrêtée, rangée si elle attendait encore, carte de fin effacée. */
 const reset = async () => {
+  library.gate = null;
+  library.fails = false;
   await recorder.stopRecording();
-  await recorder.discardPendingSession();
+  await recorder.savePendingSession();
   recorder.dismissRecorderResult();
 };
 
@@ -227,6 +233,7 @@ beforeEach(() => {
   sensors.read = null;
   sensors.removed = [];
   library.motions = [];
+  library.journals = [];
   library.gate = null;
   library.fails = false;
   privateFs.fake = null;
@@ -292,7 +299,7 @@ describe('enregistreur', () => {
     // Durée (lot 158) : 9 s avant la pause, 9 s après ; les 131 s de pause manuelle ne sont pas rattrapées à la reprise.
     expect(recordingDurationMs(recorder.getRecorderState().stats)).toBe(18_000);
     await recorder.stopRecording();
-    const content = recorder.getRecorderState().pending!.content;
+    const content = recorder.getRecorderState().saved!.content;
     expect(content.match(/<trkseg>/g)).toHaveLength(2);
     expect(content.match(/<trkpt/g)).toHaveLength(20);
     // Le second segment commence à la première position reprise.
@@ -325,9 +332,9 @@ describe('enregistreur', () => {
     await recorder.resumeRecording();
     for (let s = 200; s < 210; s++) source.emit(s);
     await recorder.stopRecording();
-    const pending = recorder.getRecorderState().pending;
-    expect(pending).not.toBeNull();
-    expect(pending!.content.match(/<trkseg>/g)).toHaveLength(2);
+    const saved = recorder.getRecorderState().saved;
+    expect(saved).not.toBeNull();
+    expect(saved!.content.match(/<trkseg>/g)).toHaveLength(2);
   });
 });
 
@@ -343,7 +350,7 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     const stop = recorder.stopRecording();
     await Promise.all([pause, stop]);
     expect(recorder.getRecorderState().status).toBe('idle');
-    expect(recorder.getRecorderState().pending).not.toBeNull();
+    expect(recorder.getRecorderState().saved).not.toBeNull();
     expect(source.active).toBe(false);
   });
 
@@ -365,7 +372,7 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     expect(source.starts).toBe(1);
     expect(source.stops).toBe(1);
     expect(source.active).toBe(false);
-    expect(recorder.getRecorderState().pending).not.toBeNull();
+    expect(recorder.getRecorderState().saved).not.toBeNull();
   });
 
   it('« Arrêter » pendant le démarrage : attend la fin du démarrage, puis arrête ; la source est arrêtée une fois', async () => {
@@ -388,14 +395,17 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     const pause = recorder.pauseRecording();
     await Promise.all([stop, pause]);
     expect(recorder.getRecorderState().status).toBe('idle');
-    expect(recorder.getRecorderState().pending).not.toBeNull();
+    expect(recorder.getRecorderState().saved).not.toBeNull();
   });
 });
 
 describe('journal sans en-tête lisible (D13)', () => {
   it('reprend la session sans deviner son activité : à classer, GPX sans type', async () => {
     journal.text = [0, 1, 2].map((s) => journalFixLine({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-4, lon: 3, speedMs: 3, accuracyM: 4 })).join('');
+    // Écriture refusée : la session reste hors de la mémoire, avec son nom de fichier.
+    library.fails = true;
     await recorder.recoverInterruptedRecording();
+    expect(recorder.getRecorderState().rangeFailed).toBe(true);
     const pending = recorder.getRecorderState().pending!;
     expect(pending.sport).toBeNull();
     expect(pending.activity).toBeNull();
@@ -457,15 +467,15 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     expect(recordingDurationMs(stats)).toBe(7000);
     await recorder.stopRecording();
     expect(belt.stopKeepAlive).toBeGreaterThan(before.stop);
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.sport).toBe('muscu');
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.sport).toBe('muscu');
     // Aucune mesure de la ceinture : la durée seule.
-    expect(pending.pointCount).toBe(0);
-    expect(pending.content).not.toContain('gpxtpx:hr');
-    expect(pending.content).not.toContain('lat=');
-    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(saved.pointCount).toBe(0);
+    expect(saved.content).not.toContain('gpxtpx:hr');
+    expect(saved.content).not.toContain('lat=');
+    expect(saved.content.match(/<trkseg>/g)).toHaveLength(2);
     // 7 points jusqu'à la pause, puis la reprise, un battement et le point de l'arrêt.
-    expect(pending.content.match(/<trkpt>/g)).toHaveLength(10);
+    expect(saved.content.match(/<trkpt>/g)).toHaveLength(10);
     // Arrêté : plus aucun point, le minuteur ne tourne plus.
     const text = journal.text;
     vi.advanceTimersByTime(5000);
@@ -477,7 +487,7 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     vi.setSystemTime(T0);
     await recorder.startRecording(muscu, null);
     await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().saved).toBeNull();
     expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
   });
 
@@ -488,13 +498,13 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     await recorder.startRecording(muscu, null);
     vi.advanceTimersByTime(tickMs / 2);
     await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().saved).toBeNull();
     expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
     recorder.dismissRecorderResult();
     await recorder.startRecording(muscu, null);
     vi.advanceTimersByTime(tickMs);
     await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending?.pointCount).toBe(0);
+    expect(recorder.getRecorderState().saved?.pointCount).toBe(0);
   });
 
   it('sans ceinture : le journal relu après un arrêt brutal redonne la séance, durée seule', async () => {
@@ -507,11 +517,11 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
       JSON.stringify(['hr', T0 + 61_000, null]),
     ].join('\n');
     await recorder.recoverInterruptedRecording();
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.recovered).toBe(true);
-    expect(pending.pointCount).toBe(0);
-    expect(pending.content.match(/<trkpt>/g)).toHaveLength(4);
-    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.recovered).toBe(true);
+    expect(saved.pointCount).toBe(0);
+    expect(saved.content.match(/<trkpt>/g)).toHaveLength(4);
+    expect(saved.content.match(/<trkseg>/g)).toHaveLength(2);
   });
 
   it('garde une mesure par seconde au plus, sans mesure hors contact ; service au premier plan au départ et à l’arrêt', async () => {
@@ -528,16 +538,17 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     at(4.5, 120, false);
     expect(recorder.getRecorderState().stats.pointCount).toBe(3);
     await recorder.stopRecording();
-    // Journal gardé jusqu'à « Analyser » : les mesures, puis le point de l'arrêt.
-    expect(journal.text?.match(/\["hr",/g)).toHaveLength(4);
+    // Journal tel qu'au rangement : les mesures, puis le point de l'arrêt ; effacé une fois la session rangée.
+    expect(library.journals[0]?.match(/\["hr",/g)).toHaveLength(4);
+    expect(journal.text).toBeNull();
     expect(belt.stopKeepAlive).toBeGreaterThan(before.stop);
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.pointCount).toBe(3);
-    expect(pending.sport).toBe('muscu');
-    expect(pending.content).not.toContain('lat=');
-    expect(pending.content.match(/<gpxtpx:hr>/g)).toHaveLength(3);
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.pointCount).toBe(3);
+    expect(saved.sport).toBe('muscu');
+    expect(saved.content).not.toContain('lat=');
+    expect(saved.content.match(/<gpxtpx:hr>/g)).toHaveLength(3);
     // Le point de l'arrêt, sans FC, après la dernière mesure.
-    expect(pending.content.match(/<trkpt>/g)).toHaveLength(4);
+    expect(saved.content.match(/<trkpt>/g)).toHaveLength(4);
   });
 
   it('pause manuelle : mesures ignorées, la reprise ouvre un segment ; « Note » à l’heure seule', async () => {
@@ -551,9 +562,9 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     for (let s = 20; s < 25; s++) at(s);
     expect(recorder.getRecorderState().stats.pointCount).toBe(10);
     await recorder.stopRecording();
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
-    expect(pending.marks).toHaveLength(1);
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(saved.marks).toHaveLength(1);
   });
 
   it('une seule mesure : gardée avec sa durée jusqu’à l’arrêt (lot 210) ; aucune : rien à garder, et le dit', async () => {
@@ -562,13 +573,13 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     await recorder.startRecording(muscu, null, { heartRate: ceinture });
     at(0);
     await recorder.stopRecording();
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.pointCount).toBe(1);
-    expect(pending.content.match(/<trkpt>/g)).toHaveLength(2);
-    await recorder.discardPendingSession();
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.pointCount).toBe(1);
+    expect(saved.content.match(/<trkpt>/g)).toHaveLength(2);
     recorder.dismissRecorderResult();
     await recorder.startRecording(muscu, null, { heartRate: ceinture });
     await recorder.stopRecording();
+    expect(recorder.getRecorderState().saved).toBeNull();
     expect(recorder.getRecorderState().pending).toBeNull();
     expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
   });
@@ -585,12 +596,12 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
       '["hr", 17',
     ].join('\n');
     await recorder.recoverInterruptedRecording();
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.recovered).toBe(true);
-    expect(pending.sport).toBe('muscu');
-    expect(pending.pointCount).toBe(4);
-    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
-    expect(pending.marks).toEqual([{ timeMs: T0 + 500, lat: null, lon: null, label: null }]);
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.recovered).toBe(true);
+    expect(saved.sport).toBe('muscu');
+    expect(saved.pointCount).toBe(4);
+    expect(saved.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(saved.marks).toEqual([{ timeMs: T0 + 500, lat: null, lon: null, label: null }]);
   });
 
   it('ne passe pas d’une muscu à une activité à positions en cours de route', async () => {
@@ -797,7 +808,8 @@ describe('prévenir quand ça rate (lot 115)', () => {
       }
       await recorder.stopRecording();
       expect(failures).toBe(1);
-      const times = parseJournal(journal.text ?? '').fixes.map((f) => (f.timeMs - T0) / 1000);
+      // Tel qu'au rangement : il est effacé ensuite.
+      const times = parseJournal(library.journals[0] ?? '').fixes.map((f) => (f.timeMs - T0) / 1000);
       expect(times).toEqual(Array.from({ length: 31 }, (_, s) => s));
     } finally {
       journal.append = append;
@@ -878,28 +890,48 @@ describe('journal illisible (lot 143, 123a)', () => {
   });
 });
 
+
 describe('capteurs à l’arrêt (lot 143, 123c)', () => {
   const capture: MotionCapture = { path: `capteurs/${T0}.imu`, bytes: 4096, durationS: 2, samples: 200, longestGapS: 0.01, error: null };
   const setup = { placement: 'poitrine' as const, foil: false, jumps: true, cadence: true };
 
-  /** Enregistre deux positions avec les capteurs, puis arrête : l'alerte de l'arrêt. */
+  /** Enregistre deux positions avec les capteurs, puis arrête : l'alerte une fois la session rangée. */
   const stopWith = async (stop: () => Promise<MotionCapture | null>): Promise<string | null> => {
     sensors.stop = stop;
+    sensors.read = async () => null;
     const source = fakeSource();
     await recorder.startRecording(activity, source, { motion: setup });
     source.emit(0);
     source.emit(1);
     await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending).not.toBeNull();
-    return recorder.getRecorderState().error;
+    const state = recorder.getRecorderState();
+    expect(state.saved).not.toBeNull();
+    // Ce que l'arrêt a dit suit la session rangée : la carte de fin reste, au lieu d'ouvrir l'analyse.
+    expect(state.saved?.warning ?? null).toBe(state.error);
+    return state.error;
   };
 
   it('capture complète : rien de dit', async () => {
     expect(await stopWith(async () => capture)).toBeNull();
   });
 
-  it("échec d'écriture : dit en une phrase à l'arrêt", async () => {
+  it("échec d'écriture : dit en une phrase à l'arrêt, gardé après le rangement", async () => {
     expect(await stopWith(async () => ({ ...capture, error: 'mémoire pleine' }))).toMatch(/écriture interrompue \(mémoire pleine\)/);
+  });
+
+  it('rangement refusé puis « Réessayer » : l’alerte de la capture incomplète suit la session rangée', async () => {
+    library.fails = true;
+    sensors.stop = async () => ({ ...capture, error: 'mémoire pleine' });
+    sensors.read = async () => null;
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { motion: setup });
+    source.emit(0);
+    source.emit(1);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending?.warning).toMatch(/écriture interrompue \(mémoire pleine\)/);
+    library.fails = false;
+    const saved = await recorder.savePendingSession();
+    expect(saved?.warning).toMatch(/écriture interrompue \(mémoire pleine\)/);
   });
 
   it('aucune mesure reçue, arrêt impossible, plus rien ne tournait : dit aussi', async () => {
@@ -913,11 +945,14 @@ describe('capteurs à l’arrêt (lot 143, 123c)', () => {
   });
 });
 
-describe('capture à « Analyser » (lot 148, T2-1)', () => {
+describe('rangement dès l’arrêt (lot 212)', () => {
   const capture: MotionCapture = { path: `capteurs/${T0}.imu`, bytes: 4096, durationS: 2, samples: 200, longestGapS: 0.01, error: null };
   const setup = { placement: 'poitrine' as const, foil: true, jumps: true, cadence: false };
+  const unreadable = async (): Promise<Uint8Array | null> => {
+    throw new Error('mémoire du pont');
+  };
 
-  /** Session de voile arrêtée, en attente : la capture n'a pas été lue à l'arrêt (chemin normal). */
+  /** Session de voile avec ses capteurs, arrêtée : la capture n'est pas lue à l'arrêt (pas de cadence), mais au rangement. */
   const stopped = async (): Promise<void> => {
     sensors.stop = async () => capture;
     const source = fakeSource();
@@ -925,55 +960,66 @@ describe('capture à « Analyser » (lot 148, T2-1)', () => {
     source.emit(0);
     source.emit(1);
     await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending?.motion?.path).toBe(capture.path);
-    expect(recorder.getRecorderState().pending?.motionBytes).toBeNull();
-  };
-  const unreadable = async (): Promise<Uint8Array | null> => {
-    throw new Error('mémoire du pont');
   };
 
-  it('qui lève : rien d\'effacé, ni rangé, session en attente et c\'est dit ; un nouvel essai réussi la range et l\'efface', async () => {
-    await stopped();
-    sensors.read = unreadable;
-    expect(await recorder.analyzePendingSession()).toBeNull();
-    const state = recorder.getRecorderState();
-    expect(state.pending).not.toBeNull();
-    expect(state.motionUnreadable).toBe(true);
-    expect(state.error).toMatch(/capteurs/);
-    expect(sensors.removed).toEqual([]);
-    expect(library.motions).toEqual([]);
-    expect(journal.text).not.toBeNull();
-
+  it("l'arrêt range la session : capture rangée avec elle puis effacée, journal effacé, carte de fin", async () => {
     const bytes = new Uint8Array([1, 2]);
     sensors.read = async () => bytes;
-    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
+    await stopped();
+    const state = recorder.getRecorderState();
+    expect(state.status).toBe('idle');
+    expect(state.pending).toBeNull();
+    expect(state.rangeFailed).toBe(false);
+    expect(state.analyzing).toBe(false);
+    expect(state.error).toBeNull();
+    expect(state.saved).toMatchObject({ libraryFile: 'rangee.gpx', location: 'ici', rangedBy: 'finish', recovered: false, motionLeft: null, warning: null });
+    expect(state.saved?.activity?.base).toBe('wingfoil');
     expect(library.motions).toEqual([bytes]);
     expect(sensors.removed).toEqual([capture.path]);
-    expect(recorder.getRecorderState().pending).toBeNull();
-    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
-    expect(recorder.getRecorderState().error).toBeNull();
+    // Journal complet, ligne d'arrêt comprise, jusqu'au rangement ; effacé seulement après.
+    expect(parseJournal(library.journals[0] ?? '').stoppedAtMs).not.toBeNull();
     expect(journal.text).toBeNull();
   });
 
-  it('absente : la session est rangée sans elle', async () => {
-    await stopped();
-    sensors.read = async () => null;
-    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
-    expect(library.motions).toEqual([null]);
-    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
-  });
-
-  it('« Analyser sans les capteurs » : rangée sans elle, le fichier reste sur l\'appareil', async () => {
-    await stopped();
+  it('capture illisible : rangée sans elle, le fichier reste sur l’appareil, et la session le dit (`motionLeft`)', async () => {
     sensors.read = unreadable;
-    await recorder.analyzePendingSession();
-    expect((await recorder.analyzePendingSession(true))?.libraryFile).toBe('rangee.gpx');
+    await stopped();
+    const state = recorder.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.saved?.motionLeft).toEqual({ path: capture.path, file: 'rangee.gpx' });
     expect(library.motions).toEqual([null]);
     expect(sensors.removed).toEqual([]);
-    expect(recorder.getRecorderState().pending).toBeNull();
-    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
-    expect(recorder.getRecorderState().error).toBeNull();
     expect(journal.text).toBeNull();
+    expect(state.error).toBeNull();
+  });
+
+  it('message des capteurs illisibles : « Réessayer » encore illisible le dit, puis lue, la donne à la session et l’efface', async () => {
+    sensors.read = unreadable;
+    await stopped();
+    expect(recorder.getRecorderState().leftCaptures).toEqual([{ file: 'rangee.gpx', path: capture.path, status: 'waiting', detail: null }]);
+    // Le message survit à la carte de fin.
+    recorder.dismissRecorderResult();
+    expect(await recorder.retryLeftCapture('autre.gpx')).toBe(false);
+    expect(await recorder.retryLeftCapture('rangee.gpx')).toBe(false);
+    expect(recorder.getRecorderState().leftCaptures[0]).toMatchObject({ status: 'unreadable', detail: 'mémoire du pont' });
+    expect(sensors.removed).toEqual([]);
+    const bytes = new Uint8Array([7]);
+    sensors.read = async () => bytes;
+    library.fails = true;
+    expect(await recorder.retryLeftCapture('rangee.gpx')).toBe(false);
+    expect(recorder.getRecorderState().leftCaptures[0]).toMatchObject({ status: 'failed', detail: 'écriture refusée' });
+    library.fails = false;
+    expect(await recorder.retryLeftCapture('rangee.gpx')).toBe(true);
+    expect(library.motions.at(-1)).toBe(bytes);
+    expect(sensors.removed).toEqual([capture.path]);
+    expect(recorder.getRecorderState().leftCaptures).toEqual([]);
+  });
+
+  it('capture absente : rangée sans elle, rien de laissé', async () => {
+    sensors.read = async () => null;
+    await stopped();
+    expect(recorder.getRecorderState().saved?.motionLeft).toBeNull();
+    expect(library.motions).toEqual([null]);
   });
 
   /** Greffon dont la lecture et le `stat` échouent avec ces erreurs, derrière la vraie `readPrivateBytes`. */
@@ -992,54 +1038,99 @@ describe('capture à « Analyser » (lot 148, T2-1)', () => {
     sensors.read = (await import('../platform/memoryFolder')).readPrivateBytes;
   };
 
-  it('lecture et `stat` qui échouent sans dire « introuvable » : pas d\'absence conclue, rien d\'effacé', async () => {
-    await stopped();
+  it('lecture et `stat` qui échouent sans dire « introuvable » : pas d’absence conclue, la capture reste', async () => {
     await readingThrough(new Error('mémoire du pont'), new Error('stockage muet'));
-    expect(await recorder.analyzePendingSession()).toBeNull();
-    expect(recorder.getRecorderState().motionUnreadable).toBe(true);
-    expect(recorder.getRecorderState().pending).not.toBeNull();
-    expect(sensors.removed).toEqual([]);
-    expect(library.motions).toEqual([]);
-  });
-
-  it('absence prouvée par le greffon : rangée sans elle', async () => {
     await stopped();
-    const missing = Object.assign(new Error("'readFile' failed because file does not exist."), { code: 'OS-PLUG-FILE-0008' });
-    await readingThrough(missing, missing);
-    expect((await recorder.analyzePendingSession())?.libraryFile).toBe('rangee.gpx');
+    expect(recorder.getRecorderState().saved?.motionLeft?.path).toBe(capture.path);
+    expect(sensors.removed).toEqual([]);
     expect(library.motions).toEqual([null]);
   });
 
-  it('« Jeter » après l\'échec : la capture est effacée, l\'avertissement retombe', async () => {
+  it('absence prouvée par le greffon : rangée sans elle, rien de laissé', async () => {
+    const missing = Object.assign(new Error("'readFile' failed because file does not exist."), { code: 'OS-PLUG-FILE-0008' });
+    await readingThrough(missing, missing);
     await stopped();
-    sensors.read = unreadable;
-    await recorder.analyzePendingSession();
-    await recorder.discardPendingSession();
-    expect(sensors.removed).toEqual([capture.path]);
-    expect(recorder.getRecorderState().motionUnreadable).toBe(false);
-    expect(recorder.getRecorderState().error).toBeNull();
+    expect(recorder.getRecorderState().saved?.motionLeft).toBeNull();
+    expect(library.motions).toEqual([null]);
   });
 
-  it('illisible : le drapeau du rangement retombe aussi', async () => {
+  it('écriture refusée : la session attend, journal et capture gardés, aucun départ ; « Réessayer » la range', async () => {
+    const bytes = new Uint8Array([3]);
+    sensors.read = async () => bytes;
+    library.fails = true;
     await stopped();
-    sensors.read = unreadable;
-    const run = recorder.analyzePendingSession();
-    expect(recorder.getRecorderState().analyzing).toBe(true);
-    expect(await run).toBeNull();
-    expect(recorder.getRecorderState().analyzing).toBe(false);
-    expect(recorder.getRecorderState().motionUnreadable).toBe(true);
+    let state = recorder.getRecorderState();
+    expect(state.saved).toBeNull();
+    expect(state.pending?.pointCount).toBe(2);
+    expect(state.rangeFailed).toBe(true);
+    expect(state.analyzing).toBe(false);
+    expect(state.error).toMatch(/Rangement de la session impossible : écriture refusée/);
+    expect(journal.text).not.toBeNull();
+    expect(sensors.removed).toEqual([]);
+    // Le journal de la session serait écrasé : pas de départ tant qu'elle n'est pas rangée.
+    const other = fakeSource();
+    await recorder.startRecording(activity, other);
+    expect(other.starts).toBe(0);
+    expect(recorder.getRecorderState().status).toBe('idle');
+
+    library.fails = false;
+    expect((await recorder.savePendingSession())?.libraryFile).toBe('rangee.gpx');
+    state = recorder.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.rangeFailed).toBe(false);
+    expect(state.error).toBeNull();
+    expect(state.saved?.rangedBy).toBe('finish');
+    expect(library.motions).toEqual([bytes, bytes]);
+    expect(sensors.removed).toEqual([capture.path]);
+    expect(journal.text).toBeNull();
+  });
+
+  it('« Jeter la session » après un rangement refusé : journal et capture effacés, page au repos, départ de nouveau possible', async () => {
+    sensors.read = async () => null;
+    // Sans échec, rien à jeter.
+    await stopped();
+    expect(await recorder.discardFailedSession()).toBe(false);
+    recorder.dismissRecorderResult();
+    sensors.removed = [];
+    library.fails = true;
+    await stopped();
+    expect(recorder.getRecorderState().rangeFailed).toBe(true);
+    expect(await recorder.discardFailedSession()).toBe(true);
+    const state = recorder.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.rangeFailed).toBe(false);
+    expect(state.saved).toBeNull();
+    expect(state.error).toBeNull();
+    expect(journal.text).toBeNull();
+    expect(sensors.removed).toEqual([capture.path]);
+    const other = fakeSource();
+    await recorder.startRecording(activity, other);
+    expect(other.starts).toBe(1);
+  });
+
+  it('moins de deux positions : rien de rangé, journal et capture effacés, et c’est dit', async () => {
+    sensors.stop = async () => capture;
+    const source = fakeSource();
+    await recorder.startRecording(baseActivity('wingfoil'), source, { motion: setup });
+    source.emit(0);
+    await recorder.stopRecording();
+    const state = recorder.getRecorderState();
+    expect(state.pending).toBeNull();
+    expect(state.saved).toBeNull();
+    expect(state.error).toBe('Moins de deux positions reçues : rien à enregistrer.');
+    expect(library.motions).toEqual([]);
+    expect(sensors.removed).toEqual([capture.path]);
+    expect(journal.text).toBeNull();
   });
 });
 
 describe('rangement en cours, état du module (lot 161)', () => {
-  /** Session arrêtée, en attente, dont le rangement attend `open()`. */
-  const held = async (): Promise<() => void> => {
-    const source = fakeSource();
-    await recorder.startRecording(activity, source);
-    source.emit(0);
-    source.emit(1);
-    await recorder.stopRecording();
-    expect(recorder.getRecorderState().pending).not.toBeNull();
+  /** Quelques tours de la boucle, le temps qu'une étape asynchrone passe. */
+  const until = async (done: () => boolean): Promise<void> => {
+    for (let i = 0; i < 50 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 1));
+  };
+  /** Rangement suspendu jusqu'à `open()`. */
+  const gated = (): (() => void) => {
     let open: () => void = () => undefined;
     library.gate = new Promise((resolve) => {
       open = resolve;
@@ -1047,76 +1138,61 @@ describe('rangement en cours, état du module (lot 161)', () => {
     return () => open();
   };
 
-  it('un second appel rend la même promesse, même avec un autre paramètre : un seul rangement ; le drapeau retombe après', async () => {
-    const open = await held();
-    expect(recorder.getRecorderState().analyzing).toBe(false);
-    const first = recorder.analyzePendingSession();
-    // Levé dès l'appel : la page qui le lit peint « Rangement… » avant le calcul.
-    expect(recorder.getRecorderState().analyzing).toBe(true);
-    expect(recorder.analyzePendingSession()).toBe(first);
-    expect(recorder.analyzePendingSession(true)).toBe(first);
+  it("pendant le rangement de l'arrêt : « Rangement… », aucun départ, un seul rangement ; le drapeau retombe après", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
+    const open = gated();
+    const stop = recorder.stopRecording();
+    await until(() => library.motions.length > 0);
+    let state = recorder.getRecorderState();
+    expect(state.status).toBe('idle');
+    expect(state.analyzing).toBe(true);
+    expect(state.pending).not.toBeNull();
+    expect(state.saved).toBeNull();
+    // Un départ arrive pendant l'arrêt, rangement compris : il est ignoré.
+    const other = fakeSource();
+    await recorder.startRecording(activity, other);
+    expect(other.starts).toBe(0);
+    // Un second rangement demandé pendant celui-ci rend le même.
+    expect(recorder.savePendingSession()).toBe(recorder.savePendingSession());
     open();
-    expect((await first)?.libraryFile).toBe('rangee.gpx');
-    expect(library.motions).toHaveLength(1);
-    const state = recorder.getRecorderState();
+    await stop;
+    state = recorder.getRecorderState();
     expect(state.analyzing).toBe(false);
     expect(state.pending).toBeNull();
     // La page rouverte entre-temps trouve la session rangée.
     expect(state.saved?.libraryFile).toBe('rangee.gpx');
-    expect(await recorder.analyzePendingSession()).toBeNull();
     expect(library.motions).toHaveLength(1);
+    expect(await recorder.savePendingSession()).toBeNull();
   });
 
-  it('« Jeter » pendant le rangement ne fait rien : ni journal effacé, ni session retirée', async () => {
-    const open = await held();
-    const run = recorder.analyzePendingSession();
-    const pending = recorder.getRecorderState().pending;
-    await recorder.discardPendingSession();
-    expect(journal.text).not.toBeNull();
-    expect(recorder.getRecorderState().pending).toBe(pending);
-    expect(recorder.getRecorderState().analyzing).toBe(true);
-    open();
-    expect((await run)?.libraryFile).toBe('rangee.gpx');
-    expect(recorder.getRecorderState().saved?.libraryFile).toBe('rangee.gpx');
-    expect(journal.text).toBeNull();
-  });
-
-  it('écriture en échec : le drapeau retombe, la session reste en attente et un nouvel essai est possible', async () => {
-    const open = await held();
+  it('« Réessayer » : le drapeau monte pendant le rangement et retombe après, même promesse à un second appel', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
     library.fails = true;
-    const failed = recorder.analyzePendingSession();
-    open();
-    expect(await failed).toBeNull();
-    let state = recorder.getRecorderState();
-    expect(state.analyzing).toBe(false);
-    expect(state.pending).not.toBeNull();
-    expect(state.error).toMatch(/écriture refusée/);
-    expect(journal.text).not.toBeNull();
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().analyzing).toBe(false);
+    expect(recorder.getRecorderState().rangeFailed).toBe(true);
 
     library.fails = false;
-    const retry = recorder.analyzePendingSession();
-    expect(retry).not.toBe(failed);
+    const open = gated();
+    const retry = recorder.savePendingSession();
+    // Levé dès l'appel : la page qui le lit peint « Rangement… » avant le calcul.
+    expect(recorder.getRecorderState().analyzing).toBe(true);
+    expect(recorder.savePendingSession()).toBe(retry);
+    open();
     expect((await retry)?.libraryFile).toBe('rangee.gpx');
     expect(library.motions).toHaveLength(2);
-    state = recorder.getRecorderState();
-    expect(state.analyzing).toBe(false);
-    expect(state.pending).toBeNull();
-    expect(journal.text).toBeNull();
-  });
-
-  it('« Jeter » après un échec reprend son effet', async () => {
-    const open = await held();
-    library.fails = true;
-    const failed = recorder.analyzePendingSession();
-    open();
-    await failed;
-    await recorder.discardPendingSession();
-    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().analyzing).toBe(false);
     expect(journal.text).toBeNull();
   });
 
   it('sans session en attente : rien à ranger, drapeau baissé', async () => {
-    expect(await recorder.analyzePendingSession()).toBeNull();
+    expect(await recorder.savePendingSession()).toBeNull();
     expect(recorder.getRecorderState().analyzing).toBe(false);
     expect(library.motions).toEqual([]);
   });
@@ -1139,19 +1215,23 @@ describe('aller-retour du journal (audit du 03/11, C4)', () => {
     recorder.changeRecordingActivity(baseActivity('surf'));
     for (let s = 290; s < 340; s++) source.emit(s, 4);
     await recorder.stopRecording();
-    const fromMemory = recorder.getRecorderState().pending!;
+    const fromMemory = recorder.getRecorderState().saved!;
     expect(fromMemory.content).toContain('<type>surf</type>');
     expect((fromMemory.content.match(/<trkseg>/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    const kept = journal.text;
+    // Le journal tel qu'au rangement de l'arrêt.
+    const kept = library.journals[0];
     expect(kept).not.toBeNull();
 
-    // Coupure : la session est jetée (journal effacé), le journal remis tel quel, puis repris au lancement.
-    await recorder.discardPendingSession();
+    // Coupure avant son effacement : le journal remis tel quel, repris au lancement, rangé d'office.
+    recorder.dismissRecorderResult();
     journal.text = kept;
     await recorder.recoverInterruptedRecording();
-    const fromJournal = recorder.getRecorderState().pending!;
+    const fromJournal = recorder.getRecorderState().saved!;
     expect(fromJournal.recovered).toBe(true);
+    expect(fromJournal.rangedBy).toBe('recovery');
+    expect(recorder.getRecorderState().landOnRecording).toBe(false);
     expect(fromJournal.pointCount).toBe(fromMemory.pointCount);
     expect(fromJournal.content).toBe(fromMemory.content);
+    expect(journal.text).toBeNull();
   });
 });

@@ -322,6 +322,15 @@ if (!process.env.PAGES || 'enregistrement'.includes(process.env.PAGES)) {
   const replay = join(workDir, 'rejeu.gpx');
   writeFileSync(replay, hillGpx('running', 600, 3, 0, Date.now() - 700_000));
   await setSize(SIZES_ALL[3]);
+  // Une liste de matériel en Voile et en Course (l'activité choisie d'office) : la carte « Session terminée » reste à l'écran après l'arrêt, sans quoi l'analyse
+  // s'ouvrirait d'elle-même (lot 212) et « enregistrement terminé » relèverait l'analyse.
+  await evaluate(`(() => {
+    const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
+    const list = [{ id: 'g1', name: 'Matériel', items: [{ id: 'i1', name: 'Pièce' }] }];
+    s.gearGroups = { ...s.gearGroups, running: list, wingfoil: list };
+    localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+    return 'ok';
+  })()`);
   await go('/enregistrer', 2500);
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1]?.click(); 'ok'`);
   await wait(300);
@@ -333,6 +342,7 @@ if (!process.env.PAGES || 'enregistrement'.includes(process.env.PAGES)) {
     await wait(5000);
     await sweep({ name: 'enregistrement en cours' });
     await holdStop();
+    await waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === "Ouvrir l'analyse")`, { timeout: 8000, label: 'session terminée' });
     await settle({ max: 1500 });
     await sweep({ name: 'enregistrement terminé' });
   }

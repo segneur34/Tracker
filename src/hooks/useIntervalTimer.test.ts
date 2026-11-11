@@ -43,6 +43,16 @@ vi.mock('../platform/beeper', async (importOriginal) => ({
   onGpsLost: () => () => undefined,
 }));
 
+/** Rangement simulé (lot 212 : la session est rangée dès l'arrêt) : le journal tel qu'il était au rangement, effacé ensuite. */
+const library = vi.hoisted(() => ({ journals: [] as (string | null)[] }));
+vi.mock('./useSessionLibrary', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./useSessionLibrary')>()),
+  saveRecordedSession: async () => {
+    library.journals.push(journal.text);
+    return { file: 'rangee.gpx', location: 'ici' };
+  },
+}));
+
 const memory = new Map<string, string>();
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => memory.get(k) ?? null,
@@ -86,6 +96,7 @@ const runTo = (source: ReturnType<typeof fakeSource>, from: number, s: number) =
 
 beforeEach(() => {
   journal.text = null;
+  library.journals = [];
   memory.clear();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(T0);
@@ -94,7 +105,7 @@ beforeEach(() => {
 afterEach(async () => {
   timer.stopAndCloseIntervals();
   await recorder.stopRecording();
-  await recorder.discardPendingSession();
+  await recorder.savePendingSession();
   recorder.dismissRecorderResult();
   vi.useRealTimers();
 });
@@ -115,12 +126,12 @@ describe('séances du compteur pendant un enregistrement (lot 143, 140)', () => 
     timer.startIntervals(SECOND);
     runTo(source, 101, 200);
     await recorder.stopRecording();
-    const pending = recorder.getRecorderState().pending!;
-    expect(pending.intervals.map((s) => s.workout)).toEqual([FIRST, SECOND]);
-    expect(pending.intervals[0].laps.map((l) => l.kind)).toEqual(['travail', 'repos', 'travail']);
-    expect(pending.intervals[1].laps).toHaveLength(1);
-    // Relue du journal (application fermée avant « Analyser ») : les deux encore.
-    const parsed = parseJournal(journal.text!);
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.intervals.map((s) => s.workout)).toEqual([FIRST, SECOND]);
+    expect(saved.intervals[0].laps.map((l) => l.kind)).toEqual(['travail', 'repos', 'travail']);
+    expect(saved.intervals[1].laps).toHaveLength(1);
+    // Relue du journal (application fermée avant la fin du rangement) : les deux encore.
+    const parsed = parseJournal(library.journals[0]!);
     expect(seriesWithin(parsed.intervalRuns, T0, T0 + 200_000).map((s) => s.workout)).toEqual([FIRST, SECOND]);
   });
 
@@ -136,7 +147,7 @@ describe('séances du compteur pendant un enregistrement (lot 143, 140)', () => 
     timer.startIntervals(SECOND);
     runTo(source, 41, 80);
     await recorder.stopRecording();
-    const { intervals } = recorder.getRecorderState().pending!;
+    const { intervals } = recorder.getRecorderState().saved!;
     expect(intervals.map((s) => s.workout)).toEqual([FIRST, SECOND]);
     expect(intervals[0].laps[0].startMs).toBe(T0 + 5000);
   });

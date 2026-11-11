@@ -32,10 +32,12 @@
 //  6. démarrage : du chargement de `/` à l'accueil rendu, puis au premier répit d'une seconde sans tâche longue
 //     (« interactif »), tâches longues et modules chargés sur 12 s ; avec le préchargement des pages
 //     (`preloadPages` d'`App.tsx`), puis sans (`requestIdleCallback` neutralisé depuis le script, rien dans `src/`) ;
-//  7. « Analyser » (lot 161), hors de la liste par défaut, `FLUIDITE_MESURES=analyser` : enregistrement rejoué à ×600
-//     (voile 3 h et course 2 h à 1 Hz), ralenti posé juste avant le clic ; clic → « Rangement… » peint, calcul au worker,
-//     première écriture, écritures, navigation, titre, trace, chiffres, tâches longues par phase ; puis la voile avec une
-//     capture de 3 h (serveur de développement seulement), dont l'élagage se lit à la taille du `.imu` rangé.
+//  7. « Finir » (lot 161, refait au lot 212 : la session est rangée dès l'arrêt et l'analyse s'ouvre d'elle-même), hors
+//     de la liste par défaut, `FLUIDITE_MESURES=analyser` : enregistrement rejoué à ×600 (voile 3 h et course 2 h à
+//     1 Hz), ralenti posé juste avant d'appuyer sur « Arrêter » ; fin de l'appui long → « Rangement dans la mémoire… » peint, calcul au
+//     worker, première écriture, écritures, navigation, titre, trace, chiffres, tâches longues par phase ; puis la voile
+//     avec une capture de 3 h (serveur de développement seulement), posée sur la session à l'instant où l'arrêt la
+//     construit, dont l'élagage se lit à la taille du `.imu` rangé.
 // Fin : un tableau des médianes (PC ×1 et ×6), à recopier dans le relevé du lot.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -816,9 +818,9 @@ if (MESURES.includes('demarrage')) {
   await throttle(1);
 }
 
-// --- 7. « Analyser » à la fin d'un enregistrement (lot 161) ---
+// --- 7. « Finir » : la fin d'un enregistrement jusqu'à son analyse (lot 161 ; lot 212) ---
 if (MESURES.includes('analyser')) {
-  console.log('\n== « Analyser » : enregistrement rejoué à ×600, rangement, ouverture de l\'analyse ==');
+  console.log('\n== « Finir » : enregistrement rejoué à ×600, arrêt, rangement, ouverture de l\'analyse ==');
   // Sondes de cette mesure : calculs envoyés au worker, écritures de la mémoire (OPFS), navigation vers l'analyse.
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
     const s = { events: [] };
@@ -846,7 +848,7 @@ if (MESURES.includes('analyser')) {
   const choose = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('[role=radiogroup] button[role=radio]')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
   // Un GPX par prise, parti d'un autre jour : la même heure de départ serait un doublon.
   let prise = 0;
-  /** Enregistrement rejoué jusqu'à la carte « Analyser / Jeter » : le geste du téléphone, à ×600 (`bench.mjs`). */
+  /** Enregistrement rejoué jusqu'à « Arrêter » tenu, pas encore relâché : le geste du téléphone, à ×600 (`bench.mjs`). */
   const recordReplay = async (cas) => {
     prise += 1;
     const path = join(workDir, `fluidite-analyser-${prise}.gpx`);
@@ -862,30 +864,30 @@ if (MESURES.includes('analyser')) {
     await wait(100);
     await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.includes('Démarrer')).click(); 'ok'`);
     await wait((cas.secondes / 600) * 1000 + 2000); // rejeu en temps réel : un vrai délai
-    // « Arrêter » se tient 2 s.
-    await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
-    await wait(2300);
-    await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-    await waitFor(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Analyser')`, { timeout: 60000, every: 100, label: 'carte Analyser' });
-    await settle({ max: 3000, label: 'carte Analyser' });
-    console.log(`prise ${prise}, ${cas.nom} :`, await evaluate(`document.body.innerText.match(/[\\d\\s]+ points/)?.[0]?.trim() ?? '(points non lus)'`));
   };
   /**
-   * Clic sur « Analyser » jusqu'aux chiffres de l'analyse. « Rangement… » est peint à la seconde image qui le voit (une
-   * image attend que le fil soit libre). Le journal, en mémoire vive sur le banc, ne se mesure pas : l'écart entre la
-   * dernière écriture et la navigation le comprend sur le téléphone seulement.
+   * « Arrêter » tenu (2 s, profil neuf) jusqu'aux chiffres de l'analyse, ouverte d'elle-même (lot 212) : l'instant zéro
+   * est la fin de l'appui long, quand l'arrêt part. « Rangement dans la mémoire… » est peint à la seconde image qui le
+   * voit (une image attend que le fil soit libre). Le journal, en mémoire vive sur le banc, ne se mesure pas : l'écart
+   * entre la dernière écriture et la navigation le comprend sur le téléphone seulement.
    */
   const analyze = async ({ profile = false } = {}) => {
     if (profile) await profileStart();
     const out = await evaluate(`new Promise((resolve) => {
-      const t0 = performance.now();
+      const HOLD_MS = 2000;
+      const stop = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl'));
+      stop.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
+      setTimeout(() => {
+        stop.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' }));
+        stop.click();
+      }, HOLD_MS + 300);
+      const t0 = performance.now() + HOLD_MS;
       const out = { t0, peint: null, titre: null, trace: null, chiffres: null };
       const paint = () => requestAnimationFrame(() => {
-        if ([...document.querySelectorAll('button')].some((x) => x.textContent.includes('Rangement'))) requestAnimationFrame(() => { out.peint = performance.now() - t0; });
+        if (document.body.innerText.includes('Rangement dans la mémoire')) requestAnimationFrame(() => { out.peint = performance.now() - t0; });
         else if (!location.search.includes('session=')) paint();
       });
       paint();
-      [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Analyser').click();
       const tick = () => {
         const now = performance.now();
         if (out.titre === null && document.querySelector('.an-page h1')?.textContent.trim()) out.titre = now - t0;
@@ -920,7 +922,7 @@ if (MESURES.includes('analyser')) {
       imu, prof,
     };
   };
-  const analyzeText = (r) => `« Rangement… » peint ${sec(r.peint)} | worker ${sec(r.worker)} | 1re écriture ${sec(r.premiereEcriture)} | écritures ${sec(r.ecritures)} | navigation ${sec(r.navigation)} | titre ${sec(r.titre)} | trace ${sec(r.trace)} | chiffres ${sec(r.chiffres)}`
+  const analyzeText = (r) => `« Rangement » peint ${sec(r.peint)} | worker ${sec(r.worker)} | 1re écriture ${sec(r.premiereEcriture)} | écritures ${sec(r.ecritures)} | navigation ${sec(r.navigation)} | titre ${sec(r.titre)} | trace ${sec(r.trace)} | chiffres ${sec(r.chiffres)}`
     + ` | avant écriture : tâche max ${sec(r.calculMax)}, bloqué ${sec(r.calculBloque)} | écritures : ${sec(r.ecrituresMax)}, ${sec(r.ecrituresBloque)} | ouverture : ${sec(r.ouvertureMax)}, ${sec(r.ouvertureBloque)}${r.imu === null ? '' : ` | .imu rangé ${(r.imu / 1e6).toFixed(1).replace('.', ',')} Mo`}`;
   const backToRecording = async () => {
     await throttle(1);
@@ -930,11 +932,13 @@ if (MESURES.includes('analyser')) {
 
   /**
    * Capture de 3 h à 100 Hz (`sauts.mjs` : deux sauts, bruit pour qu'elle ne se comprime pas trop), posée sur la session
-   * en attente. Par les modules de `/src` : serveur de développement seulement, `null` sur la version compilée. Lecture
-   * native, pont et SAF restent hors de portée : le base64 de la capture est minuté à part, comme borne basse.
+   * à l'instant où l'arrêt la construit, avant son rangement qui suit aussitôt (lot 212) : un abonné à l'enregistreur,
+   * prévenu dans le même tour. Par les modules de `/src` : serveur de développement seulement, `null` sur la version
+   * compilée. Lecture native, pont et SAF restent hors de portée : le base64 de la capture est minuté à part, comme
+   * borne basse.
    */
   const putCapture = () => evaluate(`(async () => { try {
-    const { getRecorderState } = await import('/src/hooks/useRecorder.ts');
+    const { getRecorderState, subscribeToRecorder } = await import('/src/hooks/useRecorder.ts');
     if (!window.__imuBanc) {
       const { encodeImu, PHONE_STREAMS, IMU_FORMAT, IMU_VERSION } = await import('/src/core/imuFile.ts');
       const start = ${Date.UTC(2026, 0, 1, 8, 0, 0)};
@@ -944,9 +948,13 @@ if (MESURES.includes('analyser')) {
       const gyro = { info: PHONE_STREAMS[1], t, values: [0, 1, 2].map((a) => Float32Array.from(t, () => 0.2 * (Math.random() - 0.5))) };
       window.__imuBanc = await encodeImu({ format: IMU_FORMAT, version: IMU_VERSION, startedAtMs: start, clock: { elapsedUs: 1e9, wallMs: start }, setup: { placement: 'bras', foil: false }, streams: PHONE_STREAMS.slice(0, 2) }, [accel, gyro]);
     }
-    const pending = getRecorderState().pending;
-    pending.motion = { path: 'banc.imu', bytes: window.__imuBanc.length, durationS: 3 * 3600, samples: 3 * 3600 * 100, longestGapS: 0.01 };
-    pending.motionBytes = window.__imuBanc;
+    const off = subscribeToRecorder(() => {
+      const pending = getRecorderState().pending;
+      if (!pending || pending.motion) return;
+      pending.motion = { path: 'banc.imu', bytes: window.__imuBanc.length, durationS: 3 * 3600, samples: 3 * 3600 * 100, longestGapS: 0.01 };
+      pending.motionBytes = window.__imuBanc;
+      off();
+    });
     return window.__imuBanc.length;
   } catch { return null; } })()`);
   const base64Time = () => evaluate(`(async () => {
@@ -996,10 +1004,10 @@ if (MESURES.includes('analyser')) {
     console.log('capture non posée (modules de /src absents : version compilée) : mesure sans capture seulement');
   }
   results.analyser = Object.entries(measures).flatMap(([label, m]) => [
-    [`Analyser ${label} : « Rangement… » peint / 1re écriture / navigation / chiffres`, (r) => `${sec(m[r].peint)} / ${sec(m[r].premiereEcriture)} / ${sec(m[r].navigation)} / ${sec(m[r].chiffres)}`],
-    [`Analyser ${label} : avant écriture, tâche max / bloqué`, (r) => `${sec(m[r].calculMax)} / ${sec(m[r].calculBloque)}`],
-    [`Analyser ${label} : écritures, durée / tâche max / bloqué`, (r) => `${sec(m[r].ecritures)} / ${sec(m[r].ecrituresMax)} / ${sec(m[r].ecrituresBloque)}`],
-    [`Analyser ${label} : ouverture, tâche max / bloqué`, (r) => `${sec(m[r].ouvertureMax)} / ${sec(m[r].ouvertureBloque)}`],
+    [`Finir ${label} : « Rangement » peint / 1re écriture / navigation / chiffres`, (r) => `${sec(m[r].peint)} / ${sec(m[r].premiereEcriture)} / ${sec(m[r].navigation)} / ${sec(m[r].chiffres)}`],
+    [`Finir ${label} : avant écriture, tâche max / bloqué`, (r) => `${sec(m[r].calculMax)} / ${sec(m[r].calculBloque)}`],
+    [`Finir ${label} : écritures, durée / tâche max / bloqué`, (r) => `${sec(m[r].ecritures)} / ${sec(m[r].ecrituresMax)} / ${sec(m[r].ecrituresBloque)}`],
+    [`Finir ${label} : ouverture, tâche max / bloqué`, (r) => `${sec(m[r].ouvertureMax)} / ${sec(m[r].ouvertureBloque)}`],
   ]);
 }
 

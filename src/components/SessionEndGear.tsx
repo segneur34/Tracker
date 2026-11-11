@@ -12,11 +12,12 @@ interface Props {
 }
 
 /**
- * Matériel de la session, choisi à la fin de l'enregistrement, juste avant
- * « Analyser » (lot 143, 131) : le choix par groupe de l'onglet « matériel et
- * notes » (`GearPicker`), vide d'office, jamais repris d'une autre session
- * (DECISIONS §8). Rien n'est montré sans activité ou si l'activité n'a pas de
- * liste de matériel. Le choix est écrit dans la fiche par « Analyser ».
+ * Matériel de la session, choisi à la fin de l'enregistrement, sur la carte
+ * « Session terminée » avant « Ouvrir l'analyse » (lot 143, 131 ; lot 212) : le
+ * choix par groupe de l'onglet « matériel et notes » (`GearPicker`), vide
+ * d'office, jamais repris d'une autre session (DECISIONS §8). Rien n'est
+ * montré sans activité ou si l'activité n'a pas de liste de matériel. La page
+ * écrit le choix dans la fiche de la session rangée dès qu'il change.
  */
 export default function SessionEndGear({ activity, gear, onChange }: Props) {
   const groups = useGearGroups(activity);

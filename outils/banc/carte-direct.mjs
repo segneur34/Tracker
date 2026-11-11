@@ -2,7 +2,7 @@
 // Usage : node carte-direct.mjs <port> <dossier de travail, chemin Windows>
 // Sur un profil neuf, sans réseau, environ 8 min en temps réel, 1 min avec `TEMPS=10` (horloge de la page accélérée).
 // Deux passages en rejeu ×1 d'une course à 3 m/s vers l'est, 1 Hz, vitesse du capteur sur chaque point, chacun fini
-// par l'arrêt tenu puis « Jeter » :
+// par l'arrêt tenu, la session rangée et son analyse ouverte d'elle-même (lot 212) :
 //  1. pause manuelle (« Pause » de la page) de 60 à 90 s pendant laquelle le rejeu avance (le coureur continue, le
 //     GPS reste allumé), puis « Reprendre » : la flèche suit pendant la pause, sans trace dessinée ni distance qui
 //     monte, et après la reprise aucun trait entre le point de la pause et celui de la reprise, ni passager (relevés
@@ -222,10 +222,10 @@ const startReplay = async (track) => {
 const endReplay = async (pass) => {
   dumpSamples(pass);
   const stop = await holdStop();
-  await settle({ max: 3000 });
-  const thrown = await clickText('Jeter');
+  // Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même ; plus de « Jeter » (profil neuf à chaque script).
+  const opened = await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
   await settle({ max: 2000 });
-  check(`${pass} : arrêt tenu puis « Jeter »`, stop === 'ok' && thrown === 'ok', `${stop} / ${thrown}`);
+  check(`${pass} : arrêt tenu, session rangée, analyse ouverte`, stop === 'ok' && Boolean(opened), `${stop} / ${opened}`);
 };
 
 // 1. Pause manuelle pendant laquelle le coureur avance.

@@ -45,7 +45,7 @@ await go('/voile');
 console.log(await lines(/session|mémoire|Aucune/));
 await shot('voile-vide-mobile', 390, 844, true);
 
-step('2. Rejeu ×600, Arrêter, Analyser');
+step('2. Rejeu ×600, Arrêter, analyse ouverte d\'elle-même');
 await go('/enregistrer');
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
@@ -57,9 +57,8 @@ await wait(9000);
 console.log('Arrêter :', await holdStop());
 // La session est rangée en mémoire (OPFS) : ni DOM ni réseau, d'où l'attente de la fiche avant `settle`.
 await waitFor(async () => (await records())?.length >= 1, { timeout: 6000, label: 'fiche rangée' });
-await settle({ max: 3000 });
-console.log(await lines(/points|Rangée|Session/));
-console.log('Analyser :', await clickText('Analyser'));
+// Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212).
+await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
 await settle({ max: 6000 });
 console.log('url :', await evaluate('location.pathname + location.search'));
 console.log('h1 :', await evaluate(`document.querySelector('h1')?.textContent`), '| segments :', await evaluate(`document.querySelectorAll('path.leaflet-interactive').length`));

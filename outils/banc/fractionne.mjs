@@ -29,7 +29,7 @@ if (!port || !workDir) {
 
 // --- Protocole ---
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, wait, blockNetwork, importFiles, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, wait, waitFor, blockNetwork, importFiles, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
 const sounds = [];
 onMessage((msg) => {
   if (msg.method !== 'Runtime.consoleAPICalled') return;
@@ -178,8 +178,8 @@ await wait(21000);
 console.log('pendant :', await card());
 await shoot('fractionne-enregistrement');
 console.log('Arrêter (enregistrement) :', await holdStop());
-await wait(2500);
-console.log('Analyser :', await clickText('Analyser'));
+// Rangée dès l'arrêt, rien à demander (déjà en Fractionné, pas de liste de matériel) : l'analyse s'ouvre d'elle-même (lot 212).
+await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
 await wait(6000);
 console.log('page :', await evaluate('location.pathname'), '| onglets :', await evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent).join(', ')`));
 console.log('panneau :', await panel('Répétitions'));

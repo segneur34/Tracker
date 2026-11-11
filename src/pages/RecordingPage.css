@@ -203,7 +203,7 @@
   margin-top: var(--space-3);
 }
 
-/* Matériel choisi à la fin de la session, avant « Analyser » (lot 143, 131). */
+/* Matériel choisi à la fin de la session, sur « Session terminée » (lot 143, 131 ; lot 212). */
 .rec-end-gear {
   margin-bottom: var(--space-3);
 }
@@ -211,6 +211,14 @@
 .rec-end-gear__title {
   display: block;
   margin-bottom: var(--space-2);
+}
+
+/* Question du fractionné sur « Session terminée » (lot 212) : comme le matériel. */
+.rec-end-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 /* Styles sortis du JSX (élément 160), à valeur égale ; les utilitaires communs sont dans `ui.css`. */

@@ -33,7 +33,7 @@ interface SavedSessionShareProps {
 
 /**
  * Menu « … » des cartes de fin d'enregistrement (« Session terminée »,
- * « Session rangée ») : « Partager l'image » ouvre la même fenêtre que dans
+ * « Rangement impossible », session interrompue) : « Partager l'image » ouvre la même fenêtre que dans
  * l'analyse (`ShareDialog`), la trace colorée comme l'analyse la colorerait
  * (`sessionColorTrack`) et les chiffres du résumé (`summaryShareStats`) : celui
  * de la fiche si la session est rangée, sinon calculé sur le GPX avec les

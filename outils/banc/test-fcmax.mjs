@@ -7,7 +7,7 @@
 //  3. la case « FC repos » de la rangée « Test » : pas de « Démarrer », « Ouvrir le test » mène à sa page ;
 //  4. rejeu ×10 d'une sortie synthétique avec FC (échauffement de 3 min, 6 paliers tenus, un lâché puis effondré, récupération) :
 //     la carte « Test » suit les phases, la suite des signaux « [test] » est celle de `stepFitnessTest` rejoué dans la
-//     page sur les mêmes positions, les « [bips] » sont ceux de leurs motifs ; « Analyser » range le test dans la fiche ;
+//     page sur les mêmes positions, les « [bips] » sont ceux de leurs motifs ; l'arrêt range le test dans la fiche et ouvre l'analyse (lot 212) ;
 //  5. à 390 × 844 et à 320 px : les pages sans débordement.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -201,9 +201,9 @@ const bips = sounds.filter((x) => /^\[bips\] (court|bref|long|final) /.test(x)).
 check('un bip par son des motifs', bips === pure?.tones, `${bips} bips pour ${pure?.tones} sons`);
 const signalsSeen = new Set(logged.map(([x]) => x));
 check('signaux : début, bien, palier, fin de rampe, fin du test', ['debut', 'bien', 'palier', 'finRampe', 'finTest'].every((x) => signalsSeen.has(x)), [...signalsSeen].join(' '));
-console.log('analyser :', await clickText('Analyser'));
-// L'analyse se calcule en vrai temps : l'adresse de l'analyse, puis une page immobile.
-await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 5000, label: 'analyse' });
+// Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212). Elle se calcule en vrai temps :
+// l'adresse de l'analyse, puis une page immobile.
+await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse' });
 await settle({ max: 5000, label: 'analyse' });
 const recs = await evaluate(`(async () => {
   const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');

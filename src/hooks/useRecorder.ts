@@ -69,7 +69,7 @@ import { resetStopwatch } from './useStopwatch';
  * peut changer de page pendant un enregistrement sans l'interrompre. Les
  * pages le lisent par `useRecorderSelector` et le pilotent par `startRecording`,
  * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle),
- * `changeRecordingActivity`, `analyzePendingSession`/`discardPendingSession`
+ * `changeRecordingActivity`, `savePendingSession`, `continuePendingSession`
  * et `recoverInterruptedRecording`. Le guidage vers les balises
  * (`useMarkGuide`), hors React lui aussi, s'abonne aux positions reçues
  * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`). Le compteur du
@@ -86,14 +86,16 @@ import { resetStopwatch } from './useStopwatch';
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
  * (`shouldFlushJournal`). À l'arrêt, le GPX est construit depuis la mémoire,
- * un `<trkseg>` par segment continu (`splitIntoSegments`), et la session
- * attend une décision (`pending`) : « Analyser » la range dans la
- * bibliothèque (`saveRecordedSession`), « Jeter » l'abandonne. Rien n'entre
- * dans la mémoire sans cette décision, pour ne pas l'encombrer d'essais.
- * Tant qu'elle attend, le journal est gardé : après un arrêt brutal ou une
- * fermeture, la session est reconstruite depuis lui au démarrage suivant, et
- * attend de nouveau. Le journal n'est effacé qu'une fois le GPX écrit, ou la
- * session jetée.
+ * un `<trkseg>` par segment continu (`splitIntoSegments`), et la session est
+ * aussitôt rangée dans la bibliothèque (`saveRecordedSession`, lot 212) : la
+ * fin d'un enregistrement mène à son analyse, sans choix à faire ; jeter une
+ * session se fait depuis la mémoire. Le rangement appartient à ce module, pas
+ * à la page : il va à son terme si on la quitte. Le journal n'est effacé
+ * qu'une fois le GPX écrit : si l'écriture échoue, la session attend
+ * (`pending`, `rangeFailed`) qu'on réessaie, et après un arrêt brutal ou une
+ * fermeture, elle est reconstruite depuis lui au démarrage suivant, puis
+ * rangée d'office. Une capture des capteurs qui ne se lit pas n'est jamais
+ * effacée : la session est rangée sans elle (`SavedSession.motionLeft`).
  *
  * Deux pauses : manuelle (rien n'est gardé, la source GPS reste allumée pour
  * la carte du direct, reprise explicite, lot 104) et automatique (immobilité
@@ -113,7 +115,8 @@ import { resetStopwatch } from './useStopwatch';
  * Reprise (lot 156, `recording/resume.ts`) : si le moteur de la page tombe, seule la page repart (`MainActivity.java`).
  * Le service GPS encore vivant, la session reprend seule (`resumeSilently`) : mémoire refaite depuis le journal, jamais
  * d'en-tête de plus, service jamais relancé, un segment neuf à la position suivante. Application tuée et rouverte peu
- * après : « Continuer l'enregistrement » dans la carte de la session en attente (`continuePendingSession`).
+ * après : la session attend, non rangée, avec « Continuer l'enregistrement » (`continuePendingSession`) ou « Finir »
+ * (`savePendingSession`) ; plus tard, elle est rangée d'office.
  *
  * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
  * source GPS ; avec la ceinture, chaque mesure (une par seconde au plus,
@@ -131,7 +134,10 @@ import { resetStopwatch } from './useStopwatch';
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
 
-/** Session terminée, pas encore rangée : l'utilisateur doit l'analyser ou la jeter. */
+/**
+ * Session terminée qui n'est pas dans la mémoire : son rangement est en cours, a échoué (`rangeFailed`, « Réessayer »),
+ * ou c'est une session interrompue récupérée qu'on peut continuer (`canContinue`, « Continuer » ou « Finir »).
+ */
 export interface PendingSession {
   fileName: string;
   /** Le GPX lui-même, pour le ranger ou le télécharger sans le reconstruire. */
@@ -152,20 +158,48 @@ export interface PendingSession {
   marks: SessionMark[];
   /** Capture des capteurs (sauts), dans le dossier privé, rangée avec la session ; `null` sans mesure. */
   motion: MotionCapture | null;
-  /** Octets de la capture déjà lus à l'arrêt (cadence), pour ne pas les relire à « Analyser » ; `null` sinon. */
+  /** Octets de la capture déjà lus à l'arrêt (cadence), pour ne pas les relire au rangement ; `null` sinon. */
   motionBytes: Uint8Array | null;
   /** Test guidé fait pendant l'enregistrement ; `null` sans test. */
   test: SessionTest | null;
+  /** Ce que l'arrêt a dit d'une capture incomplète (`motionCaptureWarning`), rendu à la session rangée, même après « Réessayer » ; `null` sinon. */
+  warning: string | null;
 }
 
-/** Session rangée par « Analyser ». */
+/**
+ * Capture des capteurs restée sur l'appareil (lot 212) : elle existait mais n'a pas pu être lue au rangement, la
+ * session est rangée sans elle (ni sauts ni pumping). Rien ne l'efface ; `file` : la session rangée, pour la
+ * compléter plus tard.
+ */
+export interface MotionLeft {
+  /** Chemin de la capture dans le dossier privé de l'application. */
+  path: string;
+  /** Nom de la session dans la mémoire, `null` si elle n'a pas pu y entrer (en attente d'un dossier, aucune mémoire). */
+  file: string | null;
+}
+
+/**
+ * Message « Mesures des capteurs illisibles » d'une session rangée sans sa capture (lot 212), montré par son analyse
+ * (`MotionLeftNotice`) jusqu'à un « Réessayer » réussi. En mémoire seulement : perdu si l'application redémarre, la
+ * capture restant sur l'appareil. `retrying` : relecture en cours ; `unreadable` : toujours illisible ; `failed` :
+ * lue, mais la session n'a pas pu la recevoir ; `absent` : le fichier n'est plus sur l'appareil.
+ */
+export interface LeftCapture {
+  file: string;
+  path: string;
+  status: 'waiting' | 'retrying' | 'unreadable' | 'failed' | 'absent';
+  /** Raison de l'échec du dernier essai, en clair ; `null` sinon. */
+  detail: string | null;
+}
+
+/** Session rangée, dès « Finir » (lot 212). */
 export interface SavedSession {
   fileName: string;
   /** Nom dans la mémoire, `null` si la session n'a pas pu y entrer (en attente, ou aucune mémoire). */
   libraryFile: string | null;
   /** Où la trouver, en clair. */
   location: string;
-  /** Le GPX lui-même, pour l'analyser ou le télécharger sans le relire. */
+  /** Le GPX lui-même, pour le partager ou le télécharger sans le relire. */
   content: string;
   /** `null` : session à classer (`PendingSession.sport`). */
   sport: SportType | null;
@@ -173,6 +207,19 @@ export interface SavedSession {
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
+  /** Séances du compteur : la carte de fin propose de la passer en Fractionné. */
+  intervals: IntervalSeries[];
+  /** Repères du bouton « Note ». */
+  marks: SessionMark[];
+  /** Capture illisible restée sur l'appareil ; `null` sinon (rangée avec la session, ou aucune). */
+  motionLeft: MotionLeft | null;
+  /** Ce que l'arrêt a dit d'une capture incomplète (`motionCaptureWarning`), aussi dans l'alerte ; `null` sinon. */
+  warning: string | null;
+  /**
+   * `finish` : rangée au geste de l'utilisateur (« Finir », « Réessayer ») ; `recovery` : rangée d'office à la reprise
+   * d'une session interrompue, au lancement, que l'analyse n'ouvre pas d'elle-même.
+   */
+  rangedBy: 'finish' | 'recovery';
 }
 
 export interface RecorderState {
@@ -194,13 +241,16 @@ export interface RecorderState {
   /** Repères du bouton « Note » de l'enregistrement en cours, pour la carte du direct ; vide au repos. */
   marks: SessionMark[];
   stats: RecordingStats;
-  /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
+  /** Session arrêtée hors de la mémoire (`PendingSession`) ; aucun nouvel enregistrement d'ici là, son journal serait écrasé. */
   pending: PendingSession | null;
-  /** La capture de cette session existe mais n'a pas pu être lue à « Analyser » : `analyzePendingSession(true)` la laisse de côté. */
-  motionUnreadable: boolean;
-  /** Vrai pendant le rangement de la session en attente (`analyzePendingSession`) : « Rangement… », boutons de sa carte inactifs. */
+  /** Le dernier rangement de `pending` a échoué (écriture refusée) : son journal est gardé, « Réessayer » le relance. */
+  rangeFailed: boolean;
+  /** Vrai pendant le rangement de `pending` (à l'arrêt, à la reprise, `savePendingSession`) : « Rangement… », boutons inactifs. */
   analyzing: boolean;
+  /** Dernière session rangée, pour la carte de fin ; effacée par `dismissRecorderResult` ou le départ suivant. */
   saved: SavedSession | null;
+  /** Sessions rangées sans leur capture illisible, pour le message de leur analyse (`retryLeftCapture`). */
+  leftCaptures: LeftCapture[];
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
   gpsLost: boolean;
@@ -228,9 +278,10 @@ const INITIAL_STATE: RecorderState = {
   marks: [],
   stats: EMPTY_RECORDING_STATS,
   pending: null,
-  motionUnreadable: false,
+  rangeFailed: false,
   analyzing: false,
   saved: null,
+  leftCaptures: [],
   error: null,
   gpsLost: false,
   beltLost: false,
@@ -599,7 +650,7 @@ const stopClock = (): void => {
  * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
  * positions telles quelles : la session n'est jamais bloquée par la cadence.
  * Seul l'accéléromètre est décodé ; les octets lus sont rendus aussi, gardés
- * pour « Analyser ». Pas de `loadSessionMotion` ici : c'est la capture entière
+ * pour le rangement. Pas de `loadSessionMotion` ici : c'est la capture entière
  * du dossier privé, décodée en partie, que personne d'autre ne lit à l'arrêt
  * (l'analyse lit le `.imu` élagué, rangé avec la session).
  */
@@ -627,8 +678,8 @@ interface RecordedTrack {
 }
 
 /**
- * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à la
- * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
+ * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à ce
+ * qu'il soit écrit (`rangePendingSession`). Rend `null`, journal effacé, s'il y a moins de
  * deux positions au total (sans position : deux points à l'heure, FC ou non,
  * point de l'arrêt compris, lot 210 ; sans aucune FC, un intervalle du
  * minuteur hors pauses au moins) : aucune trace ne s'en tire, il n'y a rien à
@@ -663,7 +714,7 @@ const buildPendingSession = async (
     const gpx = buildHeartRateGpx(recorded.heart, { name: sessionTitle(firstMs, titleName), sport });
     return {
       fileName: sessionFileName(firstMs, sport), content: gpx, sport, activity, pointCount: measures, recovered, canContinue: false, intervals, marks,
-      motion: null, motionBytes: null, test,
+      motion: null, motionBytes: null, test, warning: null,
     };
   }
   const { segments } = recorded;
@@ -677,34 +728,33 @@ const buildPendingSession = async (
   const fileName = sessionFileName(startMs, sport);
   const measured = await withMeasuredCadence(segments, sport, motion);
   const content = buildGpx(measured.segments, { name: sessionTitle(startMs, titleName), sport });
-  return { fileName, content, sport, activity, pointCount, recovered, canContinue: false, intervals, marks, motion, motionBytes: measured.bytes, test };
+  return { fileName, content, sport, activity, pointCount, recovered, canContinue: false, intervals, marks, motion, motionBytes: measured.bytes, test, warning: null };
 };
 
-/**
- * Capture là mais illisible : rien n'est effacé, la session reste en attente, et ceci le dit. Une capture
- * qui ne se lirait jamais bloquerait la session : d'où « Analyser sans les capteurs ».
- */
-const MOTION_UNREADABLE_MESSAGE = 'Les mesures des capteurs de cette session n\'ont pas pu être lues. La session reste en attente et rien n\'est effacé : '
-  + 'réessayez « Analyser », ou « Analyser sans les capteurs » pour la ranger sans sauts ni pumping, le fichier des mesures restant sur l\'appareil.';
+/** Session rangée sans sa capture, par nom de fichier : de quoi la ranger de nouveau, capture comprise (`retryLeftCapture`). */
+const leftSessions = new Map<string, PendingSession>();
 
 /**
- * « Analyser » : range la session en attente dans la bibliothèque, puis
- * efface le journal et la capture. Rend la session rangée, ou `null` si
- * l'écriture échoue : la session reste alors en attente, journal compris.
- * Une capture absente : la session est rangée sans elle. Une capture qui
- * existe mais ne se lit pas : la session reste en attente, rien n'est effacé
- * (`motionUnreadable`). `withoutMotion` (« Analyser sans les capteurs », après
- * cet échec) : la session est rangée sans la capture, qui reste sur l'appareil.
+ * Range la session dans la bibliothèque, puis efface le journal et la
+ * capture. Rend la session rangée, ou `null` si l'écriture échoue : la
+ * session reste alors hors de la mémoire (`pending`, `rangeFailed`), journal
+ * compris, et l'alerte le dit. Une capture absente : rangée sans elle. Une
+ * capture qui existe mais ne se lit pas : rangée sans elle aussi, mais le
+ * fichier reste sur l'appareil, jamais effacé (`SavedSession.motionLeft`).
+ * Réussi, le rangement garde l'alerte de l'arrêt (capteurs incomplets), sauf
+ * après un échec, dont il efface le message.
  */
-const rangePendingSession = async (pending: PendingSession, withoutMotion: boolean): Promise<SavedSession | null> => {
+const rangePendingSession = async (
+  pending: PendingSession, rangedBy: SavedSession['rangedBy']
+): Promise<SavedSession | null> => {
   let motion: Uint8Array | null = null;
-  if (pending.motion && !withoutMotion) {
+  let unreadable: string | null = null;
+  if (pending.motion) {
     try {
       motion = pending.motionBytes ?? await readMotionCapture(pending.motion.path);
     } catch (err) {
-      console.warn(`Capture illisible : ${errorMessage(err, 'erreur inconnue')}`);
-      setState({ motionUnreadable: true, error: MOTION_UNREADABLE_MESSAGE });
-      return null;
+      console.warn(`Capture illisible, session rangée sans elle : ${errorMessage(err, 'erreur inconnue')}`);
+      unreadable = pending.motion.path;
     }
   }
   try {
@@ -714,12 +764,21 @@ const rangePendingSession = async (pending: PendingSession, withoutMotion: boole
       pending.content, pending.sport, pending.activity?.id ?? null, pending.intervals, motion, pending.marks, foil, pending.test
     );
     await recordingJournal.remove();
-    if (pending.motion && !withoutMotion) await removeMotionCapture(pending.motion.path);
-    const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
-    setState({ pending: null, motionUnreadable: false, saved, error: null });
+    if (pending.motion && unreadable === null) await removeMotionCapture(pending.motion.path);
+    const saved: SavedSession = {
+      fileName: file ?? pending.fileName, libraryFile: file, location, content: pending.content, sport: pending.sport, activity: pending.activity,
+      pointCount: pending.pointCount, recovered: pending.recovered, intervals: pending.intervals, marks: pending.marks,
+      motionLeft: unreadable === null ? null : { path: unreadable, file }, rangedBy, warning: pending.warning,
+    };
+    if (unreadable !== null && file !== null) {
+      leftSessions.set(file, pending);
+      setState({ leftCaptures: [...state.leftCaptures.filter((c) => c.file !== file), { file, path: unreadable, status: 'waiting', detail: null }] });
+    }
+    setState({ pending: null, rangeFailed: false, saved, error: state.rangeFailed ? null : state.error });
     return saved;
   } catch (err) {
-    setState({ error: `Enregistrement du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. La session reste en attente.` });
+    const failure = `Rangement de la session impossible : ${errorMessage(err, 'erreur inconnue')}. Rien n'est perdu, son journal reste sur l'appareil.`;
+    setState({ rangeFailed: true, error: state.rangeFailed ? failure : joinMessages(state.error, failure) });
     return null;
   }
 };
@@ -728,16 +787,14 @@ const rangePendingSession = async (pending: PendingSession, withoutMotion: boole
 let ranging: Promise<SavedSession | null> | null = null;
 
 /**
- * Lance le rangement de la session en attente (`rangePendingSession`). Il appartient au module, pas à la page, qu'on
- * peut quitter et rouvrir pendant le calcul (lot 161) : un second appel pendant qu'il tourne rend la même promesse,
- * sans en lancer un autre, même avec un autre `withoutMotion`. `analyzing` retombe à sa fin, réussie ou non.
+ * Lance le rangement de `pending` (`rangePendingSession`). Il appartient au module, pas à la page, qu'on peut quitter
+ * et rouvrir pendant le calcul (lot 161) : un second appel pendant qu'il tourne rend la même promesse, sans en lancer
+ * un autre. `analyzing` retombe à sa fin, réussie ou non.
  */
-export const analyzePendingSession = (withoutMotion = false): Promise<SavedSession | null> => {
+const startRanging = (pending: PendingSession, rangedBy: SavedSession['rangedBy']): Promise<SavedSession | null> => {
   if (ranging) return ranging;
-  const pending = state.pending;
-  if (!pending) return Promise.resolve(null);
-  setState({ analyzing: true });
-  const run = rangePendingSession(pending, withoutMotion).finally(() => {
+  if (!state.analyzing) setState({ analyzing: true });
+  const run = rangePendingSession(pending, rangedBy).finally(() => {
     ranging = null;
     setState({ analyzing: false });
   });
@@ -745,12 +802,78 @@ export const analyzePendingSession = (withoutMotion = false): Promise<SavedSessi
   return run;
 };
 
-/** « Jeter » : abandonne la session en attente et efface son journal ; sans effet pendant son rangement. */
-export const discardPendingSession = async (): Promise<void> => {
-  if (!state.pending || ranging) return;
-  await recordingJournal.remove();
-  if (state.pending.motion) await removeMotionCapture(state.pending.motion.path);
-  setState({ pending: null, motionUnreadable: false, error: null });
+/** Change l'état du message d'une capture laissée, s'il est toujours là. */
+const setLeftCapture = (file: string, patch: Partial<LeftCapture>): void => {
+  setState({ leftCaptures: state.leftCaptures.map((c) => (c.file === file ? { ...c, ...patch } : c)) });
+};
+
+/**
+ * « Réessayer » du message des capteurs illisibles (lot 212) : relit la capture laissée sur l'appareil et la donne à
+ * la session déjà rangée (`saveRecordedSession` : le chemin des doublons ajoute le `.imu` absent, et l'analyse
+ * ouverte relit la session avec lui), puis l'efface et retire le message. Encore illisible, ou refusée : le message
+ * reste et le dit, la capture aussi. Rend vrai une fois la capture rangée.
+ */
+export const retryLeftCapture = async (file: string): Promise<boolean> => {
+  const left = state.leftCaptures.find((c) => c.file === file);
+  const session = leftSessions.get(file);
+  if (!left || !session || left.status === 'retrying') return false;
+  setLeftCapture(file, { status: 'retrying', detail: null });
+  let bytes: Uint8Array | null;
+  try {
+    bytes = await readMotionCapture(left.path);
+  } catch (err) {
+    setLeftCapture(file, { status: 'unreadable', detail: errorMessage(err, 'erreur inconnue') });
+    return false;
+  }
+  if (!bytes) {
+    setLeftCapture(file, { status: 'absent', detail: null });
+    return false;
+  }
+  try {
+    const foil = session.activity ? effectiveFoil(session.activity) : null;
+    await saveRecordedSession(
+      session.content, session.sport, session.activity?.id ?? null, session.intervals, bytes, session.marks, foil, session.test
+    );
+  } catch (err) {
+    setLeftCapture(file, { status: 'failed', detail: errorMessage(err, 'erreur inconnue') });
+    return false;
+  }
+  await removeMotionCapture(left.path).catch(() => undefined);
+  leftSessions.delete(file);
+  setState({ leftCaptures: state.leftCaptures.filter((c) => c.file !== file) });
+  return true;
+};
+
+/**
+ * Range la session hors de la mémoire : « Réessayer » après un échec d'écriture, ou « Finir » une session interrompue
+ * qu'on pouvait continuer. Rend la session rangée, `null` sans session à ranger ou en échec ; sans effet pendant un
+ * enregistrement ou une commande (« Continuer » en cours).
+ */
+export const savePendingSession = (): Promise<SavedSession | null> => {
+  if (ranging) return ranging;
+  const pending = state.pending;
+  if (!pending || isBusy() || running) return Promise.resolve(null);
+  return startRanging(pending, 'finish');
+};
+
+/**
+ * « Jeter la session » de la carte « Rangement impossible », seul « Jeter » de l'écran de fin : une écriture qui
+ * échoue toujours bloquerait sinon tout nouvel enregistrement. Efface le journal et la capture, et rend la page au
+ * repos. Sans effet hors d'un échec de rangement, pendant un rangement ou une commande. Rend faux si le journal
+ * n'a pas pu être effacé : la session reste alors, et l'alerte le dit.
+ */
+export const discardFailedSession = async (): Promise<boolean> => {
+  const pending = state.pending;
+  if (!pending || !state.rangeFailed || ranging || running || isBusy()) return false;
+  try {
+    await recordingJournal.remove();
+  } catch (err) {
+    setState({ error: `Session non jetée : ${errorMessage(err, 'erreur inconnue')}. Elle reste sur l'appareil.` });
+    return false;
+  }
+  if (pending.motion) await removeMotionCapture(pending.motion.path).catch(() => undefined);
+  setState({ pending: null, rangeFailed: false, error: null });
+  return true;
 };
 
 /** Options de démarrage d'une source, communes au premier démarrage et à une reprise manuelle. */
@@ -805,7 +928,7 @@ export const isRecordingActive = (): boolean => isBusy();
 
 /**
  * Ce qu'est devenu le journal laissé par une session interrompue :
- * `free` : rien à reprendre, ou session remise en attente ; `setAside` :
+ * `free` : rien à reprendre, session reprise, rangée ou remise en attente ; `setAside` :
  * journal illisible (ou session impossible à reconstruire) mis de côté, et
  * dit ; `blocked` : journal illisible resté en place, qu'aucun départ ne doit
  * écraser.
@@ -925,7 +1048,7 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
   withoutBelt = !withPositions && parsed.header?.withoutBelt === true;
   setState({
     status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!withoutBelt), pausedReason: null, pauseClock: null,
-    measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, motionUnreadable: false, saved: null, error: null, gpsLost: false, beltLost: false,
+    measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, rangeFailed: false, saved: null, error: null, gpsLost: false, beltLost: false,
   });
 };
 
@@ -1052,8 +1175,16 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
     );
     // Services arrêtés à présent : seul l'âge du journal décide, reprise échouée comprise.
     const canContinue = recoveryDecision({ ...facts, services: NO_RECOVERY_SERVICES, nowMs }) === 'offer';
-    // « Continuer l'enregistrement » est sur la page Enregistrer : y mener, sinon l'offre reste invisible depuis l'accueil.
-    if (pending) setState({ pending: { ...pending, canContinue }, saved: null, error: null, landOnRecording: canContinue });
+    if (!pending) return 'free';
+    if (canContinue) {
+      // Pas rangée : rangée puis continuée, elle passerait pour un doublon d'elle-même (même instant de départ).
+      // « Continuer l'enregistrement » est sur la page Enregistrer : y mener, sinon l'offre reste invisible depuis l'accueil.
+      setState({ pending: { ...pending, canContinue }, rangeFailed: false, saved: null, error: null, landOnRecording: true });
+      return 'free';
+    }
+    // Trop ancienne pour continuer, ou arrêtée : rangée d'office, sans mener à Enregistrer ni ouvrir l'analyse (lot 212).
+    setState({ pending, rangeFailed: false, analyzing: true, saved: null, error: null, landOnRecording: false });
+    await startRanging(pending, 'recovery');
     return 'free';
   } catch (err) {
     return setJournalAside(`Session interrompue non récupérée (${errorMessage(err, 'erreur inconnue')})`);
@@ -1062,8 +1193,8 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
 
 /**
  * Reprend un enregistrement que l'application n'a pas vu se conclure : relit le journal et, selon les services
- * encore vivants et son âge (`recoveryDecision`), reprend la session seule, ou la remet en attente, avec ou sans
- * « Continuer ». À appeler au démarrage de l'application. Un journal présent mais illisible, ou dont la session ne
+ * encore vivants et son âge (`recoveryDecision`), reprend la session seule, la remet en attente avec « Continuer »,
+ * ou la range d'office (lot 212). À appeler au démarrage de l'application. Un journal présent mais illisible, ou dont la session ne
  * se reconstruit pas, n'est jamais pris pour absent : il est mis de côté (`setJournalAside`), jamais écrasé par le
  * départ suivant. Idempotent : un second appel pendant le premier le rejoint.
  */
@@ -1220,7 +1351,7 @@ export const startRecording = exclusive(async (
   const recovery = await recoverInterruptedRecording();
   // La session d'un journal a repris seule : pas de second départ.
   if (isBusy()) return;
-  // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
+  // Le journal d'une session hors de la mémoire serait écrasé : elle doit être rangée (ou continuée) d'abord.
   if (state.pending) return;
   // Journal illisible resté en place : pas de départ, qui l'écraserait ; le message est déjà posé.
   if (recovery === 'blocked') return;
@@ -1281,13 +1412,14 @@ export const startRecording = exclusive(async (
  */
 export const continuePendingSession = exclusive(async (source: LocationSource | null): Promise<void> => {
   const before = state.pending;
-  if (isBusy() || !before?.canContinue || before.activity === null) return;
+  // Pas pendant un « Finir » qui la range : son journal serait relu puis effacé sous elle.
+  if (isBusy() || ranging || !before?.canContinue || before.activity === null) return;
   const activity = before.activity;
   const withPositions = hasPositions(activity.base);
   if (withPositions && source === null) return;
   const backToPending = async (why: unknown): Promise<void> => {
     await abandonResume();
-    setState({ pending: before, error: `Reprise impossible : ${errorMessage(why, 'erreur inconnue')}. La session reste en attente.` });
+    setState({ pending: before, rangeFailed: false, error: `Reprise impossible : ${errorMessage(why, 'erreur inconnue')}. La session reste en attente.` });
   };
   let parsed: ParsedJournal;
   try {
@@ -1527,7 +1659,10 @@ export const motionCaptureWarning = (capture: MotionCapture | null, failure: str
 const joinMessages = (first: string | null, second: string | null): string | null =>
   first && second ? `${first} ${second}` : first ?? second;
 
-/** Arrête l'enregistrement, après la pause ou la reprise en cours s'il y en a une (`afterCurrent`). */
+/**
+ * Arrête l'enregistrement, après la pause ou la reprise en cours s'il y en a une (`afterCurrent`), puis range la
+ * session dans la mémoire (`rangePendingSession`) ; rend la main une fois le rangement fini, réussi ou non.
+ */
 export const stopRecording = afterCurrent(async (): Promise<void> => {
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
   const activity = state.activity;
@@ -1575,11 +1710,14 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   releaseRecordingBelt();
   if (heartOnly) await stopBeltKeepAlive();
 
+  let built: PendingSession | null = null;
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
-    const pending = await buildPendingSession(
+    built = await buildPendingSession(
       activity, { segments: splitIntoSegments(fixes, segmentBreaks), heart }, false, intervals, [...marks], keptMotion, currentTest
     );
+    // L'alerte d'une capture incomplète suit la session jusqu'à son rangement, « Réessayer » compris.
+    if (built) built = { ...built, warning: motionWarning };
     setState({
       status: 'idle',
       pausedReason: null,
@@ -1588,8 +1726,11 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
       motionSetup: null,
       heartRate: null,
       marks: [],
-      pending,
-      error: pending ? joinMessages(state.error, motionWarning) : nothingToKeep(activity.base),
+      pending: built,
+      rangeFailed: false,
+      // Levé avec la session : la carte de fin dit « Rangement… » dès qu'elle paraît.
+      analyzing: built !== null,
+      error: built ? joinMessages(state.error, motionWarning) : nothingToKeep(activity.base),
     });
   } catch (err) {
     setState({
@@ -1614,6 +1755,8 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   marks = [];
   currentTest = null;
   sourceError = null;
+  // Rangée aussitôt (lot 212), dans la commande de l'arrêt : un départ n'arrive qu'après, et la page peut être quittée.
+  if (built) await startRanging(built, 'finish');
 });
 
 /**

@@ -62,9 +62,8 @@ const recordAndAnalyse = async (gpx) => {
   await clickText('Démarrer');
   await wait(8000);
   await holdStop();
-  await waitFor("[...document.querySelectorAll('button')].some((x) => x.textContent.trim().startsWith('Analyser'))", { timeout: 2500, label: 'bouton Analyser' });
-  console.log('Analyser :', await clickText('Analyser'));
-  await waitFor("location.pathname.includes('/analyse')", { timeout: 6000, label: 'analyse ouverte' });
+  // Rangée dès l'arrêt, rien à demander : l'analyse s'ouvre d'elle-même (lot 212).
+  await waitFor("location.pathname.includes('/analyse')", { timeout: 8000, label: 'analyse ouverte' });
   await settle({ max: 6000, label: 'analyse' });
   const url = await evaluate('location.pathname + location.search');
   return { url, file: decodeURIComponent(url.split('session=')[1] ?? '') };

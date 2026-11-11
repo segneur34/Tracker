@@ -52,7 +52,9 @@ writeFileSync(gpxPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 console.log(`GPX synthétique : ${fixes.length} points, ${fixes.length - 1} s à ${SPEED} m/s`);
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, wait, importFiles, shoot, check, finish, logs, onMessage } = await connect({ port, shotDir });
+const { send, evaluate, wait, waitFor, importFiles, shoot, check, finish, logs, onMessage } = await connect({ port, shotDir });
+/** Session rangée dès l'arrêt, analyse ouverte d'elle-même (lot 212) : plus de « Jeter », le profil du banc est neuf à chaque script. */
+const analysisOpened = () => waitFor(`location.pathname.endsWith('/analyse') && location.pathname`, { timeout: 8000, label: 'analyse ouverte' });
 check('GPX synthétique : 101 points sur 100 s', fixes.length === 101 && fixes.at(-1).t === 100, `${fixes.length} points, ${fixes.at(-1).t} s`);
 const beeps = [];
 onMessage((msg) => {
@@ -256,8 +258,7 @@ console.log(beeps.map((b, k) => {
   check('bips ×1 : autant de courts dans les deux approches (à un près)', approche1.length > 0 && Math.abs(approche1.length - approche2.length) <= 1, `${approche1.length} / ${approche2.length}`);
 }
 console.log('Arrêter :', await holdStop());
-await wait(1500);
-console.log('Jeter :', await clickButton('Jeter'));
+console.log('analyse ouverte :', await analysisOpened());
 await wait(1000);
 
 // 3. Rejeu ×10, bips propres au parcours (validation à 280 m) : « Passer » puis « Bips » coupés.
@@ -288,8 +289,7 @@ console.log('fin :', await guideCard(), '; bips après la coupure :', apresCoupu
   '; avant :', beeps.filter((b) => b.at <= mutedAt).map((b) => b.text.split(' ')[1]).join(', '));
 check('bips coupés : aucun son ensuite', apresCoupure === 0, apresCoupure);
 await holdStop();
-await wait(1500);
-await clickButton('Jeter');
+await analysisOpened();
 await wait(1000);
 
 // 4. Réglages : éditeur de la courbe.

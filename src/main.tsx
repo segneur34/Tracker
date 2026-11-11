@@ -82,7 +82,7 @@ void initStorage()
     installLeaveGuard();
     // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en arrière-plan.
     void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave);
-    // Un enregistrement coupé reprend seul si son service a survécu à la page ; sinon, ou arrêté sans décision, il revient en attente.
+    // Un enregistrement coupé reprend seul si son service a survécu à la page ; sinon il est rangé, ou attend « Continuer » s'il est frais.
     const recovered = recoverInterruptedRecording();
     // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
     startMarkGuide();

@@ -15,18 +15,16 @@ import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { ChoiceOption, ChoiceSheet } from '../components/ui/ChoiceSheet';
-import SavedSessionShare from '../components/SavedSessionShare';
-import SessionEndGear from '../components/SessionEndGear';
+import { PendingSessionCard, SavedSessionCard } from '../components/RecordingEndCards';
 import { IconFlag, IconLock, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import {
-  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, intervalActivityFor, kindActivityLabel, trainingKindsOf, type Activity,
+  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, kindActivityLabel, trainingKindsOf, type Activity,
 } from '../core/activities';
 import {
   TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isLandTreatment, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily,
   type TrainingKind,
 } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters, formatDecimal } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
@@ -53,11 +51,8 @@ import { beltLabels } from '../platform/beltList';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, chooseSavedBelt, savedBelt, savedBelts, type BeltState, type HeartRateBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
-import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { librarySession, updateSessionRecord } from '../hooks/useSessionLibrary';
-import { EMPTY_NOTES, type GearChoice } from '../library/notes';
 import {
-  addRecordingMark, analyzePendingSession, changeRecordingActivity, continuePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
+  addRecordingMark, changeRecordingActivity, getLastFix, getLiveFixes,
   getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
   resumeRecording, startRecording, stopRecording, stopRecordingBeltSearch, type RecorderState,
   useLivePosition, useRecordingClock, useRecorderSelector, useRecorderStatus,
@@ -72,7 +67,7 @@ import {
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
 import { courseMarks, markName, type LatLon, type MarkGuideView } from '../recording/markGuide';
 import { LIVE_STATS_DEFAULTS, type LiveStats, type LiveStatsOptions } from '../recording/liveStats';
-import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
+import { readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { buzz } from '../platform/beeper';
 import { isNativeApp } from '../platform/runtime';
@@ -89,8 +84,8 @@ import './RecordingPage.css';
 /**
  * Enregistrement d'une session : support, démarrer, arrêter, et ce qu'il faut
  * pour juger en direct que l'enregistrement tient (points, durée, plus long
- * trou, précision). À l'arrêt, la session n'est rangée dans la mémoire que
- * sur « Analyser » ; « Jeter » l'abandonne. L'onglet « Enregistrer » de la
+ * trou, précision). À l'arrêt, la session est rangée dans la mémoire, puis
+ * la carte « Session terminée » mène à son analyse (lot 212). L'onglet « Enregistrer » de la
  * barre de navigation.
  *
  * « Suivre une trace » choisit un itinéraire rangé ou une session déjà
@@ -195,10 +190,6 @@ const HEART_GUIDE_LABEL: Record<HeartGuideMode, string> = { aucun: 'aucun', zone
 
 /** Note de la case « Ceinture cardio » en muscu (lot 210). */
 const WITHOUT_BELT_NOTE = 'Sans elle, la séance est chronométrée, sans FC.';
-
-/** Ce que la session terminée a gardé : ses points, ou sans position les mesures de la ceinture, ou sa durée seule (lot 210). */
-const keptText = (sport: SportType | null, pointCount: number): string =>
-  sport === null || hasPositions(sport) ? `${pointCount} points` : pointCount > 0 ? `${pointCount} mesures de la ceinture` : 'durée seule';
 
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
@@ -671,22 +662,6 @@ function RecordingGpsCard({ busy, liveHeartOnly, deviceGps }: {
   );
 }
 
-/** Ce qui est dit quand le matériel choisi à la fin n'a pas pu entrer dans la fiche de la session rangée. */
-const GEAR_NOT_WRITTEN = "Le matériel choisi n'a pas pu être écrit dans la fiche : choisissez-le de nouveau dans l'onglet « matériel et notes » de l'analyse.";
-
-/**
- * Écrit le matériel choisi à la fin dans la fiche de la session rangée, sans
- * toucher au reste de ses notes (session déjà dans la mémoire comprise). Rend
- * faux s'il n'y est pas entré : session hors de la mémoire (en attente d'un
- * dossier, non rangée) ou fiche en lecture seule.
- */
-const writeEndGear = (file: string | null, gear: GearChoice[]): boolean => {
-  if (!file) return false;
-  const notes = librarySession(file)?.record.notes ?? null;
-  updateSessionRecord(file, { notes: { ...EMPTY_NOTES, ...notes, gear, savedAt: Date.now() } });
-  return librarySession(file)?.record.notes?.gear === gear;
-};
-
 function RecordingScreen() {
   const status = useRecorderSelector((s) => s.status);
   const pausedReason = useRecorderSelector((s) => s.pausedReason);
@@ -697,12 +672,13 @@ function RecordingScreen() {
   const liveWithBelt = useRecorderSelector((s) => s.heartRate !== null);
   const motionSetup = useRecorderSelector((s) => s.motionSetup);
   const pending = useRecorderSelector((s) => s.pending);
-  const motionUnreadable = useRecorderSelector((s) => s.motionUnreadable);
+  const rangeFailed = useRecorderSelector((s) => s.rangeFailed);
   const saved = useRecorderSelector((s) => s.saved);
   const error = useRecorderSelector((s) => s.error);
   const manualPause = isManualPause({ status, pausedReason });
   const autoPause = isAutoPause({ status, pausedReason });
-  const openSession = useOpenSession();
+  // Session rangée trouvée en ouvrant la page : sa carte reste, l'analyse ne s'ouvre pas d'elle-même (lot 212).
+  const [savedAtMount] = useState(saved);
   const followed = useFollowedTrace();
   const [picking, setPicking] = useState(false);
   const native = isNativeApp();
@@ -818,15 +794,6 @@ function RecordingScreen() {
   const beltLive = useBeltLive();
   const missingPermissions = useMissingPermissions();
   const analyzing = useRecorderSelector((s) => s.analyzing);
-  // Matériel choisi à la fin de la session, vide d'office : remis à zéro pour chaque session en attente (lot 143, 131).
-  const [endGear, setEndGear] = useState<GearChoice[] | null>(null);
-  const [endGearOf, setEndGearOf] = useState(pending);
-  if (endGearOf !== pending) {
-    setEndGearOf(pending);
-    setEndGear(null);
-  }
-  // Matériel choisi qui n'a pas pu être écrit dans la fiche de la session rangée.
-  const [gearNotWritten, setGearNotWritten] = useState(false);
   // Muscu : « Démarrer » jamais grisé, sans la ceinture la séance est chronométrée (lot 210).
   const canStart = !busy && pending === null && chosen !== null && !restingChosen
     && (heartOnly || sourceChoice === 'device' || replay !== null);
@@ -910,45 +877,6 @@ function RecordingScreen() {
     } catch (err) {
       setReplay(null);
       setReplayError(errorMessage(err, 'Lecture du fichier impossible.'));
-    }
-  };
-
-  /**
-   * « Analyser » : range la session, puis l'ouvre si elle est entrée dans la mémoire. Une sortie à pied
-   * ou à vélo faite avec le compteur d'intervalles : on demande d'abord si elle passe en Fractionné, seule
-   * famille à avoir l'onglet « fractionné » (19/10) ; sinon elle reste dans la sienne, sans cet onglet.
-   * `withoutMotion` : « Analyser sans les capteurs », proposé après une capture illisible.
-   */
-  const handleAnalyze = async (withoutMotion = false) => {
-    const intervalActivity = pending?.activity && pending.intervals.length > 0
-      ? intervalActivityFor(pending.activity, activitiesOfFamily(shownActivities, 'fractionne'))
-      : null;
-    const toIntervals = intervalActivity !== null && pending?.activity && window.confirm(
-      `Le compteur d'intervalles a servi pendant cette session. La ranger en « ${intervalActivity.name} » ? `
-      + `Elle aura l'onglet fractionné ; sinon elle reste en « ${pending.activity.name} », sans cet onglet.`
-    );
-    const gear = endGear;
-    const result = await analyzePendingSession(withoutMotion);
-    // Le matériel choisi va dans la fiche, comme le reste ; s'il n'y entre pas, il se refait dans l'onglet de l'analyse.
-    const gearWritten = result && gear ? writeEndGear(result.libraryFile, gear) : true;
-    setGearNotWritten(!gearWritten);
-    if (!gearWritten && result?.libraryFile) window.alert(GEAR_NOT_WRITTEN);
-    if (result?.libraryFile) {
-      dismissRecorderResult();
-      if (toIntervals && intervalActivity) {
-        const listed = activities.some((a) => a.id === intervalActivity.id);
-        updateSessionRecord(result.libraryFile, { sport: intervalActivity.base, activityId: listed ? intervalActivity.id : null });
-        openSession(result.libraryFile, 'fractionne');
-      } else if (result.sport !== null) {
-        openSession(result.libraryFile, sportFamily(result.sport));
-      }
-      // Session à classer (journal sans en-tête) : rangée sans activité, elle se classe depuis la bibliothèque.
-    }
-  };
-
-  const handleDiscard = () => {
-    if (window.confirm('Jeter cette session ? Elle ne sera pas rangée dans la mémoire, et ne pourra pas être récupérée.')) {
-      void discardPendingSession();
     }
   };
 
@@ -1298,93 +1226,10 @@ function RecordingScreen() {
 
       <RecordingGpsCard busy={busy} liveHeartOnly={liveHeartOnly} deviceGps={native && sourceChoice === 'device'} />
 
-      {pending && (
-        <Card heading={(
-          <span className="ui-flex-between">
-            {pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}
-            {pending.activity && (
-              <SavedSessionShare gpx={pending.content} activity={pending.activity} fileName={pending.fileName} libraryFile={null} />
-            )}
-          </span>
-        )}>
-          <p className="rec-saved-text">
-            {pending.activity?.name ?? 'À classer'}, {keptText(pending.sport, pending.pointCount)}.<br />
-            <span className="ui-muted ui-text-s">
-              Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
-              Aucun nouvel enregistrement avant ce choix.
-            </span>
-          </p>
-          <SessionEndGear activity={pending.activity} gear={endGear} onChange={setEndGear} />
-          <div className="ui-row-10 ui-wrap">
-            <Button variant="primary" onClick={() => void handleAnalyze()} disabled={analyzing}>
-              {analyzing ? 'Rangement…' : 'Analyser'}
-            </Button>
-            {motionUnreadable && (
-              <Button onClick={() => void handleAnalyze(true)} disabled={analyzing}>
-                Analyser sans les capteurs
-              </Button>
-            )}
-            {pending.canContinue && (
-              <Button onClick={() => void continuePendingSession(deviceLocationSource())} disabled={analyzing}>
-                Continuer l'enregistrement
-              </Button>
-            )}
-            {canDownloadFiles() && (
-              <Button onClick={() => downloadTextFile(pending.fileName, pending.content)}>
-                Télécharger le GPX
-              </Button>
-            )}
-            <Button variant="danger" onClick={handleDiscard} disabled={analyzing}>
-              Jeter
-            </Button>
-          </div>
-        </Card>
-      )}
+      {pending && <PendingSessionCard pending={pending} analyzing={analyzing} rangeFailed={rangeFailed} />}
 
-      {saved && (
-        <Card heading={(
-          <span className="ui-flex-between">
-            Session rangée
-            {saved.activity && (
-              <SavedSessionShare gpx={saved.content} activity={saved.activity} fileName={saved.fileName} libraryFile={saved.libraryFile} />
-            )}
-          </span>
-        )}>
-          <p className="rec-saved-text">
-            {saved.activity?.name ?? 'À classer'}, {keptText(saved.sport, saved.pointCount)}.<br />
-            <span className="ui-muted ui-text-s rec-break-all">Rangée dans : {saved.location}</span>
-            {gearNotWritten && (
-              <>
-                <br />
-                <span className="ui-text-s">{GEAR_NOT_WRITTEN}</span>
-              </>
-            )}
-            {!saved.libraryFile && native && (
-              <>
-                <br />
-                <span className="ui-muted ui-text-s">
-                  Pour l'analyser, choisissez le dossier mémoire (Réglages › Mémoire) : elle y sera rangée.
-                </span>
-              </>
-            )}
-          </p>
-          <div className="ui-row-10 ui-wrap">
-            {saved.libraryFile && saved.sport !== null && (
-              <Button variant="primary" onClick={() => openSession(saved.libraryFile!, sportFamily(saved.sport!))}>
-                Analyser
-              </Button>
-            )}
-            {canDownloadFiles() && (
-              <Button onClick={() => downloadTextFile(saved.fileName, saved.content)}>
-                Télécharger le GPX
-              </Button>
-            )}
-            <Button variant="ghost" onClick={dismissRecorderResult}>
-              Fermer
-            </Button>
-          </div>
-        </Card>
-      )}
+      {saved && <SavedSessionCard key={saved.fileName + saved.location} saved={saved} arrivedHere={saved !== savedAtMount}
+        activities={shownActivities} native={native} />}
 
       {native && !busy && !pending && (
         <p className="rec-footnote">
