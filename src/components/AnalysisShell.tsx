@@ -85,7 +85,7 @@ function AnalysisShell<K extends string>({
       <div className="an-sheet">
         <div className="an-sheet__head">
           <PageHeader title={title} subtitle={file ? (
-            <SessionNameEditor file={file}
+            <SessionNameEditor file={file} discard={{ backTo: back, onGone: () => draft?.cancel() }}
               share={share.stats.length > 0 ? { family, segments: share.segments, stats: shareableStats(share.stats) } : undefined} />
           ) : undefined} back={{ to: back, label: backLabel }} />
           {error && <div className="ui-alert ui-alert--warning ui-mt-10">{error}</div>}

@@ -74,6 +74,8 @@ export const SCRIPTS = [
   // Fichier reçu d'une autre application (lot 35) : bandeau, sur une fausse file privée à la place du greffon ; l'intention d'Android ne se prouve qu'au téléphone.
   { nom: 'fichier-recu', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'accueil', 'course'], dev: true },
   { nom: 'imports', args: ['{port}', '{captures?}'], pages: ['bibliotheque', 'voile', 'course', 'velo', 'surf'] },
+  // « Jeter la session » du menu « … » des analyses (lot 212) : appui court et appui long, confirmation, retour à la bibliothèque.
+  { nom: 'jeter-analyse', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'velo', 'surf', 'fractionne', 'bibliotheque'] },
   { nom: 'library', args: ['{port}', '{dossierGpx}', '{captures?}'], pages: ['bibliotheque', 'reglages'],
     manuel: 'il faut voile.gpx, course.gpx et sans-type.gpx dans le dossier de --gpx' },
   { nom: 'library2', args: ['{port}', '{travail}'], pages: ['bibliotheque', 'reglages'],

@@ -621,6 +621,23 @@
   flex-shrink: 0;
 }
 
+/* Entrée de danger (« Jeter la session »), séparée des autres. */
+.ui-more__panel .ui-btn--danger {
+  color: var(--danger);
+}
+
+.ui-more__sep {
+  display: block;
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--line);
+}
+
+/* Enveloppe d'une entrée qui garde le menu ouvert (`data-keep-open`) : sans boîte à elle. */
+.ui-more__keep {
+  display: contents;
+}
+
 @media (hover: hover) {
   .ui-more__panel .ui-btn:not(:disabled):not(.ui-btn--off):hover {
     filter: none;

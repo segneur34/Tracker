@@ -12,7 +12,7 @@ interface MoreMenuProps {
 /**
  * Bouton « … » qui déplie, sous lui et aligné à droite, les actions de moindre
  * usage d'un écran. Il se referme après un choix, en touchant ailleurs ou par
- * Échap.
+ * Échap. Une entrée posée dans un élément `data-keep-open` ne le referme pas.
  *
  * Le panneau reste monté, seulement caché : un sélecteur de fichiers posé
  * dedans (`ImportButtons`) doit survivre à la fermeture pour recevoir les
@@ -42,7 +42,9 @@ function MoreMenu({ label, children }: MoreMenuProps) {
         hidden={!open}
         onClick={(e) => {
           // Fermé au tour suivant : un `label` doit d'abord ouvrir son sélecteur de fichiers.
-          if ((e.target as HTMLElement).closest('button, label')) setTimeout(() => setOpen(false), 0);
+          // `data-keep-open` : une entrée qui ne se choisit pas d'un clic (appui long) laisse le menu ouvert.
+          const target = e.target as HTMLElement;
+          if (target.closest('button, label') && !target.closest('[data-keep-open]')) setTimeout(() => setOpen(false), 0);
         }}>
         {children}
       </span>

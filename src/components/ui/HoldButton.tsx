@@ -12,13 +12,15 @@ const STOP_ICON = <span className="ui-record-dot ui-record-dot--stop" style={{ w
  * du compteur) : tenu `getHoldMs()`, le grand cadran sous le doigt ; un appui
  * court rappelle le geste quelques secondes. À 0, un simple appui agit.
  */
-function HoldButton({ onHold, getHoldMs, label, lead, dialTitle, color = 'var(--recording)', icon = STOP_ICON, disabled = false, size, style }: {
+function HoldButton({ onHold, getHoldMs, label, lead, hintAction = 'arrêter', dialTitle, color = 'var(--recording)', icon = STOP_ICON, disabled = false, size, style }: {
   onHold: () => void;
   /** Lue au rendu et à chaque appui : un réglage changé vaut au retour sur la page. */
   getHoldMs: () => number;
   label: string;
   /** Devant le texte, gardé pendant le rappel du geste (le carré de l'arrêt). */
   lead?: ReactNode;
+  /** Verbe du rappel du geste : « Maintenir 2 s pour arrêter ». */
+  hintAction?: string;
   dialTitle: string;
   color?: string;
   icon?: ReactNode;
@@ -46,7 +48,7 @@ function HoldButton({ onHold, getHoldMs, label, lead, dialTitle, color = 'var(--
     <>
       <Button variant="danger" size={size} className="ui-btn--hold" style={style} disabled={disabled} {...handlers} onClick={onClick}>
         {lead}
-        {hint ? `Maintenir ${holdS} s pour arrêter` : label}
+        {hint ? `Maintenir ${holdS} s pour ${hintAction}` : label}
       </Button>
       {pressingMs !== null && <HoldDial pressMs={pressingMs} color={color} icon={icon} title={dialTitle} hint="Maintenez le bouton" />}
     </>

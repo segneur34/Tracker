@@ -9,6 +9,7 @@ import { useTransientValue } from '../hooks/useTransientValue';
 import { shareLabels } from '../library/shareStats';
 import { safeFileName, saveToDownloads } from '../platform/files';
 import { IconDownload } from './icons';
+import SessionDiscardEntry from './SessionDiscardEntry';
 import SessionRenameField from './SessionRenameField';
 import SessionShareEntries from './SessionShareEntries';
 import { sessionGpxExport, shareGpxText } from './sessionGpxShare';
@@ -22,6 +23,14 @@ export interface SessionShare {
   family: SportFamily;
   segments: ReadonlyArray<TrackSegment>;
   stats: ReadonlyArray<ShareStat>;
+}
+
+/** Où repartir, et que défaire avant, quand « Jeter la session » a réussi (`SessionDiscardEntry`). */
+export interface SessionDiscard {
+  /** Bibliothèque où revenir. */
+  backTo: string;
+  /** Abandonne le brouillon de la session jetée. */
+  onGone: () => void;
 }
 
 /** Durée d'affichage du compte rendu d'un téléchargement. */
@@ -38,7 +47,7 @@ const DOWNLOAD_NOTE_MS = 4000;
  * un GPX ouvert hors de la mémoire ; pas de renommage pour une fiche en
  * lecture seule, qui se télécharge quand même.
  */
-function SessionNameEditor({ file, share }: { file: string | null; share?: SessionShare }) {
+function SessionNameEditor({ file, share, discard }: { file: string | null; share?: SessionShare; discard?: SessionDiscard }) {
   const name = useSessionName(file);
   const [sharing, setSharing] = useState(false);
   /** Nom en cours de saisie ; `null` hors renommage. */
@@ -111,6 +120,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
               <IconDownload size={18} />
               Télécharger la session
             </Button>
+            {discard && !session.readOnly && <SessionDiscardEntry file={file} backTo={discard.backTo} onGone={discard.onGone} />}
           </MoreMenu>
         </span>
       </span>
