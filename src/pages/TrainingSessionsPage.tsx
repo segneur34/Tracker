@@ -36,7 +36,7 @@ import './TrainingPages.css';
  * Muscu et timer (lot I du 25/10) : chaque séance se lance en « Timer » (le
  * compteur seul, comme avant) ou en « Muscu » : Enregistrer ouvert sur la
  * dernière activité de muscu, la séance mise dans la carte du compteur, sans
- * la démarrer ; « Démarrer » (ceinture connectée) lance la session, et le
+ * la démarrer ; « Démarrer » (ceinture connectée, sinon chronométrée, lot 210) lance la session, et le
  * compteur se lance d'un geste. Fractionné et tests : la rangée des tests sous la liste.
  */
 
@@ -125,7 +125,7 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
                   </Button>
                   {timer && (
                     <Button variant="primary" size="s" disabled={!muscuPath} onClick={() => launchMuscu(preset)}
-                      title="Enregistrer la séance avec la ceinture cardio">
+                      title="Enregistrer la séance, ceinture cardio ou non">
                       <span className="ui-record-dot" />
                       Enregistrer
                     </Button>

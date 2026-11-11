@@ -475,4 +475,17 @@ describe('heartOnlyLiveStats (muscu, lot I du 25/10)', () => {
     expect(at1Hz.averageSpeedMs).toBeNull();
     expect(heartOnlyLiveStats([], params).averageHeartRateBpm).toBeNull();
   });
+
+  it('sans ceinture (lot 210) : pas de FC moyenne, le temps hors pauses seul, à 1 Hz comme à 5 Hz', () => {
+    const T = Date.UTC(2026, 10, 11, 18, 0, 0);
+    const seg = (fromS: number, toS: number, stepS: number) =>
+      Array.from({ length: Math.round((toS - fromS) / stepS) + 1 }, (_, k) => ({ timeMs: T + (fromS + k * stepS) * 1000 }));
+    const params = SPORT_PROFILES.muscu.heartRate;
+    for (const stepS of [1, 0.2]) {
+      const live = heartOnlyLiveStats([seg(0, 60, stepS), seg(120, 180, stepS)], params);
+      expect(live.averageHeartRateBpm).toBeNull();
+      expect(live.movingTimeMs).toBeCloseTo(120_000, 6);
+      expect(live.distanceM).toBe(0);
+    }
+  });
 });

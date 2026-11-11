@@ -76,6 +76,18 @@ describe('summaryShareStats', () => {
     expect(shareableStats(summaryShareStats(summary(), 'voile', kn, false, false)).map((s) => s.key)).not.toContain('activeTime');
   });
 
+  it('muscu : la FC avec la ceinture ; sans elle (lot 210), la durée seule, sans ligne de FC', () => {
+    const km = { speed: 'kmh', distance: 'km' } as const;
+    const hr = { avgBpm: 121.4, maxBpm: 158, coveredS: 3000, histogram: { fromBpm: 120, seconds: [3000] } };
+    const withBelt = values(summaryShareStats(summary({ distanceM: 0, heartRate: hr }), 'muscu', km));
+    expect(withBelt.heartRate).toBe('121 bpm');
+    expect(withBelt.heartRateMax).toBe('158 bpm');
+    const keys = summaryShareStats(summary({ distanceM: 0 }), 'muscu', km).map((s) => s.key);
+    expect(keys.slice(0, 2)).toEqual(['totalTime', 'activeTime']);
+    expect(keys).not.toContain('heartRate');
+    expect(keys).not.toContain('heartRateMax');
+  });
+
   it('donne en surf les vagues, sans vol hors foil', () => {
     const stats = shareableStats(summaryShareStats(summary({ waveCount: 12, longestWaveM: 84.4, longestFlightS: null }), 'surf', { speed: 'kmh', distance: 'km' }));
     const v = values(stats);

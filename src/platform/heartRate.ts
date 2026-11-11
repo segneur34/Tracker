@@ -30,7 +30,9 @@ import { jsonStore } from './storage';
  *
  * Une muscu (lot I du 25/10) n'a pas de service GPS pour tenir l'application
  * écran éteint : `keepBeltAlive` démarre un service au premier plan du greffon
- * (`HeartRateService.java`), avec la notification de l'enregistrement.
+ * (`HeartRateService.java`), avec la notification de l'enregistrement, avec ou
+ * sans ceinture tenue (muscu chronométrée, lot 210). Android 14 et plus le
+ * refusent sans la permission Bluetooth : l'enregistrement le dit, et continue.
  *
  * Dans le navigateur, la ceinture d'exemple (`EXAMPLE_BELT`) joue une FC
  * chaque seconde, pour éprouver la muscu au banc ; aucune autre ne s'y connecte.

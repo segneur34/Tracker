@@ -371,6 +371,22 @@ describe('muscu dans les statistiques (lot I du 25/10)', () => {
     expect(averageMovingSpeedMs(t)).toBeCloseTo(3, 6);
     expect(metricsOf('fractionne', [muscu]).map((m) => m.key)).toEqual(['duree']);
   });
+
+  it('sans ceinture (lot 210) : comptée en nombre et en durée, absente des graphes de FC', () => {
+    const record = {
+      name: null,
+      summary: { calcVersion: 19, startMs: at(2026, 3, 2), endMs: at(2026, 3, 2) + 2_700_000, distanceM: 0, movingTimeS: 2400, movingDistanceM: null, elevationGainM: null, maxSpeedMs: 0, pointCount: 2400, samplingS: 1 },
+    } as unknown as SessionRecord;
+    const activity: Activity = { id: 'muscu', name: 'Muscu', base: 'muscu', color: '#c25700' };
+    const muscu = statSessionOf('m.json', record, activity);
+    expect(muscu).toMatchObject({ heartRate: null, positions: false, treatment: 'muscu', family: 'fractionne' });
+    const withHr = session(at(2026, 3, 1), { heartRate: { avgBpm: 140, maxBpm: 170, coveredS: 3000, histogram: { fromBpm: 140, seconds: [3000] } } });
+    const t = statsTotals([withHr, muscu]);
+    expect(t.sessions).toBe(2);
+    expect(t.durationS).toBe(3600 + 2700);
+    expect(heartRatePoints([withHr, muscu]).map((p) => p.file)).toEqual([withHr.file]);
+    expect(cardioTotals([withHr, muscu], null, [1, 2, 3, 4, 5]).sessions).toBe(1);
+  });
 });
 
 describe('weeklyDurations', () => {

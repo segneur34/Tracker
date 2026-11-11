@@ -172,6 +172,7 @@ vi.mock('../platform/permissions', async (importOriginal) => {
 
 const recorder = await import('./useRecorder');
 const live = await import('./useLiveRecording');
+const { effectiveRecordingProfile } = await import('./useSportSettings');
 
 const T0 = Date.UTC(2026, 9, 27, 9, 0, 0);
 const activity = baseActivity('running');
@@ -426,11 +427,91 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
   /** Mesure à `s` secondes de T0. */
   const at = (s: number, bpm = 100, contact: boolean | null = true) => belt.emit(T0 + s * 1000, bpm, contact);
 
-  it('refuse le départ sans ceinture, et le dit', async () => {
+  it('sans ceinture (lot 210) : séance chronométrée, un point d’heure seule au départ puis un par seconde, à la pause et à la reprise', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(T0);
+    const before = { start: belt.keepAlive, stop: belt.stopKeepAlive };
     await recorder.startRecording(muscu, null);
-    expect(recorder.getRecorderState().status).toBe('idle');
-    expect(recorder.getRecorderState().error).toMatch(/ceinture/);
-    expect(journal.headers).toBe(0);
+    const started = recorder.getRecorderState();
+    expect(started.status).toBe('recording');
+    expect(started.sourceLabel).toBe('Chronomètre');
+    expect(started.heartRate).toBeNull();
+    expect(started.error).toBeNull();
+    // Le service au premier plan tient la séance écran éteint, ceinture ou non.
+    expect(belt.keepAlive).toBe(before.start + 1);
+    expect(started.stats.pointCount).toBe(1);
+    expect(parseJournal(journal.text!).header?.withoutBelt).toBe(true);
+    vi.advanceTimersByTime(5800);
+    expect(recorder.getRecorderState().stats.pointCount).toBe(6);
+    // Un point à l'instant de la pause : le segment va jusqu'à elle ; rien n'est gardé pendant.
+    await recorder.pauseRecording();
+    expect(recorder.getRecorderState().stats.pointCount).toBe(7);
+    vi.advanceTimersByTime(30_000);
+    expect(recorder.getRecorderState().stats.pointCount).toBe(7);
+    // Un point tout de suite à la reprise, qui ouvre le segment ; le battement trop proche qui suit est écarté.
+    await recorder.resumeRecording();
+    expect(recorder.getRecorderState().stats.pointCount).toBe(8);
+    vi.advanceTimersByTime(1700);
+    const stats = recorder.getRecorderState().stats;
+    expect(stats.pointCount).toBe(9);
+    expect(recordingDurationMs(stats)).toBe(7000);
+    await recorder.stopRecording();
+    expect(belt.stopKeepAlive).toBeGreaterThan(before.stop);
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.sport).toBe('muscu');
+    // Aucune mesure de la ceinture : la durée seule.
+    expect(pending.pointCount).toBe(0);
+    expect(pending.content).not.toContain('gpxtpx:hr');
+    expect(pending.content).not.toContain('lat=');
+    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
+    // 7 points jusqu'à la pause, puis la reprise, un battement et le point de l'arrêt.
+    expect(pending.content.match(/<trkpt>/g)).toHaveLength(10);
+    // Arrêté : plus aucun point, le minuteur ne tourne plus.
+    const text = journal.text;
+    vi.advanceTimersByTime(5000);
+    expect(journal.text).toBe(text);
+  });
+
+  it('sans ceinture : rien d’autre que le départ, puis l’arrêt aussitôt, n’est pas rangé (« Session trop courte »)', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(T0);
+    await recorder.startRecording(muscu, null);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
+  });
+
+  it('sans ceinture : départ et arrêt à moins d’un intervalle du minuteur, deux points mais rien de gardé ; un intervalle suffit', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(T0);
+    const tickMs = effectiveRecordingProfile(muscu).intervalMs;
+    await recorder.startRecording(muscu, null);
+    vi.advanceTimersByTime(tickMs / 2);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
+    recorder.dismissRecorderResult();
+    await recorder.startRecording(muscu, null);
+    vi.advanceTimersByTime(tickMs);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending?.pointCount).toBe(0);
+  });
+
+  it('sans ceinture : le journal relu après un arrêt brutal redonne la séance, durée seule', async () => {
+    journal.text = [
+      JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'muscu', startedAtMs: T0, activity: { id: 'muscu', name: 'Muscu' }, withoutBelt: true }),
+      JSON.stringify(['hr', T0, null]),
+      JSON.stringify(['hr', T0 + 1000, null]),
+      JSON.stringify(['break', T0 + 60_000]),
+      JSON.stringify(['hr', T0 + 60_000, null]),
+      JSON.stringify(['hr', T0 + 61_000, null]),
+    ].join('\n');
+    await recorder.recoverInterruptedRecording();
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.recovered).toBe(true);
+    expect(pending.pointCount).toBe(0);
+    expect(pending.content.match(/<trkpt>/g)).toHaveLength(4);
+    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
   });
 
   it('garde une mesure par seconde au plus, sans mesure hors contact ; service au premier plan au départ et à l’arrêt', async () => {
@@ -475,12 +556,21 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
     expect(pending.marks).toHaveLength(1);
   });
 
-  it('moins de deux mesures : rien à garder, et le dit', async () => {
+  it('une seule mesure : gardée avec sa durée jusqu’à l’arrêt (lot 210) ; aucune : rien à garder, et le dit', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0 + 30_000);
     await recorder.startRecording(muscu, null, { heartRate: ceinture });
     at(0);
     await recorder.stopRecording();
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.pointCount).toBe(1);
+    expect(pending.content.match(/<trkpt>/g)).toHaveLength(2);
+    await recorder.discardPendingSession();
+    recorder.dismissRecorderResult();
+    await recorder.startRecording(muscu, null, { heartRate: ceinture });
+    await recorder.stopRecording();
     expect(recorder.getRecorderState().pending).toBeNull();
-    expect(recorder.getRecorderState().error).toMatch(/mesures de la ceinture/);
+    expect(recorder.getRecorderState().error).toBe('Session trop courte : rien à enregistrer.');
   });
 
   it('reprend le journal d’une muscu après un arrêt brutal', async () => {

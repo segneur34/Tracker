@@ -119,8 +119,9 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
     notificationFields: TRAINING_NOTIFICATION,
   },
-  // Muscu (lot I du 25/10) : la ceinture d'office (obligatoire), la FC et la durée en direct,
-  // l'étape du compteur et la FC dans la notification (ni vitesse ni distance sans position).
+  // Muscu (lot I du 25/10) : la ceinture d'office (facultative depuis le lot 210 : sans elle, la séance est chronométrée,
+  // FC retirées du direct et de la notification), la FC et la durée en direct, l'étape du compteur et la FC dans la
+  // notification (ni vitesse ni distance sans position).
   muscu: {
     liveFields: ['heartRate', 'heartRateZone', 'averageHeartRate', 'duration'],
     notificationFields: ['step', 'heartRate'],

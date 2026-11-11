@@ -69,8 +69,8 @@ export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent, 
   /** Faux sans trace (muscu) : pas de distance depuis le départ. */
   withDistance?: boolean;
   shownMs: number | null;
-  /** Montre un repère sur la carte, par son heure ; `null` le masque. */
-  onShow: (timeMs: number | null) => void;
+  /** Montre un repère sur la carte, par son heure ; `null` le masque. Absent : pas de « Voir » (muscu sans courbe, lot 210). */
+  onShow?: (timeMs: number | null) => void;
   /** Couleur du bouton « Voir » enfoncé, celle du module. */
   accent: string;
 }) {
@@ -93,10 +93,12 @@ export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent, 
               <input type="text" className="ui-field ui-field--s an-mark-label"
                 value={m.mark.label ?? ''} placeholder={`Note ${m.n}`} disabled={!editable} aria-label={`Nom de la note ${m.n}`}
                 onChange={(e) => rename(m.mark, e.target.value)} />
-              <Button size="s" aria-pressed={shown} onClick={() => onShow(shown ? null : m.mark.timeMs)}
-                style={shown ? { backgroundColor: accent, color: 'var(--on-accent)', borderColor: accent } : undefined}>
-                {shown ? 'Masquer' : 'Voir'}
-              </Button>
+              {onShow && (
+                <Button size="s" aria-pressed={shown} onClick={() => onShow(shown ? null : m.mark.timeMs)}
+                  style={shown ? { backgroundColor: accent, color: 'var(--on-accent)', borderColor: accent } : undefined}>
+                  {shown ? 'Masquer' : 'Voir'}
+                </Button>
+              )}
               {editable && (
                 <Button size="s" variant="ghost" onClick={() => remove(m.mark)} aria-label={`Supprimer la note ${m.n}`} title="Supprimer">
                   <IconClose size={16} />

@@ -379,4 +379,21 @@ describe('summarizeHeartRateSession (muscu, lot I du 25/10)', () => {
   it('moins de deux points : null', () => {
     expect(summarizeHeartRateSession(timed.slice(0, 1), 'muscu')).toBeNull();
   });
+
+  it('sans ceinture (lot 210) : la durée hors pauses, sans FC, à 1 Hz comme à 5 Hz', () => {
+    /** Points d'heure seule toutes les `stepS`, de 0 à 60 s puis de 120 à 180 s (une pause entre les deux). */
+    const clock = (stepS: number) => [0, 120].flatMap((fromS) =>
+      Array.from({ length: Math.round(60 / stepS) + 1 }, (_, k) => ({
+        time: new Date(T0 + (fromS + k * stepS) * 1000).toISOString(),
+        ...(fromS > 0 && k === 0 ? { segmentStart: true as const } : {}),
+      })));
+    for (const stepS of [1, 0.2]) {
+      const s = summarizeHeartRateSession(clock(stepS), 'muscu')!;
+      expect(s.movingTimeS).toBeCloseTo(120, 6);
+      expect(s.endMs - s.startMs).toBe(180_000);
+      expect(s.heartRate).toBeUndefined();
+      expect('heartRate' in s).toBe(false);
+      expect(s.distanceM).toBe(0);
+    }
+  });
 });

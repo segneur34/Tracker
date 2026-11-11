@@ -31,11 +31,20 @@ export interface JournalHeader {
    * Absente des journaux d'avant les activités.
    */
   activity?: { id: string; name: string };
+  /**
+   * Muscu partie sans la ceinture (lot 210) : des points d'heure seule, un par
+   * seconde, que la reprise relance. Absent : avec la ceinture (les journaux
+   * d'avant compris).
+   */
+  withoutBelt?: true;
 }
 
-export const journalHeaderLine = (sport: SportType, startedAtMs: number, activity?: { id: string; name: string }): string => {
+export const journalHeaderLine = (
+  sport: SportType, startedAtMs: number, activity?: { id: string; name: string }, withoutBelt = false
+): string => {
   const header: JournalHeader = { format: 'tracker-journal', version: 1, sport, startedAtMs };
   if (activity) header.activity = { id: activity.id, name: activity.name };
+  if (withoutBelt) header.withoutBelt = true;
   return `${JSON.stringify(header)}\n`;
 };
 
@@ -178,6 +187,7 @@ const toHeader = (value: unknown): JournalHeader | null => {
   if (typeof a === 'object' && a !== null && typeof a.id === 'string' && a.id !== '' && typeof a.name === 'string') {
     header.activity = { id: a.id, name: a.name };
   }
+  if (v.withoutBelt === true) header.withoutBelt = true;
   return header;
 };
 

@@ -32,6 +32,17 @@ export const trainingStep = (
   return null;
 };
 
+/** Chiffres tirés de la ceinture cardio. */
+const HEART_FIELDS: ReadonlySet<LiveFieldKey> = new Set<LiveFieldKey>(['heartRate', 'averageHeartRate', 'heartRateZone']);
+
+/**
+ * Chiffres de la notification d'une séance : ceux choisis, sans ceux de la FC
+ * quand elle se fait sans ceinture (muscu chronométrée, lot 210), cachés plutôt
+ * qu'affichés « — ».
+ */
+export const notificationFields = (fields: readonly LiveFieldKey[], withBelt: boolean): LiveFieldKey[] =>
+  withBelt ? [...fields] : fields.filter((key) => !HEART_FIELDS.has(key));
+
 export interface LiveNotificationInput {
   activityName: string;
   /** Chiffres choisis pour la notification, dans l'ordre. */

@@ -12,10 +12,12 @@
 //     la position jamais demandée, aucune séance confiée à un enregistrement ;
 //  4. « Enregistrer une session » rend la page ordinaire ;
 //  4 bis. (lot 24, 28/10) « Enregistrer » d'une séance, en muscu : Enregistrer sur Muscu, la séance dans la carte du compteur sans être
-//     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
+//     lancée, ceinture cochée et décochable (FC d'exemple du navigateur ; grisée avant le lot 210), compteur lancé puis session démarrée, « Arrêter » de la session tenu
 //     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » absent (lot 102) ;
 //  4 ter. (lot 103) la même séance passée jusqu'au bout pendant l'enregistrement : « Séance terminée » propose « Arrêter
 //     l'enregistrement » à côté de « Clore le timer » (ex-« Fermer », lot 143), la session continue ; appui court : le geste rappelé ; tenu 2 s : « Session terminée » ;
+//  4 quater. (lot 210) muscu sans la ceinture : case décochée, « Démarrer » ouvert, source « Chronomètre », ni BPM ni FC, la durée
+//     tourne ; « Session terminée » dit « durée seule » ; « Analyser » : « général » sans FC, fiche à durée non nulle ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { connect } from './lib/cdp.mjs';
 
@@ -27,7 +29,7 @@ if (!port) {
 
 // --- Protocole ---
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, wait, blockNetwork, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, wait, blockNetwork, shoot, close, logs, onMessage, records } = await connect({ port, width: 1400, height: 1000, shotDir });
 const sounds = [];
 onMessage((msg) => {
   if (msg.method === 'Runtime.consoleAPICalled') {
@@ -218,7 +220,9 @@ const muscuSummary = await text('.ivl .ivl-summary');
 check('la séance dans la carte du compteur, sans être lancée', muscuSummary.startsWith('8 × 0:40 / 0:20 + 5 × 1:00 / 1:00')
   && (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true, muscuSummary);
 const belt = await evaluate(`(() => { const b = [...document.querySelectorAll('input[type=checkbox]')].find((i) => i.closest('label')?.textContent.includes('Ceinture cardio')); return b ? { checked: b.checked, disabled: b.disabled } : null; })()`);
-check("ceinture cardio cochée et grisée, FC d'exemple du navigateur", belt?.checked === true && belt?.disabled === true && /FC d'exemple du navigateur/.test(await text('.ui-page')), JSON.stringify(belt));
+// Lot 210 : la ceinture cochée d'office, décochable (elle était grisée avant) ; sans elle, la séance est chronométrée.
+check("ceinture cardio cochée et décochable, FC d'exemple du navigateur", belt?.checked === true && belt?.disabled === false
+  && /FC d'exemple du navigateur/.test(await text('.ui-page')) && /Sans elle, la séance est chronométrée, sans FC/.test(await text('.ui-page')), JSON.stringify(belt));
 console.log('lancer le compteur :', await clickText('Lancer le compteur'));
 await wait(1200);
 check('compteur lancé avant la session', /Départ|Travail 1[/]8/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
@@ -268,6 +272,39 @@ check("tenu 2 s : l'écran « Session terminée », comme « Arrêter »", /Sess
 check("session arrêtée : plus d'« Arrêter l'enregistrement » dans le compteur", !/Arrêter l'enregistrement/.test(await text('.ivl')), await text('.ivl'));
 console.log('jeter :', await clickText('Jeter'));
 await wait(800);
+
+// --- 4 quater. (lot 210) Muscu sans la ceinture : case décochée, « Démarrer » ouvert, séance chronométrée ---
+await go('/enregistrer?activite=muscu');
+await wait(1000);
+console.log('décocher la ceinture :', await evaluate(`(() => { const b = [...document.querySelectorAll('input[type=checkbox]')].find((i) => i.closest('label')?.textContent.includes('Ceinture cardio')); if (!b) return 'absent'; if (b.checked) b.click(); return b.checked ? 'cochée' : 'décochée'; })()`));
+await wait(300);
+check('case décochée : « Démarrer » ouvert', await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Démarrer' && !b.disabled)`));
+console.log('démarrer :', await clickText('Démarrer'));
+await wait(4500);
+const chrono = await text('.rec-status');
+const enCours = await text('.ui-page');
+check('sans ceinture : source « Chronomètre », ni BPM ni FC moyenne ni zone', /Chronomètre/.test(chrono)
+  && !/BPM|FC moy|Zone/.test(enCours), `${chrono} | ${enCours.slice(0, 200)}`);
+const duree = await evaluate(`(() => { const s = [...document.querySelectorAll('.rec-stat')].find((x) => x.textContent.startsWith('Durée')); return s?.querySelector('.rec-stat__value')?.textContent ?? '(absent)'; })()`);
+check('sans ceinture : la durée tourne', duree !== '(absent)' && !/^0+[:]00$|^0:00:00$/.test(duree), duree);
+check('sans ceinture : position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
+await shoot('timer-muscu-sans-ceinture');
+console.log('arrêter la session :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
+await wait(2300);
+await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+await wait(2000);
+const fin = await text('.rec-saved-text');
+check('sans ceinture : « Session terminée », durée seule', /Session terminée/i.test(await text('.ui-page')) && /durée seule/.test(fin), fin);
+console.log('analyser :', await clickText('Analyser'));
+await wait(3000);
+const generalSansFc = await evaluate(`(() => { const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Général')); return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ') : '(absent)'; })()`);
+console.log('analyse sans ceinture :', await where(), '|', generalSansFc);
+check('sans ceinture : analyse muscu, « général » avec la durée, sans FC', (await where()).startsWith('/fractionne/analyse')
+  && /Durée/.test(generalSansFc) && /Hors pauses/.test(generalSansFc) && !/FC|bpm/.test(generalSansFc), generalSansFc);
+// Quelques secondes s'écrivent « 0 min » : la durée non nulle se lit dans la fiche.
+const ficheSansFc = (await records())?.find((r) => r.sport === 'muscu' && r.summary?.heartRate === undefined)?.summary;
+check('sans ceinture : fiche rangée, durée non nulle, sans FC', (ficheSansFc?.movingTimeS ?? 0) >= 3 && ficheSansFc.endMs > ficheSansFc.startMs,
+  JSON.stringify(ficheSansFc ? { movingTimeS: ficheSansFc.movingTimeS, ms: ficheSansFc.endMs - ficheSansFc.startMs } : null));
 
 // --- 5. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

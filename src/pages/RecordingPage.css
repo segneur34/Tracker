@@ -219,14 +219,6 @@
   flex: 1 1 130px;
 }
 
-.rec-actions-note {
-  margin: 0;
-  flex-basis: 100%;
-  font-size: var(--text-s);
-  color: var(--muted);
-  line-height: 1.5;
-}
-
 .rec-break-all {
   word-break: break-all;
 }

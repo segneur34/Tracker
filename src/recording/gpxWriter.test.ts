@@ -115,4 +115,16 @@ describe('buildHeartRateGpx (muscu, lot I du 25/10)', () => {
     expect(parsed.timedPoints.map((p) => p.hr)).toEqual([92, 95, 120, undefined]);
     expect(parsed.timedPoints.map((p) => p.segmentStart === true)).toEqual([false, false, true, false]);
   });
+
+  it('sans ceinture (lot 210) : des points d’heure seule, sans FC, deux segments relus avec leur pause', () => {
+    const clock = [[{ timeMs: T0 }, { timeMs: T0 + 1000 }, { timeMs: T0 + 2000 }], [{ timeMs: T0 + 60_000 }, { timeMs: T0 + 65_000 }]];
+    const written = buildHeartRateGpx(clock, { name: 'Muscu chronométrée', sport: 'muscu' });
+    expect(written).not.toContain('lat=');
+    expect(written).not.toContain('gpxtpx:hr');
+    expect(written.match(/<trkseg>/g)).toHaveLength(2);
+    const parsed = parseGpx(written);
+    expect(parsed.timedPoints.map((p) => Date.parse(p.time))).toEqual([T0, T0 + 1000, T0 + 2000, T0 + 60_000, T0 + 65_000]);
+    expect(parsed.timedPoints.every((p) => p.hr === undefined)).toBe(true);
+    expect(parsed.timedPoints.map((p) => p.segmentStart === true)).toEqual([false, false, false, true, false]);
+  });
 });

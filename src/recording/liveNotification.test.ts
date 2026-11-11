@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { IntervalTimerState } from './intervalTimer';
 import type { LiveFieldContext } from './liveFields';
-import { liveNotification, liveNotificationKey, notificationStateKey, trainingStep, type LiveNotificationInput } from './liveNotification';
+import {
+  liveNotification, liveNotificationKey, notificationFields, notificationStateKey, trainingStep, type LiveNotificationInput,
+} from './liveNotification';
 import { EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -135,6 +137,21 @@ describe('trainingStep (26/10)', () => {
     const n = liveNotification(input({ activityName: 'Fractionné à pied', fields: ['step', 'speed'], context: context({ step: { rep: 5, of: 20 } }) }));
     expect(n.text).toBe('Étape 5/20 · Vit. 36,0 km/h');
     expect(n.lines[0]).toBe('Étape : 5/20');
+  });
+});
+
+describe('notificationFields : muscu sans ceinture (lot 210)', () => {
+  it('retire la FC, sa moyenne et la zone sans ceinture, garde le reste dans l’ordre', () => {
+    expect(notificationFields(['step', 'heartRate'], false)).toEqual(['step']);
+    expect(notificationFields(['heartRateZone', 'duration', 'averageHeartRate', 'step'], false)).toEqual(['duration', 'step']);
+    expect(notificationFields(['step', 'heartRate'], true)).toEqual(['step', 'heartRate']);
+  });
+
+  it('la notification d’une muscu chronométrée ne montre que l’étape', () => {
+    const fields = notificationFields(['step', 'heartRate'], false);
+    const n = liveNotification(input({ activityName: 'Muscu', fields, context: context({ heartRateBpm: null, step: { rep: 2, of: 5 } }) }));
+    expect(n.text).toBe('Étape 2/5');
+    expect(n.lines).toEqual(['Étape : 2/5']);
   });
 });
 

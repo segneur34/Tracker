@@ -230,6 +230,29 @@ describe('journal d’une session sans position (muscu, lot I du 25/10)', () => 
     expect(parsed.heartFixes).toEqual([]);
     expect(parsed.fixes).toHaveLength(1);
   });
+
+  it('sans ceinture (lot 210) : l’en-tête le dit, et ses points d’heure seule se relisent', () => {
+    const activity = { id: 'muscu', name: 'Muscu' };
+    const text = [
+      journalHeaderLine('muscu', T0, activity, true),
+      journalHeartRateLine({ timeMs: T0 }),
+      journalHeartRateLine({ timeMs: T0 + 1000 }),
+      journalBreakLine(T0 + 60_000),
+      journalHeartRateLine({ timeMs: T0 + 60_000 }),
+    ].join('');
+    const parsed = parseJournal(text);
+    expect(parsed.header).toEqual({ format: 'tracker-journal', version: 1, sport: 'muscu', startedAtMs: T0, activity, withoutBelt: true });
+    expect(parsed.heartFixes).toEqual([{ timeMs: T0 }, { timeMs: T0 + 1000 }, { timeMs: T0 + 60_000 }]);
+    expect(parsed.heartBreaks).toEqual([2]);
+  });
+
+  it('un en-tête sans l’indicateur, ancien journal compris, veut dire « avec la ceinture »', () => {
+    expect(parseJournal(journalHeaderLine('muscu', T0)).header?.withoutBelt).toBeUndefined();
+    expect(journalHeaderLine('muscu', T0, undefined, false)).not.toContain('withoutBelt');
+    // Valeur abîmée : comme absente.
+    const broken = `{"format":"tracker-journal","version":1,"sport":"muscu","startedAtMs":${T0},"withoutBelt":"oui"}\n`;
+    expect(parseJournal(broken).header?.withoutBelt).toBeUndefined();
+  });
 });
 
 describe('journalActivity (lot 67, sortie de useRecorder)', () => {

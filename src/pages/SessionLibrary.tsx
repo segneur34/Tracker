@@ -133,13 +133,17 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
 /** Courbes de FC des vignettes sans trace (muscu), déjà calculées : comme `previewCache`. */
 const heartPreviewCache = new Map<string, string | null>();
 
+/** Vignette d'une séance dont le GPX n'a aucune mesure de FC (chronométrée, lot 210) : « Sans FC ». */
+const NO_HEART_RATE = '';
+
 /** Cadre de la courbe de FC d'une vignette, en unités du dessin (étiré à la vignette). */
 const HEART_PREVIEW_VIEW = { width: 200, height: 100 } as const;
 
 /**
  * Vignette d'une session sans trace (muscu, lot I du 25/10, question 1 : la
  * courbe de FC à la place de la carte), lue quand la ligne approche de
- * l'écran, une fois ; un toucher ouvre l'analyse, comme la carte.
+ * l'écran, une fois ; un toucher ouvre l'analyse, comme la carte. Un GPX sans
+ * aucune mesure de FC (séance chronométrée, lot 210) : « Sans FC ».
  */
 function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: LibrarySession; folderLabel: string | null; onOpen: () => void }) {
   const frame = useRef<HTMLDivElement>(null);
@@ -160,7 +164,9 @@ function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: Li
         if (gpx !== null) {
           const points = heartRatePointsFrom(parseGpx(gpx).timedPoints);
           const { smoothS, gapS } = getSportProfile(sport).heartRate;
-          drawn = heartRatePreviewPath(points, smoothHeartRate(points, smoothS, gapS), HEART_PREVIEW_VIEW.width, HEART_PREVIEW_VIEW.height, PREVIEW_MAX_POINTS);
+          drawn = points.length > 0 && points.every((p) => p.hr === undefined)
+            ? NO_HEART_RATE
+            : heartRatePreviewPath(points, smoothHeartRate(points, smoothS, gapS), HEART_PREVIEW_VIEW.width, HEART_PREVIEW_VIEW.height, PREVIEW_MAX_POINTS);
         }
       } catch {
         drawn = null;
@@ -179,7 +185,7 @@ function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: Li
           <path d={path} fill="none" stroke={HEART_RATE_COLOR} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
         </svg>
       ) : (
-        <span className="lib-row__preview-status">{path === null ? 'Courbe indisponible' : 'FC…'}</span>
+        <span className="lib-row__preview-status">{path === NO_HEART_RATE ? 'Sans FC' : path === null ? 'Courbe indisponible' : 'FC…'}</span>
       )}
     </div>
   );

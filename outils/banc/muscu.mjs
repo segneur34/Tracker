@@ -6,7 +6,10 @@
 //  3. « avancé » : la rangée dépliée, « général » fermé ; « cardio », « matériel et notes » et « réglages »
 //     ouverts tour à tour, leurs textes relevés ; « avancé » refermé rend « général » ;
 //  4. la seconde séance s'ouvre sur « général », « avancé » fermé (23/10) ;
-//  5. à 390 × 844 : sans débordement.
+//  5. séance sans FC (partie sans la ceinture, lot 210) : points à l'heure seule, deux segments ; « général » avec
+//     Durée, Hors pauses, Répétitions, sans FC ni courbe ni « ? » ; pas de « cardio » sous « avancé » ; vignette
+//     « Sans FC » dans la bibliothèque de l'Entraînement ;
+//  6. à 390 × 844 : sans débordement.
 import { BLOCKED_URLS, connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -56,13 +59,26 @@ const muscuGpx = (t0, seconds, hrAt) => {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" `
     + `xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Séance</name><type>muscu</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
+/** Séance chronométrée, sans la ceinture (lot 210) : un point à l'heure seule par seconde, un `<trkseg>` par partie. */
+const clockGpx = (t0, parts) => {
+  const segs = parts.map(([fromS, toS]) => {
+    const pts = [];
+    for (let k = fromS; k <= toS; k += 1) pts.push(`<trkpt><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
+    return `<trkseg>\n${pts.join('\n')}\n</trkseg>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1">`
+    + `<trk><name>Séance</name><type>muscu</type>${segs.join('')}</trk></gpx>\n`;
+};
 const T_A = Date.UTC(2026, 9, 6, 17, 0, 0);
 const T_B = Date.UTC(2026, 9, 8, 17, 0, 0);
+const T_C = Date.UTC(2026, 9, 10, 17, 0, 0);
 // Séries de 40 s à 150 bpm et plus, repos de 80 s qui redescend vers 105 bpm.
 const seriesHr = (k) => (k < 300 ? 90 + k / 10 : (k - 300) % 120 < 40 ? 150 + ((k - 300) % 120) / 2 : 165 - Math.min(60, ((k - 300) % 120) - 40) * 1);
 const SESSIONS = [
   { key: 'a', start: T_A, gpx: muscuGpx(T_A, 1800, seriesHr) },
   { key: 'b', start: T_B, gpx: muscuGpx(T_B, 1200, (k) => 100 + 30 * Math.sin(k / 90)) },
+  // 20 min, pause de 5 min, 15 min : 35 min hors pauses sur 40.
+  { key: 'c', start: T_C, gpx: clockGpx(T_C, [[0, 1200], [1500, 2400]]) },
 ];
 
 // --- 1. Import ---
@@ -113,7 +129,31 @@ await waitFor(`Boolean(document.querySelector('.an-carte-col'))`, { timeout: 500
 check('séance neuve : « général » ouvert, « avancé » fermé', !(await advancedOpen()) && (await panel('Général')) !== '(absent)', await panelTitles());
 console.log('général b :', await panel('Général'));
 
-// --- 5. Téléphone ---
+// --- 5. Séance sans FC (lot 210) ---
+const recC = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - T_C) < 2000);
+check('séance c : résumé sans FC', recC?.summary && recC.summary.heartRate === undefined, JSON.stringify(recC?.summary?.heartRate ?? null));
+await go(paths.c, 5000);
+await waitFor(`Boolean(document.querySelector('.an-carte-col'))`, { timeout: 5000, label: 'analyse muscu c' });
+const generalC = await panel('Général');
+console.log('général c :', generalC);
+check('séance c : « général » avec Durée, Hors pauses, Répétitions', ['Durée', 'Hors pauses', 'Répétitions'].every((w) => generalC.includes(w)), generalC);
+check('séance c : ni FC ni courbe', !/FC|bpm/.test(generalC) && !(await evaluate(`Boolean(document.querySelector('.an-carte-panels .recharts-wrapper'))`)), generalC);
+check('séance c : pas de « ? » sur « Général »', !(await evaluate(`Boolean(document.querySelector('.an-carte-panels [aria-label="Aide : Général"]'))`)));
+await clickTab('avancé');
+await wait(400);
+const rowC = await row(1);
+console.log('rangée avancé c :', rowC);
+check('séance c : pas de « cardio » sous « avancé »', rowC !== '' && !rowC.split(' | ').includes('cardio'), rowC);
+await clickTab('avancé');
+await wait(300);
+await go('/fractionne', 4000);
+await waitFor(`[...document.querySelectorAll('.lib-row__preview-status')].some((s) => s.textContent.trim() === 'Sans FC')`, { timeout: 5000, label: 'vignette sans FC' }).catch(() => {});
+const vignettes = await evaluate(`[...document.querySelectorAll('.lib-row__preview-status')].map((s) => s.textContent.trim()).join(' | ')`);
+console.log('vignettes (états) :', vignettes);
+check('vignette « Sans FC » pour la séance c, une seule', vignettes.split(' | ').filter((t) => t === 'Sans FC').length === 1, vignettes);
+await shoot('muscu-sans-fc');
+
+// --- 6. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(paths.a, 4000);
 check('390 px : sans débordement', (await overflow()) <= 0, `${await overflow()} px`);

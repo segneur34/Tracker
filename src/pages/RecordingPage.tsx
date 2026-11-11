@@ -26,6 +26,7 @@ import {
   TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isLandTreatment, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily,
   type TrainingKind,
 } from '../core/sportProfiles';
+import type { SportType } from '../core/types';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters, formatDecimal } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
@@ -103,10 +104,12 @@ import './RecordingPage.css';
  * En fractionné, le compteur (`IntervalCard`) vit à côté de l'enregistrement,
  * sans en dépendre : lancé avant, pendant ou sans lui.
  *
- * En muscu (lot I du 25/10), une session sans GPS : la ceinture est exigée
- * (« Démarrer » attend qu'elle soit connectée), ni source, ni trace à suivre,
- * ni carte ; la carte du compteur porte les séances du Timer. Dans le
- * navigateur, la FC d'exemple (`EXAMPLE_BELT`) en tient lieu.
+ * En muscu (lot I du 25/10), une session sans GPS : ni source, ni trace à
+ * suivre, ni carte ; la carte du compteur porte les séances du Timer. La
+ * ceinture est cochée d'office et se décoche (lot 210) : sans elle, la séance
+ * est chronométrée, sans FC ; cochée mais pas connectée, « Démarrer » demande
+ * s'il faut partir sans elle. Dans le navigateur, la FC d'exemple
+ * (`EXAMPLE_BELT`) en tient lieu.
  *
  * En mode Timer (`?minuterie`, « Lancer » d'une séance du Timer, 25/10), hors
  * d'un enregistrement, la page n'est que le compteur : ni activité, ni carte,
@@ -190,6 +193,13 @@ type HeartGuideMode = 'aucun' | 'zone' | 'bornes';
 const HEART_GUIDE_MODES: readonly HeartGuideMode[] = ['aucun', 'zone', 'bornes'];
 const HEART_GUIDE_LABEL: Record<HeartGuideMode, string> = { aucun: 'aucun', zone: 'zone', bornes: 'bornes' };
 
+/** Note de la case « Ceinture cardio » en muscu (lot 210). */
+const WITHOUT_BELT_NOTE = 'Sans elle, la séance est chronométrée, sans FC.';
+
+/** Ce que la session terminée a gardé : ses points, ou sans position les mesures de la ceinture, ou sa durée seule (lot 210). */
+const keptText = (sport: SportType | null, pointCount: number): string =>
+  sport === null || hasPositions(sport) ? `${pointCount} points` : pointCount > 0 ? `${pointCount} mesures de la ceinture` : 'durée seule';
+
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
 
@@ -246,15 +256,16 @@ const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Acti
 };
 
 /**
- * Statistiques en direct propres au traitement du calcul de l'activité ; sans position (muscu), la FC moyenne et la zone.
- * Libellés tirés des options du calcul (`options`).
+ * Statistiques en direct propres au traitement du calcul de l'activité ; sans position (muscu), la FC moyenne et la zone,
+ * rien sans ceinture (`withBelt` faux, lot 210 : la durée seule). Libellés tirés des options du calcul (`options`).
  */
 const liveStatItems = (
-  activity: Activity, live: LiveStats, heartRateBpm: number | null, options: LiveStatsOptions,
+  activity: Activity, live: LiveStats, heartRateBpm: number | null, options: LiveStatsOptions, withBelt: boolean,
 ): { label: string; value: string }[] => {
   const unit = effectiveSpeedUnit(activity);
   const distanceUnit = effectiveDistanceUnit(activity);
   if (!hasPositions(activity.base)) {
+    if (!withBelt) return [];
     const units: LiveFieldUnits = { speedUnit: unit, distanceUnit, options };
     const context: LiveFieldContext = {
       ...units, stats: live, durationMs: 0, nowMs: null, remainingM: null, headingDeg: null, markDistanceM: null, markBearingDeg: null,
@@ -607,7 +618,8 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
             ? courseStatItems(liveActivity, markGuide)
             : followStatItems(liveActivity, progress, followedLengthM)
           ).map((item) => <Stat key={item.label} {...item} />)}
-          {liveActivity && liveStatItems(liveActivity, live.stats, heartRate?.bpm ?? null, options).map((item) => <Stat key={item.label} {...item} />)}
+          {liveActivity && liveStatItems(liveActivity, live.stats, heartRate?.bpm ?? null, options, heartRate !== null)
+            .map((item) => <Stat key={item.label} {...item} />)}
         </div>
         {liveActivity && sportFamily(liveActivity.base) === 'voile' && (
           <div className="rec-grid-fit">
@@ -681,6 +693,8 @@ function RecordingScreen() {
   const recordedActivity = useRecorderSelector((s) => s.activity);
   const sourceLabel = useRecorderSelector((s) => s.sourceLabel);
   const measuringMotion = useRecorderSelector((s) => s.measuringMotion);
+  // Une ceinture suit l'enregistrement : sans elle, une muscu est chronométrée, sans FC (lot 210).
+  const liveWithBelt = useRecorderSelector((s) => s.heartRate !== null);
   const motionSetup = useRecorderSelector((s) => s.motionSetup);
   const pending = useRecorderSelector((s) => s.pending);
   const motionUnreadable = useRecorderSelector((s) => s.motionUnreadable);
@@ -731,7 +745,7 @@ function RecordingScreen() {
     return isFitnessTestId(asked) || asked === RESTING_HR_TEST.id ? asked : 'fc-max';
   });
   const isTest = chosen !== null && isTestSport(chosen.base);
-  // Muscu : sans position, la ceinture seule (obligatoire), ni source ni trace à suivre.
+  // Muscu : sans position, la ceinture (ou le chrono seul, lot 210), ni source ni trace à suivre.
   const heartOnly = chosen !== null && !hasPositions(chosen.base);
   const restingChosen = isTest && testId === RESTING_HR_TEST.id;
   const guidedTestId: FitnessTestId = isFitnessTestId(testId) ? testId : 'fc-max';
@@ -784,8 +798,9 @@ function RecordingScreen() {
   // Noms montrés : un nom porté par deux appareils prend la fin de leur adresse.
   const retainedLabels = useMemo(() => beltLabels(retainedBelts), [retainedBelts]);
   const beltLabel = belt === null ? '' : retainedLabels[retainedBelts.findIndex((b) => b.address === belt.address)] ?? belt.name;
-  const [heartRatePicked, setHeartRatePicked] = usePerActivityChoice(chosenActivityId, heartRateSetting ?? false);
-  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null && !restingChosen && (heartOnly || heartRatePicked);
+  // Muscu : cochée d'office, quel que soit Réglages, et elle se décoche (lot 210) ; rien n'est retenu d'une fois à l'autre.
+  const [heartRatePicked, setHeartRatePicked] = usePerActivityChoice(chosenActivityId, heartOnly || (heartRateSetting ?? false));
+  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null && !restingChosen && heartRatePicked;
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -812,10 +827,9 @@ function RecordingScreen() {
   }
   // Matériel choisi qui n'a pas pu être écrit dans la fiche de la session rangée.
   const [gearNotWritten, setGearNotWritten] = useState(false);
-  // Muscu : pas de départ sans la ceinture connectée (décision du 25/10).
-  const beltMissing = heartOnly && (belt === null || beltLive.state !== 'connected');
+  // Muscu : « Démarrer » jamais grisé, sans la ceinture la séance est chronométrée (lot 210).
   const canStart = !busy && pending === null && chosen !== null && !restingChosen
-    && (heartOnly ? !beltMissing : sourceChoice === 'device' || replay !== null);
+    && (heartOnly || sourceChoice === 'device' || replay !== null);
   // Zone visée : bips de sortie de zone, proposés avec la ceinture connectée et les zones de Pratiquant, jamais pour un test ;
   // « aucune » à chaque ouverture de la page.
   const zoneBounds = chosen ? readHeartRateZoneBounds(chosen) : null;
@@ -954,10 +968,14 @@ function RecordingScreen() {
   const handleStart = () => {
     if (!chosen) return;
     if (heartOnly) {
-      if (!belt) return;
+      // Case cochée, ceinture pas encore connectée : on demande avant de partir sans elle (lot 210).
+      const beltConnected = measureHeartRate && beltLive.state === 'connected';
+      if (measureHeartRate && !beltConnected
+        && !window.confirm("La ceinture n'est pas connectée : partir sans elle ? La séance sera chronométrée, sans FC.")) return;
       rememberRecordActivity(chosen.id);
       armHeartGuide();
-      void beltWarmup.handOver(() => startRecording(chosen, null, { heartRate: belt }));
+      const heartRate = beltConnected ? belt : null;
+      void beltWarmup.handOver(() => startRecording(chosen, null, { heartRate }));
       return;
     }
     // Test sans ceinture connectée (ni FC dans le fichier rejoué) : on demande, sans bloquer.
@@ -1044,17 +1062,16 @@ function RecordingScreen() {
           )}
 
           {chosen && heartRateSetting !== null && (native || heartOnly) && !restingChosen && (
-            // Muscu : la ceinture d'office, la case ne se décoche pas.
-            <CaptureOption label="Ceinture cardio" checked={measureHeartRate} disabled={belt === null || heartOnly}
+            // Muscu : cochée d'office, elle se décoche ; sans elle, la séance est chronométrée (lot 210).
+            <CaptureOption label="Ceinture cardio" checked={measureHeartRate} disabled={belt === null}
               onChange={setHeartRatePicked}
               note={belt === null
-                ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ' La muscu se fait avec elle.'}</>
+                ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ` ${WITHOUT_BELT_NOTE}`}</>
                 : belt === EXAMPLE_BELT
-                  ? "FC d'exemple du navigateur, pour éprouver la muscu : la vraie ceinture est sur le téléphone."
+                  ? `FC d'exemple du navigateur, pour éprouver la muscu : la vraie ceinture est sur le téléphone. ${WITHOUT_BELT_NOTE}`
                   : <>
-                    {heartOnly
-                      ? `${beltLabel}, portée et humidifiée : la muscu se fait avec elle, sans GPS.`
-                      : `${beltLabel}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
+                    {`${beltLabel}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
+                    {heartOnly && ` ${WITHOUT_BELT_NOTE}`}
                     {retainedBelts.length >= 2 && (
                       <>{' '}<Button size="s" onClick={() => setChoosingBelt(true)}>Changer</Button></>
                     )}
@@ -1066,8 +1083,8 @@ function RecordingScreen() {
                     {beltWarmup.error && (
                       <Button size="s" onClick={beltWarmup.retry}>Réessayer</Button>
                     )}
-                    {/* Ceinture encore cherchée (lot 198) : on peut y renoncer, comme en décochant la case (pas en muscu, qui se fait avec elle). */}
-                    {!heartOnly && (beltLive.state === 'connecting' || beltLive.state === 'searching' || beltLive.state === 'lost') && (
+                    {/* Ceinture encore cherchée (lot 198) : on peut y renoncer, comme en décochant la case, muscu comprise (lot 210). */}
+                    {(beltLive.state === 'connecting' || beltLive.state === 'searching' || beltLive.state === 'lost') && (
                       <Button size="s" onClick={() => setHeartRatePicked(false)}>Annuler la recherche</Button>
                     )}
                   </BeltStatus>
@@ -1197,13 +1214,6 @@ function RecordingScreen() {
               Suivre une trace
             </Button>
           )}
-          {beltMissing && (
-            <p className="rec-actions-note">
-              {belt === null
-                ? 'La muscu se fait avec la ceinture cardio : choisissez-la dans Réglages, bloc « Capteurs ».'
-                : "La muscu se fait avec la ceinture cardio : « Démarrer » attend qu'elle soit connectée. Portez-la, électrodes humidifiées."}
-            </p>
-          )}
         </div>
       )}
 
@@ -1253,7 +1263,7 @@ function RecordingScreen() {
       {manualPause && (
         <div className="ui-alert ui-alert--warning">
           {liveHeartOnly
-            ? 'En pause : les mesures de la ceinture ne sont pas gardées.'
+            ? liveWithBelt ? 'En pause : les mesures de la ceinture ne sont pas gardées.' : 'En pause : la durée ne compte pas.'
             : `En pause : rien n'est compté ; le GPS reste allumé pour la carte${measuringMotion ? ', la mesure des capteurs est suspendue' : ''}.`}
         </div>
       )}
@@ -1298,7 +1308,7 @@ function RecordingScreen() {
           </span>
         )}>
           <p className="rec-saved-text">
-            {pending.activity?.name ?? 'À classer'}, {pending.pointCount} {pending.sport === null || hasPositions(pending.sport) ? 'points' : 'mesures de la ceinture'}.<br />
+            {pending.activity?.name ?? 'À classer'}, {keptText(pending.sport, pending.pointCount)}.<br />
             <span className="ui-muted ui-text-s">
               Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
               Aucun nouvel enregistrement avant ce choix.
@@ -1341,7 +1351,7 @@ function RecordingScreen() {
           </span>
         )}>
           <p className="rec-saved-text">
-            {saved.activity?.name ?? 'À classer'}, {saved.pointCount} {saved.sport === null || hasPositions(saved.sport) ? 'points' : 'mesures de la ceinture'}.<br />
+            {saved.activity?.name ?? 'À classer'}, {keptText(saved.sport, saved.pointCount)}.<br />
             <span className="ui-muted ui-text-s rec-break-all">Rangée dans : {saved.location}</span>
             {gearNotWritten && (
               <>

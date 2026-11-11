@@ -74,6 +74,20 @@ export const keepHeartRateSample = (lastKeptMs: number | null, sample: HeartRate
 };
 
 /**
+ * Point d'heure seule d'une muscu sans ceinture (lot 210), à garder à cet
+ * instant, ou `null` : moins de `minIntervalMs` après le dernier gardé, pas de
+ * point (un par seconde au plus, comme `keepHeartRateSample`, même tolérance).
+ * Le minuteur qui l'appelle peut ralentir écran éteint : la durée vient de
+ * l'heure des points, jamais de leur nombre (règle 10).
+ */
+export const keepClockTick = (lastKeptMs: number | null, nowMs: number, minIntervalMs: number): HeartRateFix | null => {
+  if (!isFinite(nowMs)) return null;
+  const timeMs = Math.round(nowMs);
+  if (lastKeptMs !== null && timeMs - lastKeptMs < minIntervalMs * 0.75) return null;
+  return { timeMs };
+};
+
+/**
  * Segments d'une session sans position, avec un dernier point sans FC à
  * l'heure de l'arrêt au bout du dernier : la durée va jusqu'à l'arrêt, pas
  * jusqu'à la dernière mesure. Rien d'ajouté si l'arrêt n'est pas plus tard
@@ -295,6 +309,6 @@ export const sessionTitle = (startMs: number, activityName: string): string => {
   return `${activityName}, ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 
-/** Message d'un arrêt sans rien à garder : moins de deux positions, ou sans position (muscu) moins de deux mesures de la ceinture. */
+/** Message d'un arrêt sans rien à garder : moins de deux positions, ou sans position (muscu) moins de deux points à l'heure. */
 export const nothingToKeep = (sport: SportType | null): string =>
-  sport === null || hasPositions(sport) ? 'Moins de deux positions reçues : rien à enregistrer.' : 'Moins de deux mesures de la ceinture : rien à enregistrer.';
+  sport === null || hasPositions(sport) ? 'Moins de deux positions reçues : rien à enregistrer.' : 'Session trop courte : rien à enregistrer.';

@@ -12,6 +12,7 @@ import {
   receivedFixRole,
   isNewerFix,
   isRecordingSession,
+  keepClockTick,
   keepHeartRateSample,
   nothingToKeep,
   withStopPoint,
@@ -284,6 +285,45 @@ describe('mesures de la ceinture sans position (muscu, lot I du 25/10)', () => {
   });
 });
 
+describe('keepClockTick : muscu sans ceinture (lot 210)', () => {
+  const T = Date.UTC(2026, 10, 11, 18, 0, 0);
+  it('un point d’heure seule, sans FC, au plus un par intervalle', () => {
+    expect(keepClockTick(null, T + 0.4, 1000)).toEqual({ timeMs: T });
+    expect(keepClockTick(T, T + 700, 1000)).toBeNull();
+    // Même tolérance que la ceinture : un minuteur qui tombe 2 ms trop tôt garde son point.
+    expect(keepClockTick(T, T + 998, 1000)).toEqual({ timeMs: T + 998 });
+    expect(keepClockTick(T, T + 1000, 1000)).toEqual({ timeMs: T + 1000 });
+    expect(keepClockTick(null, NaN, 1000)).toBeNull();
+  });
+
+  /** Points gardés d'un minuteur qui bat toutes les `everyMs`, sur `spanMs`, à l'intervalle `minIntervalMs`. */
+  const ticks = (everyMs: number, spanMs: number, minIntervalMs: number) => {
+    const kept: number[] = [];
+    for (let t = 0; t <= spanMs; t += everyMs) {
+      const tick = keepClockTick(kept.length > 0 ? kept[kept.length - 1] : null, T + t, minIntervalMs);
+      if (tick) kept.push(tick.timeMs);
+    }
+    return kept;
+  };
+
+  it('à 1 Hz comme à 5 Hz, la durée couverte est la même : elle vient de l’heure des points', () => {
+    const at1Hz = ticks(1000, 60_000, 1000);
+    const at5Hz = ticks(200, 60_000, 200);
+    expect(at1Hz).toHaveLength(61);
+    expect(at5Hz).toHaveLength(301);
+    expect(at1Hz[at1Hz.length - 1] - at1Hz[0]).toBe(60_000);
+    expect(at5Hz[at5Hz.length - 1] - at5Hz[0]).toBe(60_000);
+  });
+
+  it('un minuteur trop rapide ne garde qu’un point par intervalle ; ralenti (écran éteint), chaque battement compte', () => {
+    expect(ticks(500, 10_000, 1000)).toHaveLength(11);
+    // Une seule battue par minute : peu de points, la même durée.
+    const slow = ticks(60_000, 600_000, 1000);
+    expect(slow).toHaveLength(11);
+    expect(slow[slow.length - 1] - slow[0]).toBe(600_000);
+  });
+});
+
 describe('états de l’enregistreur', () => {
   const cases = [
     { status: 'idle', pausedReason: null },
@@ -310,9 +350,9 @@ describe('états de l’enregistreur', () => {
 });
 
 describe('nothingToKeep (lot 67, sorti de useRecorder)', () => {
-  it('parle des positions, ou sans position (muscu) des mesures de la ceinture', () => {
+  it('parle des positions, ou sans position (muscu) d’une session trop courte', () => {
     expect(nothingToKeep('running')).toBe('Moins de deux positions reçues : rien à enregistrer.');
     expect(nothingToKeep(null)).toBe('Moins de deux positions reçues : rien à enregistrer.');
-    expect(nothingToKeep('muscu')).toBe('Moins de deux mesures de la ceinture : rien à enregistrer.');
+    expect(nothingToKeep('muscu')).toBe('Session trop courte : rien à enregistrer.');
   });
 });

@@ -3,7 +3,7 @@ import { clearRecordingNotification, updateRecordingNotification } from '../plat
 import { intervalStepAt, timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
 import type { LiveFieldContext } from '../recording/liveFields';
-import { liveNotification, liveNotificationKey, notificationStateKey, trainingStep } from '../recording/liveNotification';
+import { liveNotification, liveNotificationKey, notificationFields, notificationStateKey, trainingStep } from '../recording/liveNotification';
 import { displayedDurationMs } from '../recording/session';
 import { getFitnessTestView } from './useFitnessTest';
 import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer';
@@ -34,7 +34,9 @@ import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit 
  *
  * Sans position (muscu, lot I du 25/10), c'est le service de la ceinture
  * (`keepBeltAlive`) qui la pose au départ, sur le même numéro : la première
- * mesure gardée qui suit la fait récrire, comme la première position.
+ * mesure gardée qui suit la fait récrire, comme la première position. Partie
+ * sans ceinture (lot 210), le même service la tient ; les points d'heure seule
+ * font le même office que les mesures, et les chiffres de FC en sont retirés.
  */
 
 /** Intervalle minimal entre deux envois sans changement d'état, en millisecondes. */
@@ -77,7 +79,8 @@ const update = (force: boolean) => {
   });
   if (!force && stateKey === sentStateKey && nowMs - sentAtMs < MIN_UPDATE_MS) return;
 
-  const fields = effectiveNotificationFields(activity);
+  // Muscu sans ceinture (lot 210) : ni FC ni zone, l'étape seule.
+  const fields = notificationFields(effectiveNotificationFields(activity), hasPositions(activity.base) || recorder.heartRate !== null);
   const mark = getMarkGuideView();
   const counterActive = timer !== null && (timer.status === 'running' || timer.status === 'paused');
   const context: LiveFieldContext = {

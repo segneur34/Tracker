@@ -46,6 +46,7 @@ import {
   displayedDurationMs,
   evaluateAutoPause,
   isNewerFix,
+  keepClockTick,
   keepHeartRateSample,
   nothingToKeep,
   roundFix,
@@ -115,13 +116,17 @@ import { resetStopwatch } from './useStopwatch';
  * après : « Continuer l'enregistrement » dans la carte de la session en attente (`continuePendingSession`).
  *
  * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
- * source GPS ; la ceinture est obligatoire et chaque mesure (une par seconde
- * au plus, `keepHeartRateSample`) est gardée à part des positions
- * (`heartFixes`), au journal (`journalHeartRateLine`) et dans un GPX sans
- * position (`buildHeartRateGpx`). Un service au premier plan tient
- * l'application écran éteint (`keepBeltAlive`). La pause manuelle garde la
- * ceinture et ignore ses mesures ; pas de pause automatique. À l'arrêt, un
- * dernier point sans FC fait aller la durée jusqu'à lui (`withStopPoint`).
+ * source GPS ; avec la ceinture, chaque mesure (une par seconde au plus,
+ * `keepHeartRateSample`) est gardée à part des positions (`heartFixes`), au
+ * journal (`journalHeartRateLine`) et dans un GPX sans position
+ * (`buildHeartRateGpx`). Sans elle (lot 210), un minuteur pose à la place un
+ * point d'heure seule par seconde (`keepClockTick`), au départ, à la pause et
+ * à la reprise aussi : la séance est chronométrée, sans FC, et l'en-tête du
+ * journal le dit (`withoutBelt`) pour qu'une reprise relance le minuteur. Un
+ * service au premier plan tient l'application écran éteint (`keepBeltAlive`),
+ * ceinture ou non. La pause manuelle garde la ceinture et ignore ses mesures ;
+ * pas de pause automatique. À l'arrêt, un dernier point sans FC fait aller la
+ * durée jusqu'à lui (`withStopPoint`).
  */
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
@@ -135,7 +140,7 @@ export interface PendingSession {
   sport: SportType | null;
   /** Activité de la session ; `null` avec `sport` nul. */
   activity: Activity | null;
-  /** Positions gardées ; sans position (muscu), mesures de la ceinture. */
+  /** Positions gardées ; sans position (muscu), mesures de la ceinture (0 : durée seule, lot 210). */
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
@@ -271,6 +276,10 @@ let heartFixes: HeartRateFix[] = [];
 let heartBreaks: number[] = [];
 /** Vrai pendant l'enregistrement d'une session sans position : ses points sont les mesures de la ceinture. */
 let heartOnly = false;
+/** Session sans position partie sans la ceinture (lot 210) : ses points sont d'heure seule, posés par `clockTimer`. */
+let withoutBelt = false;
+/** Minuteur des points d'heure seule d'une session sans ceinture ; `null` sinon. */
+let clockTimer: ReturnType<typeof setInterval> | null = null;
 let pendingLines = '';
 let lastFlushMs: number | null = null;
 let stopSource: StopLocation | null = null;
@@ -556,6 +565,36 @@ const receiveHeartSample = (sample: HeartRateSample): void => {
 };
 
 /**
+ * Battement du minuteur d'une session sans ceinture (lot 210) : un point
+ * d'heure seule, gardé comme une mesure de la ceinture l'est (journal compris),
+ * un par intervalle au plus. Ignoré en pause.
+ */
+const receiveClockTick = (): void => {
+  const recording = currentProfile;
+  if (!heartOnly || !withoutBelt || recording === null || (state.status !== 'starting' && state.status !== 'recording')) return;
+  const fix = keepClockTick(lastReceivedMs, Date.now(), recording.intervalMs);
+  if (fix === null) return;
+  lastReceivedMs = fix.timeMs;
+  keepPoint(fix, heartFixes, heartBreaks, journalHeartRateLine(fix), recording.journalFlushS);
+};
+
+/**
+ * Lance le minuteur d'une session sans ceinture, avec un point tout de suite. Écran éteint, il peut ralentir : la
+ * durée vient de l'heure des points et du point de l'arrêt, jamais de leur nombre (règle 10).
+ */
+const startClock = (): void => {
+  stopClock();
+  receiveClockTick();
+  clockTimer = setInterval(receiveClockTick, currentProfile?.intervalMs ?? DEFAULT_RECORDING.intervalMs);
+};
+
+/** Arrête le minuteur des points d'heure seule, s'il tourne. */
+const stopClock = (): void => {
+  if (clockTimer !== null) clearInterval(clockTimer);
+  clockTimer = null;
+};
+
+/**
  * Cadence à pied mesurée sur la capture, si elle la mesurait, jointe à chaque
  * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
  * positions telles quelles : la session n'est jamais bloquée par la cadence.
@@ -590,8 +629,10 @@ interface RecordedTrack {
 /**
  * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à la
  * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
- * deux positions au total (sans position : deux mesures de la ceinture) :
- * aucune trace ne s'en tire, il n'y a rien à garder.
+ * deux positions au total (sans position : deux points à l'heure, FC ou non,
+ * point de l'arrêt compris, lot 210 ; sans aucune FC, un intervalle du
+ * minuteur hors pauses au moins) : aucune trace ne s'en tire, il n'y a rien à
+ * garder.
  */
 const buildPendingSession = async (
   activity: Activity | null,
@@ -607,9 +648,14 @@ const buildPendingSession = async (
   const withPositions = sport !== null ? hasPositions(sport) : recorded.segments.some((s) => s.length > 0) || !recorded.heart.some((s) => s.length > 0);
   const titleName = activity?.name ?? 'Session';
   if (!withPositions) {
-    // Mesures de la ceinture : le point de l'arrêt, sans FC, n'en est pas une.
+    // Sans ceinture, ou avec une seule mesure, la séance garde sa durée (lot 210) : tous les points comptent.
+    const points = recorded.heart.reduce((n, s) => n + s.length, 0);
+    // Mesures de la ceinture, pour le compte de la carte de fin : le point de l'arrêt, sans FC, n'en est pas une.
     const measures = recorded.heart.reduce((n, s) => n + s.filter((f) => f.heartRateBpm !== undefined).length, 0);
-    if (measures < 2) {
+    // Sans aucune FC, au moins un intervalle du minuteur hors pauses : « Démarrer » puis « Finir » aussitôt ne garde rien.
+    const activeMs = recorded.heart.reduce((ms, s) => ms + (s.length > 1 ? s[s.length - 1].timeMs - s[0].timeMs : 0), 0);
+    const tickMs = (activity ? effectiveRecordingProfile(activity) : DEFAULT_RECORDING).intervalMs;
+    if (points < 2 || (measures === 0 && activeMs < tickMs)) {
       await recordingJournal.remove();
       return null;
     }
@@ -824,9 +870,11 @@ const abandonResume = async (): Promise<void> => {
   await stop?.().catch(() => undefined);
   releaseRecordingBelt();
   stopGpsWatch();
+  stopClock();
   currentSource = null;
   currentProfile = null;
   heartOnly = false;
+  withoutBelt = false;
   resumedSession = false;
   fixes = [];
   segmentBreaks = [];
@@ -842,6 +890,9 @@ const abandonResume = async (): Promise<void> => {
     measuringMotion: false, motionSetup: null, heartRate: null, marks: [], stats: EMPTY_RECORDING_STATS, gpsLost: false, beltLost: false,
   });
 };
+
+/** Source d'une session sans position, dans la ligne d'état : la ceinture, ou sans elle le chronomètre (lot 210). */
+const heartSourceLabel = (withBelt: boolean): string => (withBelt ? 'Ceinture cardio' : 'Chronomètre');
 
 /**
  * Remet en mémoire la session d'un journal relu et passe en `starting`, `resuming` : les abonnés rejouent leurs
@@ -870,8 +921,10 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
     list,
     parsed.manualBreaks.map((b) => ({ index: withPositions ? b.fixIndex : b.heartIndex, autoPartMs: b.autoPartMs }))
   );
+  // Muscu partie sans la ceinture : ses points d'heure seule reprennent (lot 210).
+  withoutBelt = !withPositions && parsed.header?.withoutBelt === true;
   setState({
-    status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
+    status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!withoutBelt), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, motionUnreadable: false, saved: null, error: null, gpsLost: false, beltLost: false,
   });
 };
@@ -899,12 +952,15 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
       if (phase.pauseClock !== null && capture.listening) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
       if (phase.pauseClock === null && !capture.listening) await resumeMotionCapture().catch(() => setState({ error: SENSORS_RESUME_ERROR }));
     }
-    const release = await adoptBelt(RECORDING_BELT_HOLDER).catch(() => null);
-    if (release) wireBelt(release, getSportProfile(sport).heartRate.maxAgeS);
-    else if (!withPositions) {
-      const belt = savedBelt();
-      if (belt === null) throw new Error('ceinture introuvable');
-      await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
+    // Muscu partie sans la ceinture (lot 210) : aucune à reprendre, le minuteur repart plus bas.
+    if (!withoutBelt) {
+      const release = await adoptBelt(RECORDING_BELT_HOLDER).catch(() => null);
+      if (release) wireBelt(release, getSportProfile(sport).heartRate.maxAgeS);
+      else if (!withPositions) {
+        const belt = savedBelt();
+        if (belt === null) throw new Error('ceinture introuvable');
+        await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
+      }
     }
     // Sans attente jusqu'au passage en enregistrement : aucune position ne peut arriver d'ici là, ni être mal jugée.
     if (withPositions) stopSource = adoptRunningService(receiveFix, onSourceError);
@@ -912,6 +968,8 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
       status: phase.pauseClock ? 'paused' : 'recording', resuming: false, landOnRecording: true,
       pausedReason: phase.pauseClock ? 'manual' : null, pauseClock: phase.pauseClock,
     });
+    // Hors pause, le premier point ouvre le segment neuf ; en pause, il attend la reprise.
+    if (withoutBelt) startClock();
     if (gpsWatchOn && currentProfile) {
       // Rien n'est dû avant une position, mais le service peut se taire dès maintenant : le minuteur repart d'ici.
       const armedStep = gpsWatchOnFix(START_GPS_WATCH, Date.now(), currentProfile);
@@ -1068,7 +1126,8 @@ const releaseRecordingBelt = (): void => {
  * sans cardio, tuile BPM et alerte de FC perdue retirées. Plus rien ne la recherche jusqu'à la fin de la sortie : le
  * greffon n'est plus demandé (fin de sa reprise seule), la pause ne la reprend pas, et une reprise après une chute de
  * la page la trouve lâchée (`adoptBelt` rend `null`). Seul « Continuer l'enregistrement », après une application
- * tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu), qui n'a qu'elle.
+ * tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu) : partie avec elle, elle la
+ * garde, trous dans la FC compris ; sans elle, elle se chronomètre dès le départ (lot 210).
  */
 export const stopRecordingBeltSearch = (): void => {
   if (heartOnly || dropBelt === null) return;
@@ -1079,23 +1138,28 @@ export const stopRecordingBeltSearch = (): void => {
 
 /**
  * Suite du départ d'une session sans position (muscu) : journal, ceinture,
- * puis service au premier plan qui tient l'application écran éteint. Sans
- * ceinture qui réponde, pas de session : le départ est annulé.
+ * puis service au premier plan qui tient l'application écran éteint. Une
+ * ceinture donnée qui ne répond pas annule le départ. Sans ceinture (`belt`
+ * nul, lot 210) : des points d'heure seule, le premier tout de suite.
  */
-const startHeartRateRecording = async (activity: Activity, belt: HeartRateBelt): Promise<void> => {
+const startHeartRateRecording = async (activity: Activity, belt: HeartRateBelt | null): Promise<void> => {
   const sport = activity.base;
+  withoutBelt = belt === null;
   try {
-    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
-    await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
+    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity, withoutBelt));
+    if (belt) await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
   } catch (err) {
     releaseRecordingBelt();
     heartOnly = false;
+    withoutBelt = false;
     currentProfile = null;
     await recordingJournal.remove();
-    setState({ status: 'idle', heartRate: null, error: `Démarrage impossible, ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}` });
+    const why = errorMessage(err, 'erreur inconnue');
+    setState({ status: 'idle', heartRate: null, error: belt ? `Démarrage impossible, ceinture cardio injoignable : ${why}` : `Démarrage impossible : ${why}` });
     return;
   }
   setState({ status: 'recording' });
+  if (withoutBelt) startClock();
   try {
     await keepBeltAlive('Tracker enregistre', `Session ${activity.name} en cours`);
   } catch (err) {
@@ -1111,6 +1175,8 @@ const resetSession = (init: { withPositions: boolean; source: LocationSource | n
   heartFixes = [];
   heartBreaks = [];
   heartOnly = !init.withPositions;
+  withoutBelt = false;
+  stopClock();
   pendingLines = '';
   lastFlushMs = null;
   currentSource = init.withPositions ? init.source : null;
@@ -1138,8 +1204,9 @@ const resetSession = (init: { withPositions: boolean; source: LocationSource | n
  * (sauts, pumping en surf), avec l'emplacement du téléphone et le foil ; si les capteurs ne démarrent pas, l'enregistrement
  * continue sans eux, et le dit. `heartRate` : la ceinture cardio à joindre ; de même, sans elle si elle ne répond pas.
  *
- * Sans position (muscu, `hasPositions`), `source` est ignorée : la ceinture
- * est exigée, et le départ refusé sans elle ou si elle ne répond pas.
+ * Sans position (muscu, `hasPositions`), `source` est ignorée ; une ceinture
+ * donnée qui ne répond pas refuse le départ, et sans ceinture (`heartRate`
+ * nul, lot 210) la séance est chronométrée, sans FC.
  */
 export const startRecording = exclusive(async (
   activity: Activity,
@@ -1149,10 +1216,6 @@ export const startRecording = exclusive(async (
   if (isBusy()) return;
   const sport = activity.base;
   const withPositions = hasPositions(sport);
-  if (!withPositions && !options.heartRate) {
-    setState({ error: 'La muscu se fait avec la ceinture cardio : choisissez-la dans Réglages › Capteurs, portez-la, puis démarrez.' });
-    return;
-  }
   if (withPositions && source === null) return;
   const recovery = await recoverInterruptedRecording();
   // La session d'un journal a repris seule : pas de second départ.
@@ -1169,13 +1232,13 @@ export const startRecording = exclusive(async (
   const profile = effectiveRecordingProfile(activity);
   resetSession({ withPositions, source, profile, startedAtMs: Date.now() });
   setState({
-    status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
+    status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!!options.heartRate), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: recoveryNotice, gpsLost: false, beltLost: false,
   });
 
   if (!withPositions) {
-    await startHeartRateRecording(activity, options.heartRate!);
+    await startHeartRateRecording(activity, options.heartRate ?? null);
     return;
   }
   if (source === null) return;
@@ -1262,9 +1325,12 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
         });
       }
     } else {
-      const belt = savedBelt();
-      if (belt === null) throw new Error('ceinture introuvable');
-      await takeBelt(belt, heartRate.maxAgeS);
+      // Muscu partie sans la ceinture (lot 210) : aucune à reprendre, le minuteur repart plus bas.
+      if (!withoutBelt) {
+        const belt = savedBelt();
+        if (belt === null) throw new Error('ceinture introuvable');
+        await takeBelt(belt, heartRate.maxAgeS);
+      }
       await keepBeltAlive('Tracker enregistre', `Session ${activity.name} en cours`).catch((err: unknown) => {
         setState({ error: `Service de l'enregistrement impossible : ${errorMessage(err, 'erreur inconnue')}. Gardez l'écran allumé.` });
       });
@@ -1274,6 +1340,7 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
       status: 'recording', resuming: false,
       ...(captured ? { error: joinMessages(state.error, CAPTURE_NOT_RESUMED) } : {}),
     });
+    if (withoutBelt) startClock();
   } catch (err) {
     await backToPending(err);
     return;
@@ -1294,6 +1361,9 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
   const frozenAtMs = Date.now();
   const pauseClock: PauseClock = { sinceMs: autoPaused && state.pauseClock ? state.pauseClock.sinceMs : frozenAtMs, frozenAtMs };
   belowSinceMs = null;
+  // Sans ceinture (lot 210) : un point à l'instant de la pause, pour que le segment aille jusqu'à elle même si le
+  // minuteur a ralenti écran éteint.
+  if (withoutBelt) receiveClockTick();
   // En pause dès l'appui : le GPS restant allumé, une position arrivée pendant l'écriture du journal ne serait pas gardée.
   setState({ status: 'paused', pausedReason: 'manual', pauseClock });
   if (gpsWatchOn) applyGpsWatch(gpsWatchOnPause(gpsWatch));
@@ -1305,10 +1375,12 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
 
 /** Reprend après une pause manuelle : le prochain point gardé ouvre un nouveau segment. La source n'est relancée que si elle s'est arrêtée. */
 export const resumeRecording = exclusive(async (): Promise<void> => {
-  // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment.
+  // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment ; sans ceinture, un point
+  // d'heure seule l'ouvre tout de suite (lot 210).
   if (heartOnly && isManualPause(state)) {
     markManualResume();
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
+    if (withoutBelt) receiveClockTick();
     if (beltWatchOn && currentProfile) applyBeltWatch(gpsWatchOnResume(beltWatch, Date.now(), beltWatchSettings(currentProfile)));
     return;
   }
@@ -1465,6 +1537,8 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   const wasRecording = state.status === 'recording';
   stopGpsWatch();
   stopBeltWatch();
+  // Sans ceinture : plus de point d'heure seule, celui de l'arrêt est posé plus bas (`withStopPoint`).
+  stopClock();
   // Les alertes de perte du GPS et de la FC ne survivent pas à l'enregistrement.
   setState({ status: 'stopping', gpsLost: false, beltLost: false, error: withoutBeltLost(withoutGpsLost(state.error)) });
   // Écrit avant de couper le GPS : une chute d'ici la fin ne propose ni reprise ni « Continuer ».
@@ -1535,6 +1609,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   heartFixes = [];
   heartBreaks = [];
   heartOnly = false;
+  withoutBelt = false;
   intervalRuns = new Map();
   marks = [];
   currentTest = null;

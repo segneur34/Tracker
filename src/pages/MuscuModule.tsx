@@ -50,7 +50,9 @@ import { shareExtraStats } from '../library/shareStats';
  * les phases du compteur posées dessus (`record.intervals`) et les repères du
  * bouton « Note » ; « cardio » : le panneau commun, sans carte ; « matériel et
  * notes » ; « réglages » : l'activité, vers une autre activité sans trace
- * seulement.
+ * seulement. Une séance partie sans la ceinture (lot 210) n'a que des points à
+ * l'heure : « général » garde durée, hors pauses, répétitions et notes, sans
+ * FC, courbe ni aide, et « cardio » n'est pas proposé.
  */
 
 const FAMILY = 'fractionne' as const;
@@ -123,6 +125,8 @@ function MuscuModule() {
   const phaseKinds = useMemo(() => [...new Set(analysis?.phases.map((p) => p.kind) ?? [])], [analysis]);
 
   const rating = draft.edits.notes.rating;
+  // Séance sans FC (partie sans la ceinture, lot 210) : ni lignes de FC, ni courbe, ni zones, ni aide.
+  const withHeartRate = analysis?.stats != null;
   /** Chiffres de « général », repris par l'image de partage (mêmes clés que `summaryShareStats`). */
   const generalStats: ShareStat[] = useMemo(() => {
     if (!analysis) return [];
@@ -130,8 +134,10 @@ function MuscuModule() {
     return [
       { key: 'totalTime', label: 'Durée', value: formatDuration(analysis.endMs - analysis.startMs) },
       { key: 'activeTime', label: 'Hors pauses', value: formatDuration(analysis.durationS * 1000) },
-      { key: 'heartRate', label: 'FC moyenne', value: stats ? `${Math.round(stats.avgBpm)} bpm` : '—' },
-      { key: 'heartRateMax', label: 'FC max', value: stats ? `${stats.maxBpm} bpm` : '—' },
+      ...(stats ? [
+        { key: 'heartRate', label: 'FC moyenne', value: `${Math.round(stats.avgBpm)} bpm` },
+        { key: 'heartRateMax', label: 'FC max', value: `${stats.maxBpm} bpm` },
+      ] : []),
       { key: 'reps', label: 'Répétitions', value: analysis.reps > 0 ? String(analysis.reps) : '—' },
       // Appréciation (05/11), comme le résumé d'une fiche.
       ...shareExtraStats('muscu', { rating }),
@@ -142,7 +148,7 @@ function MuscuModule() {
     <AnalysisShell title={PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
       share={{ segments: [], stats: generalStats }} error={sessionError ?? loadError} draft={draft} empty={requested === null}
       alerts={shownFile && !analysis && (
-        <div className="ui-alert ui-alert--warning ui-max-520">Le fichier n'a pas assez de mesures de la ceinture.</div>
+        <div className="ui-alert ui-alert--warning ui-max-520">Le fichier n'a pas assez de points horodatés.</div>
       )}
       // Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={analysis ? {
@@ -150,12 +156,15 @@ function MuscuModule() {
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
-                <PanelHeading label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')} helpKey="muscu:general" />
-                <HelpText helpKey="muscu:general" note>
-                  FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
-                  {' '}Bandes de couleur : les phases du compteur. Traits numérotés : les notes posées pendant la séance.
-                  {narrow ? ` ${zoomHint(true, 'la courbe')}` : " Tirez une zone sur la courbe pour zoomer, double-clic pour zoomer autour d'un point."}
-                </HelpText>
+                <PanelHeading label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')}
+                  helpKey={withHeartRate ? 'muscu:general' : undefined} />
+                {withHeartRate && (
+                  <HelpText helpKey="muscu:general" note>
+                    FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
+                    {' '}Bandes de couleur : les phases du compteur. Traits numérotés : les notes posées pendant la séance.
+                    {narrow ? ` ${zoomHint(true, 'la courbe')}` : " Tirez une zone sur la courbe pour zoomer, double-clic pour zoomer autour d'un point."}
+                  </HelpText>
+                )}
                 <GeneralStats stats={generalStats} />
                 {zones && analysis.zoneTimes && (
                   <div className="an-sheet__stats an-sheet__stats--always ui-mt-6" aria-label="Temps par zone">
@@ -164,7 +173,7 @@ function MuscuModule() {
                     ) : null))}
                   </div>
                 )}
-                {smoothed && minutes.length > 1 && (
+                {withHeartRate && smoothed && minutes.length > 1 && (
                   <div className="ui-mt-10">
                     <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
                       style={{ width: '100%', height: '220px' }}>
@@ -186,15 +195,16 @@ function MuscuModule() {
                     )}
                   </div>
                 )}
-                {intervals.length === 0 && (
+                {withHeartRate && intervals.length === 0 && (
                   <p className="ui-muted ui-text-xs ui-mt-8-only">Séance faite sans le compteur : pas de phases à poser sur la courbe.</p>
                 )}
-                {!zones && (
+                {withHeartRate && !zones && (
                   <p className="ui-muted ui-text-xs ui-mt-8-only">
                     Pour le temps par zone, saisir la FC max ou l'année de naissance dans <Link to="/parametres">Réglages</Link>, bloc « Pratiquant ».
                   </p>
                 )}
-                <SessionMarksList view={marks} distanceUnit="km" withDistance={false} shownMs={shownMark} accent={PAGE.accent} onShow={setShownMark} />
+                <SessionMarksList view={marks} distanceUnit="km" withDistance={false} shownMs={shownMark} accent={PAGE.accent}
+                  onShow={withHeartRate ? setShownMark : undefined} />
               </ResizablePanel>
             )}
 
