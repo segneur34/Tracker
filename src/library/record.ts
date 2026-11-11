@@ -113,8 +113,12 @@ export const RECORD_VERSION = 1;
  * 18 (5 novembre 2026, lot 146, après le 17 du lot 145 dans la même APK) : meilleurs 5 km et 10 km à pied et à vélo,
  * meilleure puissance estimée sur 20 min à vélo (`bests`), pour l'onglet
  * « niveau » des statistiques (les autres chiffres ne bougent pas).
+ *
+ * 19 (11 novembre 2026, lot 208) : le bateau reçoit aussi son temps en
+ * mouvement (`inMotionS`), ligne « Temps en mouvement » de « général » et de
+ * l'image de partage (les autres chiffres ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 18;
+export const SUMMARY_CALC_VERSION = 19;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -129,9 +133,10 @@ export interface SessionSummary {
   /** Temps en action au sens du support, `null` tant que le support est inconnu. */
   movingTimeS: number | null;
   /**
-   * Voile à seuil : temps en mouvement, en secondes, arrêts complets ôtés au
-   * plancher d'arrêt ; dénominateur du ratio de vol (ou de navigation, de
-   * planing). Absent ailleurs, et des fiches d'avant la version 12.
+   * Voile : temps en mouvement, en secondes, arrêts complets ôtés au plancher
+   * d'arrêt ; dénominateur du ratio de vol (ou de navigation, de planing), et
+   * « Temps en mouvement » du bateau (version 19). Absent ailleurs, et des
+   * fiches d'avant la version 12 (19 pour le bateau).
    */
   inMotionS?: number;
   /** Distance parcourue pendant ce temps en action (en surf, en glisse) ; absente des fiches d'avant la version 5. */

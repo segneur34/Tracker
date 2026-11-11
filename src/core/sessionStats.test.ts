@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from './kinematics';
-import { activeRuns, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
+import { activeRuns, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, inMotionMask, thresholdActivityMask } from './sessionStats';
 import { getActiveThresholds, SPORT_PROFILES, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint, TrackPoint } from './types';
 import { mPerDegLon } from '../test/geo.fixture';
@@ -151,6 +151,27 @@ describe('getActiveThresholds', () => {
     const boat = SPORT_PROFILES.bateau;
     expect(getActiveThresholds(boat, boat.stillThreshold)).toEqual({ enter: 1.5, exit: 0.5 });
     expect(getActiveThresholds(RUNNING, 0)).toEqual({ enter: 1, exit: 0 });
+  });
+});
+
+describe('inMotionMask', () => {
+  it('ôte les arrêts complets du bateau, sans seuil, à 1 Hz comme à 5 Hz ; égal au seuil 0 ailleurs (lot 208)', () => {
+    const boat = SPORT_PROFILES.bateau;
+    const phases: Phase[] = [
+      { durationS: 300, speedMs: 0 },
+      { durationS: 600, speedMs: 2.06 },
+      { durationS: 300, speedMs: 0 },
+    ];
+    for (const hz of [1, 5]) {
+      const track = analyzed(buildRaw(phases, hz), boat);
+      const inMotion = computeActiveTimeMs(track, inMotionMask(track, boat)) / 1000;
+      expect(inMotion, `${hz} Hz`).toBeGreaterThan(590);
+      expect(inMotion, `${hz} Hz`).toBeLessThan(610);
+      // Le masque d'activité du bateau, lui, garde toute la session.
+      expect(movingS(track, boat, 1), `${hz} Hz`).toBeGreaterThan(1190);
+      const wing = analyzed(buildRaw(phases, hz), SPORT_PROFILES.wingfoil);
+      expect(inMotionMask(wing, SPORT_PROFILES.wingfoil)).toEqual(thresholdActivityMask(wing, SPORT_PROFILES.wingfoil, 0));
+    }
   });
 });
 

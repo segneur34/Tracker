@@ -56,7 +56,7 @@ describe('pré-réglages du bateau (21/10)', () => {
 });
 
 describe('pré-réglages des activités (21/10)', () => {
-  const [voile, course, marche, route, gravel, vtt, surf, , runIntervals, bikeIntervals] = DEFAULT_ACTIVITIES;
+  const [voile, , course, marche, route, gravel, vtt, surf, , runIntervals, bikeIntervals] = DEFAULT_ACTIVITIES;
   const pav = { id: 'a-pav', name: 'Pav', base: 'windsurf' as const, color: '#5b87f2' };
   const trail = { id: 'a-trail', name: 'Trail', base: 'running' as const, color: '#d42a3c' };
   const kmh = (ms: number) => Math.round(ms * 3.6 * 10) / 10;
@@ -348,7 +348,7 @@ describe('onglets à pré-réglage et case « Sauts » (n° 174)', () => {
 });
 
 describe('décalage des seuils cardio (25/10)', () => {
-  const [voile, course, marche, route, , , surf, , runIntervals, bikeIntervals] = DEFAULT_ACTIVITIES;
+  const [voile, , course, marche, route, , , surf, , runIntervals, bikeIntervals] = DEFAULT_ACTIVITIES;
   const kite = { id: 'a-kite', name: 'Kite', base: 'kite' as const, color: '#5b87f2' };
   const pav = { id: 'a-pav', name: 'Pav', base: 'windsurf' as const, color: '#5b87f2' };
 

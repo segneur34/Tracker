@@ -62,6 +62,20 @@ describe('summaryShareStats', () => {
     expect(v.distance).toBe('5,40 NM');
   });
 
+  it('libellé du temps en voile : en vol sur foil, actif sans, en mouvement en bateau (lot 208)', () => {
+    const kn = { speed: 'kn', distance: 'nm' } as const;
+    const labels = (stats: ReturnType<typeof summaryShareStats>) => Object.fromEntries(stats.map((s) => [s.key, s.label]));
+    expect(labels(summaryShareStats(summary({ inMotionS: 3200 }), 'voile', kn, true, true)).activeTime).toBe('Temps en vol');
+    expect(labels(summaryShareStats(summary({ inMotionS: 3200 }), 'voile', kn, true, false)).activeTime).toBe('Temps actif');
+    const boat = summaryShareStats(summary({ inMotionS: 3240 }), 'voile', kn, false, true);
+    expect(labels(boat).activeTime).toBe('Temps en mouvement');
+    expect(values(boat).activeTime).toBe('54 min');
+    expect(boat.map((s) => s.label)).not.toContain('Temps en vol');
+    expect(values(boat).activeRatio).toBeUndefined();
+    // Fiche d'avant la version 19 : pas encore de temps en mouvement, la ligne est écartée de l'image.
+    expect(shareableStats(summaryShareStats(summary(), 'voile', kn, false, false)).map((s) => s.key)).not.toContain('activeTime');
+  });
+
   it('donne en surf les vagues, sans vol hors foil', () => {
     const stats = shareableStats(summaryShareStats(summary({ waveCount: 12, longestWaveM: 84.4, longestFlightS: null }), 'surf', { speed: 'kmh', distance: 'km' }));
     const v = values(stats);

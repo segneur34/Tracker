@@ -1,6 +1,6 @@
 import { EMPTY_ELEVATION } from '../core/elevation';
 import { flightSpans, type FlightSpan } from '../core/pumping';
-import { activeRuns, buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
+import { activeRuns, buildCumulativeTrack, buildBaseSessionStats, computeActiveTimeMs, inMotionMask, thresholdActivityMask } from '../core/sessionStats';
 import { getActiveThresholds, getSportProfile, hasActiveThreshold } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
@@ -86,7 +86,9 @@ export const buildSailingSessionStats = (
     elevationStats: EMPTY_ELEVATION,
   });
 
-  return { ...base, tops: options.tops ?? computeSailingTops(track, cumulative) };
+  // Bateau, sans ratio : son temps en mouvement, arrêts complets ôtés, pour la ligne de « général » (lot 208).
+  const inMotionTimeS = ratioMask ? base.inMotionTimeS : computeActiveTimeMs(track, inMotionMask(track, profile)) / 1000;
+  return { ...base, inMotionTimeS, tops: options.tops ?? computeSailingTops(track, cumulative) };
 };
 
 /**

@@ -3,15 +3,15 @@ import { useState } from 'react';
 import { FAMILY_LABEL, sessionActivity } from '../core/activities';
 import type { ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
-import { librarySession, readSessionExport, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
+import { librarySession, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
 import { readStoredActivities } from '../hooks/useSportSettings';
 import { useTransientValue } from '../hooks/useTransientValue';
-import { downloadBaseName } from '../library/naming';
-import { bundleSessionGpx } from '../library/sessionBundle';
 import { shareLabels } from '../library/shareStats';
 import { safeFileName, saveToDownloads } from '../platform/files';
-import { IconDownload, IconShare } from './icons';
+import { IconDownload } from './icons';
 import SessionRenameField from './SessionRenameField';
+import SessionShareEntries from './SessionShareEntries';
+import { sessionGpxExport, shareGpxText } from './sessionGpxShare';
 import ShareDialog from './ShareDialog';
 import type { TrackSegment } from './TrackSegmentsLayer';
 import Button from './ui/Button';
@@ -29,8 +29,9 @@ const DOWNLOAD_NOTE_MS = 4000;
 
 /**
  * Nom d'une session de la mémoire, en tête de son analyse, son bouton
- * « Renommer » et son menu « … » (« Partager », qui ouvre `ShareDialog` avec
- * ce que l'analyse passe dans `share` ; « Télécharger la session », dans
+ * « Renommer » et son menu « … » (« Partager l'image », qui ouvre `ShareDialog` avec
+ * ce que l'analyse passe dans `share` ; « Partager la trace (GPX) », le GPX de
+ * « Télécharger la session » confié au partage du système ; « Télécharger la session », dans
  * Téléchargements : un GPX complet, fiche et capteurs compris, que « Importer
  * des GPX » range tout entier sur un autre appareil). Le nom est écrit dans la fiche dès sa validation, comme un
  * changement de support (la bibliothèque offre le même renommage). Rien pour
@@ -62,13 +63,23 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
    */
   const download = async () => {
     try {
-      const session = await readSessionExport(file);
-      if (session === null) throw new Error('GPX illisible dans la mémoire.');
-      const named = name?.trim() ? safeFileName(downloadBaseName(name, activityName, session.record.summary.startMs, file)) : '';
-      await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion, session.unreadable));
+      const { fileName, text } = await sessionGpxExport(file, name, activityName);
+      await saveToDownloads(fileName, text);
       setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {
       setNote({ text: `Téléchargement impossible : ${plainError(err, 'erreur inconnue')}`, error: true });
+    }
+  };
+
+  /** Le même GPX, confié au partage du système (lot 207). */
+  const shareTrace = async () => {
+    setNote(null);
+    try {
+      const { fileName, text } = await sessionGpxExport(file, name, activityName);
+      const fallback = await shareGpxText(fileName, text);
+      if (fallback) setNote({ text: fallback, error: false });
+    } catch (err) {
+      setNote({ text: `Partage impossible : ${plainError(err, 'erreur inconnue')}`, error: true });
     }
   };
 
@@ -95,12 +106,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
             <Button size="s" variant="ghost" onClick={() => setDraft(name ?? '')}>Renommer</Button>
           )}
           <MoreMenu label="Plus d'actions sur la session">
-            {share && (
-              <Button onClick={() => setSharing(true)}>
-                <IconShare size={18} />
-                Partager
-              </Button>
-            )}
+            <SessionShareEntries onShareImage={share ? () => setSharing(true) : undefined} onShareTrace={() => void shareTrace()} />
             <Button onClick={() => void download()}>
               <IconDownload size={18} />
               Télécharger la session

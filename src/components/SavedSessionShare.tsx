@@ -9,11 +9,11 @@ import { activitySpeedRanges, effectiveDistanceUnit, effectiveFoil, effectiveSpe
 import { shareLabels, summaryShareStats } from '../library/shareStats';
 import { sessionFoil } from '../library/summaryOptions';
 import { safeFileName } from '../platform/files';
-import { IconShare } from './icons';
 import { sessionColorTrack, sessionSpeedRange } from '../library/sessionTrack';
 import ShareDialog from './ShareDialog';
+import SessionShareEntries from './SessionShareEntries';
+import { sessionGpxExport, shareGpxText } from './sessionGpxShare';
 import type { TrackSegment } from './TrackSegmentsLayer';
-import Button from './ui/Button';
 import MoreMenu from './ui/MoreMenu';
 
 type Prepared = {
@@ -33,7 +33,7 @@ interface SavedSessionShareProps {
 
 /**
  * Menu « … » des cartes de fin d'enregistrement (« Session terminée »,
- * « Session rangée ») : « Partager » ouvre la même fenêtre que dans
+ * « Session rangée ») : « Partager l'image » ouvre la même fenêtre que dans
  * l'analyse (`ShareDialog`), la trace colorée comme l'analyse la colorerait
  * (`sessionColorTrack`) et les chiffres du résumé (`summaryShareStats`) : celui
  * de la fiche si la session est rangée, sinon calculé sur le GPX avec les
@@ -42,9 +42,12 @@ interface SavedSessionShareProps {
 function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessionShareProps) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Phrase d'un partage de la trace tombé en téléchargement (navigateur sans partage de fichier). */
+  const [note, setNote] = useState<string | null>(null);
 
   const open = () => {
     setError(null);
+    setNote(null);
     try {
       const record = libraryFile === null ? undefined : librarySession(libraryFile)?.record;
       const sport = record?.sport ?? activity.base;
@@ -80,15 +83,32 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
     }
   };
 
+  /**
+   * « Partager la trace (GPX) » (lot 207) : rangée, le GPX de « Télécharger la session » de son analyse
+   * (`sessionGpxExport`) ; pas encore rangée, le GPX de l'enregistrement sous son nom.
+   */
+  const shareTrace = async () => {
+    setError(null);
+    setNote(null);
+    try {
+      const record = libraryFile === null ? undefined : librarySession(libraryFile)?.record;
+      const { fileName: name, text } = libraryFile !== null
+        ? await sessionGpxExport(libraryFile, record?.name ?? null, activity.name)
+        : { fileName, text: gpx };
+      setNote(await shareGpxText(name, text));
+    } catch (err) {
+      setError(`Partage impossible : ${plainError(err, 'erreur inconnue')}`);
+    }
+  };
+
   return (
     <>
       <MoreMenu label="Plus d'actions sur la session">
-        <Button onClick={open}>
-          <IconShare size={18} />
-          Partager
-        </Button>
+        <SessionShareEntries onShareImage={open} onShareTrace={() => void shareTrace()} />
       </MoreMenu>
-      {error && <span role="status" style={{ fontSize: 'var(--text-s)', color: 'var(--recording)' }}>{error}</span>}
+      {(error || note) && (
+        <span role="status" style={{ fontSize: 'var(--text-s)', color: error ? 'var(--recording)' : 'var(--muted)' }}>{error || note}</span>
+      )}
       {prepared && <ShareDialog {...prepared.props} segments={prepared.segments} onClose={() => setPrepared(null)} />}
     </>
   );

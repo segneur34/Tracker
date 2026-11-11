@@ -201,9 +201,19 @@ describe('summarizeSession', () => {
       expect(summary.inMotionS!).toBeLessThan(910);
       expect(summary.movingTimeS! / summary.inMotionS!).toBeCloseTo(2 / 3, 1);
     }
-    // Ni la course ni le bateau, sans ratio de vol.
+    // Pas la course, sans ratio de vol.
     expect('inMotionS' in summarizeSession(buildTrack([[600, 3]]), 'running')!).toBe(false);
-    expect('inMotionS' in summarizeSession(buildTrack([[600, 2.06]]), 'bateau')!).toBe(false);
+  });
+
+  it('range aussi le temps en mouvement du bateau, arrêts complets ôtés (version 19, lot 208)', () => {
+    // 5 min à quai, 10 min à 4 nœuds, 5 min à quai : toute la session en navigation, 10 min en mouvement.
+    for (const hz of [1, 5]) {
+      const summary = summarizeSession(buildTrack([[300, 0], [600, 2.06], [300, 0]], hz), 'bateau')!;
+      expect(summary.calcVersion).toBe(SUMMARY_CALC_VERSION);
+      expect(summary.movingTimeS, `${hz} Hz`).toBeCloseTo((summary.endMs - summary.startMs) / 1000, 5);
+      expect(summary.inMotionS!, `${hz} Hz`).toBeGreaterThan(590);
+      expect(summary.inMotionS!, `${hz} Hz`).toBeLessThan(610);
+    }
   });
 
   it('compte toute une session bateau en navigation, sans seuil, bords lents compris', () => {

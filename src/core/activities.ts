@@ -95,6 +95,8 @@ export const BASE_COLOR: Record<SportType, string> = {
   muscu: FAMILY_SHADES.fractionne[3],
 };
 
+/** Activité voile de départ à côté de « Voile » (lot 205, 11/11), sur le calcul bateau. */
+export const BATEAU_ACTIVITY: Activity = { id: 'a-bateau', name: 'Bateau', base: 'bateau', color: BASE_COLOR.bateau };
 /** Activité vélo de départ, sur l'identifiant du calcul ; appelée « Vélo » avant le point 81. */
 const ROUTE_ACTIVITY: Activity = { id: 'cycling', name: 'Route', base: 'cycling', color: BASE_COLOR.cycling };
 /** Activité à pied de départ à côté de Course (20/10) ; ses bornes de couleur et son temps estimé par défaut suivent (`useSportSettings.ts`). */
@@ -119,11 +121,12 @@ export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foi
 
 /**
  * Au premier lancement : une activité par famille, sur l'identifiant de son
- * calcul (celui des anciens réglages), plus la Marche, Gravel et VTT, les
- * deux du fractionné, Tests, Muscu et les deux du surf.
+ * calcul (celui des anciens réglages), plus le Bateau, la Marche, Gravel et
+ * VTT, les deux du fractionné, Tests, Muscu et les deux du surf.
  */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
+  BATEAU_ACTIVITY,
   { id: 'running', name: 'Course', base: 'running', color: BASE_COLOR.running },
   MARCHE_ACTIVITY,
   ROUTE_ACTIVITY,
@@ -142,14 +145,18 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
  * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
  * fractionné (point 89) ; 4 : couleurs prises dans les nuances de la famille
  * (point 90) ; 5 : Surf et Surf foil (point 97) ; 6 : Marche (20/10) ; 7 : couleurs de la
- * refonte (22/10) ; 8 : Tests (24/10) ; 9 : Muscu (lot I du 25/10). Une liste d'avant est mise à jour une fois
+ * refonte (22/10) ; 8 : Tests (24/10) ; 9 : Muscu (lot I du 25/10) ; 10 : Bateau (lot 205, 11/11). Une liste d'avant est mise à jour une fois
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 9;
+export const ACTIVITIES_VERSION = 10;
 
-/** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
-const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
+/**
+ * Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées.
+ * `present` remplace, pour cette graine seule, la règle d'ajout commune (même identifiant,
+ * ou même nom dans la famille) : vrai si l'utilisateur a déjà l'activité.
+ */
+const ACTIVITY_SEEDS: { version: number; activity: Activity; present?: (a: Activity) => boolean }[] = [
   { version: 2, activity: GRAVEL_ACTIVITY },
   { version: 2, activity: VTT_ACTIVITY },
   { version: 3, activity: RUN_INTERVALS_ACTIVITY },
@@ -159,6 +166,9 @@ const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
   { version: 6, activity: MARCHE_ACTIVITY },
   { version: 8, activity: TESTS_ACTIVITY },
   { version: 9, activity: MUSCU_ACTIVITY },
+  // Bateau (lot 205, 11/11) : déjà là si une activité porte son identifiant ou calcule en bateau. Pas la règle
+  // du nom : une ancienne « Voile » renommée « Bateau » calcule en wingfoil, et le vrai bateau s'ajoute à côté.
+  { version: 10, activity: BATEAU_ACTIVITY, present: (a) => a.id === BATEAU_ACTIVITY.id || a.base === 'bateau' },
 ];
 
 /** Ancien nom de l'activité vélo de départ, devenue « Route ». */
@@ -333,21 +343,24 @@ const foldName = (name: string): string =>
  *   `recolorActivities`, comme en version 4.
  * - Version 8 : Tests, dans l'Entraînement.
  * - Version 9 : Muscu.
+ * - Version 10 : Bateau, sauf si une activité porte déjà son identifiant ou
+ *   calcule en bateau (règle propre à cette graine, `present`).
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
  * son identifiant, ou son nom dans la même famille (casse et accents ignorés :
- * une « marche » créée avant reste seule) ; sa couleur, si une autre
- * la porte déjà, est la première nuance libre.
+ * une « marche » créée avant reste seule), ou, pour une graine qui a sa règle,
+ * si `present` le dit ; sa couleur, si une autre la porte déjà, est la première nuance libre.
  */
 export const upgradeActivities = (activities: Activity[], fromVersion: number): Activity[] => {
   const sameName = (a: string, b: string) => foldName(a) === foldName(b);
   let list = fromVersion >= 2 ? activities : activities.map((a) =>
     a.id === ROUTE_ACTIVITY.id && a.name === LEGACY_CYCLING_NAME ? { ...a, name: ROUTE_ACTIVITY.name } : a
   );
-  for (const { version, activity: seed } of ACTIVITY_SEEDS) {
+  for (const { version, activity: seed, present } of ACTIVITY_SEEDS) {
     if (version <= fromVersion) continue;
     const family = activityFamily(seed);
-    if (list.some((a) => a.id === seed.id || (activityFamily(a) === family && sameName(a.name, seed.name)))) continue;
+    const already = present ?? ((a: Activity) => a.id === seed.id || (activityFamily(a) === family && sameName(a.name, seed.name)));
+    if (list.some(already)) continue;
     const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list, family) : seed.color;
     list = insertActivity(list, { ...seed, color });
   }

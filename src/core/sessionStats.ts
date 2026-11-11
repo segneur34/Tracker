@@ -140,8 +140,12 @@ export const thresholdActivityMask = (track: TrackPoint[], profile: SportProfile
       gapMinSpeedMs: fromDisplaySpeed(getActiveThresholds(profile, profile.stillThreshold).exit, profile.thresholdUnit),
     });
   }
-  const effective = threshold > 0 ? threshold : profile.stillThreshold;
-  const { enter, exit } = getActiveThresholds(profile, effective);
+  return maskAtThreshold(track, profile, threshold > 0 ? threshold : profile.stillThreshold);
+};
+
+/** Masque d'activité au seuil `threshold` (unité du profil), avec l'hystérésis du profil. */
+const maskAtThreshold = (track: TrackPoint[], profile: SportProfile, threshold: number): boolean[] => {
+  const { enter, exit } = getActiveThresholds(profile, threshold);
   const exitThresholdMs = fromDisplaySpeed(exit, profile.thresholdUnit);
   return computeActivityMask(track, {
     enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
@@ -150,6 +154,15 @@ export const thresholdActivityMask = (track: TrackPoint[], profile: SportProfile
     gapMinSpeedMs: exitThresholdMs,
   });
 };
+
+/**
+ * Masque du temps en mouvement : arrêts complets ôtés au plancher d'arrêt du
+ * profil (`stillThreshold`), quel que soit le seuil d'activité. Pour un calcul
+ * à seuil, c'est le masque au seuil 0 ; le bateau, sans seuil, le reçoit aussi
+ * (« Temps en mouvement » de son onglet « général », lot 208 du 11/11).
+ */
+export const inMotionMask = (track: TrackPoint[], profile: SportProfile): boolean[] =>
+  maskAtThreshold(track, profile, profile.stillThreshold);
 
 /**
  * Une suite continue du masque d'activité, en index de points : `start` est le

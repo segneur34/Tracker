@@ -187,7 +187,7 @@ await shoot('satellite-planification');
 await go(paths.voile, 6000);
 await evaluate(`document.querySelector('.an-sheet__head .ui-more__button')?.click()`);
 await wait(300);
-await evaluate(`[...document.querySelectorAll('.an-sheet__head .ui-more__panel button')].find((x) => x.textContent.trim() === 'Partager')?.click()`);
+await evaluate(`[...document.querySelectorAll('.an-sheet__head .ui-more__panel button')].find((x) => x.textContent.trim() === "Partager l'image")?.click()`);
 let shareReady = false;
 for (let t = 0; t < 20000 && !shareReady; t += 250) {
   shareReady = await evaluate(`(() => { const i = document.querySelector('.share-dialog__preview img'); return Boolean(i && i.complete && i.naturalWidth > 0); })()`);

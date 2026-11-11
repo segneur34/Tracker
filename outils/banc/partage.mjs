@@ -84,7 +84,7 @@ const menuItems = () => evaluate(`(() => {
 })()`);
 const openShare = async () => {
   const items = await menuItems();
-  await evaluate(`[...document.querySelectorAll('.an-sheet__head .ui-more__panel button')].find((x) => x.textContent.trim() === 'Partager')?.click()`);
+  await evaluate(`[...document.querySelectorAll('.an-sheet__head .ui-more__panel button')].find((x) => x.textContent.trim() === "Partager l'image")?.click()`);
   return items;
 };
 /** Attend l'image à jour : bouton « Partager » de la fenêtre actif. */
@@ -122,7 +122,7 @@ const isPortrait = (size) => size?.[0] === 1080 && size?.[1] === 1920;
 for (const s of SESSIONS) {
   await go(paths[s.page], 7000);
   const items = await openShare();
-  check(`${s.page} : « Partager » en tête du menu « … »`, items?.[0] === 'Partager', JSON.stringify(items));
+  check(`${s.page} : « Partager l'image » en tête du menu « … »`, items?.[0] === "Partager l'image" && items?.[1] === 'Partager la trace (GPX)', JSON.stringify(items));
   check(`${s.page} : fenêtre ouverte`, Boolean(await evaluate(`document.querySelector('.share-dialog[role=dialog]') !== null`)));
   check(`${s.page} : aperçu dessiné`, await waitImage());
   // Relu une fois l'image prête : l'altitude (IGN bloqué, repli sur le GPS) arrive après l'ouverture.
@@ -231,8 +231,8 @@ const cardMenu = await evaluate(`(() => {
   b.click();
   return [...card.querySelectorAll('.ui-more__panel button')].map((x) => x.textContent.trim());
 })()`);
-check('fin d\'enregistrement : « Partager » dans le « … » de « Session terminée »', Boolean(cardMenu?.includes('Partager')), JSON.stringify(cardMenu));
-await evaluate(`[...document.querySelectorAll('.ui-card .ui-more__panel button')].find((x) => x.textContent.trim() === 'Partager')?.click()`);
+check('fin d\'enregistrement : « Partager » dans le « … » de « Session terminée »', Boolean(cardMenu?.includes("Partager l'image") && cardMenu?.includes('Partager la trace (GPX)')), JSON.stringify(cardMenu));
+await evaluate(`[...document.querySelectorAll('.ui-card .ui-more__panel button')].find((x) => x.textContent.trim() === "Partager l'image")?.click()`);
 check('fin d\'enregistrement : aperçu dessiné', await waitImage());
 check('fin d\'enregistrement : image en hauteur de 1080 × 1920', isPortrait(await imageSize()), JSON.stringify(await imageSize()));
 c = await chips();

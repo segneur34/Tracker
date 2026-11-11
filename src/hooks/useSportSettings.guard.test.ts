@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ACTIVITIES_VERSION, BATEAU_ACTIVITY } from '../core/activities';
 import { jsonStore } from '../platform/storage';
 import {
   PRESETS_VERSION, resolveFoil, resolveHrOffset, resolveJumps, resolveLiveFields, resolveMarkGuide, resolveSpeedUnit, resolveTabChoices,
   resolveThresholdOverride, settingsView, type StoredSettings,
 } from '../settings/activitySettings';
-import { ACTIVITIES_0461, KITE_0461, settings0461 } from '../test/settings0461.fixture';
+import { ACTIVITIES_0461, KITE_0461, SURF_0461, SURF_FOIL_0461, WING_0461, settings0461 } from '../test/settings0461.fixture';
 import { readStoredSettings, upgradeStoredActivities, upgradeStoredPresets } from './useSportSettings';
 
 /**
  * Garde des migrations (fiche 154, risque 1, lot 187) : les réglages d'un appareil de la 0.4.61 tenus en voile et en
  * surf traversent la mise à jour de la liste d'activités (`ACTIVITIES_VERSION`) et l'effacement des pré-réglages
  * (`PRESET_RESETS`) sans changer, à un écart près, voulu et écrit ici : la reprise 4 des pré-réglages (sauts mesurés
- * d'office au kite, 05/11) efface une fois la case « Sauts » de toute activité sur le calcul kite. Rien d'autre ne
- * bouge, ni dans ce qui est rangé ni dans ce que Réglages en lit.
+ * d'office au kite, 05/11) efface une fois la case « Sauts » de toute activité sur le calcul kite ; la version 10 de
+ * la liste (lot 205, 11/11) y ajoute le Bateau, après la dernière activité de la voile. Rien d'autre ne bouge, ni
+ * dans ce qui est rangé ni dans ce que Réglages en lit.
  */
 
 const KEY = 'tracker.sportSettings';
@@ -54,16 +56,18 @@ describe('réglages de la 0.4.61 en voile et surf, après les montées de versio
     jsonStore.write(KEY, before);
     const readBefore = readings(before);
 
-    expect(upgradeStoredActivities()).toBe(false);
+    // Version 10 de la liste : le Bateau s'ajoute (lot 205).
+    expect(upgradeStoredActivities()).toBe(true);
     expect(upgradeStoredPresets()).toBe(true);
     const after = readStoredSettings();
 
     // Ce qui est rangé : à l'identique, hors la version des pré-réglages et les sauts du kite.
     const { jumps: jumpsBefore, ...restBefore } = before;
     const { jumps: jumpsAfter, ...restAfter } = after;
-    expect(restAfter).toEqual({ ...restBefore, presetsVersion: PRESETS_VERSION });
+    const activitiesAfter = [WING_0461, KITE_0461, BATEAU_ACTIVITY, SURF_0461, SURF_FOIL_0461];
+    expect(restAfter).toEqual({ ...restBefore, presetsVersion: PRESETS_VERSION, activities: activitiesAfter, activitiesVersion: ACTIVITIES_VERSION });
     expect(jumpsAfter).toEqual({ wingfoil: jumpsBefore!.wingfoil });
-    expect(after.activities).toEqual(ACTIVITIES_0461);
+    expect(after.activities).toEqual(activitiesAfter);
 
     // Ce que Réglages lit : à l'identique pour la voile et les deux surfs, sauts compris ; au kite, tout sauf les sauts.
     const readAfter = readings(after);
@@ -75,7 +79,7 @@ describe('réglages de la 0.4.61 en voile et surf, après les montées de versio
   });
 
   it('déjà à la version courante des pré-réglages : rien n\'est récrit', () => {
-    const current = { ...settings0461(), presetsVersion: PRESETS_VERSION };
+    const current = { ...settings0461(), activitiesVersion: ACTIVITIES_VERSION, presetsVersion: PRESETS_VERSION };
     jsonStore.write(KEY, current);
     const readBefore = readings(current);
     expect(upgradeStoredActivities()).toBe(false);

@@ -9,6 +9,7 @@ import {
   buildCumulativeTrack,
   computeActiveDistanceM,
   computeActiveTimeMs,
+  inMotionMask,
   thresholdActivityMask,
 } from '../core/sessionStats';
 import { computeGrades } from '../land/grade';
@@ -18,7 +19,6 @@ import {
   UNCLASSIFIED_PROFILE,
   defaultActiveThresholdOf,
   getSportProfile,
-  hasActiveThreshold,
   sportTreatment,
   type ElevationProfile,
   type HeartRateProfile,
@@ -126,7 +126,7 @@ const analyze = (
   movingDistanceM: number | null;
   /** Masque d'activité (hors surf), pour la cadence en mouvement. */
   mask?: boolean[];
-  /** Voile à seuil : temps en mouvement, dénominateur du ratio (`SessionSummary.inMotionS`). */
+  /** Voile : temps en mouvement, dénominateur du ratio à seuil (`SessionSummary.inMotionS`). */
   inMotionS?: number;
   surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS' | 'maxSpeedMs'>;
 } => {
@@ -160,10 +160,9 @@ const analyze = (
   // Seuil à 0 : arrêts complets ôtés d'office (`stillThreshold`) ; bateau : toute la session en navigation,
   // pauses de l'enregistrement et trous immobiles ôtés.
   const mask = thresholdActivityMask(track, profile, threshold);
-  // Voile à seuil : le ratio se lit sur le temps en mouvement, comme dans l'analyse (`buildSailingSessionStats`).
-  const inMotionS = isSailing && hasActiveThreshold(profile)
-    ? computeActiveTimeMs(track, thresholdActivityMask(track, profile, 0)) / 1000
-    : undefined;
+  // Voile : temps en mouvement, arrêts complets ôtés, comme dans l'analyse (`buildSailingSessionStats`) ;
+  // dénominateur du ratio à seuil, ligne « Temps en mouvement » du bateau (lot 208).
+  const inMotionS = isSailing ? computeActiveTimeMs(track, inMotionMask(track, profile)) / 1000 : undefined;
   return {
     track,
     movingTimeS: computeActiveTimeMs(track, mask) / 1000,

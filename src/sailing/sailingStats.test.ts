@@ -39,8 +39,12 @@ describe('buildSailingSessionStats', () => {
     expect(withStops.inMotionTimeS).toBeLessThan(910);
   });
 
-  it('bateau : pas de temps en mouvement à part, sans seuil ni ratio', () => {
-    expect(buildSailingSessionStats(track, { sport: 'bateau' })!.inMotionTimeS).toBe(0);
+  it('bateau : temps en mouvement à part, arrêts complets ôtés, sans toucher au ratio (lot 208)', () => {
+    // Le bord à 0,5 nœud passe sous le plancher d'arrêt (1 nœud) : seules les 10 min à 4 nœuds sont en mouvement.
+    const stats = buildSailingSessionStats(track, { sport: 'bateau' })!;
+    expect(stats.inMotionTimeS).toBeGreaterThan(590);
+    expect(stats.inMotionTimeS).toBeLessThan(610);
+    expect(stats.activeRatio).toBe('100.0');
   });
 
   it.each(['wingfoil', 'windsurf', 'kite', 'bateau'] as const)("masques reçus tout faits : mêmes chiffres qu'à les refaire (%s, lot 58)", (sport) => {

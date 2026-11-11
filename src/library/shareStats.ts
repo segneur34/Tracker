@@ -134,12 +134,16 @@ const summaryBaseStats = (
   const per = (m: number | null, s: number | null) => (m === null || s === null || s <= 0 ? null : m / s);
 
   if (treatment === 'voile') {
-    const active = new Set(['activeDistance', 'activeTime', 'activeRatio', 'activeAverage']);
+    const active = new Set(['activeDistance', 'activeRatio', 'activeAverage']);
+    // Bateau, sans seuil (lot 208) : son temps en mouvement, arrêts complets ôtés, jamais « Temps en vol » ni « Temps actif ».
+    const activeTime = withActiveThreshold
+      ? { key: 'activeTime', label: foil ? 'Temps en vol' : 'Temps actif', value: movingS === null ? '—' : formatDuration(movingS * 1000) }
+      : { key: 'activeTime', label: 'Temps en mouvement', value: summary.inMotionS === undefined ? '—' : formatDuration(summary.inMotionS * 1000) };
     return [
       { key: 'distance', label: 'Distance', value: distance },
       { key: 'activeDistance', label: 'Distance active', value: movingM === null ? '—' : formatDistance(movingM, units.distance) },
       { key: 'totalTime', label: 'Temps total', value: formatDuration(totalS * 1000) },
-      { key: 'activeTime', label: foil ? 'Temps en vol' : 'Temps actif', value: movingS === null ? '—' : formatDuration(movingS * 1000) },
+      activeTime,
       // Sur foil : la part du temps en mouvement passée en vol (05/11), comme « général ».
       ...(foil ? [{ key: 'activeRatio', label: FOIL_RATIO_LABEL, value: flightRatioValue(movingS, summary.inMotionS) }] : []),
       { key: 'averageSpeed', label: 'Vitesse moyenne', value: speed(per(summary.distanceM, totalS)) },
