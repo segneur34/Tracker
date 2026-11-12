@@ -28,7 +28,18 @@ vi.mock('react', async (importOriginal) => ({
   },
 }));
 
-const { getLiveRecording, startLiveRecording, subscribeToLiveRecording, useLiveRecording } = await import('./useLiveRecording');
+/**
+ * Le module du direct garde un état à lui (heure du dernier calcul, différé, abonnés) : chaque test en charge un
+ * exemplaire neuf et repart d'un enregistreur vide, pour ne dépendre ni de l'ordre ni de l'heure du test d'avant
+ * (ordre mélangé de la vérification : un test joué à une heure plus tardive figeait le suivant).
+ */
+const loadLive = async () => {
+  vi.resetModules();
+  recorder.state.stats = { pointCount: 0 };
+  recorder.segments = [[]];
+  recorder.listeners = [];
+  return import('./useLiveRecording');
+};
 
 const T0 = Date.UTC(2026, 10, 4, 14, 0, 0);
 
@@ -50,6 +61,7 @@ describe('direct de l’enregistrement, écran éteint', () => {
   afterEach(() => vi.useRealTimers());
 
   it('avance à l’arrivée des positions même si son différé ne part plus : la notification en dépend', async () => {
+    const { getLiveRecording, startLiveRecording, subscribeToLiveRecording, useLiveRecording } = await loadLive();
     startLiveRecording();
     useLiveRecording();
     await vi.advanceTimersByTimeAsync(0);
@@ -77,13 +89,12 @@ describe('direct de la FC de nuit (lot 213)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0 + 3_600_000);
     recorder.state.activity = baseActivity('night-hr');
-    recorder.state.stats = { pointCount: 0 };
-    recorder.segments = [[]];
   });
   afterEach(() => vi.useRealTimers());
 
   it('une mesure par seconde, page ouverte : un recalcul toutes les 30 s au plus, pas à chaque mesure', async () => {
     const start = T0 + 3_600_000;
+    const { startLiveRecording, subscribeToLiveRecording, useLiveRecording } = await loadLive();
     startLiveRecording();
     useLiveRecording();
     await vi.advanceTimersByTimeAsync(0);
