@@ -339,3 +339,29 @@
   width: 100%;
   min-width: 0;
 }
+
+/* Pages des tests sans style en ligne (FC de nuit, lot 213) : l'aide « ? » dans l'orange de la famille. */
+.train-page--help {
+  --help-accent: var(--fractionne);
+}
+
+/* Page du test « FC de nuit » : courbe des nuits et dernières nuits, chacune ouvre son analyse. */
+.night-chart {
+  margin: var(--space-2) 0;
+  min-width: 0;
+}
+
+.night-history__open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

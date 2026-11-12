@@ -1,6 +1,6 @@
 import { isObject } from './basics';
 import {
-  SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, isIntervalSport, isSportType, sportFamily, sportTreatment, trainingKind,
+  SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, familySports, isIntervalSport, isSportType, sportFamily, sportTreatment, trainingKind,
   type SportFamily, type TrainingKind, type Treatment,
 } from './sportProfiles';
 import type { SportType } from './types';
@@ -93,6 +93,7 @@ export const BASE_COLOR: Record<SportType, string> = {
   'run-test': FAMILY_SHADES.fractionne[2],
   surf: FAMILY_SHADES.surf[0],
   muscu: FAMILY_SHADES.fractionne[3],
+  'night-hr': FAMILY_SHADES.fractionne[4],
 };
 
 /** Activité voile de départ à côté de « Voile » (lot 205, 11/11), sur le calcul bateau. */
@@ -223,6 +224,16 @@ export const baseActivity = (sport: SportType): Activity => ({
   base: sport,
   color: BASE_COLOR[sport],
 });
+
+/**
+ * Calculs qui ne servent de base à aucune activité créée : la FC de nuit (lot 213), un test dont
+ * la session prend l'activité de base du calcul (`baseActivity('night-hr')`), jamais une activité de la liste.
+ */
+const NOT_ACTIVITY_BASES: ReadonlySet<SportType> = new Set<SportType>(['night-hr']);
+
+/** Calculs proposés à la création d'une activité dans une famille (Réglages), dans l'ordre de `SPORT_PROFILES`. */
+export const activityBases = (family: SportFamily): SportType[] =>
+  familySports(family).filter((sport) => !NOT_ACTIVITY_BASES.has(sport));
 
 export const activityFamily = (activity: Activity): SportFamily => sportFamily(activity.base);
 

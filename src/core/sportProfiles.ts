@@ -123,6 +123,12 @@ export interface RecordingProfile {
    * (`recording/resume.ts`) ; au-delà, la session attend sa décision.
    */
   resumeOfferMaxAgeS: number;
+  /**
+   * Enregistrement silencieux (test « FC de nuit », lot 213) : ni son ni
+   * vibration (bips de départ et de fin, alerte sonore de FC perdue), écran
+   * non gardé allumé. Lu par `isSilentSport`, jamais par le nom du calcul.
+   */
+  silent: boolean;
 }
 
 /**
@@ -143,6 +149,7 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   beltLostDelayS: 60,
   beltLostRearmS: 120,
   resumeOfferMaxAgeS: 600,
+  silent: false,
 };
 
 /**
@@ -157,6 +164,12 @@ const INTERVAL_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSp
  * le défaut : un bord lent, sous 1 km/h, ne doit pas mettre la trace en pause.
  */
 const BOAT_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: kmhToMs(0.2) };
+
+/**
+ * FC de nuit (lot 213) : celui de l'Entraînement (pause automatique coupée),
+ * silencieux : le téléphone est posé près du lit, la nuit ne doit pas sonner.
+ */
+const NIGHT_RECORDING: RecordingProfile = { ...INTERVAL_RECORDING, silent: true };
 
 /**
  * Répétitions retrouvées dans la vitesse d'une session faite sans le compteur
@@ -614,6 +627,12 @@ export interface SportProfile {
    * surf (point 104) et voile sur foil (lot 22) ; `null` en bateau, à pied, à vélo.
    */
   pump: PumpDetection | null;
+  /**
+   * Session comptée dans les cumuls : charge d'entraînement, volumes et durées
+   * de Statistiques, progression du Profil, FC max observée, dernière activité.
+   * Faux pour la FC de nuit seulement (lot 213) ; lu par `countsInTotals`.
+   */
+  inTotals: boolean;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile ; leurs clés font le type des tops de la voile (`SailingTopKey`). */
@@ -692,6 +711,7 @@ const COMMON_DEFAULTS = {
   grade: GRADE_ANALYSIS,
   foilDefault: false,
   recording: DEFAULT_RECORDING,
+  inTotals: true,
 };
 
 /**
@@ -908,6 +928,14 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     ...RUNNING_PROFILE, id: 'muscu', label: 'Muscu', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
     jumps: null, intervals: null, cadence: null, terrainElevationStepM: null, topTargets: [], heartRate: heartRateOffset(0),
   },
+  // FC de nuit (lot 213) : un test sans position, la ceinture seule, comme la muscu ; silencieux
+  // (`recording.silent`) et hors des cumuls (`inTotals`). Pas une activité qu'on crée : la session
+  // prend l'activité de base de ce calcul (`baseActivity('night-hr')`).
+  'night-hr': {
+    ...RUNNING_PROFILE, id: 'night-hr', label: 'FC de nuit', loopReturnMaxRatio: null, recording: NIGHT_RECORDING,
+    jumps: null, intervals: null, cadence: null, terrainElevationStepM: null, topTargets: [], heartRate: heartRateOffset(0),
+    inTotals: false,
+  },
 };
 
 /** Supports dont l'analyse repose sur le vent. */
@@ -970,6 +998,7 @@ const SPORT_TREATMENT: Record<SportType, Treatment> = {
   'run-test': 'course',
   surf: 'surf',
   muscu: 'muscu',
+  'night-hr': 'muscu',
 };
 
 const SPORT_FAMILY: Record<SportType, SportFamily> = {
@@ -984,6 +1013,7 @@ const SPORT_FAMILY: Record<SportType, SportFamily> = {
   'run-test': 'fractionne',
   surf: 'surf',
   muscu: 'fractionne',
+  'night-hr': 'fractionne',
 };
 
 export const sportTreatment = (sport: SportType): Treatment => SPORT_TREATMENT[sport];
@@ -1009,16 +1039,29 @@ export const TRAINING_KINDS: readonly TrainingKind[] = ['fractionne', 'tests', '
 export const TRAINING_KIND_LABEL: Record<TrainingKind, string> = { fractionne: 'Fractionné', tests: 'Tests', muscu: 'Muscu' };
 
 export const trainingKind = (sport: SportType): TrainingKind | null =>
-  isIntervalSport(sport) ? 'fractionne' : sport === 'run-test' ? 'tests' : sport === 'muscu' ? 'muscu' : null;
+  isIntervalSport(sport) ? 'fractionne' : sport === 'run-test' || sport === 'night-hr' ? 'tests' : sport === 'muscu' ? 'muscu' : null;
 
 /**
- * Calcul enregistré avec des positions (GPS) : tous sauf la muscu, faite de
- * la ceinture cardio seule (lot I du 25/10). Une session sans position n'a ni
- * trace, ni carte, ni cinématique : son GPX ne porte que l'heure et la FC
- * (`ParsedGpx.timedPoints`). C'est ce prédicat qu'on teste, pas le nom du
- * calcul, pour qu'un autre calcul sans trace (test de FC repos) s'y range.
+ * Calcul enregistré avec des positions (GPS) : tous sauf la muscu et la FC de
+ * nuit (lot 213), faites de la ceinture cardio seule (lot I du 25/10). Une
+ * session sans position n'a ni trace, ni carte, ni cinématique : son GPX ne
+ * porte que l'heure et la FC (`ParsedGpx.timedPoints`). C'est ce prédicat
+ * qu'on teste, pas le nom du calcul, pour qu'un autre calcul sans trace s'y range.
  */
-export const hasPositions = (sport: SportType): boolean => sport !== 'muscu';
+export const hasPositions = (sport: SportType): boolean => sport !== 'muscu' && sport !== 'night-hr';
+
+/**
+ * Calcul enregistré en silence (FC de nuit, lot 213, `RecordingProfile.silent`) :
+ * ni son ni vibration, écran non gardé allumé. Seul point où ce choix se lit.
+ */
+export const isSilentSport = (sport: SportType): boolean => SPORT_PROFILES[sport].recording.silent;
+
+/**
+ * Session comptée dans les cumuls (`SportProfile.inTotals`) : tous les calculs
+ * sauf la FC de nuit (lot 213), qui ne compte ni dans la charge, ni dans les
+ * volumes de Statistiques, ni dans le Profil, ni comme FC max observée.
+ */
+export const countsInTotals = (sport: SportType): boolean => SPORT_PROFILES[sport].inTotals;
 
 /** Calcul d'un test guidé (`recording/fitnessTest.ts`) : la rangée « Test » d'Enregistrer, l'onglet « test » de l'analyse. */
 export const isTestSport = (sport: SportType): boolean => trainingKind(sport) === 'tests';

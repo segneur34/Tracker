@@ -121,6 +121,8 @@ export const SCRIPTS = [
   { nom: 'tailles', args: ['{port}', '{travail}', '{captures?}'],
     pages: ['voile', 'course', 'velo', 'surf', 'fractionne', 'enregistrer', 'bibliotheque', 'planification', 'statistiques', 'profil', 'reglages', 'accueil'],
     sansCache: true, releve: ['rapport.md'], delaiMin: 20 },
+  // Test « FC de nuit » (lot 213) : nuit de 8 h importée, onglet « test », nuit courte en direct (6 s de temps réel).
+  { nom: 'fc-nuit', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'statistiques'], solo: true, dev: true },
   { nom: 'fc-repos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },
   { nom: 'test-fcmax', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true, dev: true, accelerable: true },
   { nom: 'test-fcrepos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },

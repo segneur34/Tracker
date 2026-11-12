@@ -1,7 +1,7 @@
 import { isManualPause, isRecordingSession } from '../recording/session';
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { getSportProfile, isTestSport } from '../core/sportProfiles';
+import { getSportProfile, hasPositions, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
@@ -155,7 +155,8 @@ const sync = () => {
   const recorder = getRecorderState();
   const recording = isRecordingSession(recorder);
   if (recorder.status === 'idle') closed = null;
-  const testing = recording && recorder.activity !== null && isTestSport(recorder.activity.base);
+  // Un test guidé suit la vitesse du GPS : un test sans position (FC de nuit, lot 213) n'est pas guidé, ni bip ni palier.
+  const testing = recording && recorder.activity !== null && isTestSport(recorder.activity.base) && hasPositions(recorder.activity.base);
   const kept = recorder.resuming ? getRecordedTest() : null;
   if (!testing) {
     // Reprise sur une autre activité : le test fait avant ne se refait pas si elle revient au test.

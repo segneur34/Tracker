@@ -57,6 +57,12 @@ public class BeeperPlugin extends Plugin {
     private boolean vibrate = false;
     private long lastBeepAt = 0;
 
+    /**
+     * Veille de la ceinture muette (FC de nuit, lot 213) : à l'échéance, ni son ni vibration, l'événement
+     * `beltLost` part quand même. Écrit par `watchBelt` (fil de la page), lu sur le fil des bips.
+     */
+    private volatile boolean beltSilent = false;
+
     private final Runnable beep = new Runnable() {
         @Override
         public void run() {
@@ -80,11 +86,12 @@ public class BeeperPlugin extends Plugin {
     /**
      * Échéance de la veille de la ceinture (lot 177), sur le fil des bips : les bips d'approche continuent.
      * Écran éteint, le verrou partiel est celui du service GPS, ou de HeartRateService en muscu.
+     * Veille muette (`beltSilent`) : l'événement seul, sans son ni vibration.
      */
     private final Runnable beltLost = new Runnable() {
         @Override
         public void run() {
-            tones().playBeltLost();
+            if (!beltSilent) tones().playBeltLost();
             notifyListeners("beltLost", new JSObject());
         }
     };
@@ -233,10 +240,14 @@ public class BeeperPlugin extends Plugin {
         call.resolve();
     }
 
-    /** Veille de la ceinture : arme, ou repousse, le minuteur à `delayMs` ; à l'échéance, son « FC perdue » et événement `beltLost`. */
+    /**
+     * Veille de la ceinture : arme, ou repousse, le minuteur à `delayMs` ; à l'échéance, son « FC perdue » et événement
+     * `beltLost`. `silent` (FC de nuit, lot 213) : l'événement seul, ni son ni vibration.
+     */
     @PluginMethod
     public void watchBelt(PluginCall call) {
         long delayMs = Math.max(1000, call.getInt("delayMs", 60_000));
+        beltSilent = Boolean.TRUE.equals(call.getBoolean("silent", false));
         Handler g = gpsHandler();
         g.removeCallbacks(beltLost);
         g.postDelayed(beltLost, delayMs);

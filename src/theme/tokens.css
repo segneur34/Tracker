@@ -191,13 +191,6 @@
   /* Ombres : leur couleur, mêlée en transparence (`color-mix`) ; transparente en économe, où les ombres
      disparaissent. */
   --shadow-color: #1b1f24;
-  /* Recettes d'ombre reprises à l'identique par plusieurs écrans (déclarées ici pour suivre `--shadow-color`
-     et `--ink` du thème, y compris sous `.theme-light`). */
-  --shadow-float: 0 2px 10px color-mix(in srgb, var(--shadow-color) 18%, transparent);
-  --shadow-tool: 0 1px 5px color-mix(in srgb, var(--shadow-color) 25%, transparent);
-  --shadow-chip: 0 1px 4px color-mix(in srgb, var(--shadow-color) 20%, transparent);
-  --ring-ink: 0 0 0 2px var(--ink);
-  --ring-line: 0 0 0 1px var(--line-strong);
 
   /* Graphes : quadrillage, graduations (texte et trait), repères neutres (lignes de phase, seuils), voile
      sous le pointeur. Les couleurs des données restent en dur (`CLAUDE.md`). */
@@ -213,7 +206,10 @@
  * gardé dessus (contraste d'au moins 4,5 : l'orange, déjà au plus clair,
  * reste tel quel) ; chacune est la première nuance sombre de sa famille
  * (`FAMILY_SHADES_DARK`, `palette.test.ts`).
+ * `.ui-dark-scope` : les mêmes variables pour une partie de page seulement,
+ * quel que soit le thème (FC de nuit en cours, lot 213, `RecordingPage`).
  */
+.ui-dark-scope,
 :root[data-theme='dark'] {
   color-scheme: dark;
 
@@ -274,6 +270,23 @@
   --chart-tick: #98a2ad;
   --chart-mark: #b0bec5;
   --chart-cursor: rgb(255 255 255 / 0.06);
+}
+
+/*
+ * Recettes d'ombre et d'anneau reprises à l'identique par plusieurs écrans. Une variable qui en lit d'autres se
+ * calcule là où elle est déclarée, puis s'hérite toute faite : elles sont donc redéclarées sur chaque racine d'une
+ * palette, pour suivre `--shadow-color`, `--ink` et `--line-strong` de celle-ci (`.theme-light` dans une interface
+ * sombre, `.ui-dark-scope` dans une claire : FC de nuit, lot 213).
+ */
+:root,
+.theme-light,
+.leaflet-container,
+.ui-dark-scope {
+  --shadow-float: 0 2px 10px color-mix(in srgb, var(--shadow-color) 18%, transparent);
+  --shadow-tool: 0 1px 5px color-mix(in srgb, var(--shadow-color) 25%, transparent);
+  --shadow-chip: 0 1px 4px color-mix(in srgb, var(--shadow-color) 20%, transparent);
+  --ring-ink: 0 0 0 2px var(--ink);
+  --ring-line: 0 0 0 1px var(--line-strong);
 }
 
 /*

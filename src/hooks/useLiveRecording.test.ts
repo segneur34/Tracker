@@ -71,3 +71,29 @@ describe('direct de l’enregistrement, écran éteint', () => {
     expect(published).toBe(3);
   });
 });
+
+describe('direct de la FC de nuit (lot 213)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0 + 3_600_000);
+    recorder.state.activity = baseActivity('night-hr');
+    recorder.state.stats = { pointCount: 0 };
+    recorder.segments = [[]];
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('une mesure par seconde, page ouverte : un recalcul toutes les 30 s au plus, pas à chaque mesure', async () => {
+    const start = T0 + 3_600_000;
+    startLiveRecording();
+    useLiveRecording();
+    await vi.advanceTimersByTimeAsync(0);
+    let published = 0;
+    subscribeToLiveRecording(() => { published += 1; });
+    for (let s = 0; s < 120; s++) {
+      addFix(start + s * 1000);
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    // 2 min de mesures : au départ, puis à 30, 60 et 90 s (pas 120 recalculs, ni 60 au rythme de la page).
+    expect(published).toBe(4);
+  });
+});

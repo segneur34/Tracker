@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { defaultActiveThresholdOf, getSportProfile, hasPositions, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
+import { defaultActiveThresholdOf, getSportProfile, hasPositions, isSilentSport, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, msToKnots } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
@@ -35,13 +35,20 @@ import { createListeners } from './createStore';
  * active (voile, surf), le seuil de l'analyse. En dehors d'un parcours de voile,
  * l'avancement sur la trace suivie est calculé ici.
  * Sans position (muscu), la FC moyenne seule, sur les mesures de la ceinture
- * (`heartOnlyLiveStats`) : aucun calcul GPS.
+ * (`heartOnlyLiveStats`) : aucun calcul GPS. Une session silencieuse (FC de
+ * nuit, lot 213) n'est recalculée qu'au plus toutes les `SILENT_REFRESH_MS`.
  */
 
 /** Intervalle minimal entre deux recalculs quand une page regarde, en temps réel. */
 const PAGE_REFRESH_MS = 2000;
 /** Intervalle minimal entre deux recalculs sans page, pour la notification. */
 const BACKGROUND_REFRESH_MS = 5000;
+/**
+ * Intervalle minimal entre deux recalculs d'une session silencieuse (FC de nuit, lot 213, `isSilentSport`), page
+ * ouverte ou non : sa FC moyenne relit toutes les mesures depuis le départ, 36 000 en 10 h à 1 Hz ; espacé ainsi, ce
+ * coût reste petit toute la nuit. La FC du moment et la durée ne viennent pas d'ici : elles suivent chaque mesure.
+ */
+const SILENT_REFRESH_MS = 30_000;
 /** Intervalle minimal entre deux mesures de l'allure de la session, qui ne sert qu'au seuil suggéré en voile. */
 const REFERENCE_REFRESH_MS = 60_000;
 
@@ -185,7 +192,7 @@ const request = () => {
     reset();
     return;
   }
-  const refreshMs = pageListeners.size() > 0 ? PAGE_REFRESH_MS : BACKGROUND_REFRESH_MS;
+  const refreshMs = isSilentSport(activity.base) ? SILENT_REFRESH_MS : pageListeners.size() > 0 ? PAGE_REFRESH_MS : BACKGROUND_REFRESH_MS;
   const waitMs = Math.max(0, refreshMs - (Date.now() - lastRunMs));
   if (waitMs === 0) {
     // Écran éteint, le différé ne part plus : l'attendre figerait le direct et la notification jusqu'au retour de la page.

@@ -66,6 +66,11 @@ interface Props {
   mapless?: boolean;
   /** Case « Zones » (course, vélo, fractionné, 05/11) : limites des zones tracées sur la courbe, rangée pour l'activité ; absente : pas de case. */
   zoneLines?: { on: boolean; onChange: (on: boolean) => void };
+  /**
+   * Session comptée dans les cumuls (`countsInTotals`, vrai par défaut). Faux pour une nuit du test « FC de nuit »
+   * (lot 213) : ni charge d'entraînement, ni FC max à retenir.
+   */
+  inTotals?: boolean;
   open: boolean;
   onToggle: () => void;
 }
@@ -149,7 +154,7 @@ export function CardioCompanion({ minutes, heart, zoom, zones, zoneLines = false
  */
 function HeartRatePanel({
   track, minutes, heart, params, hrEnergy, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
-  zoom, onShowOnMap, mapless = false, zoneLines, open, onToggle,
+  zoom, onShowOnMap, mapless = false, zoneLines, inTotals = true, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
 
@@ -175,7 +180,7 @@ function HeartRatePanel({
   }, [efficiency, scatterUnit, track, smoothed, params.gapS, params.scatterBlockS]);
 
   if (!stats) return null;
-  const aboveProfile = profileHrMax === null || stats.maxBpm > profileHrMax;
+  const aboveProfile = inTotals && (profileHrMax === null || stats.maxBpm > profileHrMax);
 
   return (
     <>
@@ -193,7 +198,7 @@ function HeartRatePanel({
         {zones && (
           <StatTile label="S1 · S2" value={<>{zones.s1} · {zones.s2} bpm</>} />
         )}
-        {zoneTimes && (
+        {zoneTimes && inTotals && (
           <StatTile
             label={<>Charge <HelpToggle helpKey="analyse:charge" label="Qu'est-ce que la charge ?" /></>}
             value={Math.round(edwardsLoad(zoneTimes, params.loadWeights))} />
@@ -209,7 +214,7 @@ function HeartRatePanel({
             </>} />
         )}
       </div>
-      {loadHelp?.open && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
+      {loadHelp?.open && zones && inTotals && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
       <HelpText helpKey="analyse:energie-fc" note>
         Calculée à partir de votre rythme cardiaque, de votre poids, de votre âge et de votre sexe. C'est un ordre de grandeur,
         pas une mesure : comptez 25 % d'écart, davantage par temps froid ou en position de rappel.

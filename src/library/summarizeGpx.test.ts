@@ -82,13 +82,13 @@ describe('summarizeGpx : le résumé d’analyzeGpx, réglages en table', () => 
     expect(viaTable).toStrictEqual(direct);
   });
 
-  it('GPX neuf, calcul deviné du type de la trace : les onze calculs en table', () => {
+  it('GPX neuf, calcul deviné du type de la trace : les douze calculs en table', () => {
     const text = gpxOf(sailRaw({ windDeg: 0, legs: upDownLegs(2, 60), polar: slowPolar }), 'simple', { name: 'Footing', type: 'running' });
     const { direct, viaTable, options } = both(text, undefined);
     expect(direct?.sport).toBe('running');
     expect(viaTable).toStrictEqual(direct);
     expect(options.sport).toBeUndefined();
-    expect(Object.keys(options.activitySettings)).toHaveLength(11);
+    expect(Object.keys(options.activitySettings)).toHaveLength(12);
     // Le calcul à deviner reste à deviner de l'autre côté du clonage.
     expect('sport' in structuredClone(options) && structuredClone(options).sport === undefined).toBe(true);
   });

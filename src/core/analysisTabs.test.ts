@@ -68,8 +68,13 @@ describe('analysisTabs : onglets proposés par calcul', () => {
 
   it('muscu : général, cardio, matériel et notes, réglages, sans carte (lot I du 25/10)', () => {
     expect(keys(analysisTabs(SPORT_PROFILES.muscu))).toEqual(['general', 'cardio', 'notes', 'reglages']);
-    expect(keys(MUSCU_TABS)).toEqual(['general', 'cardio', 'notes', 'reglages']);
+    expect(keys(MUSCU_TABS)).toEqual(['general', 'test', 'cardio', 'notes', 'reglages']);
     expect(MUSCU_TABS[0].primary).toBe(true);
+  });
+
+  it('FC de nuit : « test » juste après « général », dans la première rangée (lot 213)', () => {
+    expect(keys(analysisTabs(SPORT_PROFILES['night-hr']))).toEqual(['general', 'test', 'cardio', 'notes', 'reglages']);
+    expect(MUSCU_TABS.find((t) => t.key === 'test')?.primary).toBe(true);
   });
 
   it('chaque calcul qui propose « tops » a des cibles', () => {
@@ -328,7 +333,8 @@ describe('tabDefaults : onglets ouverts à la première visite', () => {
   const SURF_SECTION_DEFAULTS = {
     general: true, vagues: false, rame: false, vols: false, pumping: false, tops: false, graphiques: false, cardio: false, notes: false, reglages: false,
   };
-  const MUSCU_SECTION_DEFAULTS = { general: true, cardio: false, notes: false, reglages: false };
+  // « test » de la FC de nuit en plus (lot 213), dans la première rangée comme à pied.
+  const MUSCU_SECTION_DEFAULTS = { general: true, test: true, cardio: false, notes: false, reglages: false };
 
   it('rend les défauts de chaque module, tels qu\'ils étaient écrits', () => {
     expect(tabDefaults(SAILING_TABS)).toEqual(SAILING_PANEL_DEFAULTS);

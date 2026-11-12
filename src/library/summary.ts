@@ -31,8 +31,12 @@ import { msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import { FITNESS_TESTS, type SessionTest } from '../recording/fitnessTest';
+import { NIGHT_HR_TEST } from '../recording/nightHrTest';
+import { nightHrResults } from '../core/nightHeartRate';
 import { fitnessTestResults, summaryOfTest } from '../running/fitnessTestResults';
-import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryBests, type SummaryCadence, type SummaryHeartRate } from './record';
+import {
+  SUMMARY_CALC_VERSION, type SessionSummary, type SummaryBests, type SummaryCadence, type SummaryHeartRate, type SummaryNight,
+} from './record';
 import { analyzeCadence, sessionCadence, type CadenceDetection } from '../running/cadence';
 
 /**
@@ -306,12 +310,14 @@ const summaryTops = (
 /**
  * Résumé d'une session sans trace (muscu, lot I du 25/10), ou `null` à moins
  * de deux points horodatés : ni distance, ni vitesse, ni dénivelé ; la durée
- * hors pauses en temps en action, et la FC comme l'onglet « cardio » la mesure.
+ * hors pauses en temps en action, et la FC comme l'onglet « cardio » la mesure ;
+ * pour une nuit du test « FC de nuit » (lot 213), ses chiffres (`night`).
  */
 export const summarizeHeartRateSession = (timedPoints: readonly TimedTrackPoint[], sport: SportType): SessionSummary | null => {
   const points = heartRatePointsFrom(timedPoints);
   if (points.length < 2) return null;
   const heartRate = summaryHeartRate(points, getSportProfile(sport).heartRate);
+  const night = sport === 'night-hr' ? summaryNight(points) : undefined;
   return {
     calcVersion: SUMMARY_CALC_VERSION,
     startMs: points[0].timeMs,
@@ -324,6 +330,24 @@ export const summarizeHeartRateSession = (timedPoints: readonly TimedTrackPoint[
     pointCount: points.length,
     samplingS: samplingIntervalS(timedPoints),
     ...(heartRate ? { heartRate } : {}),
+    ...(night ? { night } : {}),
+  };
+};
+
+/**
+ * Chiffres d'une nuit pour sa fiche, comme l'onglet « test » les calcule (protocole du test, sans la FC repos du
+ * pratiquant, qui change) ; rien sans mesure lisible.
+ */
+const summaryNight = (points: Parameters<typeof nightHrResults>[0]): SummaryNight | undefined => {
+  const night = nightHrResults(points, NIGHT_HR_TEST);
+  if (!night) return undefined;
+  return {
+    protocol: NIGHT_HR_TEST.version,
+    lowBpm: night.low ? roundTo(night.low.bpm, 1) : null,
+    lowAtMs: night.low ? Math.round(night.low.atMs) : null,
+    avgBpm: roundTo(night.avgBpm, 1),
+    surges: night.surges.length,
+    coverage: roundTo(night.coverage, 3),
   };
 };
 

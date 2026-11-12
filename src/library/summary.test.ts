@@ -358,6 +358,33 @@ describe('vitesse max du surf : celle de la page, une vague (Q34)', () => {
   });
 });
 
+describe('summarizeHeartRateSession : nuit du test « FC de nuit » (lot 213)', () => {
+  const T0 = Date.UTC(2026, 10, 12, 22, 0, 0);
+  /** Nuit de 4 h à `hz` mesures par seconde : 60 bpm, un creux en pente douce jusqu'à 50 à 2 h, un sursaut de 30 s à 1 h. */
+  const timed = (hz: number) => Array.from({ length: 4 * 3600 * hz + 1 }, (_, k) => {
+    const tS = Math.floor(k / hz);
+    const hr = tS >= 3600 && tS < 3630 ? 75 : Math.round(60 - Math.max(0, 10 - Math.abs(tS - 7200) / 60));
+    return { time: new Date(T0 + (k * 1000) / hz).toISOString(), hr };
+  });
+
+  it('range les chiffres de la nuit, les mêmes à 1 Hz et à 5 Hz ; aucun bloc hors de ce calcul', () => {
+    const [at1, at5] = [1, 5].map((hz) => summarizeHeartRateSession(timed(hz), 'night-hr')!);
+    expect(at1.night).toMatchObject({ protocol: 1, surges: 1, coverage: 1 });
+    expect(at1.night!.lowBpm).toBeGreaterThanOrEqual(50);
+    expect(at1.night!.lowBpm).toBeLessThan(52);
+    expect(Math.abs(at1.night!.lowAtMs! - (T0 + 7200_000))).toBeLessThanOrEqual(60_000);
+    expect(at1.heartRate).toBeDefined();
+    expect(at5.night).toMatchObject({ ...at1.night, lowAtMs: expect.any(Number) });
+    expect(Math.abs(at5.night!.lowAtMs! - at1.night!.lowAtMs!)).toBeLessThanOrEqual(60_000);
+    expect(summarizeHeartRateSession(timed(1), 'muscu')).not.toHaveProperty('night');
+  });
+
+  it('sans mesure lisible : pas de bloc de nuit', () => {
+    const s = summarizeHeartRateSession(timed(1).map(({ time }) => ({ time })), 'night-hr')!;
+    expect(s).not.toHaveProperty('night');
+  });
+});
+
 describe('summarizeHeartRateSession (muscu, lot I du 25/10)', () => {
   const T0 = Date.UTC(2026, 9, 28, 18, 0, 0);
   const timed = Array.from({ length: 181 }, (_, k) => ({ time: new Date(T0 + k * 1000).toISOString(), hr: 100 + (k % 20) }));

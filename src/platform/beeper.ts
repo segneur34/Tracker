@@ -82,7 +82,7 @@ interface BeeperPlugin {
   setPitch(options: { hz: number }): Promise<void>;
   watchGps(options: { delayMs: number }): Promise<void>;
   unwatchGps(): Promise<void>;
-  watchBelt(options: { delayMs: number }): Promise<void>;
+  watchBelt(options: { delayMs: number; silent: boolean }): Promise<void>;
   unwatchBelt(): Promise<void>;
   addListener(event: 'gpsLost' | 'beltLost', listener: () => void): Promise<{ remove: () => Promise<void> }>;
 }
@@ -337,19 +337,31 @@ const playBrowserBeltLost = () => {
   for (const note of BELT_LOST_NOTES) browserNote(note.durationMs, browserHz * note.ratio, note.atMs);
 };
 
+/** Options de la veille de la ceinture. */
+export interface BeltWatchOptions {
+  /**
+   * Veille muette (FC de nuit, lot 213, `isSilentSport`) : ni son ni vibration à
+   * l'échéance, mais les abonnés de `onBeltLost` sont prévenus comme d'ordinaire
+   * (alerte écrite de la page, titre de la notification).
+   */
+  silent?: boolean;
+}
+
 /**
  * Arme, ou repousse, la veille de la ceinture : sans nouvel appel dans
- * `delayMs`, le son « FC perdue » est joué (avec vibration), puis les abonnés de
- * `onBeltLost` sont prévenus. Sur le téléphone, le minuteur est natif
+ * `delayMs`, le son « FC perdue » est joué (avec vibration), sauf veille muette,
+ * puis les abonnés de `onBeltLost` sont prévenus. Sur le téléphone, le minuteur est natif
  * (`BeeperPlugin.watchBelt`), comme celui du GPS. Les bips d'approche des
  * balises, eux, continuent : ils ne dépendent pas de la ceinture.
  */
-export const armBeltWatch = (delayMs: number): Promise<void> => {
-  if (isNativeApp()) return nativePlugin.watchBelt({ delayMs });
+export const armBeltWatch = (delayMs: number, { silent = false }: BeltWatchOptions = {}): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.watchBelt({ delayMs, silent });
   if (beltTimer !== null) clearTimeout(beltTimer);
   beltTimer = setTimeout(() => {
     beltTimer = null;
-    playBrowserBeltLost();
+    // Muette : consignée à part des « [bips] », pour que le banc vérifie qu'aucun son ne part.
+    if (silent) console.debug(`[veille] fc perdue, sans son, à ${Date.now()}`);
+    else playBrowserBeltLost();
     beltLostListeners.forEach((listener) => listener());
   }, delayMs);
   return Promise.resolve();

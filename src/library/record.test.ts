@@ -109,6 +109,16 @@ describe('parseRecord et serializeRecord', () => {
     expect(parseRecord(JSON.stringify(abimee))?.summary.test).toBeUndefined();
   });
 
+  it('relisent la nuit du test « FC de nuit » du résumé, et écartent une nuit mal formée (lot 213)', () => {
+    const night = { protocol: 1, lowBpm: 48.6, lowAtMs: 1_700_000_000_000, avgBpm: 55.2, surges: 3, coverage: 0.98 };
+    const r = record({ summary: { ...record().summary, night } });
+    expect(parseRecord(serializeRecord(r))?.summary.night).toEqual(night);
+    const sansCreux = record({ summary: { ...record().summary, night: { ...night, lowBpm: null } } });
+    expect(parseRecord(serializeRecord(sansCreux))?.summary.night).toMatchObject({ lowBpm: null, lowAtMs: null });
+    const abimee = { ...record(), summary: { ...record().summary, night: { ...night, avgBpm: 'x' } } };
+    expect(parseRecord(JSON.stringify(abimee))?.summary.night).toBeUndefined();
+  });
+
   it('relisent une fiche à l\'identique', () => {
     const r = record({
       notes: {

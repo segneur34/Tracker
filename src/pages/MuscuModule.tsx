@@ -23,6 +23,10 @@ import { ANALYSIS_PANEL_STYLE } from '../components/styles';
 import StatTile from '../components/ui/StatTile';
 import { MUSCU_TABS, tabDefaults } from '../core/analysisTabs';
 import { parseGpx } from '../core/gpxParser';
+import { countsInTotals, isTestSport } from '../core/sportProfiles';
+import { nightHrResults } from '../core/nightHeartRate';
+import NightHrPanel from '../components/NightHrPanel';
+import { NIGHT_HR_TEST } from '../recording/nightHrTest';
 import { heartRatePointsFrom, type HeartRateSessionPoint } from '../core/heartRateSession';
 import { analyzeHeartRateSession, type SessionPhase } from '../land/heartRateSession';
 import type { ShareStat } from '../core/shareImage';
@@ -52,7 +56,10 @@ import { shareExtraStats } from '../library/shareStats';
  * notes » ; « réglages » : l'activité, vers une autre activité sans trace
  * seulement. Une séance partie sans la ceinture (lot 210) n'a que des points à
  * l'heure : « général » garde durée, hors pauses, répétitions et notes, sans
- * FC, courbe ni aide, et « cardio » n'est pas proposé.
+ * FC, courbe ni aide, et « cardio » n'est pas proposé. Une nuit du test « FC de
+ * nuit » (lot 213, le seul calcul de test sans position) y passe aussi : onglet
+ * « test » (`NightHrPanel`), « général » sans répétitions, « cardio » sans
+ * charge ni FC max à retenir (hors des cumuls, `countsInTotals`).
  */
 
 const FAMILY = 'fractionne' as const;
@@ -102,16 +109,26 @@ function MuscuModule() {
   const sessionKey = shownFile;
 
   const { runner, retainHr, heart, hrZones: zones } = useAnalysisHeart(points, profile.heartRate, hrOffsetBpm);
+  // Nuit du test « FC de nuit » : ses chiffres, avec la FC repos de Pratiquant pour l'écart.
+  const isNight = isTestSport(profile.id);
+  const night = useMemo(
+    () => (isNight ? nightHrResults(points, NIGHT_HR_TEST, { restingBpm: runner.hrRest }) : null),
+    [isNight, points, runner.hrRest]
+  );
   const analysis = useMemo(
     () => analyzeHeartRateSession(points, intervals, profile.heartRate, zones?.bounds ?? null),
     [points, intervals, profile.heartRate, zones]
   );
 
-  // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC. Le point survolé s'efface à chaque session.
+  // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC, « test » aux seuls calculs de test (FC de nuit,
+  // lot 213). Le point survolé s'efface à chaque session.
   const { open, toggle, toggleOf, closeAll, advanced, shown } = useAnalysisTabs({
     tabs: MUSCU_TABS, defaults: MUSCU_SECTION_DEFAULTS, activity, sessionKey,
   });
-  const sections = useMemo(() => shown((s) => s.key !== 'cardio' || heart.present), [shown, heart.present]);
+  const sections = useMemo(
+    () => shown((s) => (s.key !== 'cardio' || heart.present) && (s.key !== 'test' || isTestSport(profile.id))),
+    [shown, heart.present, profile.id]
+  );
 
   // Repères du bouton « Note » : liste de « Général », traits sur la courbe ; « Voir » met le trait en violet.
   const noDistances = useMemo(() => points.map(() => 0), [points]);
@@ -138,14 +155,15 @@ function MuscuModule() {
         { key: 'heartRate', label: 'FC moyenne', value: `${Math.round(stats.avgBpm)} bpm` },
         { key: 'heartRateMax', label: 'FC max', value: `${stats.maxBpm} bpm` },
       ] : []),
-      { key: 'reps', label: 'Répétitions', value: analysis.reps > 0 ? String(analysis.reps) : '—' },
+      // Pas de répétitions dans une nuit.
+      ...(isNight ? [] : [{ key: 'reps', label: 'Répétitions', value: analysis.reps > 0 ? String(analysis.reps) : '—' }]),
       // Appréciation (05/11), comme le résumé d'une fiche.
       ...shareExtraStats('muscu', { rating }),
     ];
-  }, [analysis, rating]);
+  }, [analysis, rating, isNight]);
 
   return (
-    <AnalysisShell title={PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
+    <AnalysisShell title={isNight ? `Analyse ${profile.label}` : PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
       share={{ segments: [], stats: generalStats }} error={sessionError ?? loadError} draft={draft} empty={requested === null}
       alerts={shownFile && !analysis && (
         <div className="ui-alert ui-alert--warning ui-max-520">Le fichier n'a pas assez de points horodatés.</div>
@@ -161,7 +179,7 @@ function MuscuModule() {
                 {withHeartRate && (
                   <HelpText helpKey="muscu:general" note>
                     FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
-                    {' '}Bandes de couleur : les phases du compteur. Traits numérotés : les notes posées pendant la séance.
+                    {!isNight && ' Bandes de couleur : les phases du compteur.'} Traits numérotés : les notes posées pendant la séance.
                     {narrow ? ` ${zoomHint(true, 'la courbe')}` : " Tirez une zone sur la courbe pour zoomer, double-clic pour zoomer autour d'un point."}
                   </HelpText>
                 )}
@@ -195,7 +213,7 @@ function MuscuModule() {
                     )}
                   </div>
                 )}
-                {withHeartRate && intervals.length === 0 && (
+                {withHeartRate && intervals.length === 0 && !isNight && (
                   <p className="ui-muted ui-text-xs ui-mt-8-only">Séance faite sans le compteur : pas de phases à poser sur la courbe.</p>
                 )}
                 {withHeartRate && !zones && (
@@ -208,10 +226,21 @@ function MuscuModule() {
               </ResizablePanel>
             )}
 
+            {open.test && isNight && (night ? (
+              <ResizablePanel id={panelId('test')} style={ANALYSIS_PANEL_STYLE}>
+                <NightHrPanel results={night} protocol={NIGHT_HR_TEST} restingBpm={runner.hrRest} minutes={minutes} sessionKey={sessionKey}
+                  open={open.test} onToggle={toggleOf('test')} />
+              </ResizablePanel>
+            ) : (
+              <EmptyTabPanel id={panelId('test.vide')} label={`Test ${NIGHT_HR_TEST.label}`} open={open.test} onToggle={toggleOf('test')}>
+                Aucune mesure de FC lisible dans cette nuit : la ceinture n'a rien transmis, ou était mal posée.
+              </EmptyTabPanel>
+            ))}
+
             {open.cardio && (heart.present ? (
               <CardioTab id={panelId('cardio')} track={points} minutes={minutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={zones} runner={runner}
                 onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
-                zoom={cardioZoom} mapless open={open.cardio} onToggle={toggleOf('cardio')} />
+                zoom={cardioZoom} mapless inTotals={countsInTotals(profile.id)} open={open.cardio} onToggle={toggleOf('cardio')} />
             ) : (
               <EmptyTabPanel id={panelId('cardio.vide')} label="Cardio" open={open.cardio} onToggle={toggleOf('cardio')}>
                 Pas assez de FC dans cette session pour l'onglet cardio.

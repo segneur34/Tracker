@@ -19,11 +19,11 @@ import { PendingSessionCard, SavedSessionCard } from '../components/RecordingEnd
 import { IconFlag, IconLock, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import {
-  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, kindActivityLabel, trainingKindsOf, type Activity,
+  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, baseActivity, kindActivityLabel, trainingKindsOf, type Activity,
 } from '../core/activities';
 import {
-  TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isLandTreatment, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily,
-  type TrainingKind,
+  TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isLandTreatment, isSilentSport, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse,
+  type SportFamily, type TrainingKind,
 } from '../core/sportProfiles';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters, formatDecimal } from '../core/units';
 import LiveMap from '../components/LiveMap';
@@ -48,7 +48,7 @@ import {
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { beltLabels } from '../platform/beltList';
-import { BELT_STATE_LABEL, EXAMPLE_BELT, chooseSavedBelt, savedBelt, savedBelts, type BeltState, type HeartRateBelt } from '../platform/heartRate';
+import { BELT_STATE_LABEL, EXAMPLE_BELT, chooseSavedBelt, savedBelt, savedBelts, setExampleBeltBpm, type BeltState, type HeartRateBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import {
@@ -75,6 +75,7 @@ import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation,
 import { fixesFromRawPoints, recordingDurationMs, isAutoPause, isManualPause } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
+import { NIGHT_HR_TEST, exampleNightHr, type NightHrTestId } from '../recording/nightHrTest';
 import { NO_BAND_PICKS, ZONE_TARGETS, armableBand, bandLabel, type HeartBand, type HeartBandPicks, type ZoneTarget } from '../recording/zoneAlert';
 import HeartBandPicker from '../components/HeartBandPicker';
 import Dialog from '../components/ui/Dialog';
@@ -105,6 +106,11 @@ import './RecordingPage.css';
  * est chronométrée, sans FC ; cochée mais pas connectée, « Démarrer » demande
  * s'il faut partir sans elle. Dans le navigateur, la FC d'exemple
  * (`EXAMPLE_BELT`) en tient lieu.
+ *
+ * FC de nuit (lot 213), choisie dans la rangée « Test » ou par « Lancer » de sa page (`&test=fc-nuit`) : la session
+ * part sur l'activité de base du calcul `night-hr`, sans GPS, ceinture comme la muscu ; ni zone, ni bornes, ni
+ * compteur, ni guidage ; silencieuse (`isSilentSport`), l'écran n'est pas gardé allumé et la page en cours passe en
+ * sombre (`rec-page--nuit`).
  *
  * En mode Timer (`?minuterie`, « Lancer » d'une séance du Timer, 25/10), hors
  * d'un enregistrement, la page n'est que le compteur : ni activité, ni carte,
@@ -191,6 +197,15 @@ const HEART_GUIDE_LABEL: Record<HeartGuideMode, string> = { aucun: 'aucun', zone
 /** Note de la case « Ceinture cardio » en muscu (lot 210). */
 const WITHOUT_BELT_NOTE = 'Sans elle, la séance est chronométrée, sans FC.';
 
+/**
+ * Activité d'une nuit (FC de nuit, lot 213) : celle de base du calcul, jamais une activité de la liste. Choisie par la
+ * rangée « Test », elle tient lieu de l'activité de test pour tout le départ (ceinture, sans GPS, enregistreur).
+ */
+const NIGHT_ACTIVITY = baseActivity('night-hr');
+
+/** Note de la case « Ceinture cardio » pendant la FC de nuit. */
+const NIGHT_WITHOUT_BELT_NOTE = 'Sans elle, ce test ne mesure rien.';
+
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
 
@@ -248,7 +263,8 @@ const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Acti
 
 /**
  * Statistiques en direct propres au traitement du calcul de l'activité ; sans position (muscu), la FC moyenne et la zone,
- * rien sans ceinture (`withBelt` faux, lot 210 : la durée seule). Libellés tirés des options du calcul (`options`).
+ * rien sans ceinture (`withBelt` faux, lot 210 : la durée seule), la FC moyenne seule pour une nuit (lot 213). Libellés
+ * tirés des options du calcul (`options`).
  */
 const liveStatItems = (
   activity: Activity, live: LiveStats, heartRateBpm: number | null, options: LiveStatsOptions, withBelt: boolean,
@@ -262,7 +278,9 @@ const liveStatItems = (
       ...units, stats: live, durationMs: 0, nowMs: null, remainingM: null, headingDeg: null, markDistanceM: null, markBearingDeg: null,
       heartRateBpm, heartRateZoneBounds: readHeartRateZoneBounds(activity),
     };
-    return (['averageHeartRate', 'heartRateZone'] as const).map((key) => ({ label: liveFieldLabel(key, units), value: liveFieldValue(key, context) }));
+    // Nuit silencieuse (FC de nuit, lot 213) : la FC moyenne seule, pas de zone.
+    const keys = isSilentSport(activity.base) ? (['averageHeartRate'] as const) : (['averageHeartRate', 'heartRateZone'] as const);
+    return keys.map((key) => ({ label: liveFieldLabel(key, units), value: liveFieldValue(key, context) }));
   }
   if (sportTreatment(activity.base) === 'voile') {
     return [
@@ -693,7 +711,11 @@ function RecordingScreen() {
   const [chosenId, setChosenId] = useState<string | null>(() => {
     const last = lastRecordActivity();
     const asked = shownActivities.find((a) => a.id === params.get('activite'));
-    return (asked ?? shownActivities.find((a) => a.id === followed?.activityId) ?? (last && isShown(last) ? last : null) ?? shownActivities[0])?.id ?? null;
+    // FC de nuit demandée par l'adresse (lot 213) sans activité de test lisible : la dernière enregistrée des tests, sinon la première.
+    const askedTest = params.get('test') === NIGHT_HR_TEST.id && !(asked && isTestSport(asked.base))
+      ? lastRecordedOrFirst(shownActivities.filter((a) => isTestSport(a.base)))
+      : null;
+    return (askedTest ?? asked ?? shownActivities.find((a) => a.id === followed?.activityId) ?? (last && isShown(last) ? last : null) ?? shownActivities[0])?.id ?? null;
   });
   const chosen = activities.find((a) => a.id === chosenId) ?? null;
   const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : families[0] ?? 'voile');
@@ -716,13 +738,17 @@ function RecordingScreen() {
   };
   // Tests : le test choisi sous « Tests » (rangée « Test »), celui de l'adresse (`&test=`, « Lancer » d'un protocole), sinon la FC max.
   // La FC repos s'y choisit aussi, mais se fait sur sa page, sans enregistreur ni GPS (les sessions sans GPS viendront avec la muscu).
-  const [testId, setTestId] = useState<FitnessTestId | RestingHrTestId>(() => {
+  // La FC de nuit (lot 213) s'y choisit de même, et part par l'enregistreur, sur l'activité de base de son calcul.
+  const [testId, setTestId] = useState<FitnessTestId | RestingHrTestId | NightHrTestId>(() => {
     const asked = params.get('test');
-    return isFitnessTestId(asked) || asked === RESTING_HR_TEST.id ? asked : 'fc-max';
+    return isFitnessTestId(asked) || asked === RESTING_HR_TEST.id || asked === NIGHT_HR_TEST.id ? asked : 'fc-max';
   });
   const isTest = chosen !== null && isTestSport(chosen.base);
-  // Muscu : sans position, la ceinture (ou le chrono seul, lot 210), ni source ni trace à suivre.
-  const heartOnly = chosen !== null && !hasPositions(chosen.base);
+  const nightChosen = isTest && testId === NIGHT_HR_TEST.id;
+  /** Activité du départ : la choisie, sauf la FC de nuit, qui part sur celle de son calcul (ceinture, sans GPS, réglages). */
+  const startActivity = nightChosen ? NIGHT_ACTIVITY : chosen;
+  // Muscu et FC de nuit : sans position, la ceinture (ou le chrono seul, lot 210), ni source ni trace à suivre.
+  const heartOnly = startActivity !== null && !hasPositions(startActivity.base);
   const restingChosen = isTest && testId === RESTING_HR_TEST.id;
   const guidedTestId: FitnessTestId = isFitnessTestId(testId) ? testId : 'fc-max';
   const navigate = useNavigate();
@@ -738,27 +764,27 @@ function RecordingScreen() {
   };
   // Sauts : proposés seulement si l'activité les mesure (case de Réglages, 05/11), cochés d'office alors, sur le
   // téléphone seulement ; la case vaut pour cet enregistrement.
-  const activityJumps = chosen ? effectiveJumpSettings(chosen) : null;
+  const activityJumps = startActivity ? effectiveJumpSettings(startActivity) : null;
   const jumpSettings = activityJumps?.enabled === true ? activityJumps : null;
-  const chosenActivityId = chosen?.id ?? null;
+  const chosenActivityId = startActivity?.id ?? null;
   const [jumpPicked, setJumpPicked] = usePerActivityChoice(chosenActivityId, true);
-  const measureJumps = chosen !== null && jumpSettings !== null && jumpPicked;
+  const measureJumps = startActivity !== null && jumpSettings !== null && jumpPicked;
   // Pumping foil : proposé par l'activité de surf ou de voile (foil et pumping cochés dans Réglages), coché d'office ; la case vaut pour cet enregistrement.
-  const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
+  const pumpingOffered = startActivity !== null && effectiveFoil(startActivity) === true && effectivePumping(startActivity) === true;
   const [pumpPicked, setPumpPicked] = usePerActivityChoice(chosenActivityId, true);
   const measurePumping = pumpingOffered && pumpPicked;
   // Virages du surf (lot 40) : proposés par l'activité (case « Mesurer les virages » de Réglages), cochés d'office ; la case vaut
   // pour cet enregistrement. Avec le pumping, une seule capture.
-  const turnsOffered = chosen !== null && effectiveTurns(chosen) === true;
+  const turnsOffered = startActivity !== null && effectiveTurns(startActivity) === true;
   const [turnsPicked, setTurnsPicked] = usePerActivityChoice(chosenActivityId, true);
   const measureTurns = turnsOffered && turnsPicked;
   // Cadence à pied : proposée par l'activité (course, marche, fractionné à pied), cochée d'office sauf si Réglages la décoche ; la case vaut pour cet enregistrement.
-  const cadenceSetting = chosen ? effectiveCadence(chosen) : null;
+  const cadenceSetting = startActivity ? effectiveCadence(startActivity) : null;
   const [cadencePicked, setCadencePicked] = usePerActivityChoice(chosenActivityId, cadenceSetting ?? false);
-  const measureCadence = chosen !== null && cadenceSetting !== null && cadencePicked;
+  const measureCadence = startActivity !== null && cadenceSetting !== null && cadencePicked;
   // Ceinture cardio : proposée par l'activité (course, vélo, fractionné), cochée d'office si Réglages le dit, et toujours pour un test ;
   // la case vaut pour cet enregistrement.
-  const heartRateOffered = chosen ? effectiveHeartRate(chosen) : null;
+  const heartRateOffered = startActivity ? effectiveHeartRate(startActivity) : null;
   const heartRateSetting = heartRateOffered === null ? null : heartRateOffered || isTest;
   // Appareil actif, changé d'un geste par « Changer » s'il y en a plusieurs de retenus (lot 198) ; jamais une fois parti.
   const [retainedBelt, setRetainedBelt] = useState<HeartRateBelt | null>(savedBelt);
@@ -771,12 +797,13 @@ function RecordingScreen() {
   };
   // Dans le navigateur, la muscu prend la FC d'exemple.
   const belt = heartOnly && !native ? EXAMPLE_BELT : retainedBelt;
+  const withoutBeltNote = nightChosen ? NIGHT_WITHOUT_BELT_NOTE : WITHOUT_BELT_NOTE;
   // Noms montrés : un nom porté par deux appareils prend la fin de leur adresse.
   const retainedLabels = useMemo(() => beltLabels(retainedBelts), [retainedBelts]);
   const beltLabel = belt === null ? '' : retainedLabels[retainedBelts.findIndex((b) => b.address === belt.address)] ?? belt.name;
   // Muscu : cochée d'office, quel que soit Réglages, et elle se décoche (lot 210) ; rien n'est retenu d'une fois à l'autre.
   const [heartRatePicked, setHeartRatePicked] = usePerActivityChoice(chosenActivityId, heartOnly || (heartRateSetting ?? false));
-  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null && !restingChosen && heartRatePicked;
+  const measureHeartRate = startActivity !== null && heartRateSetting !== null && belt !== null && !restingChosen && heartRatePicked;
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -799,28 +826,28 @@ function RecordingScreen() {
     && (heartOnly || sourceChoice === 'device' || replay !== null);
   // Zone visée : bips de sortie de zone, proposés avec la ceinture connectée et les zones de Pratiquant, jamais pour un test ;
   // « aucune » à chaque ouverture de la page.
-  const zoneBounds = chosen ? readHeartRateZoneBounds(chosen) : null;
+  const zoneBounds = startActivity ? readHeartRateZoneBounds(startActivity) : null;
   const [zonePicked, setZonePicked] = usePerActivityChoice<ZoneTarget>(chosenActivityId, 0);
   const zoneOffered = !isTest && measureHeartRate && beltLive.state === 'connected'
     && (heartOnly || (native && sourceChoice === 'device')) && zoneBounds !== null;
   // Course à bornes (05/11) : en Entraînement seulement, aux conditions de la zone visée ; « aucun » à chaque ouverture
   // de la page, les dernières bornes de l'activité pré-remplies.
-  const guideOffered = zoneOffered && chosen !== null && activityFamily(chosen) === 'fractionne';
+  const guideOffered = zoneOffered && startActivity !== null && activityFamily(startActivity) === 'fractionne';
   const [guidePicked, setGuidePicked] = usePerActivityChoice<HeartGuideMode>(chosenActivityId, 'aucun');
   const guideMode: HeartGuideMode = guideOffered ? guidePicked : 'zone';
   const [bandPicked, setBandPicked] = usePerActivityChoice<HeartBandPicks | null>(chosenActivityId, null);
-  const bandPicks = bandPicked ?? (chosen ? readHeartBandPicks(chosen.id) : null) ?? NO_BAND_PICKS;
-  const guideZones = chosen && guideOffered ? readHeartRateZones(chosen) : null;
+  const bandPicks = bandPicked ?? (startActivity ? readHeartBandPicks(startActivity.id) : null) ?? NO_BAND_PICKS;
+  const guideZones = startActivity && guideOffered ? readHeartRateZones(startActivity) : null;
   /** Arme le guidage cardio choisi au départ : zone visée, bornes (retenues pour l'activité) ou rien. */
   const armHeartGuide = () => {
     if (!zoneOffered || guideMode === 'aucun') {
       armZoneAlert(0);
       return;
     }
-    if (guideMode === 'bornes' && chosen) {
+    if (guideMode === 'bornes' && startActivity) {
       const band = armableBand(bandPicks, guideZones);
       if (band !== null) {
-        rememberHeartBandPicks(chosen.id, bandPicks);
+        rememberHeartBandPicks(startActivity.id, bandPicks);
         armHeartBand(band);
       } else {
         armZoneAlert(0);
@@ -829,7 +856,7 @@ function RecordingScreen() {
     }
     armZoneAlert(zonePicked);
   };
-  const liveActivity = recordedActivity ?? chosen;
+  const liveActivity = recordedActivity ?? startActivity;
   // Session sans position, en cours ou choisie : ni carte, ni GPS, ni trace suivie.
   const liveHeartOnly = liveActivity !== null && !hasPositions(liveActivity.base);
   const mapReduced = busy && !shown.carte && !liveHeartOnly;
@@ -840,19 +867,27 @@ function RecordingScreen() {
   // Compteur : pour le fractionné choisi (au repos) ou enregistré, pas pour un test, et tant qu'une séance ou le chrono est lancé.
   const counterOpen = useIntervalTimerOpen();
   const stopwatchOpen = useStopwatchOpen();
-  const counterActivity = busy ? liveActivity : pending ? null : chosen;
+  const counterActivity = busy ? liveActivity : pending ? null : startActivity;
   const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
-  // Muscu : le compteur sur les séances du Timer, lançable avant ou pendant l'enregistrement.
-  const counterTimer = counterActivity !== null && !hasPositions(counterActivity.base);
+  // Muscu : le compteur sur les séances du Timer, lançable avant ou pendant l'enregistrement ; pas pendant une nuit (lot 213).
+  const counterTimer = counterActivity !== null && !hasPositions(counterActivity.base) && !isSilentSport(counterActivity.base);
   const showCounter = counterOpen || stopwatchOpen
     || (counterFamily === 'fractionne' && (counterActivity === null || isIntervalSport(counterActivity.base) || counterTimer));
-  // Carte du test : à la place du compteur, pour un test choisi au repos ou guidé pendant l'enregistrement.
+  // Carte du test : à la place du compteur, pour un test guidé choisi au repos ou en cours ; la FC de nuit n'est pas guidée.
   const fitnessTest = useFitnessTest();
-  const showTest = busy ? fitnessTest.active : pending === null && isTest && !restingChosen;
+  const showTest = busy ? fitnessTest.active : pending === null && isTest && !restingChosen && !nightChosen;
   // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur (pause comprise) ou le chrono en marche, sur cette page seulement.
+  // Pas pendant une session silencieuse (FC de nuit, lot 213) : l'écran s'éteint comme d'ordinaire.
   const counterRunning = useIntervalTimerRunning();
   const stopwatchRunning = useStopwatchRunning();
-  useScreenOnWhile(busy || counterRunning || stopwatchRunning);
+  const silentLive = busy && liveActivity !== null && isSilentSport(liveActivity.base);
+  useScreenOnWhile((busy && !silentLive) || counterRunning || stopwatchRunning);
+  // Dans le navigateur, la ceinture d'exemple joue une FC de nuit pour ce test, choisi ou en cours (seul calcul
+  // silencieux) ; rien à rendre en quittant la page : l'enregistrement en cours la garde, le prochain la repose.
+  const nightBelt = liveActivity !== null && isSilentSport(liveActivity.base);
+  useEffect(() => {
+    setExampleBeltBpm(nightBelt ? exampleNightHr : null);
+  }, [nightBelt]);
 
   // Parcours de balises : la trace suivie a des balises et l'activité navigue sur un parcours (voile, surf). L'avancement se compte par balises.
   const courseMarksOf = followed?.marks && liveActivity && usesMarkCourse(sportFamily(liveActivity.base)) ? followed.marks : null;
@@ -894,16 +929,21 @@ function RecordingScreen() {
   })();
 
   const handleStart = () => {
-    if (!chosen) return;
+    if (!chosen || !startActivity) return;
     if (heartOnly) {
-      // Case cochée, ceinture pas encore connectée : on demande avant de partir sans elle (lot 210).
       const beltConnected = measureHeartRate && beltLive.state === 'connected';
-      if (measureHeartRate && !beltConnected
+      if (nightChosen) {
+        // FC de nuit (lot 213) : sans ceinture connectée, case décochée comprise, on demande, sans bloquer.
+        if (!beltConnected && !window.confirm('Sans ceinture cardio connectée, ce test ne mesure rien. Démarrer quand même ?')) return;
+      } else if (measureHeartRate && !beltConnected
+        // Case cochée, ceinture pas encore connectée : on demande avant de partir sans elle (lot 210).
         && !window.confirm("La ceinture n'est pas connectée : partir sans elle ? La séance sera chronométrée, sans FC.")) return;
-      rememberRecordActivity(chosen.id);
+      // Une nuit n'est pas une activité de la liste : la dernière enregistrée reste celle d'avant.
+      if (!nightChosen) rememberRecordActivity(chosen.id);
+      // Ni zone ni bornes pour une nuit (un test) : rien d'armé.
       armHeartGuide();
       const heartRate = beltConnected ? belt : null;
-      void beltWarmup.handOver(() => startRecording(chosen, null, { heartRate }));
+      void beltWarmup.handOver(() => startRecording(startActivity, null, { heartRate }));
       return;
     }
     // Test sans ceinture connectée (ni FC dans le fichier rejoué) : on demande, sans bloquer.
@@ -934,7 +974,8 @@ function RecordingScreen() {
   };
 
   return (
-    <div ref={pageRef} className={mapFit ? 'ui-page rec-page rec-page--fit' : 'ui-page rec-page'}>
+    // FC de nuit en cours (lot 213) : la page en sombre et sobre, sur les variables du thème sombre (`ui-dark-scope`).
+    <div ref={pageRef} className={`ui-page rec-page${mapFit ? ' rec-page--fit' : ''}${silentLive ? ' rec-page--nuit ui-dark-scope' : ''}`}>
       <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
       {!busy && !pending && <Card className="rec-options">
@@ -958,6 +999,7 @@ function RecordingScreen() {
                   items={[
                     ...FITNESS_TEST_IDS.map((id) => ({ key: id, label: FITNESS_TESTS[id].label })),
                     { key: RESTING_HR_TEST.id, label: RESTING_HR_TEST.label },
+                    { key: NIGHT_HR_TEST.id, label: NIGHT_HR_TEST.label },
                   ]} />
                 <Link to={`/fractionne/tests/${testId}`} className="ui-text-s">Voir le protocole</Link>
               </>
@@ -994,12 +1036,12 @@ function RecordingScreen() {
             <CaptureOption label="Ceinture cardio" checked={measureHeartRate} disabled={belt === null}
               onChange={setHeartRatePicked}
               note={belt === null
-                ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ` ${WITHOUT_BELT_NOTE}`}</>
+                ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ` ${withoutBeltNote}`}</>
                 : belt === EXAMPLE_BELT
-                  ? `FC d'exemple du navigateur, pour éprouver la muscu : la vraie ceinture est sur le téléphone. ${WITHOUT_BELT_NOTE}`
+                  ? `FC d'exemple du navigateur, pour éprouver ${nightChosen ? 'le test' : 'la muscu'} : la vraie ceinture est sur le téléphone. ${withoutBeltNote}`
                   : <>
                     {`${beltLabel}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
-                    {heartOnly && ` ${WITHOUT_BELT_NOTE}`}
+                    {heartOnly && ` ${withoutBeltNote}`}
                     {retainedBelts.length >= 2 && (
                       <>{' '}<Button size="s" onClick={() => setChoosingBelt(true)}>Changer</Button></>
                     )}
@@ -1102,6 +1144,21 @@ function RecordingScreen() {
         </div>
       </Card>}
 
+      {!busy && !pending && nightChosen && (
+        // FC de nuit (lot 213) : comment s'installer, avant « Démarrer ».
+        <Card heading="Pour la nuit">
+          <ul className="rec-night-steps">
+            <li>Ceinture cardio humidifiée, bien ajustée, portée toute la nuit.</li>
+            <li>Téléphone en charge près du lit, Bluetooth allumé.</li>
+            <li>« Démarrer » au coucher, « Arrêter » au matin (bouton tenu).</li>
+          </ul>
+          <p className="ui-muted ui-text-s rec-night-note">
+            Ni son ni vibration de toute la nuit, et l'écran s'éteint comme d'ordinaire : une ceinture perdue n'est dite que par
+            écrit, dans la notification et sur cette page.
+          </p>
+        </Card>
+      )}
+
       {busy ? (
         <div className="ui-row-10">
           {status === 'recording' && (
@@ -1156,7 +1213,15 @@ function RecordingScreen() {
         // Source du GPS et activité : au-dessus de la carte, pour rester visibles carte ouverte.
         <div className="rec-status">
           {sourceLabel && <span className="rec-status__source">{sourceLabel}</span>}
-          {liveActivity && (
+          {liveActivity && silentLive && (
+            // Session silencieuse (FC de nuit, lot 213) : l'activité ne se change pas en route, une muscu ferait
+            // revenir les sons ; son nom reste affiché.
+            <span className="rec-status__activity">
+              <span className="ui-eyebrow">Activité</span>
+              <span>{liveActivity.name}</span>
+            </span>
+          )}
+          {liveActivity && !silentLive && (
             // Changer d'activité en route, d'une famille à l'autre comprise : la session sera rangée sous la nouvelle.
             <label className="rec-status__activity">
               <span className="ui-eyebrow">Activité</span>

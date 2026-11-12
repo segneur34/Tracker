@@ -4,7 +4,7 @@ Journal des scripts de `outils/banc/` : ce que chacun éprouve, ses arguments, s
 
 ## Verdict ou neutralité
 
-Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 58 des 84 scripts du registre rendent un verdict (`surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151, `virages` depuis le lot 40).
+Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 59 des 85 scripts du registre rendent un verdict (`fc-nuit` depuis le lot 213, `surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151, `virages` depuis le lot 40).
 
 | Sans verdict aujourd'hui | Scripts |
 |---|---|
@@ -387,6 +387,12 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - la clé `tracker.restingHr` vidée, la page rouverte : le test revient dans la clé et sur la page, le fichier est inchangé ;
   - un test posé seulement dans le fichier (autre appareil) est repris, le fichier garde les deux ; « Retirer » réécrit le fichier ;
   - fichier abîmé : la liste de l'appareil reste, le fichier n'est pas écrasé, un test s'enregistre quand même sur l'appareil.
+- `fc-nuit.mjs <port> [<dossier des captures>]` : test « FC de nuit » (lot 213), sur un profil neuf, sans réseau, importe `/src/...` dans la page (`dev`), `solo` (6 s de nuit en direct, temps réel), environ 40 s. Script à verdict, 37 contrôles. Durées d'ouverture sur stderr (masquées dans le relevé) et en clair dans `fc-nuit-temps.txt` du dossier de travail (`--garder`) ; 12/11 : analyse d'une nuit de 28 801 points ouverte en 1,2 à 1,6 s, onglet « cardio » en 0,3 s. Il vérifie :
+  - une muscu témoin propose « La retenir » ; Statistiques relevées avec elle seule ;
+  - une nuit de 8 h à 1 Hz sans position, écrite dans la page par `buildHeartRateGpx` (calcul `night-hr`, FC de `exampleNightHr`) et importée : fiche `night-hr` avec son résumé de nuit, nom « Nuit du 9 au 10/11 », Statistiques inchangées ;
+  - son analyse : titre, nom, onglet « test » égal au calcul pur rejoué dans la page (creux et son heure, « au milieu de la nuit », 3 sursauts, part mesurée), courbes de « général », « test » et « cardio » décimées (moins de 1 000 points tracés) ; « cardio » sans « La retenir » ; « réglages » : « FC de nuit » choisie, les muscus proposées ; ligne de bibliothèque « 8 h 00 · creux 50 bpm » ;
+  - en direct : page du test, « Lancer », Enregistrer prêt sur le test, ceinture d'exemple qui joue une FC de nuit, page sombre (`rec-page--nuit`) lisible (contrastes WCAG, « Arrêter » relevé à part : rouge du thème sombre, 4,0), anneau de focus sombre, activité affichée sans liste, aucun « [bips] » avant l'arrêt (l'appui tenu d'« Arrêter » vibre une fois, relevé) ; session rangée sous `night-hr`, « Nuit incomplète » dans son analyse, Statistiques toujours inchangées ;
+  - la FC max de la muscu retenue : la muscu montre la charge, la nuit non.
 - `general.mjs <port> [<dossier des captures>]` : onglet « général » complet et rangée « avancé » (demande du 22/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une wing (la trace de `make-gpx.mjs`), une course et une sortie à vélo en côte, et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
   - la première rangée « général · avancé », « avancé » fermé au départ, les chiffres du nouveau général dans chaque module (voile : distance en vol, manœuvres réussies, top 2 s et 100 m ; à pied et à vélo : meilleurs segments et profil d'altitude compact ; surf : chiffres réduits) ;
   - « avancé » qui déplie les onglets, puis, refermé, replie rangée et panneaux, rendus à la réouverture ; la flèche qui cache la barre sans toucher aux panneaux ;

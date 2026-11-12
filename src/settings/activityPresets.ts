@@ -80,6 +80,28 @@ const WING: ActivityPreset = {
   jumps: { enabled: true, placement: 'poitrine', minHeightM: 0.5 },
 };
 
+/**
+ * Muscu (lot I du 25/10) : la ceinture d'office (facultative depuis le lot 210 : sans elle, la séance est chronométrée,
+ * FC retirées du direct et de la notification), la FC et la durée en direct, l'étape du compteur et la FC dans la
+ * notification (ni vitesse ni distance sans position).
+ */
+const MUSCU_PRESET: ActivityPreset = {
+  liveFields: ['heartRate', 'heartRateZone', 'averageHeartRate', 'duration'],
+  notificationFields: ['step', 'heartRate'],
+  heartRate: true,
+};
+
+/**
+ * FC de nuit (lot 213) : la ceinture d'office, comme la muscu, mais ni zone visée ni étape (pas de compteur ni de
+ * guidage) : la durée, la FC et la FC moyenne en direct ; la FC et la FC moyenne dans la notification (pas la durée :
+ * le chronomètre d'Android la montre déjà).
+ */
+const NIGHT_HR_PRESET: ActivityPreset = {
+  liveFields: ['duration', 'heartRate', 'averageHeartRate'],
+  notificationFields: ['heartRate', 'averageHeartRate'],
+  heartRate: true,
+};
+
 /** Par calcul : toute activité faite sur lui, créée par l'utilisateur comprise. */
 const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
   wingfoil: WING,
@@ -119,14 +141,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
     notificationFields: TRAINING_NOTIFICATION,
   },
-  // Muscu (lot I du 25/10) : la ceinture d'office (facultative depuis le lot 210 : sans elle, la séance est chronométrée,
-  // FC retirées du direct et de la notification), la FC et la durée en direct, l'étape du compteur et la FC dans la
-  // notification (ni vitesse ni distance sans position).
-  muscu: {
-    liveFields: ['heartRate', 'heartRateZone', 'averageHeartRate', 'duration'],
-    notificationFields: ['step', 'heartRate'],
-    heartRate: true,
-  },
+  muscu: MUSCU_PRESET,
+  'night-hr': NIGHT_HR_PRESET,
 };
 
 /** Par activité de départ (`core/activities.ts`) : remplace en entier celui de son calcul. */

@@ -57,7 +57,7 @@ check('tuiles « Fractionné et tests » et « Muscu et timer »', tiles === 'Fr
 console.log('tuile Fractionné et tests :', await clickText('Fractionné et tests', '.train-tile'));
 await wait(800);
 const tests = await evaluate(`[...document.querySelectorAll('.train-hub[aria-label="Tests"] .ui-subtitle')].map((n) => n.textContent).join(', ')`);
-check('liste des tests sous les séances', (await evaluate('location.pathname')) === '/fractionne/seances' && tests === 'FC max, FC repos', tests);
+check('liste des tests sous les séances', (await evaluate('location.pathname')) === '/fractionne/seances' && tests === 'FC max, FC repos, FC de nuit', tests);
 console.log('FC max :', await clickText('FC max', '.train-tile'));
 await wait(1200);
 check('page du protocole', (await evaluate('location.pathname')) === '/fractionne/tests/fc-max', await evaluate('location.pathname'));

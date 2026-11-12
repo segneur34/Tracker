@@ -254,6 +254,30 @@
   line-height: 1.5;
 }
 
+/* Conseils d'installation de la FC de nuit, au repos (lot 213) : une courte liste à puces. */
+.rec-night-steps {
+  margin: 0;
+  padding-left: var(--space-5);
+  line-height: 1.5;
+}
+
+.rec-night-note {
+  margin: var(--space-3) 0 0;
+  line-height: 1.5;
+}
+
+/*
+ * FC de nuit en cours (lot 213) : la page en sombre et sobre, sur les variables du thème sombre posées par
+ * `.ui-dark-scope` (tokens.css) ; le fond déborde la colonne jusqu'aux bords de l'écran (une ombre pleine, sous les
+ * barres de l'application, qui ne fait pas défiler) et descend jusqu'en bas.
+ */
+.rec-page--nuit {
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: 0 0 0 100vmax var(--bg);
+  min-height: calc(100dvh - var(--topbar-h) - var(--tabbar-h) - var(--inset-bottom));
+}
+
 .rec-leg-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

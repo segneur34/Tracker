@@ -98,6 +98,8 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   // Sans trace (muscu, lot I du 25/10) : durée, FC moyenne et max, répétitions ; ni distance ni vitesse.
   if (session.record.sport !== null && !hasPositions(session.record.sport)) {
     const stats = [formatDuration(summary.endMs - summary.startMs)];
+    // Nuit du test « FC de nuit » (lot 213) : sa FC la plus basse (le nom de l'activité est déjà sur la ligne).
+    if (summary.night?.lowBpm != null) return [...stats, `creux ${Math.round(summary.night.lowBpm)} bpm`];
     if (summary.heartRate) stats.push(`FC moy. ${summary.heartRate.avgBpm}`, `FC max ${summary.heartRate.maxBpm}`);
     const reps = repsDone(session.record.intervals);
     if (reps > 0) stats.push(`${reps} rép.`);

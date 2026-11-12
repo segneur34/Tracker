@@ -87,13 +87,13 @@ describe('calcul des résumés de la file (setSummaryRunner)', () => {
     // Ce que le calcul rend est rangé : fiche écrite, session publiée.
     expect(library.readLibraryState().sessions.map((s) => s.record.title).sort()).toEqual(['Trace 0', 'Trace 1', 'Trace 2']);
     expect(parseRecordWithRaw(files.get('sessions/b.json') ?? '')?.parts.summary?.startMs).toBe(START_MS + 60_000);
-    // Le calcul reçoit le texte du GPX, le calcul à deviner, et les réglages de l'activité résolus pour les onze calculs.
+    // Le calcul reçoit le texte du GPX, le calcul à deviner, et les réglages de l'activité résolus pour les douze calculs.
     const [text, options] = fakeRunner.mock.calls[0];
     expect(text).toBe('<gpx rang="0"></gpx>');
     expect(options.sport).toBeUndefined();
     expect(options.analysis).toBeUndefined();
     expect(options.elevation).toBeUndefined();
-    expect(Object.keys(options.activitySettings)).toHaveLength(11);
+    expect(Object.keys(options.activitySettings)).toHaveLength(12);
     // Des données seulement : elles traversent un message vers le worker.
     expect(structuredClone(options)).toStrictEqual(options);
   });

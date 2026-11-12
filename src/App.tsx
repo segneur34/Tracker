@@ -32,6 +32,7 @@ const loaders = {
   TestsPage: () => import('./pages/TestsPage'),
   FitnessTestPage: () => import('./pages/FitnessTestPage'),
   RestingHrTestPage: () => import('./pages/RestingHrTestPage'),
+  NightHrTestPage: () => import('./pages/NightHrTestPage'),
   TutorialsPage: () => import('./pages/TutorialsPage'),
   TutorialPage: () => import('./pages/TutorialPage'),
 };
@@ -52,6 +53,7 @@ const TrainingSessionEditPage = lazy(loaders.TrainingSessionEditPage);
 const TestsPage = lazy(loaders.TestsPage);
 const FitnessTestPage = lazy(loaders.FitnessTestPage);
 const RestingHrTestPage = lazy(loaders.RestingHrTestPage);
+const NightHrTestPage = lazy(loaders.NightHrTestPage);
 const TutorialsPage = lazy(loaders.TutorialsPage);
 const TutorialPage = lazy(loaders.TutorialPage);
 
@@ -69,7 +71,7 @@ const preloadPages = (): (() => void) => {
   const order: (keyof typeof loaders)[] = [
     'RecordingPage', 'SessionLibrary', 'LandModule', 'SailingModule', 'SurfModule', 'MuscuModule', 'StatisticsPage', 'ProfilePage',
     'SettingsPage', 'PlanningPage', 'RoutesPage', 'TrainingSessionsPage', 'TrainingSessionEditPage', 'TestsPage',
-    'FitnessTestPage', 'RestingHrTestPage', 'TutorialPage', 'TutorialsPage',
+    'FitnessTestPage', 'RestingHrTestPage', 'NightHrTestPage', 'TutorialPage', 'TutorialsPage',
   ];
   let cancelled = false;
   let handle: number | null = null;
@@ -141,6 +143,7 @@ function App() {
           <Route path="/fractionne/tests" element={<TestsPage />} />
           <Route path="/fractionne/tests/fc-max" element={<FitnessTestPage />} />
           <Route path="/fractionne/tests/fc-repos" element={<RestingHrTestPage />} />
+          <Route path="/fractionne/tests/fc-nuit" element={<NightHrTestPage />} />
           <Route path="/surf" element={<SessionLibrary key="surf" family="surf" />} />
           <Route path="/surf/analyse" element={<SurfModule />} />
           <Route path="/enregistrer" element={<RecordingPage />} />

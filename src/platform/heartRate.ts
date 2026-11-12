@@ -104,6 +104,17 @@ export const EXAMPLE_BELT: HeartRateBelt = { address: 'exemple', name: "FC d'exe
 /** FC d'exemple à `tS` secondes de la connexion : de 95 à 135 bpm, une montée par minute. */
 const exampleBpm = (tS: number): number => Math.round(115 - 20 * Math.cos((2 * Math.PI * tS) / 60));
 
+/** FC jouée par la ceinture d'exemple, lue à chaque mesure : `exampleBpm`, sauf si l'appelant en pose une autre. */
+let exampleBpmOf: (tS: number) => number = exampleBpm;
+
+/**
+ * Pose la FC que joue la ceinture d'exemple (`tS` : secondes depuis sa connexion) ; `null` rend celle de la muscu.
+ * La page Enregistrer y met la FC de nuit d'exemple pendant ce test (lot 213) : `platform/` n'importe pas `recording/`.
+ */
+export const setExampleBeltBpm = (bpmOf: ((tS: number) => number) | null): void => {
+  exampleBpmOf = bpmOf ?? exampleBpm;
+};
+
 /** Minuterie de la ceinture d'exemple, `null` sans elle. */
 let exampleTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -323,7 +334,7 @@ const startExampleBelt = (): void => {
   setState('connected');
   const emit = () => {
     const timeMs = Date.now();
-    const sample: HeartRateSample = { bpm: exampleBpm((timeMs - startMs) / 1000), timeMs, contact: true };
+    const sample: HeartRateSample = { bpm: exampleBpmOf((timeMs - startMs) / 1000), timeMs, contact: true };
     latest = sample;
     sampleListeners.forEach((listener) => listener(sample));
   };

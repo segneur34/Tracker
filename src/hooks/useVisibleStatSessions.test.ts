@@ -55,3 +55,13 @@ describe('foil des Statistiques', () => {
     expect(valueOf(await convert([wing], [session(record)], { wingfoil: false }))).toBeNull();
   });
 });
+
+describe('hors des cumuls (lot 213)', () => {
+  it('une FC de nuit n’entre pas dans les sessions des statistiques, une muscu si', async () => {
+    const muscu: Activity = { id: 'muscu', name: 'Muscu', base: 'muscu', color: '#000' };
+    const night = sessionRecord({ sport: 'night-hr', activityId: 'night-hr', gpx: 'nuit.gpx' });
+    const lift = sessionRecord({ sport: 'muscu', activityId: 'muscu', gpx: 'muscu.gpx' });
+    const all = await convert([muscu], [session(night), session(lift)], {});
+    expect(all.map((s) => s.file)).toEqual(['muscu.gpx']);
+  });
+});

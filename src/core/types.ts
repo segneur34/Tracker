@@ -13,7 +13,8 @@
  * L'identifiant va dans le `<type>` du GPX enregistré et dans le nom de son fichier.
  */
 export type SportType =
-  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf' | 'muscu';
+  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf' | 'muscu'
+  | 'night-hr';
 
 /** Position, en degrés décimaux. */
 export interface LatLon {

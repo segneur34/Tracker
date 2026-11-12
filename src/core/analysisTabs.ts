@@ -94,14 +94,17 @@ export const SURF_TABS: AnalysisTab<SurfTab>[] = [
   { key: 'reglages', label: 'réglages' },
 ];
 
-export type MuscuTab = 'general' | 'cardio' | 'notes' | 'reglages';
+export type MuscuTab = 'general' | 'test' | 'cardio' | 'notes' | 'reglages';
 
 /**
  * Muscu (lot I du 25/10), sans carte : « général » porte la FC et les phases
  * du compteur, « cardio » le panneau commun (charge, zones, FC max à retenir).
+ * « test » : les chiffres de la FC de nuit (lot 213), aux seuls calculs de test
+ * (`analysisTabs`, `isTestSport`), donc jamais en muscu.
  */
 export const MUSCU_TABS: AnalysisTab<MuscuTab>[] = [
   { key: 'general', label: 'général', primary: true },
+  { key: 'test', label: 'test', primary: true },
   { key: 'cardio', label: 'cardio' },
   { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },

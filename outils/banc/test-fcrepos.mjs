@@ -63,7 +63,7 @@ await blockNetwork(['https://*']);
 // --- 1. Tuile et page ---
 await go('/fractionne/seances');
 const tiles = await evaluate(`[...document.querySelectorAll('.train-hub[aria-label="Tests"] .ui-subtitle')].map((n) => n.textContent).join(', ')`);
-check('liste des tests : FC max, FC repos', tiles === 'FC max, FC repos', tiles);
+check('liste des tests : FC max, FC repos, FC de nuit', tiles === 'FC max, FC repos, FC de nuit', tiles);
 console.log('tuile :', await clickText('FC repos', '.train-tile'));
 await wait(1000);
 check('page du test', (await evaluate('location.pathname')) === '/fractionne/tests/fc-repos', await evaluate('location.pathname'));

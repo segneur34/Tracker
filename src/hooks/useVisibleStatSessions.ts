@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { activityFamily, sessionActivity, type Activity } from '../core/activities';
-import type { SportFamily } from '../core/sportProfiles';
+import { countsInTotals, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
 import { statSessionOf, type StatSession } from '../library/stats';
 import { sessionFoil } from '../library/summaryOptions';
@@ -13,6 +13,7 @@ import { effectiveFoil, useVisibility } from './useSportSettings';
  * activité de base, hors de la liste (son calcul sans activité créée, activité
  * supprimée) : elle est gardée, et son activité ajoutée à `activityById` pour
  * son nom et sa couleur. `foil` : celui de la session, sinon de son activité (`sessionFoil`).
+ * Une session hors des cumuls (`countsInTotals` faux : FC de nuit, lot 213) n'y est jamais.
  */
 export interface VisibleStatSessions {
   all: StatSession[];
@@ -35,6 +36,8 @@ export const visibleStatSessions = (
   for (const s of sessions) {
     const a = sessionActivity(activities, s.record.activityId, s.record.sport);
     if (!a) continue;
+    // Hors des cumuls (FC de nuit, lot 213) : ni Statistiques, ni charge, ni Profil, ni graphe d'activités.
+    if (!countsInTotals(a.base)) continue;
     if (!isShown(a) && !(openFamily !== null && activityFamily(a) === openFamily)) continue;
     if (!activityById.has(a.id)) activityById.set(a.id, a);
     all.push(statSessionOf(s.file, s.record, a, sessionFoil(s.record, effectiveFoil(a))));

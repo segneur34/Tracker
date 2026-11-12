@@ -1,5 +1,6 @@
 import { decodeImuHeader } from '../core/imuFile';
 import { JUMPS_CALC_VERSION } from '../core/jumps';
+import { nightSessionName } from '../core/nightHeartRate';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SessionTest } from '../recording/fitnessTest';
 import type { IntervalSeries } from '../recording/intervalTimer';
@@ -40,7 +41,14 @@ export interface NewRecordOptions {
   foil?: boolean;
 }
 
-/** Fiche neuve d'un GPX rangé sous le nom `gpx`, sans nom ni réglages d'analyse. */
+/**
+ * Nom par défaut d'une session neuve : « Nuit du 12 au 13/11 » pour une nuit du test « FC de nuit » (lot 213),
+ * la date de la session restant celle du départ ; aucun ailleurs.
+ */
+const defaultName = (analyzed: AnalyzedGpx): string | null =>
+  analyzed.sport === 'night-hr' ? nightSessionName(analyzed.summary.startMs, analyzed.summary.endMs) : null;
+
+/** Fiche neuve d'un GPX rangé sous le nom `gpx`, sans réglages d'analyse, sans nom sauf celui d'une nuit (`defaultName`). */
 export const newRecord = (
   gpx: string, analyzed: AnalyzedGpx, source: SessionSource, activityId: string | null, context: NewRecordContext
 ): SessionRecord => ({
@@ -52,7 +60,7 @@ export const newRecord = (
   source,
   addedAt: new Date(context.now()).toISOString(),
   title: analyzed.title,
-  name: null,
+  name: defaultName(analyzed),
   summary: analyzed.summary,
   // Notes saisies avant l'existence du dossier, pour la même trace.
   notes: findLegacyNotes(context.legacyNotes(), analyzed.summary.startMs),

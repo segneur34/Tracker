@@ -117,8 +117,13 @@ export const RECORD_VERSION = 1;
  * 19 (11 novembre 2026, lot 208) : le bateau reçoit aussi son temps en
  * mouvement (`inMotionS`), ligne « Temps en mouvement » de « général » et de
  * l'image de partage (les autres chiffres ne bougent pas).
+ *
+ * 20 (12 novembre 2026, lot 213) : une nuit du test « FC de nuit » reçoit ses
+ * chiffres (`night` : FC la plus basse et son heure, moyenne, sursauts, part
+ * mesurée), pour la ligne de la bibliothèque et la suite des nuits de la page du
+ * test (les autres chiffres ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 19;
+export const SUMMARY_CALC_VERSION = 20;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -168,6 +173,8 @@ export interface SessionSummary {
   cadence?: SummaryCadence;
   /** Test guidé de la fiche (`test`) : FC max et dernier palier tenu ; absent sans test. */
   test?: SummaryTest;
+  /** Nuit du test « FC de nuit » (calcul `night-hr`, version 20) ; absente ailleurs, ou sans mesure lisible. */
+  night?: SummaryNight;
   /** À pied (traitement course) : temps du meilleur kilomètre, en secondes (tops, `d1km`) ; absent s'il n'est pas couru (version 17). */
   best1kmS?: number;
   /** À vélo : vitesse des meilleures 5 min, en m/s (tops, `t5min`) ; absente si la session est plus courte (version 17). */
@@ -240,6 +247,36 @@ export interface ManeuverResults {
 const readSummaryTest = (raw: unknown): SummaryTest | null => {
   if (!isObject(raw) || !isFiniteNumber(raw.steps)) return null;
   return { hrMaxBpm: finiteOr(raw.hrMaxBpm, null), lastStepSpeedMs: finiteOr(raw.lastStepSpeedMs, null), steps: raw.steps };
+};
+
+/** Chiffres d'une nuit du test « FC de nuit » dans son résumé (`core/nightHeartRate.ts`). */
+export interface SummaryNight {
+  /** Version du protocole qui les a produits (`NIGHT_HR_TEST.version`). */
+  protocol: number;
+  /** FC la plus basse (moyenne sur 5 min), en bpm, et le milieu de sa fenêtre ; `null` si aucune fenêtre n'est assez mesurée. */
+  lowBpm: number | null;
+  lowAtMs: number | null;
+  /** FC moyenne de la nuit, en bpm. */
+  avgBpm: number;
+  /** Sursauts de FC comptés. */
+  surges: number;
+  /** Part de la nuit couverte par des mesures lisibles, de 0 à 1. */
+  coverage: number;
+}
+
+const readSummaryNight = (raw: unknown): SummaryNight | null => {
+  if (!isObject(raw) || !isFiniteNumber(raw.protocol) || !isFiniteNumber(raw.avgBpm) || !isFiniteNumber(raw.surges) || !isFiniteNumber(raw.coverage)) {
+    return null;
+  }
+  const lowBpm = finiteOr(raw.lowBpm, null);
+  return {
+    protocol: raw.protocol,
+    lowBpm,
+    lowAtMs: lowBpm === null ? null : finiteOr(raw.lowAtMs, null),
+    avgBpm: raw.avgBpm,
+    surges: raw.surges,
+    coverage: raw.coverage,
+  };
 };
 
 const readManeuverResults = (raw: unknown): ManeuverResults | null => {
@@ -538,6 +575,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const test = readSummaryTest(raw.test);
   if (test) summary.test = test;
   else delete summary.test;
+  const night = readSummaryNight(raw.night);
+  if (night) summary.night = night;
+  else delete summary.night;
   for (const [field, [min, max]] of Object.entries(SHARE_NUMBER_RANGES) as [keyof typeof SHARE_NUMBER_RANGES, readonly [number, number]][]) {
     const value = raw[field];
     if (!isFiniteNumber(value) || value < min || value > max) delete summary[field];

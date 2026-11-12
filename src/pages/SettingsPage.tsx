@@ -1,10 +1,10 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from 'react';
 import {
-  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, isFamilyHidden, nextActivityColor, visibleActivities, visibleFamilies,
+  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityBases, activityFamily, isFamilyHidden, nextActivityColor, visibleActivities, visibleFamilies,
   type Activity,
 } from '../core/activities';
 import {
-  LOOP_RETURN_RATIO_RANGE, REFERENCE_HEART_RATE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, hasPositions,
+  LOOP_RETURN_RATIO_RANGE, REFERENCE_HEART_RATE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, hasActiveThreshold, hasPositions,
   isLandTreatment, sportFamily, sportTreatment, usesMarkCourse,
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
@@ -1321,12 +1321,12 @@ function AddActivityForm({
 }) {
   const [name, setName] = useState('');
   const [family, setFamily] = useState<SportFamily>('voile');
-  const [base, setBase] = useState<SportType>(familySports('voile')[0]);
+  const [base, setBase] = useState<SportType>(activityBases('voile')[0]);
   const [color, setColor] = useState(() => nextActivityColor(activities, 'voile'));
   const [icon, setIcon] = useState<ActivityIconId | null>(null);
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
-    setBase(familySports(next)[0]);
+    setBase(activityBases(next)[0]);
     setColor(nextActivityColor(activities, next));
     setIcon(null);
   };
@@ -1346,11 +1346,11 @@ function AddActivityForm({
       <select value={family} onChange={(e) => pickFamily(e.target.value as SportFamily)} aria-label="Famille" className="ui-field ui-field--s">
         {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
       </select>
-      {familySports(family).length > 1 && (
+      {activityBases(family).length > 1 && (
         <label className="ui-inline-row-6 ui-center">
           <span className="ui-muted ui-text-xs">calcul</span>
           <select value={base} onChange={(e) => setBase(e.target.value as SportType)} className="ui-field ui-field--s">
-            {familySports(family).map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
+            {activityBases(family).map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
           </select>
         </label>
       )}

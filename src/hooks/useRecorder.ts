@@ -466,11 +466,14 @@ const withoutBeltLost = (error: string | null): string | null => {
   return rest === '' ? null : rest;
 };
 
-/** Applique un pas de la veille de la ceinture : minuteur, et message ajouté à l'alerte ou retiré seul. */
+/**
+ * Applique un pas de la veille de la ceinture : minuteur, et message ajouté à l'alerte ou retiré seul. Session
+ * silencieuse (FC de nuit, lot 213, `RecordingProfile.silent`) : la veille est muette, l'alerte écrite reste.
+ */
 const applyBeltWatch = (step: GpsWatchStep): void => {
   beltWatch = step.state;
   if (step.disarm) void disarmBeltWatch().catch(() => {});
-  if (step.armMs !== null) void armBeltWatch(step.armMs).catch(() => {});
+  if (step.armMs !== null) void armBeltWatch(step.armMs, { silent: currentProfile?.silent === true }).catch(() => {});
   if (step.lost) {
     const rest = withoutBeltLost(state.error);
     setState({ beltLost: true, error: rest ? `${rest} ${BELT_LOST_ERROR}` : BELT_LOST_ERROR });

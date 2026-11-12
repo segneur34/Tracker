@@ -40,6 +40,13 @@ describe('fiche neuve d’une session (lot 113)', () => {
     });
   });
 
+  it('nomme une nuit du test « FC de nuit » du jour du départ au jour de la fin (lot 213)', () => {
+    const startMs = new Date(2026, 10, 12, 23, 10).getTime();
+    const summary = { ...base.summary, startMs, endMs: startMs + 8 * 3_600_000 };
+    expect(newRecord('n.gpx', { summary, sport: 'night-hr', title: null }, 'enregistrement', 'night-hr', context()).name).toBe('Nuit du 12 au 13/11');
+    expect(recordFor('n.gpx', { summary, sport: 'night-hr', title: null }, 'enregistrement', {}, context()).name).toBe('Nuit du 12 au 13/11');
+  });
+
   it('reprend les notes saisies avant le dossier pour le même début de trace', () => {
     const notes = { comment: 'Belle sortie', rating: 4 };
     const record = newRecord('a.gpx', analyzed, 'enregistrement', 'wing', context({ [`ancienne|${base.summary.startMs}`]: notes, [`autre|1`]: { comment: 'x' } }));

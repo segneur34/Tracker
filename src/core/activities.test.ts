@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   BATEAU_ACTIVITY, BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY, TESTS_ACTIVITY,
   MUSCU_ACTIVITY,
-  VTT_ACTIVITY, activitiesOfFamily,
+  VTT_ACTIVITY, activitiesOfFamily, activityBases,
   activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, intervalActivityFor, isActivityShown, isFamilyHidden,
   kindActivityLabel, trainingKindsOf,
   newActivityId, nextActivityColor, readActivities, recolorActivities, sessionActivity, upgradeActivities,
   visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
 import {
-  SPORT_FAMILIES, SPORT_PROFILES, hasPositions, isLandTreatment, sportFamily, sportTreatment, trainingKind, usesMarkCourse,
+  SPORT_FAMILIES, SPORT_PROFILES, countsInTotals, hasPositions, isLandTreatment, isSilentSport, isTestSport, sportFamily, sportTreatment, trainingKind,
+  usesMarkCourse,
 } from './sportProfiles';
 
 const moth: Activity = { id: 'a-moth', name: 'Moth à foil', base: 'wingfoil', color: '#2e7d32' };
@@ -396,12 +397,42 @@ describe('types d’entraînement (24/10)', () => {
     expect(sportFamily('muscu')).toBe('fractionne');
     expect(sportTreatment('muscu')).toBe('muscu');
     expect(isLandTreatment(sportTreatment('muscu'))).toBe(false);
-    expect((Object.keys(SPORT_PROFILES) as (keyof typeof SPORT_PROFILES)[]).filter((s) => !hasPositions(s))).toEqual(['muscu']);
+    expect((Object.keys(SPORT_PROFILES) as (keyof typeof SPORT_PROFILES)[]).filter((s) => !hasPositions(s))).toEqual(['muscu', 'night-hr']);
     const muscu = SPORT_PROFILES.muscu;
     expect(muscu.recording.autoPauseSpeedMs).toBe(0);
     expect([muscu.jumps, muscu.intervals, muscu.cadence, muscu.loopReturnMaxRatio, muscu.terrainElevationStepM]).toEqual([null, null, null, null, null]);
     expect(muscu.topTargets).toEqual([]);
     expect(muscu.heartRate.thresholdOffsetBpm).toBe(0);
+    expect(isSilentSport('muscu')).toBe(false);
+    expect(countsInTotals('muscu')).toBe(true);
+  });
+
+  it('rangent la FC de nuit sous « Tests », sans position, silencieuse et hors des cumuls (lot 213)', () => {
+    expect(trainingKind('night-hr')).toBe('tests');
+    expect(isTestSport('night-hr')).toBe(true);
+    expect(sportFamily('night-hr')).toBe('fractionne');
+    expect(sportTreatment('night-hr')).toBe('muscu');
+    expect(hasPositions('night-hr')).toBe(false);
+    const night = SPORT_PROFILES['night-hr'];
+    expect(night.label).toBe('FC de nuit');
+    expect(night.recording.autoPauseSpeedMs).toBe(0);
+    expect([night.jumps, night.intervals, night.cadence, night.loopReturnMaxRatio, night.terrainElevationStepM]).toEqual([null, null, null, null, null]);
+    // Seul calcul silencieux et seul hors des cumuls.
+    const sports = Object.keys(SPORT_PROFILES) as (keyof typeof SPORT_PROFILES)[];
+    expect(sports.filter(isSilentSport)).toEqual(['night-hr']);
+    expect(sports.filter((s) => !countsInTotals(s))).toEqual(['night-hr']);
+    // Pas une activité de départ, ni un calcul proposé à la création d'une activité ; sa session prend l'activité du calcul.
+    expect(DEFAULT_ACTIVITIES.some((a) => a.base === 'night-hr')).toBe(false);
+    expect(activityBases('fractionne')).toEqual(['run-intervals', 'bike-intervals', 'run-test', 'muscu']);
+    expect(baseActivity('night-hr')).toMatchObject({ id: 'night-hr', name: 'FC de nuit', base: 'night-hr' });
+  });
+
+  it('proposent à la création d’une activité tous les calculs de la famille hors de la FC de nuit', () => {
+    for (const family of SPORT_FAMILIES) {
+      const bases = activityBases(family);
+      expect(bases.length).toBeGreaterThan(0);
+      expect(bases.every((b) => sportFamily(b) === family && b !== 'night-hr')).toBe(true);
+    }
   });
 
   it('nomment une activité sous son type sans le nom du type', () => {

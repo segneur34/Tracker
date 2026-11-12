@@ -53,6 +53,8 @@ const BASE_ICON: Record<SportType, ActivityIconId> = {
   surf: 'surf',
   // Pas encore de dessin propre à la muscu : celui de l'Entraînement à pied.
   muscu: 'fractionne-pied',
+  // Ni pour la FC de nuit (lot 213) : celui des tests, l'Entraînement à pied.
+  'night-hr': 'fractionne-pied',
 };
 
 /** Activités de départ qui partagent leur calcul avec une autre (`DEFAULT_ACTIVITIES`). */
