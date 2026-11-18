@@ -129,16 +129,17 @@
   color: var(--tab-accent, var(--voile));
 }
 
-/* « tout fermer », après la flèche : sobre comme elle, ce n'est pas un onglet. Bloc en ligne, pas flex :
+/* « tout fermer », après la flèche : pas un onglet, contour et texte rouges (var(--danger)) pour le
+   distinguer de la flèche. Bloc en ligne, pas flex :
    la majuscule de `::first-letter` s'y applique. */
 .an-tabs-close-all {
   display: inline-block;
   min-height: 32px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--line);
+  border: 1px solid var(--danger);
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--muted);
+  color: var(--danger);
   font-size: var(--text-xs);
   font-weight: 600;
   cursor: pointer;
