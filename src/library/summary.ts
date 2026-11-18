@@ -132,7 +132,7 @@ const analyze = (
   mask?: boolean[];
   /** Voile : temps en mouvement, dénominateur du ratio à seuil (`SessionSummary.inMotionS`). */
   inMotionS?: number;
-  surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS' | 'maxSpeedMs'>;
+  surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS' | 'maxSpeedMs' | 'waterTimeS'>;
 } => {
   if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null, movingDistanceM: null };
 
@@ -158,6 +158,8 @@ const analyze = (
         waveCount: summary.waveCount, longestWaveM: summary.longestWaveM,
         longestFlightS: foil ? summary.longestFlightS : null, flightS: foil ? summary.flightS : null,
         maxSpeedMs: summary.maxWaveSpeedMs ?? 0,
+        // Tout le temps à l'eau : la phase « trou » (pauses, trous de trace) est ôtée.
+        waterTimeS: summary.glisseS + summary.rameS + summary.attenteS,
       },
     };
   }

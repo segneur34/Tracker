@@ -122,8 +122,12 @@ export const RECORD_VERSION = 1;
  * chiffres (`night` : FC la plus basse et son heure, moyenne, sursauts, part
  * mesurée), pour la ligne de la bibliothèque et la suite des nuits de la page du
  * test (les autres chiffres ne bougent pas).
+ *
+ * 21 (18 novembre 2026, lot 219) : une session de surf reçoit son temps à l'eau
+ * (`waterTimeS` : rame, attente et vagues, pauses déduites), pour la racine du
+ * Profil (les autres chiffres ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 20;
+export const SUMMARY_CALC_VERSION = 21;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -167,6 +171,8 @@ export interface SessionSummary {
   longestFlightS?: number | null;
   /** Surf sur foil : temps total en vol (`null` sans foil). */
   flightS?: number | null;
+  /** Surf : temps à l'eau en secondes, pauses et trous de trace ôtés (rame, attente, vagues) ; racine du Profil (version 21). */
+  waterTimeS?: number;
   /** FC de la session, si elle en a assez (`HeartRateProfile.minCoverageS`) ; indépendante des zones du pratiquant. */
   heartRate?: SummaryHeartRate;
   /** Cadence à pied, si la session en a assez (`CadenceDetection.minCoverageS`). */
@@ -563,6 +569,7 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   else delete summary.maneuverResults;
   if ('movingDistanceM' in raw) summary.movingDistanceM = isFiniteNumber(raw.movingDistanceM) ? raw.movingDistanceM : null;
   if ('flightS' in raw) summary.flightS = isFiniteNumber(raw.flightS) ? raw.flightS : null;
+  if (!isFiniteNumber(raw.waterTimeS) || raw.waterTimeS < 0) delete summary.waterTimeS;
   if (!isFiniteNumber(raw.waveCount)) delete summary.waveCount;
   if ('longestWaveM' in raw) summary.longestWaveM = isFiniteNumber(raw.longestWaveM) ? raw.longestWaveM : null;
   if ('longestFlightS' in raw) summary.longestFlightS = isFiniteNumber(raw.longestFlightS) ? raw.longestFlightS : null;

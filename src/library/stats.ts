@@ -66,6 +66,8 @@ export interface StatSession {
   longestFlightS: number | null;
   /** Surf sur foil : temps total en vol. */
   flightS: number | null;
+  /** Surf : temps à l'eau, pauses et trous de trace ôtés (rame, attente et vagues) ; `null` ailleurs et avant la version 21 du résumé. */
+  waterTimeS: number | null;
   /** Répétitions du compteur (fractionné). */
   reps: number;
   /** FC du résumé, `null` pour une session sans FC. */
@@ -106,6 +108,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     longestWaveM: summary.longestWaveM ?? null,
     longestFlightS: summary.longestFlightS ?? null,
     flightS: summary.flightS ?? null,
+    waterTimeS: summary.waterTimeS ?? null,
     reps: repsDone(record.intervals),
     heartRate: summary.heartRate ?? null,
     cadenceSpm: summary.cadence?.avgSpm ?? null,

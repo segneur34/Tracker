@@ -304,6 +304,27 @@ describe('summarizeSession', () => {
   });
 });
 
+describe("temps à l'eau du surf (lot 219)", () => {
+  for (const hz of [1, 5]) {
+    it(`à ${hz} Hz : toute la session, pauses déduites ; le temps en action reste la glisse`, () => {
+      const raw = buildTrack([[1500, 2.2], [1500, 2.2]], hz);
+      expect(summarizeSession(raw, 'surf')!.waterTimeS).toBeCloseTo(3000, -1);
+      // Session de 1 h dont 10 min de pause : 50 min à l'eau (le pas qui couvre la pause ne compte pas).
+      const ms = (p: RawTrackPoint): number => Date.parse(p.time as string);
+      const paused = raw.map((p) => (ms(p) - START_MS >= 1500_000 ? { ...p, time: new Date(ms(p) + 600_000).toISOString() } : p));
+      const idx = paused.findIndex((p) => ms(p) - START_MS >= 1500_000 + 600_000);
+      paused[idx] = { ...paused[idx], segmentStart: true };
+      const summary = summarizeSession(paused, 'surf')!;
+      expect(summary.waterTimeS).toBeCloseTo(3000, -1);
+      expect(summary.movingTimeS).toBeLessThan(summary.waterTimeS!);
+    });
+  }
+
+  it('rien hors du surf', () => {
+    expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.waterTimeS).toBeUndefined();
+  });
+});
+
 describe('vitesse max du surf : celle de la page, une vague (Q34)', () => {
   /** Vitesse max que la page d'analyse montre : `maxWaveSpeedMs`, de la même trace et du même seuil. */
   const pageMax = (raw: RawTrackPoint[], foil = false): number | null => {
