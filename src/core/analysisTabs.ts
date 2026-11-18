@@ -262,18 +262,40 @@ export interface AnalysisTabsState<K extends string> {
   advanced: boolean;
 }
 
-/** État d'ouverture : les défauts du module (`tabDefaults`), « avancé » fermé. */
-export const initialTabsState = <K extends string>(defaults: Record<K, boolean>, key: string | null): AnalysisTabsState<K> => ({
-  key, open: { ...defaults }, advanced: false,
-});
+/**
+ * État d'ouverture : les défauts du module (`tabDefaults`), « avancé » fermé ;
+ * ou, si `openOn` est donné (onglet du matériel après « Finir », lot 220),
+ * « avancé » déplié et cet onglet ouvert seul, « général » fermé.
+ */
+export const initialTabsState = <K extends string>(defaults: Record<K, boolean>, key: string | null, openOn: K | null = null): AnalysisTabsState<K> =>
+  openOn === null
+    ? { key, open: { ...defaults }, advanced: false }
+    : { key, open: { ...closeAllTabs(defaults), [openOn]: true }, advanced: true };
 
 /**
- * État valable pour la trace `key` : celui reçu s'il en vient, sinon les défauts
- * (une autre session s'ouvre sur « général » seul). Une trace pas encore lue
- * (`null`) garde l'état reçu. Rend l'objet reçu tel quel quand rien ne change.
+ * État valable pour la trace `key` : celui reçu s'il en vient, sinon celui
+ * d'ouverture (une autre session s'ouvre sur « général » seul, ou sur `openOn`).
+ * Une trace pas encore lue (`null`) garde l'état reçu. Rend l'objet reçu tel
+ * quel quand rien ne change.
  */
-export const tabsStateFor = <K extends string>(state: AnalysisTabsState<K>, defaults: Record<K, boolean>, key: string | null): AnalysisTabsState<K> =>
-  key !== null && key !== state.key ? initialTabsState(defaults, key) : state;
+export const tabsStateFor = <K extends string>(
+  state: AnalysisTabsState<K>,
+  defaults: Record<K, boolean>,
+  key: string | null,
+  openOn: K | null = null
+): AnalysisTabsState<K> =>
+  key !== null && key !== state.key ? initialTabsState(defaults, key, openOn) : state;
+
+/** Clés de l'onglet du matériel : « matos et conditions » en voile, « matériel et notes » ailleurs. */
+const GEAR_TAB_KEYS: readonly string[] = ['matos', 'notes'];
+
+/**
+ * Onglet du matériel d'un module, à ouvrir seul après « Finir » (lot 220) :
+ * `null` si le module n'en a pas ou si l'activité le cache dans Réglages (§11),
+ * l'analyse s'ouvre alors comme d'habitude.
+ */
+export const gearTabToOpen = <K extends string>(tabs: readonly AnalysisTab<K>[], choices: TabChoices | null | undefined): K | null =>
+  tabs.find((tab) => GEAR_TAB_KEYS.includes(tab.key) && isTabShown(tab, choices))?.key ?? null;
 
 /** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » ne change pas (05/11). */
 export const closeAllTabs = <K extends string>(open: Record<K, boolean>): Record<K, boolean> =>

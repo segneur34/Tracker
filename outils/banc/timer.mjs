@@ -13,12 +13,13 @@
 //  4. « Enregistrer une session » rend la page ordinaire ;
 //  4 bis. (lot 24, 28/10) « Enregistrer » d'une séance, en muscu : Enregistrer sur Muscu, la séance dans la carte du compteur sans être
 //     lancée, ceinture cochée et décochable (FC d'exemple du navigateur ; grisée avant le lot 210), compteur lancé puis session démarrée, « Arrêter » de la session tenu
-//     2 s : le compteur est arrêté avec elle, la session rangée (lot 212 ; une liste de matériel en Muscu garde la carte
-//     « Session terminée » à l'écran, sans quoi l'analyse s'ouvrirait d'elle-même) ; le lien « Enregistrer sans séance » absent (lot 102) ;
+//     2 s : le compteur est arrêté avec elle (relevé au vol), la session rangée, et l'analyse s'ouvre d'elle-même sur
+//     « matériel et notes », « avancé » déplié (lot 220 ; une liste de matériel est posée en Muscu) ; le lien « Enregistrer sans séance » absent (lot 102) ;
 //  4 ter. (lot 103) la même séance passée jusqu'au bout pendant l'enregistrement : « Séance terminée » propose « Arrêter
-//     l'enregistrement » à côté de « Clore le timer » (ex-« Fermer », lot 143), la session continue ; appui court : le geste rappelé ; tenu 2 s : « Session terminée » ;
+//     l'enregistrement » à côté de « Clore le timer » (ex-« Fermer », lot 143), la session continue ; appui court : le geste rappelé ; tenu 2 s : rangée comme par « Arrêter », analyse sur « matériel et notes » ;
 //  4 quater. (lot 210) muscu sans la ceinture : case décochée, « Démarrer » ouvert, source « Chronomètre », ni BPM ni FC, la durée
-//     tourne ; « Session terminée » dit « durée seule » ; « Ouvrir l'analyse » : « général » sans FC, fiche à durée non nulle ;
+//     tourne ; liste de matériel retirée : « Session terminée » (relevée au vol) dit « durée seule », l'analyse s'ouvre
+//     d'elle-même : « général » sans FC, fiche à durée non nulle ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { connect } from './lib/cdp.mjs';
 
@@ -57,6 +58,37 @@ const text = (selector) => evaluate(`(() => { const n = document.querySelector($
 const raw = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? '(absent)'`);
 const presets = () => evaluate(`[...document.querySelectorAll('.train-item__name')].map((n) => n.textContent).join(' ; ')`);
 const where = () => evaluate('location.pathname + location.search');
+// Fin d'enregistrement (lot 220) : l'analyse s'ouvre d'elle-même, la page Enregistrer ne reste pas. Ce qu'elle a montré
+// juste avant (compteur arrêté, carte « Session terminée ») est relevé au vol, avant l'arrêt, par un observateur.
+const watchEnd = () => evaluate(`(() => {
+  window.__fin = { ivl: '', carte: '', run: '' };
+  window.__finObs?.disconnect();
+  // Les nœuds ajoutés se lisent même s'ils sont déjà retirés quand l'observateur passe (page quittée aussitôt).
+  const find = (root, sel) => (root.matches?.(sel) ? root : root.querySelector?.(sel)) ?? null;
+  window.__finObs = new MutationObserver((list) => {
+    const roots = [document, ...list.flatMap((m) => [...m.addedNodes])];
+    for (const root of roots) {
+      const d = find(root, '.ivl-done');
+      if (d) window.__fin.ivl = d.textContent;
+      const c = find(root, '.rec-saved-text');
+      if (c) window.__fin.carte = c.textContent;
+    }
+    const r = localStorage.getItem('tracker.intervalRun');
+    // La séance close est oubliée quand la carte du compteur quitte l'écran (forgetClosedIntervals, 26/10) : le
+    // relevé garde le dernier état non vide, celui d'avant l'ouverture de l'analyse.
+    if (r && r !== 'null') window.__fin.run = r;
+  });
+  window.__finObs.observe(document.body, { subtree: true, childList: true, characterData: true });
+  return 'ok';
+})()`);
+const endSeen = () => evaluate(`(() => { window.__finObs?.disconnect(); return window.__fin ?? { ivl: '', carte: '', run: '' }; })()`);
+/** Onglets ouverts de l'analyse et rangée « avancé ». */
+const tabsState = () => evaluate(`(() => {
+  const pressed = [...document.querySelectorAll('.an-tabs .ui-tab[aria-pressed="true"]')].map((t) => t.textContent.trim()).join(' | ');
+  const adv = document.querySelector('.an-tabs-advanced-toggle')?.getAttribute('aria-expanded');
+  return 'ouverts : ' + (pressed || '(aucun)') + ' ; avancé : ' + (adv === 'true' ? 'déplié' : 'fermé');
+})()`);
+const ON_GEAR = 'ouverts : matériel et notes ; avancé : déplié';
 const itemOf = (name) => `[...document.querySelectorAll('.train-item')].find((i) => i.querySelector('.train-item__name')?.textContent === ${JSON.stringify(name)})`;
 const unfold = (name) => evaluate(`(() => { const i = ${itemOf(name)}; const t = i?.querySelector('.train-item__toggle'); if (!t) return 'absent'; if (t.getAttribute('aria-expanded') !== 'true') t.click(); return 'ok'; })()`);
 const itemButton = (name, label) => evaluate(`(() => { const i = ${itemOf(name)}; const b = i && [...i.querySelectorAll('button')].find((x) => x.textContent.includes(${JSON.stringify(label)})); if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok'; })()`);
@@ -210,7 +242,7 @@ check('page ordinaire', (await where()) === '/enregistrer' && (await raw('.ui-pa
   && !!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Famille"]')`)), `${await where()} | ${await raw('.ui-page h1')}`);
 
 // --- 4 bis. « Enregistrer » : la séance avec la ceinture, en muscu (lot I du 25/10, `handsOverToRecording`) ---
-// Une liste de matériel en Muscu : la carte « Session terminée » reste à l'écran après l'arrêt, au lieu d'ouvrir l'analyse (lot 212).
+// Une liste de matériel en Muscu : après l'arrêt, l'analyse s'ouvre d'elle-même sur « matériel et notes » (lot 220).
 await evaluate(`(() => {
   const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
   s.gearGroups = { ...s.gearGroups, muscu: [{ id: 'g1', name: 'Gants', items: [{ id: 'i1', name: 'Gants noirs' }] }] };
@@ -240,14 +272,19 @@ check('session démarrée, le compteur continue', /Travail 1[/]8/.test(await tex
   && (await evaluate(`[...document.querySelectorAll('button.ui-btn--danger')].some((b) => b.textContent.includes('Arrêter') && !b.closest('.ivl'))`)), await text('.ivl-live__phase'));
 await shoot('timer-muscu');
 // « Arrêter » de la session se tient 2 s : le compteur s'arrête avec elle (Q12 du 28/10).
+await watchEnd();
 console.log('arrêter la session :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
 await wait(2300);
 await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-await wait(2500);
-check('session arrêtée : le compteur arrêté avec elle', /Séance arrêtée/.test(await text('.ivl-done'))
-  && /"kind":"stop"/.test(await evaluate(`localStorage.getItem('tracker.intervalRun') ?? ''`)), await text('.ivl-done'));
-check("session terminée, rangée dès l'arrêt (« Ouvrir l'analyse »)", /Session terminée/i.test(await text('.ui-page')) && /Ouvrir l'analyse/i.test(await text('.ui-page'))
-  && (await records())?.some((r) => r.sport === 'muscu'), (await text('.ui-page')).slice(0, 160));
+await wait(3500);
+const finMuscu = await endSeen();
+check('session arrêtée : le compteur arrêté avec elle', /Séance arrêtée/.test(finMuscu.ivl) && /"kind":"stop"/.test(finMuscu.run), JSON.stringify(finMuscu));
+// La séance oubliée par le compteur reste dans la fiche de la session, rangée à l'arrêt.
+const muscuIntervals = (await records())?.find((r) => r.sport === 'muscu')?.intervals?.length ?? 0;
+check('séance gardée dans la fiche de la session', muscuIntervals > 0, String(muscuIntervals));
+const tabsMuscu = await tabsState();
+check("session rangée dès l'arrêt, analyse ouverte d'elle-même sur « matériel et notes » (lot 220)", (await where()).startsWith('/fractionne/analyse')
+  && tabsMuscu === ON_GEAR && (await records())?.some((r) => r.sport === 'muscu'), `${await where()} | ${tabsMuscu}`);
 check('muscu : position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
 
 // --- 4 ter. (lot 103, 31/10) Séance terminée pendant l'enregistrement : « Arrêter l'enregistrement » proposé, tenu, jamais seul ---
@@ -271,14 +308,26 @@ await evaluate(`(() => { const b = [...document.querySelectorAll('.ivl button.ui
 await wait(500);
 check('appui court : le geste rappelé, la session continue', /Maintenir 2 s pour arrêter/i.test(await text('.ivl .ivl-actions')) && !/Session terminée/i.test(await text('.ui-page')),
   await text('.ivl .ivl-actions'));
+// L'appui tenu range la session dès ses 2 s, avant même d'être relâché : le relevé au vol commence avant l'appui.
+await watchEnd();
 console.log("tenir « Arrêter l'enregistrement » :", await evaluate(`(() => { const b = [...document.querySelectorAll('.ivl button.ui-btn--danger')].find((x) => !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
 await wait(2300);
 await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-await wait(2500);
-check("tenu 2 s : l'écran « Session terminée », comme « Arrêter »", /Session terminée/i.test(await text('.ui-page')) && /Ouvrir l'analyse/i.test(await text('.ui-page')), (await text('.ui-page')).slice(0, 160));
-check("session arrêtée : plus d'« Arrêter l'enregistrement » dans le compteur", !/Arrêter l'enregistrement/.test(await text('.ivl')), await text('.ivl'));
+await wait(3500);
+const finTer = await endSeen();
+const tabsTer = await tabsState();
+check("tenu 2 s : session rangée comme par « Arrêter », « Session terminée » au passage, analyse ouverte d'elle-même sur « matériel et notes »", /Muscu/.test(finTer.carte)
+  && (await where()).startsWith('/fractionne/analyse') && tabsTer === ON_GEAR, `${JSON.stringify(finTer)} | ${await where()} | ${tabsTer}`);
+check("session arrêtée : plus d'« Arrêter l'enregistrement » à l'écran", !/Arrêter l'enregistrement/.test(await text('.ui-page')), (await text('.ui-page')).slice(0, 160));
 
 // --- 4 quater. (lot 210) Muscu sans la ceinture : case décochée, « Démarrer » ouvert, séance chronométrée ---
+// Sans liste de matériel : l'analyse s'ouvre d'elle-même sur « général » (lot 212).
+await evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
+  if (s.gearGroups) delete s.gearGroups.muscu;
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return 'ok';
+})()`);
 await go('/enregistrer?activite=muscu');
 await wait(1000);
 console.log('décocher la ceinture :', await evaluate(`(() => { const b = [...document.querySelectorAll('input[type=checkbox]')].find((i) => i.closest('label')?.textContent.includes('Ceinture cardio')); if (!b) return 'absent'; if (b.checked) b.click(); return b.checked ? 'cochée' : 'décochée'; })()`));
@@ -294,14 +343,13 @@ const duree = await evaluate(`(() => { const s = [...document.querySelectorAll('
 check('sans ceinture : la durée tourne', duree !== '(absent)' && !/^0+[:]00$|^0:00:00$/.test(duree), duree);
 check('sans ceinture : position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
 await shoot('timer-muscu-sans-ceinture');
+await watchEnd();
 console.log('arrêter la session :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
 await wait(2300);
 await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-await wait(2000);
-const fin = await text('.rec-saved-text');
-check('sans ceinture : « Session terminée », durée seule', /Session terminée/i.test(await text('.ui-page')) && /durée seule/.test(fin), fin);
-console.log("ouvrir l'analyse :", await clickText("Ouvrir l'analyse"));
-await wait(3000);
+await wait(5000);
+const fin = (await endSeen()).carte;
+check('sans ceinture : « Session terminée » montrée au passage, durée seule', /durée seule/.test(fin), fin);
 const generalSansFc = await evaluate(`(() => { const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Général')); return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ') : '(absent)'; })()`);
 console.log('analyse sans ceinture :', await where(), '|', generalSansFc);
 check('sans ceinture : analyse muscu, « général » avec la durée, sans FC', (await where()).startsWith('/fractionne/analyse')

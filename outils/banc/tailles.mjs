@@ -30,7 +30,7 @@ mkdirSync(workDir, { recursive: true });
 if (shotDir) mkdirSync(shotDir, { recursive: true });
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, importFiles, records, logs, close } = await connect({ port });
+const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, importFiles, records, clickText, logs, close } = await connect({ port });
 /** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
 const go = async (path, max) => {
   const ms = await goRaw(path, max);
@@ -322,16 +322,16 @@ if (!process.env.PAGES || 'enregistrement'.includes(process.env.PAGES)) {
   const replay = join(workDir, 'rejeu.gpx');
   writeFileSync(replay, hillGpx('running', 600, 3, 0, Date.now() - 700_000));
   await setSize(SIZES_ALL[3]);
-  // Une liste de matériel en Voile et en Course (l'activité choisie d'office) : la carte « Session terminée » reste à l'écran après l'arrêt, sans quoi l'analyse
-  // s'ouvrirait d'elle-même (lot 212) et « enregistrement terminé » relèverait l'analyse.
-  await evaluate(`(() => {
-    const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
-    const list = [{ id: 'g1', name: 'Matériel', items: [{ id: 'i1', name: 'Pièce' }] }];
-    s.gearGroups = { ...s.gearGroups, running: list, wingfoil: list };
-    localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
-    return 'ok';
-  })()`);
+  // Le compteur d'intervalles lancé, puis une Course : la question du fractionné garde la carte « Session terminée » à
+  // l'écran après l'arrêt, sans quoi l'analyse s'ouvrirait d'elle-même (lot 212) et « enregistrement terminé » relèverait
+  // l'analyse ; une liste de matériel ne la garde plus depuis le lot 220.
   await go('/enregistrer', 2500);
+  await clickText('Entraînement', '[aria-label=Famille] button');
+  await wait(300);
+  await clickText('Lancer le compteur');
+  await wait(500);
+  await clickText('À pied', '[aria-label=Famille] button');
+  await wait(300);
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1]?.click(); 'ok'`);
   await wait(300);
   await importFiles(replay, 'input[type=file]');

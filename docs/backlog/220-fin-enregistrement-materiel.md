@@ -14,7 +14,7 @@ L'analyse s'ouvre d'elle-même après « Finir » seulement quand rien n'est à 
 
 ## Voulu
 
-Après « Finir », l'analyse s'ouvre aussi quand l'activité a du matériel, directement sur l'onglet « matériel et notes » (« matos et conditions » en voile), pour y choisir le matériel. Le choix y est écrit dans la fiche comme aujourd'hui depuis la carte (rien à « Enregistrer la session » de plus pour lui, comme sur la carte).
+Après « Finir », l'analyse s'ouvre aussi quand l'activité a du matériel, directement sur l'onglet « matériel et notes » (« matos et conditions » en voile), pour y choisir le matériel. Le choix y suit le brouillon de l'analyse, comme tout le matériel et les notes : « Enregistrer la session » l'écrit dans la fiche (tranché par l'orchestrateur le 18/11, d'après la règle transverse « Session » de CLAUDE.md : la carte l'écrivait aussitôt, l'onglet ne le fait pas).
 
 ## Pourquoi
 

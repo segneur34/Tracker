@@ -6,14 +6,12 @@ import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   continuePendingSession, discardFailedSession, dismissRecorderResult, savePendingSession, type PendingSession, type SavedSession,
 } from '../hooks/useRecorder';
-import { librarySession, updateSessionRecord } from '../hooks/useSessionLibrary';
+import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { useGearGroups } from '../hooks/useSportSettings';
 import { DISCARD_HOLD_MS } from '../library/discardOutcome';
-import { EMPTY_NOTES, type GearChoice } from '../library/notes';
 import { canDownloadFiles, downloadTextFile } from '../platform/files';
 import { deviceLocationSource } from '../platform/location';
 import SavedSessionShare from './SavedSessionShare';
-import SessionEndGear from './SessionEndGear';
 import { IconTrash } from './icons';
 import Button from './ui/Button';
 import Card from './ui/Card';
@@ -23,8 +21,8 @@ import SegmentedControl from './ui/SegmentedControl';
 
 /**
  * Cartes de fin d'enregistrement de la page Enregistrer (lot 212). La session est rangée dès « Finir » : la carte
- * « Session terminée » (`SavedSessionCard`) en donne le matériel, la question du fractionné et « Ouvrir l'analyse », et
- * s'efface d'elle-même au profit de l'analyse quand il n'y a rien à demander. Une session hors de la mémoire
+ * « Session terminée » (`SavedSessionCard`) en donne la question du fractionné et « Ouvrir l'analyse », et s'efface
+ * d'elle-même au profit de l'analyse quand il n'y a rien à demander (le matériel se choisit dans l'analyse, lot 220). Une session hors de la mémoire
  * (`PendingSessionCard`) n'a que deux raisons d'être : son rangement a échoué (« Réessayer », ou « Jeter la session »,
  * seul « Jeter » de l'écran de fin), ou c'est une session interrompue qu'on peut encore continuer (« Continuer
  * l'enregistrement » ou « Finir »).
@@ -34,21 +32,8 @@ import SegmentedControl from './ui/SegmentedControl';
 const keptText = (sport: SportType | null, pointCount: number): string =>
   sport === null || hasPositions(sport) ? `${pointCount} points` : pointCount > 0 ? `${pointCount} mesures de la ceinture` : 'durée seule';
 
-/** Ce qui est dit quand le matériel choisi à la fin n'a pas pu entrer dans la fiche de la session rangée. */
-const GEAR_NOT_WRITTEN = "Le matériel choisi n'a pas pu être écrit dans la fiche : choisissez-le de nouveau dans l'onglet « matériel et notes » de l'analyse.";
-
 /** Capture des capteurs illisible au rangement : la session est rangée sans elle, le fichier reste (lot 212). */
 const MOTION_LEFT_TEXT = "Les mesures des capteurs n'ont pas pu être lues : la session est rangée sans elles, et leur fichier reste sur l'appareil.";
-
-/**
- * Écrit le matériel choisi à la fin dans la fiche de la session rangée, sans toucher au reste de ses notes. Rend faux
- * s'il n'y est pas entré (fiche en lecture seule, session sortie de la mémoire).
- */
-const writeEndGear = (file: string, gear: GearChoice[] | null): boolean => {
-  const notes = librarySession(file)?.record.notes ?? null;
-  updateSessionRecord(file, { notes: { ...EMPTY_NOTES, ...notes, gear, savedAt: Date.now() } });
-  return librarySession(file)?.record.notes?.gear === gear;
-};
 
 const getDiscardHoldMs = () => DISCARD_HOLD_MS;
 
@@ -145,11 +130,12 @@ export function PendingSessionCard({ pending, analyzing, rangeFailed }: { pendin
 type IntervalChoice = 'reste' | 'fractionne';
 
 /**
- * « Session terminée » : la session est rangée. Matériel (`SessionEndGear`) et question du fractionné, si la session
- * a servi le compteur d'intervalles, sont écrits dans sa fiche dès qu'ils changent ; « Ouvrir l'analyse » l'ouvre.
- * Rien à demander ni à dire, et la page a vu l'arrêt (`arrivedHere`) : l'analyse s'ouvre aussitôt. Une session rangée
- * d'office au lancement (`rangedBy: 'recovery'`) ne s'ouvre jamais d'elle-même. Sans fichier dans la mémoire (pas de
- * dossier, aucune mémoire), seulement « Télécharger le GPX ».
+ * « Session terminée » : la session est rangée. La question du fractionné, si la session a servi le compteur
+ * d'intervalles, est écrite dans sa fiche dès qu'elle change ; « Ouvrir l'analyse » l'ouvre. Rien à demander ni à dire,
+ * et la page a vu l'arrêt (`arrivedHere`) : l'analyse s'ouvre aussitôt. Le matériel se choisit dans l'analyse (lot 220) :
+ * quand l'activité en a une liste, elle s'ouvre, d'elle-même ou par « Ouvrir l'analyse », sur l'onglet du matériel.
+ * Une session rangée d'office au lancement (`rangedBy: 'recovery'`) ne s'ouvre jamais d'elle-même. Sans fichier dans la
+ * mémoire (pas de dossier, aucune mémoire), seulement « Télécharger le GPX ».
  */
 export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
   saved: SavedSession;
@@ -162,21 +148,16 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
   const openSession = useOpenSession();
   const file = saved.libraryFile;
   const { activity } = saved;
-  // Matériel choisi, vide d'office (lot 143, 131) ; la carte est rendue pour une seule session (`key`).
-  const [gear, setGear] = useState<GearChoice[] | null>(null);
-  const [gearNotWritten, setGearNotWritten] = useState(false);
-  const gearGroups = useGearGroups(file ? activity : null);
-  const asksGear = gearGroups !== null && gearGroups.length > 0;
   // Sortie à pied ou à vélo faite avec le compteur : seule la famille Fractionné a l'onglet « fractionné » (19/10).
   const intervalActivity = file && activity && saved.intervals.length > 0
     ? intervalActivityFor(activity, activitiesOfFamily(activities, 'fractionne'))
     : null;
   const [intervalChoice, setIntervalChoice] = useState<IntervalChoice>('reste');
+  // Activité où la session est rangée ; si elle a une liste de matériel, l'analyse s'ouvre sur son onglet (lot 220).
+  const rangedActivity = intervalChoice === 'fractionne' && intervalActivity ? intervalActivity : activity;
+  const gearGroups = useGearGroups(file ? rangedActivity : null);
+  const gearTab = gearGroups !== null && gearGroups.length > 0 ? 'gear' as const : undefined;
 
-  const chooseGear = (next: GearChoice[] | null) => {
-    setGear(next);
-    if (file) setGearNotWritten(!writeEndGear(file, next));
-  };
   const chooseInterval = (next: IntervalChoice) => {
     setIntervalChoice(next);
     if (!file || !activity || !intervalActivity) return;
@@ -188,19 +169,19 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
     if (!file || saved.sport === null) return;
     const fallback = intervalChoice === 'fractionne' && intervalActivity ? 'fractionne' : sportFamily(saved.sport);
     dismissRecorderResult();
-    openSession(file, fallback);
+    openSession(file, fallback, undefined, gearTab);
   };
 
   // Rien à demander ni à dire : l'analyse tout de suite, une fois (le double passage du mode strict compris).
   const opened = useRef(false);
   const direct = arrivedHere && saved.rangedBy === 'finish' && file !== null && saved.sport !== null
-    && !asksGear && intervalActivity === null && saved.motionLeft === null && saved.warning === null;
+    && intervalActivity === null && saved.motionLeft === null && saved.warning === null;
   useEffect(() => {
     if (!direct || opened.current || file === null || saved.sport === null) return;
     opened.current = true;
     dismissRecorderResult();
-    openSession(file, sportFamily(saved.sport));
-  }, [direct, file, saved.sport, openSession]);
+    openSession(file, sportFamily(saved.sport), undefined, gearTab);
+  }, [direct, file, saved.sport, openSession, gearTab]);
 
   const title = saved.rangedBy === 'recovery' ? 'Session interrompue récupérée et rangée' : 'Session terminée';
   return (
@@ -212,12 +193,6 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
           <>
             <br />
             <span className="ui-text-s">{MOTION_LEFT_TEXT}</span>
-          </>
-        )}
-        {gearNotWritten && (
-          <>
-            <br />
-            <span className="ui-text-s">{GEAR_NOT_WRITTEN}</span>
           </>
         )}
         {!file && native && (
@@ -239,7 +214,6 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
           </span>
         </div>
       )}
-      {file && <SessionEndGear activity={activity} gear={gear} onChange={chooseGear} />}
       <div className="ui-row-10 ui-wrap">
         {file && saved.sport !== null && (
           <Button variant="primary" onClick={open}>

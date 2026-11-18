@@ -1,12 +1,15 @@
-// Banc de test : matériel choisi à la fin de la session, sur « Session terminée » (lot 143, 131 ; lot 212 : session
-// rangée dès l'arrêt, choix écrit dans la fiche dès qu'il est fait, puis « Ouvrir l'analyse »).
+// Banc de test : matériel de la session choisi après « Finir », dans l'analyse (lot 143, 131 ; lot 212 : session
+// rangée dès l'arrêt ; lot 220 : plus de rangée « Matériel » sur « Session terminée », l'analyse s'ouvre d'elle-même
+// sur l'onglet du matériel, « avancé » déplié, pour cette ouverture seulement).
 // Usage : node materiel-fin.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, environ 40 s, 15 s avec `TEMPS=10`. La liste de matériel de Course est écrite dans
 // les réglages, puis des sessions sont enregistrées en rejeu. Le script vérifie :
-//  1. Course, liste présente : rangée « Matériel » sur « Session terminée », vide d'office, l'analyse ne s'ouvre pas
-//     d'elle-même ; la pièce choisie entre aussitôt dans la fiche et se retrouve dans l'onglet « matériel et notes » ;
-//  2. Course de nouveau : rangée vide, rien de repris de la session d'avant ; sans choix, pas de matériel dans la fiche ;
-//  3. Voile, sans liste : pas de rangée, l'analyse s'ouvre d'elle-même.
+//  1. Course, liste présente : l'analyse s'ouvre d'elle-même, « avancé » déplié, « matériel et notes » ouvert seul,
+//     choix vide d'office ; la pièce choisie dans l'onglet puis « Enregistrer la session » entre dans la fiche ;
+//     la même adresse rechargée rouvre sur « général » seul, « avancé » fermé ;
+//  2. Course de nouveau : de même sur l'onglet du matériel, rien de repris de la session d'avant ; sans choix, pas de
+//     matériel dans la fiche ;
+//  3. Voile, sans liste : l'analyse s'ouvre d'elle-même sur « général » seul, « avancé » fermé.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
@@ -28,11 +31,17 @@ const holdStop = async () => {
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 };
 
+/** Attend la barre d'onglets de l'analyse, puis son calme. */
+const tabsReady = async (label) => {
+  await waitFor(`document.querySelectorAll('.an-tabs .ui-tab').length > 0`, { timeout: 10000, label: 'onglets' });
+  await settle({ max: 2000, label });
+};
+
 /**
- * Enregistre une session en rejeu jusqu'à l'écran « Session terminée », ou jusqu'à l'analyse quand il n'y a rien à
- * demander (lot 212). `offsetMin` : deux sessions ne partagent pas le même nom de fichier.
+ * Enregistre une session en rejeu jusqu'à l'analyse, qui s'ouvre d'elle-même (rien à demander sur la carte, lot 220) ;
+ * rend l'adresse atteinte. `offsetMin` : deux sessions ne partagent pas le même nom de fichier.
  */
-const recordUntilEnd = async (family, type, tag, offsetMin) => {
+const recordUntilAnalysis = async (family, type, tag, offsetMin) => {
   const t0 = (await evaluate('Date.now()')) + offsetMin * 60000;
   const lat = 43.7;
   const mPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
@@ -53,14 +62,21 @@ const recordUntilEnd = async (family, type, tag, offsetMin) => {
   console.log(`[${tag}] Démarrer :`, await clickText('Démarrer'));
   await vwait(6000);
   console.log(`[${tag}] Arrêter :`, await holdStop());
-  await waitFor(`location.pathname.endsWith('/analyse') || [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === "Ouvrir l'analyse")`, { timeout: 8000, label: 'Session terminée' });
+  await waitFor(`location.pathname.endsWith('/analyse') || [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === "Ouvrir l'analyse")`, { timeout: 8000, label: 'fin' });
+  const where = await evaluate('location.pathname');
+  if (where.endsWith('/analyse')) await tabsReady('analyse');
+  return where;
 };
-const analyze = async (tag) => {
-  console.log(`[${tag}] Ouvrir l'analyse :`, await clickText("Ouvrir l'analyse"));
-  await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 6000, label: 'analyse' });
-  await settle({ max: 6000, label: 'analyse' });
-};
-const gearRow = () => evaluate(`document.querySelector('[data-testid="rec-end-gear"]')?.innerText.replace(/\\s+/g, ' ').trim() ?? '(pas de rangée)'`);
+
+/** Onglets ouverts (`aria-pressed`) et rangée « avancé », tels que la barre les montre. */
+const tabsState = () => evaluate(`(() => {
+  const pressed = [...document.querySelectorAll('.an-tabs .ui-tab[aria-pressed="true"]')].map((t) => t.textContent.trim()).join(' | ');
+  const adv = document.querySelector('.an-tabs-advanced-toggle')?.getAttribute('aria-expanded');
+  return 'ouverts : ' + (pressed || '(aucun)') + ' ; avancé : ' + (adv === 'true' ? 'déplié' : 'fermé');
+})()`);
+const ON_GEAR = 'ouverts : matériel et notes ; avancé : déplié';
+const ON_GENERAL = 'ouverts : général ; avancé : fermé';
+const pickerText = () => evaluate(`document.querySelector('[data-testid="gear-picker-g1"]')?.innerText.replace(/\\s+/g, ' ').trim() ?? '(absent)'`);
 const allRecords = async () => (await records()).map((r) => r.record ?? r);
 
 // Liste de matériel de Course, écrite dans les réglages.
@@ -73,41 +89,43 @@ await evaluate(`(() => {
 })()`);
 
 // 1. Course, liste présente.
-await recordUntilEnd('À pied', 'running', 'choix', -30);
-const empty = await gearRow();
-check("Course : rangée « Matériel », vide d'office", empty.includes('Chaussures') && empty.includes('Aucun'), empty);
+const whereChoice = await recordUntilAnalysis('À pied', 'running', 'choix', -30);
+check("Course : l'analyse s'ouvre d'elle-même, sans carte « Session terminée »", whereChoice === '/course/analyse', whereChoice);
+const tabsChoice = await tabsState();
+check('Course : « matériel et notes » ouvert seul, « avancé » déplié', tabsChoice === ON_GEAR, tabsChoice);
+const empty = await pickerText();
+check("Course : choix du matériel vide d'office", empty !== '(absent)' && !empty.includes('Trail rouge') && !empty.includes('Route blanche'), empty);
+await shoot('materiel-fin');
 await evaluate(`document.querySelector('[data-testid="gear-picker-g1"]').click(); 'ok'`);
 await wait(300);
 console.log('[choix] pièce :', await clickText('Trail rouge', '[data-testid="gear-sheet"] button'));
 await wait(300);
-const chosen = await gearRow();
-check("Course : la pièce choisie s'affiche", chosen.includes('Trail rouge'), chosen);
-check("Course : la carte reste sur Enregistrer, l'analyse ne s'ouvre pas d'elle-même", (await evaluate('location.pathname')) === '/enregistrer', await evaluate('location.pathname'));
-await shoot('materiel-fin');
-// Écrit dans la fiche dès le choix (sa réécriture est différée) : avant même d'ouvrir l'analyse.
+const chosen = await pickerText();
+check("Course : la pièce choisie s'affiche dans l'onglet", chosen.includes('Trail rouge'), chosen);
+console.log('[choix] Enregistrer la session :', await clickText('Enregistrer la session'));
 const written = await waitFor(async () => (await allRecords()).find((r) => r.notes?.gear), { timeout: 3000, label: 'matériel dans la fiche' });
-check('Course : le choix est dans la fiche dès qu’il est fait', written?.notes?.gear?.[0]?.itemName === 'Trail rouge', JSON.stringify(written?.notes?.gear ?? null));
-await analyze('choix');
-const first = (await allRecords()).find((r) => r.notes?.gear);
-check('Course : le choix est dans la fiche', first?.notes?.gear?.[0]?.itemName === 'Trail rouge' && first?.notes?.gear?.[0]?.groupName === 'Chaussures', JSON.stringify(first?.notes?.gear ?? null));
-console.log('[choix] avancé :', await clickText('avancé', '.ui-tab'));
-await wait(300);
-console.log('[choix] onglet :', await clickText('matériel et notes', '.ui-tab'));
-await settle({ max: 1500, label: 'onglet matériel' });
-const shown = await evaluate(`document.querySelector('[data-testid="gear-picker-g1"]')?.innerText.trim() ?? '(absent)'`);
-check("Course : retrouvé dans l'onglet « matériel et notes »", shown === 'Trail rouge', shown);
+check('Course : le choix est dans la fiche après « Enregistrer la session »',
+  written?.notes?.gear?.[0]?.itemName === 'Trail rouge' && written?.notes?.gear?.[0]?.groupName === 'Chaussures', JSON.stringify(written?.notes?.gear ?? null));
+await settle({ max: 1500, label: 'enregistrement' });
+// Même adresse rechargée : ouverture ordinaire, « général » seul.
+const here = await evaluate('location.pathname + location.search');
+await go(here);
+await tabsReady('rechargement');
+const tabsReload = await tabsState();
+check('Course, rechargée : « général » seul, « avancé » fermé', tabsReload === ON_GENERAL, tabsReload);
 
 // 2. Course de nouveau : rien de repris.
-await recordUntilEnd('À pied', 'running', 'vide', -10);
-const again = await gearRow();
-check('Course, session suivante : rangée vide, rien de repris', again.includes('Aucun') && !again.includes('Trail rouge'), again);
-await analyze('vide');
+const whereAgain = await recordUntilAnalysis('À pied', 'running', 'vide', -10);
+const tabsAgain = await tabsState();
+check('Course, session suivante : analyse ouverte sur « matériel et notes »', whereAgain === '/course/analyse' && tabsAgain === ON_GEAR, `${whereAgain} | ${tabsAgain}`);
+const again = await pickerText();
+check('Course, session suivante : choix vide, rien de repris', again !== '(absent)' && !again.includes('Trail rouge'), again);
 const all = await allRecords();
 check('Course, session suivante : pas de matériel dans sa fiche', all.length === 2 && all.filter((r) => r.notes?.gear?.length).length === 1, JSON.stringify(all.map((r) => r.notes?.gear ?? null)));
 
 // 3. Voile, sans liste.
-await recordUntilEnd('Voile', 'wingfoil', 'voile', -50);
-const none = await gearRow();
-check('Voile, sans liste : pas de rangée, analyse ouverte d’elle-même', none === '(pas de rangée)' && (await evaluate('location.pathname')).endsWith('/analyse'), `${none} | ${await evaluate('location.pathname')}`);
+const whereSail = await recordUntilAnalysis('Voile', 'wingfoil', 'voile', -50);
+const tabsSail = await tabsState();
+check('Voile, sans liste : analyse ouverte d’elle-même, « général » seul', whereSail === '/voile/analyse' && tabsSail === ON_GENERAL, `${whereSail} | ${tabsSail}`);
 
 await finish('Tout passe.');

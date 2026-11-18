@@ -203,17 +203,7 @@
   margin-top: var(--space-3);
 }
 
-/* Matériel choisi à la fin de la session, sur « Session terminée » (lot 143, 131 ; lot 212). */
-.rec-end-gear {
-  margin-bottom: var(--space-3);
-}
-
-.rec-end-gear__title {
-  display: block;
-  margin-bottom: var(--space-2);
-}
-
-/* Question du fractionné sur « Session terminée » (lot 212) : comme le matériel. */
+/* Question du fractionné sur « Session terminée » (lot 212). */
 .rec-end-choice {
   display: flex;
   flex-direction: column;

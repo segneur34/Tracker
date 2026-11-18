@@ -15,7 +15,8 @@
 //  4. à 390×844 : la fenêtre tient dans l'écran, sans débordement de la page ;
 //  5. fin d'enregistrement, à 390×844 : rejeu ×600 de la boucle en À pied, Arrêter, puis « … » › « Partager » de la
 //     carte « Session terminée » : aperçu en 1080 × 1920, chiffres du résumé, choix de la course repris (même activité).
-//     La Course reçoit une liste de matériel : sans rien à demander, la carte laisserait place à l'analyse (lot 212).
+//     Le compteur d'intervalles est lancé avant : la question du fractionné garde la carte à l'écran, sans quoi l'analyse
+//     s'ouvrirait d'elle-même (lot 212 ; une liste de matériel ne la garde plus depuis le lot 220).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -213,14 +214,13 @@ const holdStop = async () => {
 };
 const replayPath = join(workDir, 'partage-rejeu.gpx');
 writeFileSync(replayPath, loopGpx(Date.now() - 1800 * 1000));
-// Une liste de matériel en Course : la carte « Session terminée » reste à l'écran, au lieu d'ouvrir l'analyse (lot 212).
-await evaluate(`(() => {
-  const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
-  s.gearGroups = { ...s.gearGroups, running: [{ id: 'g1', name: 'Chaussures', items: [{ id: 'i1', name: 'Trail rouge' }] }] };
-  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
-  return 'ok';
-})()`);
 await go('/enregistrer', 4000);
+// Le compteur d'intervalles lancé (famille Entraînement) : la question du fractionné garde la carte « Session terminée »
+// à l'écran, au lieu d'ouvrir l'analyse (lot 212, comme `compteur-course.mjs`). La session reste en Course.
+console.log('famille Entraînement :', await clickText('Entraînement', '[aria-label=Famille] button'));
+await wait(300);
+console.log('Lancer le compteur :', await clickText('Lancer le compteur'));
+await wait(500);
 console.log('famille :', await clickText('À pied', '[aria-label=Famille] button'));
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click()`);

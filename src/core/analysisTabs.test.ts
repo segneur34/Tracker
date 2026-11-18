@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, generalOpenAfterAdvanced, initialTabsState, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
   type TabChoices,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
@@ -309,6 +309,39 @@ describe('état des onglets : « général » seul à chaque ouverture (05/11)',
   it('une première trace lue repart des défauts', () => {
     const state = initialTabsState(defaults, null);
     expect(tabsStateFor(state, defaults, 'a|1')).toEqual(initialTabsState(defaults, 'a|1'));
+  });
+});
+
+describe('ouverture après « Finir » sur l’onglet du matériel (lot 220)', () => {
+  it('trouve l’onglet du matériel de chaque module', () => {
+    expect(gearTabToOpen(SAILING_TABS, null)).toBe('matos');
+    expect(gearTabToOpen(LAND_TABS.course, null)).toBe('notes');
+    expect(gearTabToOpen(LAND_TABS.velo, null)).toBe('notes');
+    expect(gearTabToOpen(SURF_TABS, null)).toBe('notes');
+    expect(gearTabToOpen(MUSCU_TABS, null)).toBe('notes');
+  });
+
+  it('rien si l’activité cache l’onglet du matériel : ouverture habituelle', () => {
+    expect(gearTabToOpen(SAILING_TABS, { matos: false })).toBeNull();
+    expect(gearTabToOpen(LAND_TABS.course, { notes: false, tops: true })).toBeNull();
+  });
+
+  it('« avancé » déplié, l’onglet du matériel ouvert seul, « général » fermé', () => {
+    const defaults = tabDefaults(LAND_TABS.course, LAND_TABS.velo);
+    const state = initialTabsState(defaults, 'a|1', 'notes');
+    expect(state.advanced).toBe(true);
+    expect(state.key).toBe('a|1');
+    expect(Object.keys(state.open).sort()).toEqual(Object.keys(defaults).sort());
+    expect(Object.entries(state.open).filter(([, v]) => v).map(([k]) => k)).toEqual(['notes']);
+  });
+
+  it('la première trace lue s’ouvre sur le matériel, puis l’état reste ; sans demande, « général » seul', () => {
+    const defaults = tabDefaults(SAILING_TABS);
+    const loading = initialTabsState(defaults, null, 'matos');
+    const first = tabsStateFor(loading, defaults, 'a|1', 'matos');
+    expect(first).toEqual(initialTabsState(defaults, 'a|1', 'matos'));
+    expect(tabsStateFor(first, defaults, 'a|1', 'matos')).toBe(first);
+    expect(tabsStateFor(loading, defaults, 'a|1')).toEqual(initialTabsState(defaults, 'a|1'));
   });
 });
 

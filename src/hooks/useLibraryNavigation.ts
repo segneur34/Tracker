@@ -1,6 +1,6 @@
 import { plainError } from '../platform/errorText';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
@@ -16,14 +16,54 @@ import { readStoredActivities } from './useSportSettings';
  * un rechargement la rouvre, et le retour arrière ramène à la liste.
  */
 
-/** Ouvre une session de la mémoire dans le module qui l'analyse. */
+/** Onglet demandé à l'ouverture d'une analyse : celui du matériel, après « Finir » (lot 220). */
+export type OpenSessionTab = 'gear';
+
+/** État de navigation qui porte l'onglet demandé (pas l'adresse : un rechargement rouvre sur « général »). */
+interface OpenTabState {
+  openTab: OpenSessionTab;
+}
+
+/** Onglet demandé lu dans l'état de navigation, `null` sinon. */
+export const requestedTabOf = (state: unknown): OpenSessionTab | null =>
+  typeof state === 'object' && state !== null && (state as Partial<OpenTabState>).openTab === 'gear' ? 'gear' : null;
+
+/**
+ * Ouvre une session de la mémoire dans le module qui l'analyse ; `tab` : sur
+ * l'onglet du matériel, « avancé » déplié, pour cette ouverture seulement.
+ */
 export const useOpenSession = () => {
   const navigate = useNavigate();
   return useCallback(
-    (file: string, fallback: SportFamily, fromActivityId?: string | null) =>
-      navigate(analysisPath(sessionFamily(librarySession(file), fallback), file, fromActivityId)),
+    (file: string, fallback: SportFamily, fromActivityId?: string | null, tab?: OpenSessionTab) => {
+      const path = analysisPath(sessionFamily(librarySession(file), fallback), file, fromActivityId);
+      if (tab) navigate(path, { state: { openTab: tab } satisfies OpenTabState });
+      else navigate(path);
+    },
     [navigate]
   );
+};
+
+/**
+ * Côté module : onglet demandé à l'ouverture (`useOpenSession`), lu une fois au
+ * montage, valable tant que l'adresse désigne la session ouverte ainsi (une autre
+ * session s'ouvre comme d'habitude). L'état de navigation est aussitôt effacé :
+ * un rechargement ou un retour sur cette adresse rouvre sur « général ».
+ */
+export const useRequestedTab = (): OpenSessionTab | null => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const session = params.get('session');
+  const [request] = useState(() => {
+    const tab = requestedTabOf(location.state);
+    return tab && session !== null ? { tab, session } : null;
+  });
+  const pending = requestedTabOf(location.state) !== null;
+  useEffect(() => {
+    if (pending) navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+  }, [pending, navigate, location.pathname, location.search]);
+  return request !== null && request.session === session ? request.tab : null;
 };
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gpxLoadAction, loadGpxOutcome, sessionReading, type GpxLoadOutcome } from './useLibraryNavigation';
+import { gpxLoadAction, loadGpxOutcome, requestedTabOf, sessionReading, type GpxLoadOutcome } from './useLibraryNavigation';
 
 describe("lecture du GPX d'une analyse (B2)", () => {
   it('rend le texte lu', async () => {
@@ -67,5 +67,16 @@ describe('session en cours de lecture (lot 157)', () => {
 
   it("erreur (session absente, GPX illisible) : l'erreur est dite, pas la lecture", () => {
     expect(sessionReading({ requested: 'a.gpx', ready: true, known: true, deliveredFor: null, error: "Cette session n'est pas dans la mémoire." })).toBe(false);
+  });
+});
+
+describe('onglet demandé à l’ouverture (lot 220)', () => {
+  it('lit l’onglet du matériel dans l’état de navigation, rien sinon', () => {
+    expect(requestedTabOf({ openTab: 'gear' })).toBe('gear');
+    expect(requestedTabOf({ openTab: 'autre' })).toBeNull();
+    expect(requestedTabOf({})).toBeNull();
+    expect(requestedTabOf(null)).toBeNull();
+    expect(requestedTabOf(undefined)).toBeNull();
+    expect(requestedTabOf('gear')).toBeNull();
   });
 });

@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Activity } from '../core/activities';
 import {
-  closeAllTabs, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
+  closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
   type AnalysisTab, type AnalysisTabsState,
 } from '../core/analysisTabs';
 import { useResetChartHover } from './useChartHover';
+import { useRequestedTab } from './useLibraryNavigation';
 import { useMapHighlight, type HighlightKeys } from './useMapHighlight';
 import { effectiveTabChoices } from './useSportSettings';
 
@@ -22,24 +23,30 @@ export interface AnalysisTabsInput<K extends string> {
  * Onglets d'un module d'analyse, les mêmes pour les quatre : sections ouvertes
  * en mémoire vive, rendues aux défauts (« général » seul, « avancé » fermé) à
  * chaque ouverture d'une analyse et à chaque autre session (05/11,
- * `tabsStateFor`) ; celles cachées par l'activité dans Réglages fermées
- * (`maskHiddenTabs`), celles de la rangée « avancé » repliées tant qu'elle est
+ * `tabsStateFor`), sauf l'ouverture qui suit « Finir » quand l'activité a du
+ * matériel : son onglet seul, « avancé » déplié (lot 220, `useRequestedTab`) ;
+ * celles cachées par l'activité dans Réglages fermées (`maskHiddenTabs`), celles de la rangée « avancé » repliées tant qu'elle est
  * fermée (`maskAdvancedTabs`) ; la surbrillance unique de la carte, rattachée
  * aux onglets ouverts (`useMapHighlight`) ; le point survolé des graphes effacé
  * à chaque session (`useResetChartHover`).
  * `T` donne le type des clés de surbrillance d'un onglet (`zones` : une zone de pente).
  */
 export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = Record<never, never>>({ tabs, defaults, activity, sessionKey }: AnalysisTabsInput<K>) => {
-  const [stored, setStored] = useState<AnalysisTabsState<K>>(() => initialTabsState(defaults, sessionKey));
+  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
+  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
+  // Ouverture qui suit « Finir » (lot 220) : l'onglet du matériel seul, « avancé » déplié, s'il est montré.
+  const requested = useRequestedTab();
+  const openOn = requested === 'gear' ? gearTabToOpen(tabs, tabChoices) : null;
+  const [stored, setStored] = useState<AnalysisTabsState<K>>(() => initialTabsState(defaults, sessionKey, openOn));
   // Une autre session est reconnue dès le rendu où sa clé change : « général » seul, sans monter d'abord les
   // panneaux de l'ancienne ; l'état rangé suit au premier geste (`change`).
-  const state = tabsStateFor(stored, defaults, sessionKey);
+  const state = tabsStateFor(stored, defaults, sessionKey, openOn);
   /** Modifie l'état de la trace affichée (celui d'une autre trace repart des défauts). */
   const change = useCallback(
-    (next: (current: AnalysisTabsState<K>) => AnalysisTabsState<K>) => setStored((current) => next(tabsStateFor(current, defaults, sessionKey))),
+    (next: (current: AnalysisTabsState<K>) => AnalysisTabsState<K>) => setStored((current) => next(tabsStateFor(current, defaults, sessionKey, openOn))),
     // `defaults` est une constante de module chez tous les appelants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionKey]
+    [sessionKey, openOn]
   );
   const toggle = useCallback((key: K) => change((s) => ({ ...s, open: { ...s.open, [key]: !s.open[key] } })), [change]);
   /** Ouvrir ou fermer des clés données, sans les basculer. */
@@ -47,8 +54,6 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
   /** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » reste comme il est. */
   const closeAll = useCallback(() => change((s) => ({ ...s, open: closeAllTabs(s.open) })), [change]);
 
-  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
-  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   /** Rangée « avancé » : l'ouvrir ferme « général », la refermer le rouvre ; refermée, ses onglets et leurs panneaux se replient, gardés pour sa réouverture. */
   const toggleAdvanced = useCallback(
     () => change((s) => ({ ...s, advanced: !s.advanced, open: { ...s.open, general: generalOpenAfterAdvanced(!s.advanced) } })),
