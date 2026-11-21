@@ -53,7 +53,7 @@ export const LESSONS: readonly Lesson[] = [
     target: 'bibliotheque',
     body: [
       "Touchez une session dans la bibliothèque de son sport : son analyse s'ouvre sur l'onglet « général », qui porte l'essentiel des chiffres.",
-      "La pastille « avancé » déplie les autres onglets : tops, graphiques, cardio et la suite, selon le sport. Chaque session s'ouvre sur « général » seul ; « tout fermer », à droite de la barre, replie tout d'un geste.",
+      "La pastille « avancé » déplie les autres onglets : tops, graphiques, cardio et la suite, selon le sport. Chaque session s'ouvre sur « général » seul ; « tout ouvrir », à droite de la barre, déplie tout d'un geste, puis devient « tout fermer ».",
       'Un panneau se redimensionne en tirant sa poignée ; sa taille est gardée.',
       'Les onglets montrés se choisissent par activité, dans Réglages, ligne « Onglets ».',
       'Les petits « ? » ouvrent une explication sur place ; un second toucher la referme.',

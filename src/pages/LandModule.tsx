@@ -279,7 +279,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session. Une seule surbrillance
   // sur la carte : un top, une zone de pente, une répétition ou un revêtement ; choisir l'une retire les
   // autres, fermer son onglet l'efface.
-  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
+  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
     tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
@@ -1105,7 +1105,7 @@ function LandModule({ family }: { family: LandFamily }) {
       }}
       // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={stats ? {
-        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: page.accent, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, onOpenAll: openAll, advanced, accent: page.accent, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>

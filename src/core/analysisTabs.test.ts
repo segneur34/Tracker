@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, isTabShown, openAllTabs, tabsBulkAction, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
   type TabChoices,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
@@ -351,6 +351,27 @@ describe('closeAllTabs : « tout fermer »', () => {
     const closed = closeAllTabs(open);
     expect(Object.keys(closed)).toEqual(Object.keys(open));
     expect(Object.values(closed).every((v) => v === false)).toBe(true);
+  });
+});
+
+describe('« tout ouvrir » / « tout fermer » (lot 227)', () => {
+  it('ouvrir sous 2 onglets ouverts, fermer dès 2', () => {
+    expect([0, 1].map(tabsBulkAction)).toEqual(['open', 'open']);
+    expect([2, 3, 9].map(tabsBulkAction)).toEqual(['close', 'close', 'close']);
+  });
+
+  it('ouvre tout en une fois, « général » compris, « avancé » déplié', () => {
+    const state = { key: 'a', open: { general: true, tops: false, cardio: false, cache: false }, advanced: false };
+    const next = openAllTabs(state, ['general', 'tops', 'cardio']);
+    expect(next.open).toEqual({ general: true, tops: true, cardio: true, cache: false });
+    expect(next.advanced).toBe(true);
+  });
+
+  it('« avancé » déjà déplié et onglets déjà ouverts : rien ne se referme', () => {
+    const state = { key: 'a', open: { general: false, tops: true, cardio: false }, advanced: true };
+    const next = openAllTabs(state, ['general', 'tops', 'cardio']);
+    expect(next.open).toEqual({ general: true, tops: true, cardio: true });
+    expect(next.advanced).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Activity } from '../core/activities';
 import {
-  closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
+  closeAllTabs, gearTabToOpen, openAllTabs, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
   type AnalysisTab, type AnalysisTabsState,
 } from '../core/analysisTabs';
 import { useResetChartHover } from './useChartHover';
@@ -54,6 +54,12 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
   /** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » reste comme il est. */
   const closeAll = useCallback(() => change((s) => ({ ...s, open: closeAllTabs(s.open) })), [change]);
 
+  /** « tout ouvrir » : « avancé » déplié et tous les onglets montrés ouverts, « général » compris, d'un coup. */
+  const openAll = useCallback(
+    () => change((s) => openAllTabs(s, shownTabs(tabs, tabChoices).map((tab) => tab.key))),
+    [change, tabs, tabChoices]
+  );
+
   /** Rangée « avancé » : l'ouvrir ferme « général », la refermer le rouvre ; refermée, ses onglets et leurs panneaux se replient, gardés pour sa réouverture. */
   const toggleAdvanced = useCallback(
     () => change((s) => ({ ...s, advanced: !s.advanced, open: { ...s.open, general: generalOpenAfterAdvanced(!s.advanced) } })),
@@ -84,5 +90,5 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
     [tabs, tabChoices]
   );
 
-  return { open, toggle, toggleOf, set, closeAll, tabChoices, advanced, shown, highlight };
+  return { open, toggle, toggleOf, set, closeAll, openAll, tabChoices, advanced, shown, highlight };
 };

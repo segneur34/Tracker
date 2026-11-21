@@ -26,6 +26,8 @@ interface ShellTabs<K extends string> {
   onToggle: (key: K) => void;
   /** « tout fermer » : chaque onglet fermé, « général » compris. */
   onCloseAll: () => void;
+  /** « tout ouvrir » : « avancé » déplié, tous les onglets montrés ouverts. */
+  onOpenAll: () => void;
   advanced: { open: boolean; toggle: () => void };
   accent?: string;
   panels: ReactNode;
@@ -122,7 +124,7 @@ function AnalysisShell<K extends string>({
 
       {tabs && (
         <div className="an-carte-col" style={map ? undefined : { marginTop: '10px' }}>
-          <CollapsibleSectionTabs sections={tabs.sections} open={tabs.open} onToggle={tabs.onToggle} onCloseAll={tabs.onCloseAll}
+          <CollapsibleSectionTabs sections={tabs.sections} open={tabs.open} onToggle={tabs.onToggle} onCloseAll={tabs.onCloseAll} onOpenAll={tabs.onOpenAll}
             advancedOpen={tabs.advanced.open} onToggleAdvanced={tabs.advanced.toggle} accent={tabs.accent} />
           <div className="an-carte-panels">
             {tabs.panels}

@@ -251,13 +251,29 @@ const pressedTabs = () => evaluate(`[...document.querySelectorAll('.an-tabs [ari
 const advancedState = () => evaluate(`document.querySelector('.an-tabs-advanced-toggle')?.getAttribute('aria-expanded') ?? '(absent)'`);
 const row1 = await firstRow();
 console.log('première rangée :', row1, '· ouverts :', await pressedTabs());
+// Au moins 2 onglets ouverts (le banc les rejoue tous) : le bouton est « tout fermer ».
 check('« tout fermer » juste après la flèche', /^général \| avancé \| \(flèche\) \| tout fermer$/.test(row1), row1);
+const clickCloseAll = () => evaluate(`(() => { const b = document.querySelector('.an-tabs-close-all:not(.an-tabs-open-all)'); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
 const advancedBefore = await advancedState();
-console.log('tout fermer :', await evaluate(`(() => { const b = document.querySelector('.an-tabs-close-all'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+console.log('tout fermer :', await clickCloseAll());
 await settle({ max: 1000 });
 check('« tout fermer » : plus aucun onglet ouvert', (await pressedTabs()) === '', await pressedTabs());
 check('« tout fermer » : aucun panneau', (await evaluate(`document.querySelectorAll('.an-carte-panels > *').length`)) === 0);
 check(`« tout fermer » : « avancé » inchangé (${advancedBefore})`, (await advancedState()) === advancedBefore);
+// Moins de 2 onglets ouverts : le bouton devient « tout ouvrir » (lot 227), qui déplie « avancé » et ouvre tout, « général » compris.
+check('« tout ouvrir » à la place de « tout fermer »', /\| \(flèche\) \| tout ouvrir$/.test(await firstRow()), await firstRow());
+console.log('tout ouvrir :', await evaluate(`(() => { const b = document.querySelector('.an-tabs-open-all'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await settle({ max: 1000 });
+const allTabCount = await evaluate(`document.querySelectorAll('.an-tabs .ui-tab[aria-pressed]').length`);
+const openedTabs = await evaluate(`document.querySelectorAll('.an-tabs .ui-tab[aria-pressed="true"]').length`);
+check(`« tout ouvrir » : tous les onglets ouverts (${openedTabs}/${allTabCount})`, allTabCount > 1 && openedTabs === allTabCount);
+check('« tout ouvrir » : « général » ouvert', /(^|, )général(,|$)/.test(await pressedTabs()), await pressedTabs());
+check('« tout ouvrir » : « avancé » déplié', (await advancedState()) === 'true', await advancedState());
+check('« tout ouvrir » : le bouton redevient « tout fermer »', /tout fermer$/.test(await firstRow()), await firstRow());
+// Retour à l'état que la suite attend : tout fermé.
+console.log('tout fermer :', await clickCloseAll());
+await settle({ max: 1000 });
+check('« tout fermer » encore : plus aucun onglet ouvert', (await pressedTabs()) === '', await pressedTabs());
 // Réouverture de la même session sans le banc qui rejoue les onglets : « général » seul, « avancé » fermé (05/11),
 // et plus rien des onglets d'avant dans `tracker.sections` (effacés au démarrage).
 await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: ongletsId });

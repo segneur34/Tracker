@@ -300,3 +300,21 @@ export const gearTabToOpen = <K extends string>(tabs: readonly AnalysisTab<K>[],
 /** « tout fermer » : chaque onglet fermé, « général » compris ; « avancé » ne change pas (05/11). */
 export const closeAllTabs = <K extends string>(open: Record<K, boolean>): Record<K, boolean> =>
   Object.fromEntries(Object.keys(open).map((key) => [key, false])) as Record<K, boolean>;
+
+/**
+ * Bouton de droite de la barre (lot 227) : « tout ouvrir » (vert) tant que moins
+ * de 2 onglets sont ouverts, « tout fermer » (rouge) dès 2. « avancé » est une
+ * pastille, pas un onglet : elle ne compte pas.
+ */
+export const TABS_BULK_THRESHOLD = 2;
+export const tabsBulkAction = (openCount: number): 'open' | 'close' => (openCount >= TABS_BULK_THRESHOLD ? 'close' : 'open');
+
+/**
+ * « tout ouvrir » : d'un coup, « avancé » déplié et tous les onglets montrés ouverts,
+ * « général » compris (déplier « avancé » seul le fermerait). Les autres clés restent.
+ */
+export const openAllTabs = <K extends string>(state: AnalysisTabsState<K>, shownKeys: readonly K[]): AnalysisTabsState<K> => {
+  const open = { ...state.open };
+  for (const key of shownKeys) open[key] = true;
+  return { ...state, open, advanced: true };
+};

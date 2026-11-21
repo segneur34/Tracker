@@ -1,5 +1,6 @@
 import SectionTabs, { type SectionDefinition } from './SectionTabs';
 import { IconChevronDown, IconChevronUp } from './icons';
+import { tabsBulkAction } from '../core/analysisTabs';
 import { useStoredRecord } from '../hooks/useStoredRecord';
 
 /**
@@ -12,7 +13,8 @@ import { useStoredRecord } from '../hooks/useStoredRecord';
  * disparaît. Seule la barre se cache : les panneaux ouverts restent.
  * Un seul état pour toutes les analyses, retenu sur l'appareil. Après la
  * flèche, « tout fermer » ferme chaque onglet ouvert, « général » compris ;
- * « avancé » reste comme il est (05/11).
+ * « avancé » reste comme il est (05/11). Sous 2 onglets ouverts il devient
+ * « tout ouvrir » (vert) : « avancé » déplié, tous les onglets montrés ouverts (lot 227).
  */
 
 const BAR_DEFAULTS = { cachee: false };
@@ -24,13 +26,15 @@ interface CollapsibleSectionTabsProps<K extends string> {
   onToggle: (key: K) => void;
   /** « tout fermer » (`useAnalysisTabs`). */
   onCloseAll: () => void;
+  /** « tout ouvrir » (`useAnalysisTabs`). */
+  onOpenAll: () => void;
   /** Rangée « avancé » dépliée (`useAnalysisTabs`). */
   advancedOpen: boolean;
   onToggleAdvanced: () => void;
   accent?: string;
 }
 
-function CollapsibleSectionTabs<K extends string>({ sections, open, onToggle, onCloseAll, advancedOpen, onToggleAdvanced, accent }: CollapsibleSectionTabsProps<K>) {
+function CollapsibleSectionTabs<K extends string>({ sections, open, onToggle, onCloseAll, onOpenAll, advancedOpen, onToggleAdvanced, accent }: CollapsibleSectionTabsProps<K>) {
   const { value, update } = useStoredRecord('tracker.sections', 'analyses-barre', BAR_DEFAULTS);
 
   if (value.cachee) {
@@ -42,6 +46,8 @@ function CollapsibleSectionTabs<K extends string>({ sections, open, onToggle, on
   }
   const primary = sections.filter((s) => s.primary === true);
   const advanced = sections.filter((s) => s.primary !== true);
+  const openCount = sections.filter((s) => open[s.key]).length;
+  const bulk = tabsBulkAction(openCount);
   return (
     <div className="an-tabs">
       <SectionTabs sections={primary} open={open} onToggle={onToggle} accent={accent}
@@ -57,9 +63,15 @@ function CollapsibleSectionTabs<K extends string>({ sections, open, onToggle, on
               aria-label="Cacher les onglets" title="Cacher les onglets">
               <IconChevronUp size={16} />
             </button>
-            <button type="button" className="an-tabs-close-all" onClick={onCloseAll} title="Fermer tous les onglets ouverts">
-              tout fermer
-            </button>
+            {bulk === 'close' ? (
+              <button type="button" className="an-tabs-close-all" onClick={onCloseAll} title="Fermer tous les onglets ouverts">
+                tout fermer
+              </button>
+            ) : (
+              <button type="button" className="an-tabs-close-all an-tabs-open-all" onClick={onOpenAll} title="Ouvrir tous les onglets">
+                tout ouvrir
+              </button>
+            )}
           </>
         )} />
       {advancedOpen && advanced.length > 0 && (

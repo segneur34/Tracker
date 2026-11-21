@@ -180,7 +180,7 @@ function SurfModule() {
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
   // Onglets de l'activité, rangée « avancé », surbrillance unique de la carte, point survolé effacé à chaque session.
-  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs({
+  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown, highlight } = useAnalysisTabs({
     tabs: SURF_TABS, defaults: SURF_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
@@ -498,7 +498,7 @@ function SurfModule() {
         legend: track.length === 0 ? null : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel="rame et attente" />,
       }}
       tabs={summary && analysis && surfProfile ? {
-        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: ACCENT, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, onOpenAll: openAll, advanced, accent: ACCENT, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>

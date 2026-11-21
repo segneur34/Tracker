@@ -214,7 +214,7 @@ function SailingModule() {
   const { runner, retainHr, heart, hrZones } = useAnalysisHeart(track, profile.heartRate, effectiveHrOffset(activity));
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session ; une seule surbrillance
   // sur la carte, effacée quand son onglet se ferme (`useMapHighlight`).
-  const { open, toggle, toggleOf, closeAll, advanced, shown, highlight } = useAnalysisTabs({
+  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown, highlight } = useAnalysisTabs({
     tabs: SAILING_TABS, defaults: SAILING_PANEL_DEFAULTS, activity, sessionKey,
   });
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
@@ -605,7 +605,7 @@ function SailingModule() {
       }}
       // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={stats ? {
-        sections: sailingPanels, open, onToggle: toggle, onCloseAll: closeAll, advanced, panels: (
+        sections: sailingPanels, open, onToggle: toggle, onCloseAll: closeAll, onOpenAll: openAll, advanced, panels: (
           <>
             {open.general && (
               <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>

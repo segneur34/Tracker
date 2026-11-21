@@ -145,6 +145,11 @@
   cursor: pointer;
 }
 
+.an-tabs-open-all {
+  border-color: var(--success);
+  color: var(--success);
+}
+
 .an-tabs-close-all::first-letter {
   text-transform: uppercase;
 }

@@ -122,7 +122,7 @@ function MuscuModule() {
 
   // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC, « test » aux seuls calculs de test (FC de nuit,
   // lot 213). Le point survolé s'efface à chaque session.
-  const { open, toggle, toggleOf, closeAll, advanced, shown } = useAnalysisTabs({
+  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown } = useAnalysisTabs({
     tabs: MUSCU_TABS, defaults: MUSCU_SECTION_DEFAULTS, activity, sessionKey,
   });
   const sections = useMemo(
@@ -170,7 +170,7 @@ function MuscuModule() {
       )}
       // Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={analysis ? {
-        sections, open, onToggle: toggle, onCloseAll: closeAll, advanced, accent: PAGE.accent, panels: (
+        sections, open, onToggle: toggle, onCloseAll: closeAll, onOpenAll: openAll, advanced, accent: PAGE.accent, panels: (
           <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
