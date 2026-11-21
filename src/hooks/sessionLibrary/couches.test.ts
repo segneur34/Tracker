@@ -18,7 +18,7 @@ const SRC = new URL('../../', import.meta.url);
 
 /** Les couches, de la plus basse à la plus haute. */
 const LAYERS = [
-  'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings',
+  'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings', 'placeQueue',
   'addSession', 'pending', 'importer', 'incoming', 'sessionRecords', 'lifecycle',
 ] as const;
 
@@ -29,6 +29,7 @@ const ENTRY_VALUES = [
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
   'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'refreshLibrary',
   'removeSession', 'renameDevice', 'reportStartupError', 'saveRecordedSession', 'settingsUpgraded', 'startIncomingFiles', 'startLibraryUi',
+  'startPlaceSearch',
   'summarizeGpxText', 'switchToBrowserMemory', 'updateSessionRecord', 'useLibraryFields', 'useLibrarySelector',
   'useLibrarySession', 'useSessionName',
 ];

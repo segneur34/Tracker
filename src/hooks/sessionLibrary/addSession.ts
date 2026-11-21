@@ -28,6 +28,7 @@ import {
 } from './memory';
 import { activityOfSession, activitySummarySettings, newRecord, recordFor, sessionSummarySettings } from './summarySettings';
 import { noteRecordEdits, resummarize, scheduleRecordWrite, writeRecordFile } from './recordWrites';
+import { queuePlaces } from './placeQueue';
 
 /**
  * Entrée d'une session dans la mémoire (lot 113) : son GPX, sa fiche et ses capteurs, ou ce qui manque à une
@@ -240,5 +241,7 @@ export const addGpx = async (text: string, source: SessionSource, options: AddOp
   if (motion) lib.knownNames.add(imuFileName(gpx));
   rememberUnreadable(f, gpx, options.record && !kept ? options.unreadable : undefined);
   replaceSession({ file: gpx, record, readOnly: kept !== undefined, warning: kept?.warning ?? null });
+  // Son lieu, cherché en fond (lot 215).
+  queuePlaces();
   return { status: 'added', file: gpx };
 };

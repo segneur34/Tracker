@@ -24,6 +24,7 @@ import {
 import { addGpx, countPending } from './addSession';
 import { flushPending } from './pending';
 import { recordToCopy } from './sessionRecords';
+import { queuePlaces } from './placeQueue';
 
 /**
  * Ouverture de la mémoire (lot 113) : le dossier mis en service ou quitté, le lancement, le choix d'un autre
@@ -96,7 +97,8 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   setState({ status: 'ready' });
   // Le balayage d'abord : une session en attente déjà rangée, mais coupée avant sa fiche, est retrouvée
   // (`scanCompletion`, attendu par `addGpx`) au lieu d'être rangée une seconde fois sous un autre nom.
-  void completeScan(f, gen, jobs).catch((err) =>
+  // Le lieu des sessions, cherché en fond une fois les fiches faites (lot 215).
+  void completeScan(f, gen, jobs).then(queuePlaces, (err) =>
     setState({ scanning: null, toUpdate: 0, error: `Lecture du dossier interrompue : ${errorMessage(err, 'erreur inconnue')}` })
   );
   await flushPending();
@@ -351,6 +353,7 @@ export const refreshLibrary = (): Promise<void> => {
       if (!read) return;
       await read.completion;
       if (read.gen !== lib.generation) return;
+      queuePlaces();
       const after = new Set(libraryState().sessions.map((s) => s.record.summary.startMs));
       setState({ message: describeRefresh(read.before, after) });
       await applySettingsChange(read.settingsChanged);

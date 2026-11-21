@@ -1,5 +1,6 @@
 import type { FileStat } from '../platform/memoryFolder';
 import { ANALYSIS_SUMMARY_FIELDS, sameJson, type RecordWithoutSummary, type SessionRecord, type SessionSummary } from './record';
+import type { SessionPlace } from './sessionPlace';
 
 /**
  * Fiche changée sur le disque pendant qu'on la tenait en mémoire (lot 148) : deux appareils sur un
@@ -114,6 +115,29 @@ const mergedBlock = (
   return out ? { ...out, savedAt: Math.max(diskAt, mineAt) } : null;
 };
 
+/** Rang d'un lieu à la fonte : un lieu corrigé à la main passe devant un lieu appris, qui passe devant un lieu trouvé. */
+const PLACE_RANK: Readonly<Record<SessionPlace['source'], number>> = { user: 2, appris: 1, osm: 0 };
+
+/**
+ * Lieu changé des deux côtés (lot 215) : deux appareils qui cherchent le même lieu ne se contredisent pas.
+ * Le lieu corrigé à la main l'emporte, puis le lieu appris, puis le lieu trouvé ; à rang égal, le plus ancien
+ * (`fetchedAt`), le disque à égalité, pour que les deux appareils gardent le même. Seuls deux lieux corrigés à la
+ * main différents (nom, arrivée) sont un conflit : la mémoire l'emporte alors, comme pour le nom.
+ */
+export const mergedPlace = (
+  disk: SessionPlace | undefined, mine: SessionPlace | undefined
+): { place: SessionPlace | undefined; conflict: boolean } => {
+  if (!disk || !mine) return { place: mine ?? disk, conflict: false };
+  const rankDisk = PLACE_RANK[disk.source];
+  const rankMine = PLACE_RANK[mine.source];
+  if (rankDisk !== rankMine) return { place: rankMine > rankDisk ? mine : disk, conflict: false };
+  if (mine.source === 'user') {
+    const differ = disk.name !== mine.name || (disk.to ?? null) !== (mine.to ?? null);
+    return { place: mine, conflict: differ };
+  }
+  return { place: mine.fetchedAt < disk.fetchedAt ? mine : disk, conflict: false };
+};
+
 export interface MergedRecord {
   record: SessionRecord;
   /** Chemins saisis par l'utilisateur et changés aussi sur le disque, à dire (`conflictLabels`). Les autres fontes sont silencieuses. */
@@ -123,7 +147,7 @@ export interface MergedRecord {
 /**
  * Fiche `disk` (relue sur le disque), plus ce qui a été changé ici dans `mine` (`edits`). Tout le reste
  * (champs d'une version plus récente compris) vient du disque. Un champ changé des deux côtés : en
- * notes et en réglages, le bloc au `savedAt` le plus récent ; ailleurs (nom, repères), la mémoire. Résumé :
+ * notes et en réglages, le bloc au `savedAt` le plus récent ; le lieu par `mergedPlace` ; ailleurs (nom, repères), la mémoire. Résumé :
  * `mergedSummary`. Si les réglages du disque ont changé, l'empreinte rend la session à refaire
  * (`isSummaryOutdated`), comme pour une allure changée ici.
  */
@@ -133,6 +157,14 @@ export const mergeChangedRecord = (disk: RecordWithoutSummary, mine: SessionReco
   const fromMine = loose(mine);
   for (const path of edits.keys()) {
     if (path.includes('.') || path === 'summary' || (DATED_BLOCKS as readonly string[]).includes(path)) continue;
+    // Lieu changé aussi sur le disque : fondu à part (`mergedPlace`).
+    if (path === 'place' && !sameJson(out.place, edits.get(path))) {
+      const { place, conflict } = mergedPlace(out.place as SessionPlace | undefined, mine.place);
+      if (conflict) conflicts.push(path);
+      if (place === undefined) delete out.place;
+      else out.place = place;
+      continue;
+    }
     if (!sameJson(out[path], edits.get(path)) && !sameJson(out[path], fromMine[path])) conflicts.push(path);
     if (fromMine[path] === undefined) delete out[path];
     else out[path] = fromMine[path];
@@ -145,6 +177,7 @@ export const mergeChangedRecord = (disk: RecordWithoutSummary, mine: SessionReco
 /** Ce que l'utilisateur saisit, en clair, par champ de premier niveau ; les champs calculés (voies, altitude, sauts) ne s'annoncent pas. */
 const SAISIE_LABEL: Readonly<Record<string, string>> = {
   sport: 'activité', activityId: 'activité', name: 'nom', notes: 'notes', analysis: 'réglages', marks: 'repères', elevationSource: 'altitude', mapBase: 'fond de carte',
+  place: 'lieu',
 };
 
 const topField = (path: string): string => path.split('.')[0];

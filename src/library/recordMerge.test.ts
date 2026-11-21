@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addRecordEdits, conflictLabels, mergeChangedRecord, sameStamp } from './recordMerge';
+import { addRecordEdits, conflictLabels, mergeChangedRecord, mergedPlace, sameStamp } from './recordMerge';
+import { PLACE_VERSION, type SessionPlace } from './sessionPlace';
 import { SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
 import { sessionRecord } from '../test/record.fixture';
 
@@ -95,6 +96,47 @@ describe('fiche changée sur le disque', () => {
     const { record, conflicts } = mergeChangedRecord({ ...before, jumps: { ...jumps, computedAt: 'y' } }, mine, editsOf(before, mine));
     expect(record.jumps?.computedAt).toBe('x');
     expect(conflicts).toEqual([]);
+  });
+
+  describe('lieu changé des deux côtés (lot 215)', () => {
+    const place = (name: string, source: SessionPlace['source'], fetchedAt: string, over: Partial<SessionPlace> = {}): SessionPlace => ({
+      name, kind: 'eau', search: 'eau', source, version: PLACE_VERSION, fetchedAt, ...over,
+    });
+    const merge = (diskPlace: SessionPlace, minePlace: SessionPlace) => {
+      const before = sessionRecord();
+      const mine = { ...before, place: minePlace };
+      return mergeChangedRecord({ ...before, place: diskPlace }, mine, editsOf(before, mine));
+    };
+
+    it('même lieu trouvé sur deux appareils : pas de conflit, le plus ancien gardé des deux côtés', () => {
+      const early = place('Carnon-Plage', 'osm', '2026-11-21T08:00:00.000Z');
+      const late = place('Carnon-Plage', 'osm', '2026-11-21T09:00:00.000Z');
+      expect(merge(early, late)).toEqual({ record: expect.objectContaining({ place: early }), conflicts: [] });
+      expect(merge(late, early)).toEqual({ record: expect.objectContaining({ place: early }), conflicts: [] });
+      // Lieux appris de même nom : de même.
+      expect(merge(place('Travers', 'appris', 'b'), place('Travers', 'appris', 'a')).conflicts).toEqual([]);
+      // À égalité de date : celui du disque.
+      const disk = place('Carnon-Plage', 'osm', 'x', { kind: 'commune' });
+      expect(mergedPlace(disk, place('Carnon-Plage', 'osm', 'x')).place).toBe(disk);
+    });
+
+    it('un lieu corrigé à la main l\'emporte sur un lieu trouvé ou appris, sans conflit', () => {
+      const user = place('Le Grand Travers', 'user', '2026-11-21T10:00:00.000Z');
+      expect(merge(place('Carnon-Plage', 'osm', 'a'), user)).toEqual({ record: expect.objectContaining({ place: user }), conflicts: [] });
+      expect(merge(user, place('Carnon-Plage', 'appris', 'z'))).toEqual({ record: expect.objectContaining({ place: user }), conflicts: [] });
+      // Un lieu appris passe devant un lieu trouvé.
+      const learned = place('Travers', 'appris', 'z');
+      expect(mergedPlace(place('Carnon-Plage', 'osm', 'a'), learned)).toEqual({ place: learned, conflict: false });
+    });
+
+    it('deux lieux corrigés à la main différents : la mémoire, et c\'est dit ; les mêmes : rien', () => {
+      const mine = place('Ici', 'user', 'a');
+      const { record, conflicts } = merge(place('Là-bas', 'user', 'b'), mine);
+      expect(record.place).toEqual(mine);
+      expect(conflictLabels(conflicts)).toEqual(['lieu']);
+      expect(merge(place('Ici', 'user', 'b'), mine).conflicts).toEqual([]);
+      expect(merge(place('Ici', 'user', 'b', { to: 'Sète' }), mine).conflicts).toEqual(['place']);
+    });
   });
 
   describe('résumé', () => {

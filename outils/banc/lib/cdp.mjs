@@ -66,6 +66,25 @@ const PAGE_SCRIPT = `(() => {
     .observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
 })();`;
 
+/**
+ * Marqueur des requêtes de lieu d'une session (`PLACE_QUERY_MARK` de `src/planning/placeQuery.ts`, même texte,
+ * vérifié par `placeQuery.test.ts`).
+ */
+export const PLACE_QUERY_MARK = '/*tracker-lieu*/';
+
+// Script de page, posé après PAGE_SCRIPT sauf avec `lieux: true` : une requête de lieu (lot 215) échoue tout de suite,
+// comme hors ligne, sans partir sur le réseau ; les autres requêtes (Overpass pour le revêtement compris) passent.
+const LIEUX_SCRIPT = `(() => {
+  const mark = ${JSON.stringify(PLACE_QUERY_MARK)};
+  const next = window.fetch;
+  window.fetch = function (input, init) {
+    const body = init && init.body;
+    const text = body instanceof URLSearchParams ? (body.get('data') ?? '') : typeof body === 'string' ? body : '';
+    if (text.includes(mark)) return Promise.reject(new TypeError('Failed to fetch'));
+    return next.apply(this, arguments);
+  };
+})();`;
+
 const STATE = `(() => { const b = window.__banc; if (!b) return null; return { doc: b.doc, ready: document.readyState, mounted: (document.getElementById('root')?.childElementCount ?? 1) > 0, fetches: b.fetches, timers: b.timers.size, last: b.lastMutation, quiet: b.now() - b.lastMutation }; })()`;
 // Deux images, et au plus 500 ms de vrai temps si la page n'en dessine pas.
 const TWO_FRAMES = `new Promise((r) => { let done = false; const f = () => { if (!done) { done = true; r(true); } }; requestAnimationFrame(() => requestAnimationFrame(f)); (window.__banc?.setTimeout ?? setTimeout)(f, 500); })`;
@@ -178,7 +197,8 @@ const openSocket = async (url) => {
  * l'onglet dans un contexte de navigation neuf, `Target.createBrowserContext`, stockages vides comme un profil
  * neuf, jeté à la fermeture ; `BANC_CONTEXTE=1` l'impose ; pas le défaut).
  */
-export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1' } = {}) => {
+// `lieux` : laisser partir les requêtes de lieu des sessions (lot 215), que le banc fait échouer d'ordinaire (`LIEUX_SCRIPT`).
+export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1', lieux = false } = {}) => {
   const startedAt = Date.now();
   const ownTab = !process.env.BANC_WS;
   if (ownTab && !port) throw new Error('connect : port Chrome manquant');
@@ -246,6 +266,7 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
 
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable'); await send('Network.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: PAGE_SCRIPT });
+  if (!lieux) await send('Page.addScriptToEvaluateOnNewDocument', { source: LIEUX_SCRIPT });
   if (MEMOIRE_DISQUE) {
     await send('Page.addScriptToEvaluateOnNewDocument', { source: MEMOIRE_DISQUE_SCRIPT });
     await send('Runtime.evaluate', { expression: MEMOIRE_DISQUE_SCRIPT });

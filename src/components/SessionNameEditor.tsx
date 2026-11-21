@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { FAMILY_LABEL, sessionActivity } from '../core/activities';
 import type { ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
-import { librarySession, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
+import { findLibrarySession, librarySession, updateSessionRecord, useLibrarySelector, useSessionName } from '../hooks/useSessionLibrary';
 import { readStoredActivities } from '../hooks/useSportSettings';
 import { useTransientValue } from '../hooks/useTransientValue';
+import { readRenameDraft, sessionDisplayName, sessionFileLabel } from '../library/sessionName';
 import { shareLabels } from '../library/shareStats';
 import { safeFileName, saveToDownloads } from '../platform/files';
 import { IconDownload } from './icons';
@@ -48,7 +49,9 @@ const DOWNLOAD_NOTE_MS = 4000;
  * lecture seule, qui se télécharge quand même.
  */
 function SessionNameEditor({ file, share, discard }: { file: string | null; share?: SessionShare; discard?: SessionDiscard }) {
-  const name = useSessionName(file);
+  /** Nom saisi ; le lieu, cherché en fond, change le nom calculé sans autre changement de la page. */
+  const typedName = useSessionName(file);
+  const place = useLibrarySelector((s) => findLibrarySession(s.sessions, file)?.record.place);
   const [sharing, setSharing] = useState(false);
   /** Nom en cours de saisie ; `null` hors renommage. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -59,20 +62,25 @@ function SessionNameEditor({ file, share, discard }: { file: string | null; shar
 
   const { record } = session;
   const activityName = sessionActivity(readStoredActivities(), record.activityId, record.sport)?.name ?? null;
+  // Nom saisi, sinon « Activité · Lieu », sinon l'activité (lot 215).
+  const name = sessionDisplayName({ name: typedName, place }, activityName);
+  const fileLabel = sessionFileLabel({ name: typedName, place });
 
+  /** « Renommer » : un nom libre, ou « Activité · Lieu » qui corrige le lieu (`readRenameDraft`). */
   const save = () => {
     if (draft === null) return;
-    updateSessionRecord(file, { name: draft });
+    updateSessionRecord(file, readRenameDraft(draft, { name: typedName, place, sport: record.sport }, activityName));
     setDraft(null);
   };
 
   /**
    * Le GPX tel que rangé, avec sa fiche et ses capteurs. Une session nommée part sous
-   * `AAAA-MM-JJ Activité - Nom.gpx`, son nom écrit dans le GPX ; les autres, sous leur nom de fichier.
+   * `AAAA-MM-JJ Activité - Nom.gpx`, son nom écrit dans le GPX ; une session au lieu connu sous
+   * `AAAA-MM-JJ Activité - Lieu.gpx` ; les autres, sous leur nom de fichier.
    */
   const download = async () => {
     try {
-      const { fileName, text } = await sessionGpxExport(file, name, activityName);
+      const { fileName, text } = await sessionGpxExport(file, fileLabel, activityName);
       await saveToDownloads(fileName, text);
       setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {
@@ -84,7 +92,7 @@ function SessionNameEditor({ file, share, discard }: { file: string | null; shar
   const shareTrace = async () => {
     setNote(null);
     try {
-      const { fileName, text } = await sessionGpxExport(file, name, activityName);
+      const { fileName, text } = await sessionGpxExport(file, fileLabel, activityName);
       const fallback = await shareGpxText(fileName, text);
       if (fallback) setNote({ text: fallback, error: false });
     } catch (err) {
@@ -125,7 +133,7 @@ function SessionNameEditor({ file, share, discard }: { file: string | null; shar
         </span>
       </span>
       {sharing && share && (() => {
-        const labels = shareLabels(name, activityName, FAMILY_LABEL[share.family], record.summary.startMs, file);
+        const labels = shareLabels(typedName, activityName, FAMILY_LABEL[share.family], record.summary.startMs, file, place);
         return (
           <ShareDialog
             family={share.family}

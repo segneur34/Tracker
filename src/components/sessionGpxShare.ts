@@ -6,7 +6,8 @@ import { shareFile, type ShareOutcome } from '../platform/share';
 
 /**
  * Nom du GPX d'une session de la mémoire, téléchargé (« Télécharger la session ») ou partagé (« Partager la
- * trace (GPX) », lot 207) : `AAAA-MM-JJ Activité - Nom.gpx` pour une session nommée, sinon son nom de fichier.
+ * trace (GPX) », lot 207) : `AAAA-MM-JJ Activité - Nom.gpx` pour une session nommée, `AAAA-MM-JJ Activité - Lieu.gpx`
+ * pour une session sans nom saisi au lieu connu (`name` : `sessionFileLabel`, lot 215), sinon son nom de fichier.
  */
 export const sessionGpxFileName = (name: string | null, activityName: string | null, startMs: number | null, file: string): string => {
   const named = name?.trim() ? safeFileName(downloadBaseName(name, activityName, startMs, file)) : '';

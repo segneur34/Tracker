@@ -15,6 +15,7 @@ import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTi
 import { isSportType } from '../core/sportProfiles';
 import { isValidCarriedLoad } from '../running/energy';
 import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes';
+import { readSessionPlace, readSummaryPoint, type SessionPlace, type SummaryPoint } from './sessionPlace';
 import { finiteOr, isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basics';
 
 /**
@@ -131,8 +132,12 @@ export const RECORD_VERSION = 1;
  * sont réglés sur les premières vraies nuits (protocole 2) : sursauts rangés en
  * mouvements, éveils brefs et réveils (`wakes`), creux hors des sursauts, part
  * de nuit calme (`calmShare`) et indice de régularité (`regularityBpm`).
+ *
+ * 23 (21 novembre 2026, lot 215) : premier et dernier point de la trace
+ * (`start`, `end`), pour le lieu de la session et son nom calculé (les autres
+ * chiffres ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 22;
+export const SUMMARY_CALC_VERSION = 23;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -198,6 +203,9 @@ export interface SessionSummary {
   avgPowerW?: number;
   /** Meilleurs efforts à pied et à vélo (lot 146, version 18), pour l'onglet « niveau » des statistiques. */
   bests?: SummaryBests;
+  /** Premier et dernier point de la trace, arrondis au mètre (lot 215, version 23) : lieu de la session ; absents sans positions. */
+  start?: SummaryPoint;
+  end?: SummaryPoint;
   /**
    * Empreinte des réglages qui ont produit ce résumé (`summaryOptionsKey` : seuil, allure imposée,
    * foil et seuil de vague en surf), lot 37. Une empreinte qui ne correspond plus aux réglages
@@ -524,6 +532,12 @@ export interface SessionRecord {
    * paliers et signaux, en heure des positions. Absent sans test, ou mal formé.
    */
   test?: SessionTest;
+  /**
+   * Lieu de la session (lot 215), cherché en fond ou corrigé par « Renommer » ;
+   * il donne le nom calculé tant qu'aucun nom n'est saisi. Absent avant la
+   * recherche, sans positions, ou si la fiche en porte un mal formé.
+   */
+  place?: SessionPlace;
 }
 
 
@@ -614,6 +628,11 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const bests = readSummaryBests(raw.bests);
   if (bests) summary.bests = bests;
   else delete summary.bests;
+  for (const field of ['start', 'end'] as const) {
+    const point = readSummaryPoint(raw[field]);
+    if (point) summary[field] = point;
+    else delete summary[field];
+  }
   if (typeof raw.optionsKey !== 'string') delete summary.optionsKey;
   const activitySettings = readActivitySettings(raw.activitySettings);
   if (activitySettings) summary.activitySettings = activitySettings;
@@ -837,6 +856,7 @@ export type RecordUnreadable = Readonly<Record<string, UnreadableField>>;
 /** Champs de premier niveau dont la lecture peut perdre quelque chose. */
 const GUARDED_FIELDS = [
   'sport', 'activityId', 'source', 'addedAt', 'title', 'name', 'surfaces', 'terrainElevation', 'elevationSource', 'mapBase', 'intervals', 'jumps', 'marks', 'test',
+  'place',
 ] as const;
 /** Objets relus champ par champ : un champ illisible y est gardé seul ; l'objet entier s'il est illisible (sauf le résumé, refait depuis le GPX). */
 const GUARDED_OBJECTS = ['summary', 'analysis', 'notes'] as const;
@@ -907,13 +927,14 @@ const readRecordParts = (raw: unknown): RecordWithoutSummary | null => {
   if (!isObject(raw) || raw.format !== RECORD_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, mapBase: rawMapBase, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, test: rawTest, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, mapBase: rawMapBase, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, test: rawTest, place: rawPlace, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
   const intervals = readIntervalSeries(rawIntervals);
   const jumps = readSessionJumps(rawJumps);
   const marks = readSessionMarks(rawMarks);
   const test = readSessionTest(rawTest);
+  const place = readSessionPlace(rawPlace);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -937,6 +958,7 @@ const readRecordParts = (raw: unknown): RecordWithoutSummary | null => {
     ...(jumps ? { jumps } : {}),
     ...(marks ? { marks } : {}),
     ...(test ? { test } : {}),
+    ...(place ? { place } : {}),
   };
 };
 
@@ -1050,6 +1072,7 @@ export const completeRecord = (
   if (!existing.terrainElevation && incoming.terrainElevation) patch.terrainElevation = incoming.terrainElevation;
   if (!existing.elevationSource && incoming.elevationSource) patch.elevationSource = incoming.elevationSource;
   if (!existing.mapBase && incoming.mapBase) patch.mapBase = incoming.mapBase;
+  if (!existing.place && incoming.place) patch.place = incoming.place;
   if (Object.keys(patch).length === 0) return { record: existing, resummarize: false };
   const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource', 'test'].some((key) => key in patch);
   // Support ou activité reçus : ce que portait le résumé était à une autre ; réglages reçus : il garde les siens.
@@ -1063,7 +1086,7 @@ export const completeRecord = (
  * `carryRecordEdits`.
  */
 export const RECORD_EDIT_FIELDS = [
-  'sport', 'activityId', 'name', 'notes', 'analysis', 'marks', 'elevationSource', 'mapBase',
+  'sport', 'activityId', 'name', 'notes', 'analysis', 'marks', 'elevationSource', 'mapBase', 'place',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 /**
@@ -1081,7 +1104,7 @@ export const carryRecordEdits = (target: SessionRecord, edited: SessionRecord): 
     if (edited[key] === undefined) delete next[key];
     else next[key] = edited[key];
   }
-  const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks' && key !== 'mapBase');
+  const resummarize = changed.some((key) => key !== 'name' && key !== 'notes' && key !== 'marks' && key !== 'mapBase' && key !== 'place');
   const summary = changed.includes('sport') || changed.includes('activityId')
     ? withoutCarriedSettings(target).summary
     : changed.includes('analysis') ? withCarriedSettingsFixed(target).summary : target.summary;
@@ -1136,7 +1159,7 @@ export const findLegacyNotes = (
  */
 export const RECORD_LIGHT_FIELDS = [
   'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
-  'summary', 'notes', 'analysis', 'elevationSource', 'mapBase', 'intervals', 'marks', 'test',
+  'summary', 'notes', 'analysis', 'elevationSource', 'mapBase', 'intervals', 'marks', 'test', 'place',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 /**
@@ -1247,6 +1270,8 @@ export interface RecordPatch {
   jumps?: SessionJumps | null;
   /** Repères du bouton « Note » ; `null` ou une liste vide les retire. */
   marks?: SessionMark[] | null;
+  /** Lieu de la session (lot 215) ; `null` le retire. Ne change pas le résumé. */
+  place?: SessionPlace | null;
 }
 
 /**
@@ -1298,6 +1323,10 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (patch.mapBase !== undefined && (patch.mapBase ?? undefined) !== next.mapBase) {
     const { mapBase: _previous, ...others } = next;
     next = patch.mapBase ? { ...others, mapBase: patch.mapBase } : others;
+  }
+  if (patch.place !== undefined && !sameJson(patch.place ?? undefined, next.place)) {
+    const { place: _previous, ...others } = next;
+    next = patch.place ? { ...others, place: patch.place } : others;
   }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;

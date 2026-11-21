@@ -92,6 +92,8 @@ export const SCRIPTS = [
   { nom: 'materiel-fin', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
   { nom: 'miseajour', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'reglages'] },
   { nom: 'muscu', args: ['{port}', '{captures?}'], pages: ['fractionne'] },
+  // Nom calculé « Activité · Lieu » (lot 215) : Overpass simulé par le domaine `Fetch`, sans réseau.
+  { nom: 'nom-lieu', args: ['{port}', '{travail}'], pages: ['bibliotheque', 'course', 'voile'] },
   { nom: 'notes', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'course', 'voile', 'surf'], solo: true, accelerable: true, masques: [heure] },
   { nom: 'notification', args: ['{port}', '{travail}'], pages: ['reglages', 'enregistrer', 'fractionne'], solo: true },
   { nom: 'onglets', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'surf', 'voile', 'reglages'] },

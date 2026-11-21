@@ -38,6 +38,7 @@ import {
 } from './record';
 import { carriedSettings } from './record';
 import { familyRecords, sessionRecord } from '../test/record.fixture';
+import { PLACE_VERSION, type SessionPlace } from './sessionPlace';
 
 const START_MS = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -407,6 +408,37 @@ describe('altitude du terrain de la fiche', () => {
     expect(sat).toEqual({ record: { ...record(), mapBase: 'satellite' }, resummarize: false });
     expect(applyRecordPatch(sat.record, { mapBase: null }).record).not.toHaveProperty('mapBase');
     expect(applyRecordPatch(record(), { mapBase: null })).toEqual({ record: record(), resummarize: false });
+  });
+
+  it('lieu de la session (lot 215) : relu avec garde, changé sans refaire le résumé, léger, reporté et complété', () => {
+    const place: SessionPlace = { name: 'Carnon-Plage', kind: 'eau', search: 'eau', source: 'osm', version: PLACE_VERSION, fetchedAt: '2026-11-21T10:00:00.000Z' };
+    expect(parseRecord(serializeRecord(record({ place })))?.place).toEqual(place);
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('place');
+    // Mal formé : écarté à la lecture, gardé tel quel à la réécriture (forme d'une version plus récente).
+    const odd = { ...record(), place: { ...place, source: 'futur' } };
+    const parsed = parseRecordWithRaw(JSON.stringify(odd));
+    expect(parsed?.parts).not.toHaveProperty('place');
+    expect(JSON.parse(serializeRecord(record(), parsed?.unreadable)).place).toEqual(odd.place);
+    // Changé, retiré : sans recalcul ; le même lieu ne change rien.
+    const placed = applyRecordPatch(record(), { place });
+    expect(placed).toEqual({ record: { ...record(), place }, resummarize: false });
+    expect(applyRecordPatch(placed.record, { place: { ...place } }).record).toBe(placed.record);
+    expect(applyRecordPatch(placed.record, { place: null }).record).not.toHaveProperty('place');
+    // Gardé dans le cache allégé, reporté d'une copie à l'autre, complété sans écraser.
+    expect(RECORD_LIGHT_FIELDS).toContain('place');
+    expect(lightRecord(placed.record).place).toEqual(place);
+    expect(carryRecordEdits(record(), placed.record)).toEqual({ record: placed.record, resummarize: false });
+    expect(completeRecord(record(), placed.record).record.place).toEqual(place);
+    const other = { ...place, name: 'Autre' };
+    expect(completeRecord(placed.record, { ...record(), place: other }).record.place).toEqual(place);
+  });
+
+  it("départ et arrivée du résumé (lot 215) : relus, écartés s'ils sont mal formés", () => {
+    const summary = { start: { lat: 43.548, lon: 3.98 }, end: { lat: 43.6, lon: 3.9 } };
+    expect(parseRecord(serializeRecord(record({}, summary)))?.summary).toMatchObject(summary);
+    const bad = parseRecord(serializeRecord(record({}, { start: { lat: 'x', lon: 3 }, end: { lat: 95, lon: 3 } } as never)));
+    expect(bad?.summary).not.toHaveProperty('start');
+    expect(bad?.summary).not.toHaveProperty('end');
   });
 });
 

@@ -8,6 +8,7 @@ import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
+import { sessionDisplayName } from '../library/sessionName';
 import { shownRoutes } from '../planning/routeList';
 import { followedTraceFromRoute, followedTraceFromSession, type FollowedTrace } from '../recording/followedTrace';
 import ActivitySelect from './ActivitySelect';
@@ -153,7 +154,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
             )}
             <ul style={LIST_STYLE}>
               {filteredSessions.slice(0, shown).map(({ file, record, activity }) => {
-                const name = record.name ?? record.title ?? file;
+                const name = sessionDisplayName(record, activity?.name ?? null) ?? record.title ?? file;
                 return (
                   <li key={file}>
                     <button type="button" style={ROW_STYLE} disabled={loading !== null}

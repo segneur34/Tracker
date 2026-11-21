@@ -14,6 +14,7 @@ import { DAY_MS, addDays, addMonths, isoWeek, monthYearLong, monthYearShort, sho
 import { CHART_PERIODS, chartPeriodBounds, type ChartRange } from './activityChart';
 import type { GearChoice, GearGroup } from './notes';
 import type { ManeuverResults, SessionRecord, SummaryBests, SummaryHeartRate } from './record';
+import { sessionDisplayName } from './sessionName';
 
 export type StatsPeriod = ChartRange;
 
@@ -38,7 +39,7 @@ export const inBounds = (startMs: number, bounds: StatsBounds): boolean =>
 /** Ce que les statistiques retiennent d'une session. */
 export interface StatSession {
   file: string;
-  /** Nom donné par l'utilisateur, `null` sans nom. */
+  /** Nom montré : celui donné par l'utilisateur, sinon « Activité · Lieu » (lot 215), sinon l'activité. */
   name: string | null;
   startMs: number;
   endMs: number;
@@ -88,7 +89,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
   const { summary } = record;
   return {
     file,
-    name: record.name ?? null,
+    name: sessionDisplayName(record, activity.name),
     startMs: summary.startMs,
     endMs: summary.endMs,
     distanceM: summary.distanceM,

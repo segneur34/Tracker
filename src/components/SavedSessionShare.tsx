@@ -6,6 +6,7 @@ import { getSportProfile, hasActiveThreshold, hasPositions, sportFamily, sportTr
 import { coloredSegments } from '../core/trackColor';
 import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
 import { activitySpeedRanges, effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit } from '../hooks/useSportSettings';
+import { sessionFileLabel } from '../library/sessionName';
 import { shareLabels, summaryShareStats } from '../library/shareStats';
 import { sessionFoil } from '../library/summaryOptions';
 import { safeFileName } from '../platform/files';
@@ -59,7 +60,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const track = withTrack ? sessionColorTrack(gpx, sport, record?.analysis?.referenceSpeedMs ?? null, family) : null;
       if ((withTrack && track === null) || summary === null) throw new Error('trace trop courte.');
       const range = track ? sessionSpeedRange(record ?? { analysis: null, sport }, activity ? activitySpeedRanges(activity) : null, family, track.suggested) : null;
-      const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName);
+      const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName, record?.place);
       const units = { speed: effectiveSpeedUnit(activity), distance: effectiveDistanceUnit(activity) };
       // Foil de la session, sinon celui de l'activité : « Temps en vol » au lieu de « Temps actif ».
       const foil = sessionFoil(record, effectiveFoil(activity));
@@ -93,7 +94,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
     try {
       const record = libraryFile === null ? undefined : librarySession(libraryFile)?.record;
       const { fileName: name, text } = libraryFile !== null
-        ? await sessionGpxExport(libraryFile, record?.name ?? null, activity.name)
+        ? await sessionGpxExport(libraryFile, record ? sessionFileLabel(record) : null, activity.name)
         : { fileName, text: gpx };
       setNote(await shareGpxText(name, text));
     } catch (err) {

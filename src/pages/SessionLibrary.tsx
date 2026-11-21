@@ -51,6 +51,7 @@ import { previewStore } from '../library/previewStore';
 import { previewFingerprint, previewKey, roundPreviewPoints, type PreviewTrack } from '../library/previewTracks';
 import { previewImageStore } from '../library/previewImageStore';
 import { previewImageKey } from '../library/previewImages';
+import { readRenameDraft, sessionDisplayName } from '../library/sessionName';
 import bannerCourse from '../assets/bandeaux/course.webp';
 import bannerFractionne from '../assets/bandeaux/fractionne.webp';
 import bannerSurf from '../assets/bandeaux/surf.webp';
@@ -475,9 +476,12 @@ const SessionRow = memo(function SessionRow({
     openSession(session.file, sportFamily(chosen.base));
   };
 
+  /** Nom montré : le nom saisi, sinon « Activité · Lieu », sinon l'activité (lot 215). */
+  const shownName = sessionDisplayName(record, activity?.name ?? null);
+  /** « Renommer » : un nom libre, ou « Activité · Lieu » qui corrige le lieu (`readRenameDraft`). */
   const saveName = () => {
     if (nameDraft === null) return;
-    updateSessionRecord(session.file, { name: nameDraft });
+    updateSessionRecord(session.file, readRenameDraft(nameDraft, record, activity?.name ?? null));
     setNameDraft(null);
   };
 
@@ -489,7 +493,8 @@ const SessionRow = memo(function SessionRow({
           <span className="lib-row__head">
             <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
               {activity && <ActivityIcon activity={activity} className="lib-row__icon" style={{ color: shown(activity.color) }} />}
-              {activity ? activity.name : 'À classer'}
+              {/* Sans nom saisi : « Activité · Lieu » à la place de l'activité, la date à côté. */}
+              {activity ? (record.name ? activity.name : shownName) : 'À classer'}
             </span>
             <span className="lib-row__date">{weekdayDayMonthYear(startMs)} · {formatTime(startMs)}</span>
           </span>
@@ -527,7 +532,7 @@ const SessionRow = memo(function SessionRow({
                 onChange={(chosen) => updateSessionRecord(session.file, { sport: chosen.base, activityId: chosen.id })} />
             )}
             {!session.readOnly && !confirming && (
-              <Button size="s" variant="ghost" onClick={() => setNameDraft(record.name ?? '')}>Renommer</Button>
+              <Button size="s" variant="ghost" onClick={() => setNameDraft(shownName ?? '')}>Renommer</Button>
             )}
             {!session.readOnly && (confirming ? (
               <>

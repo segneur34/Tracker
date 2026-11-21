@@ -14,6 +14,7 @@ import {
 import { cancelRecordWrite, noteRecordEdits, recordEdits, resummarize, scheduleRecordWrite } from './recordWrites';
 import { scheduleCacheUpdate } from './cache';
 import type { AddOptions } from './addSession';
+import { spreadLearnedPlace } from './placeQueue';
 
 /**
  * Une session de la mémoire (lot 113) : son GPX, sa fiche entière, ses capteurs, le changement de sa fiche et sa
@@ -97,6 +98,8 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
   if (stale) void resummarize(file);
+  // Lieu corrigé (lot 215) : il vaut pour les sessions parties du même endroit.
+  if (patch.place?.source === 'user') spreadLearnedPlace(file);
 };
 
 /**

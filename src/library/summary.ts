@@ -38,6 +38,7 @@ import {
   SUMMARY_CALC_VERSION, type SessionSummary, type SummaryBests, type SummaryCadence, type SummaryHeartRate, type SummaryNight,
 } from './record';
 import { analyzeCadence, sessionCadence, type CadenceDetection } from '../running/cadence';
+import { summaryPoint } from './sessionPlace';
 
 /**
  * Résumé d'une session pour la bibliothèque : ce que la liste affiche sans
@@ -233,6 +234,9 @@ export const summarizeSession = (
     ...(test ? { test } : {}),
     ...tops,
     ...(bests ? { bests } : {}),
+    // Départ et arrivée (lot 215) : le lieu de la session.
+    start: summaryPoint(track[0].lat, track[0].lon),
+    end: summaryPoint(track[track.length - 1].lat, track[track.length - 1].lon),
   };
 };
 

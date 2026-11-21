@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { sessionFileLabel } from '../library/sessionName';
+import { PLACE_VERSION } from '../library/sessionPlace';
 import { GPX_DOWNLOADED_NOTE, gpxShareNote, sessionGpxFileName } from './sessionGpxShare';
 
 describe('sessionGpxFileName (lot 207)', () => {
@@ -13,6 +15,12 @@ describe('sessionGpxFileName (lot 207)', () => {
   it('garde son nom de fichier à une session sans nom', () => {
     expect(sessionGpxFileName(null, 'Wingfoil', startMs, '2026-10-10-1430-wingfoil.gpx')).toBe('2026-10-10-1430-wingfoil.gpx');
     expect(sessionGpxFileName('   ', 'Wingfoil', startMs, '2026-10-10-1430-wingfoil.gpx')).toBe('2026-10-10-1430-wingfoil.gpx');
+  });
+
+  it("nomme une session sans nom saisi par son lieu, s'il est connu (lot 215)", () => {
+    const place = { name: 'Carnon-Plage', kind: 'eau', search: 'eau', source: 'osm', version: PLACE_VERSION, fetchedAt: '' } as const;
+    expect(sessionGpxFileName(sessionFileLabel({ name: null, place }), 'Wingfoil', startMs, 'x.gpx')).toBe('2026-10-10 Wingfoil - Carnon-Plage.gpx');
+    expect(sessionGpxFileName(sessionFileLabel({ name: null, place: { ...place, name: null } }), 'Wingfoil', startMs, 'x.gpx')).toBe('x.gpx');
   });
 });
 

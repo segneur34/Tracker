@@ -25,6 +25,22 @@ const START_MS = Date.parse('2026-09-20T10:00:00Z');
 const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): RawTrackPoint[] => phasesTrack(phases, hz, { startMs: START_MS, climbPerS });
 
 describe('summarizeSession', () => {
+  it("range le départ et l'arrivée de la trace (version 23, lot 215), les mêmes à 1 Hz et à 5 Hz", () => {
+    const [one, five] = [1, 5].map((hz) => summarizeSession(buildTrack([[300, 3], [300, 4]], hz), 'running'));
+    expect(one?.calcVersion).toBe(23);
+    expect(one?.start).toEqual({ lat: ORIGIN.lat, lon: ORIGIN.lon });
+    // 2,1 km vers l'est.
+    expect(one?.end?.lat).toBe(ORIGIN.lat);
+    expect(((one?.end?.lon ?? 0) - ORIGIN.lon) * mPerDegLon(ORIGIN.lat)).toBeCloseTo(2100, -1);
+    expect(five?.start).toEqual(one?.start);
+    expect(five?.end).toEqual(one?.end);
+    // Sans positions (muscu, nuit) : ni départ ni arrivée.
+    const timed = [0, 60_000].map((ms) => ({ time: new Date(START_MS + ms).toISOString(), hr: 80 }));
+    const hr = summarizeHeartRateSession(timed, 'muscu');
+    expect(hr).not.toBeNull();
+    expect(hr).not.toHaveProperty('start');
+  });
+
   it('range le meilleur kilomètre à pied et les meilleures 5 min à vélo (version 17), à 1 Hz comme à 5 Hz', () => {
     for (const hz of [1, 5]) {
       // Course : 10 min à 3 m/s, dont 200 s à 4 m/s (800 m) ; le meilleur kilomètre : 800 m à 4 m/s et 200 m à 3 m/s.

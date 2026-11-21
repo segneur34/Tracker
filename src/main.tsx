@@ -16,7 +16,7 @@ import { startZoneAlertGuide } from './hooks/useZoneAlert';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { getRecorderState, isRecordingActive, recoverInterruptedRecording, subscribeToRecorder } from './hooks/useRecorder';
-import { openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi } from './hooks/useSessionLibrary';
+import { openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi, startPlaceSearch } from './hooks/useSessionLibrary';
 import { importRouteGpx } from './hooks/routeFiles';
 import { incomingFiles } from './platform/incomingFile';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
@@ -75,6 +75,8 @@ void initStorage()
       </React.StrictMode>
     );
     startLibraryUi(isRecordingActive);
+    // Lieu des sessions (lot 215), cherché en fond sur le serveur d'OpenStreetMap.
+    startPlaceSearch();
     if (upgradeError !== null) {
       const detail = plainError(upgradeError, 'erreur inconnue');
       reportStartupError(`Réglages de l'appareil non mis à jour pour cette version : ${detail}`);

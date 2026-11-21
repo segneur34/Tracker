@@ -35,7 +35,7 @@ import { findSession, sessionOfFile } from './sessionLibrary/memory';
  * découpé par sujet sous `hooks/sessionLibrary/` (lot 113), en couches dont
  * chacune n'importe que les précédentes (`couches.test.ts`) : `store`,
  * `memory`, `summarySettings`, `recordWrites`, `cache`, `scan`,
- * `summaryQueue`, `deviceSettings`, `addSession`, `pending`, `importer`, `incoming`,
+ * `summaryQueue`, `deviceSettings`, `placeQueue`, `addSession`, `pending`, `importer`, `incoming`,
  * `sessionRecords`, `lifecycle`.
  */
 
@@ -45,6 +45,7 @@ export { hasSessionMotion } from './sessionLibrary/memory';
 export { summarizeGpxText } from './sessionLibrary/summarySettings';
 export { queueOutdatedRefresh } from './sessionLibrary/summaryQueue';
 export { adoptSettingsFile, importSettingsFile, renameDevice, settingsUpgraded } from './sessionLibrary/deviceSettings';
+export { startPlaceSearch } from './sessionLibrary/placeQueue';
 export type { AddResult, AddStatus } from './sessionLibrary/addSession';
 export { answerImportQuestion, canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
 export { startIncomingFiles } from './sessionLibrary/incoming';

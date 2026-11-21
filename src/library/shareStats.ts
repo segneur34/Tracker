@@ -4,6 +4,8 @@ import { commaDecimal, formatDistance, formatDuration, formatSessionDate, format
 import { downloadBaseName } from './naming';
 import { RATINGS, WIND_LEVELS, type Rating, type WindLevel } from './notes';
 import type { SessionSummary } from './record';
+import { computedSessionName, placeLabel } from './sessionName';
+import type { SessionPlace } from './sessionPlace';
 
 /**
  * Lignes ajoutées à l'image de partage le 05/11 (lot 145), à la fin de la liste,
@@ -191,22 +193,25 @@ const summaryBaseStats = (
 };
 
 /**
- * Titre de l'image de partage (nom de la session, sinon son activité, sinon sa
- * famille), sa ligne d'activité et de date, et le nom du fichier partagé, sans
- * extension ni nettoyage (`safeFileName`).
+ * Titre de l'image de partage (nom saisi de la session, sinon « Activité · Lieu »
+ * (lot 215), sinon son activité, sinon sa famille), sa ligne d'activité et de
+ * date (la date seule sans nom saisi), et le nom du fichier partagé, sans
+ * extension ni nettoyage (`safeFileName`) : `AAAA-MM-JJ Activité - Lieu` sans nom saisi.
  */
 export const shareLabels = (
   name: string | null,
   activityName: string | null,
   familyLabel: string,
   startMs: number,
-  file: string
+  file: string,
+  place?: SessionPlace | null
 ): { title: string; subtitle: string; baseName: string } => {
   const named = name?.trim() || null;
-  const title = named ?? activityName ?? familyLabel;
+  const where = named ? null : placeLabel(place);
+  const title = named ?? computedSessionName(place, activityName) ?? familyLabel;
   return {
     title,
     subtitle: [named ? activityName : null, formatSessionDate(startMs)].filter(Boolean).join(' · '),
-    baseName: downloadBaseName(title, named ? activityName : null, startMs, file),
+    baseName: where ? downloadBaseName(where, activityName, startMs, file) : downloadBaseName(title, named ? activityName : null, startMs, file),
   };
 };
