@@ -126,8 +126,13 @@ export const RECORD_VERSION = 1;
  * 21 (18 novembre 2026, lot 219) : une session de surf reçoit son temps à l'eau
  * (`waterTimeS` : rame, attente et vagues, pauses déduites), pour la racine du
  * Profil (les autres chiffres ne bougent pas).
+ *
+ * 22 (21 novembre 2026, lot 218) : les chiffres d'une nuit du test « FC de nuit »
+ * sont réglés sur les premières vraies nuits (protocole 2) : sursauts rangés en
+ * mouvements, éveils brefs et réveils (`wakes`), creux hors des sursauts, part
+ * de nuit calme (`calmShare`) et indice de régularité (`regularityBpm`).
  */
-export const SUMMARY_CALC_VERSION = 21;
+export const SUMMARY_CALC_VERSION = 22;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -264,17 +269,31 @@ export interface SummaryNight {
   lowAtMs: number | null;
   /** FC moyenne de la nuit, en bpm. */
   avgBpm: number;
-  /** Sursauts de FC comptés. */
+  /** Sursauts de FC comptés, toutes classes. */
   surges: number;
   /** Part de la nuit couverte par des mesures lisibles, de 0 à 1. */
   coverage: number;
+  /** Sursauts par classe : moins d'une minute, une à trois minutes, plus de trois minutes (protocole 2, absent avant). */
+  wakes?: { movements: number; brief: number; long: number };
+  /** Part de nuit calme, de 0 à 1, et indice de régularité, en bpm ; `null` sans tranche assez mesurée (protocole 2, absents avant). */
+  calmShare?: number | null;
+  regularityBpm?: number | null;
 }
+
+/** Compte entier positif ou nul. */
+const isCount = (value: unknown): value is number => isFiniteNumber(value) && Number.isInteger(value) && value >= 0;
+
+const readNightWakes = (raw: unknown): SummaryNight['wakes'] | null =>
+  isObject(raw) && isCount(raw.movements) && isCount(raw.brief) && isCount(raw.long)
+    ? { movements: raw.movements, brief: raw.brief, long: raw.long }
+    : null;
 
 const readSummaryNight = (raw: unknown): SummaryNight | null => {
   if (!isObject(raw) || !isFiniteNumber(raw.protocol) || !isFiniteNumber(raw.avgBpm) || !isFiniteNumber(raw.surges) || !isFiniteNumber(raw.coverage)) {
     return null;
   }
   const lowBpm = finiteOr(raw.lowBpm, null);
+  const wakes = readNightWakes(raw.wakes);
   return {
     protocol: raw.protocol,
     lowBpm,
@@ -282,6 +301,9 @@ const readSummaryNight = (raw: unknown): SummaryNight | null => {
     avgBpm: raw.avgBpm,
     surges: raw.surges,
     coverage: raw.coverage,
+    ...(wakes ? { wakes } : {}),
+    ...('calmShare' in raw ? { calmShare: finiteOr(raw.calmShare, null) } : {}),
+    ...('regularityBpm' in raw ? { regularityBpm: finiteOr(raw.regularityBpm, null) } : {}),
   };
 };
 

@@ -18,7 +18,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import type { NightHrProtocol } from '../recording/nightHrTest';
 import './NightHrPanel.css';
 
-/** Couleur des sursauts sur la courbe (donnée de graphe, en dur). */
+/** Couleur des réveils et des éveils brefs sur la courbe (donnée de graphe, en dur). */
 const NIGHT_SURGE_COLOR = '#ef6c00';
 
 /** Place du creux, en clair. */
@@ -36,6 +36,10 @@ const FOLDS_DEFAULT = { heures: true, qualite: true };
 
 /** Heure locale d'un instant, « 03:42 ». */
 const clockTime = (ms: number): string => formatTimeOfDay(ms).slice(0, 5);
+/** Heures d'une liste d'instants, « 05:52, 06:32 ». */
+const clockTimes = (list: readonly number[]): string => list.map(clockTime).join(', ');
+/** Durée d'une limite du protocole : « 1 min », « 3 min », « 2 min 20 ». */
+const durationText = (s: number): string => (s >= 60 && s % 60 === 0 ? `${s / 60} min` : formatShortDuration(s));
 /** Battements entiers, « 48 bpm », « — » sans valeur. */
 const bpmText = (bpm: number | null): string => (bpm === null ? '—' : `${Math.round(bpm)} bpm`);
 /** Nombre signé, signe moins typographique : « −5 », « +3 ». */
@@ -44,8 +48,10 @@ const signed = (value: number, decimals = 0): string => `${value < 0 ? '−' : v
 /**
  * Onglet « test » d'une nuit du test « FC de nuit » (lot 213) : la FC la plus
  * basse, sa place et son heure, l'écart à la FC repos de Pratiquant, la
- * moyenne, les deux moitiés, la stabilisation, les sursauts, la courbe de la
- * nuit lissée en heures d'horloge (creux et sursauts marqués), le tableau par
+ * moyenne, les deux moitiés, la stabilisation, les sursauts rangés en réveils,
+ * éveils brefs et mouvements (lot 218), la part de nuit calme, l'indice de
+ * régularité, la courbe de la nuit lissée en heures d'horloge (creux, réveils
+ * et éveils brefs marqués ; pas les mouvements), le tableau par
  * heure, la qualité de l'enregistrement ; chacun avec son aide « ? ». Les
  * chiffres viennent de `nightHrResults` (`core/nightHeartRate.ts`), calculés
  * par le module ; la courbe est déjà décimée au pas du protocole. Posé dans le
@@ -80,7 +86,14 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
   };
 
   const stableHoldMin = Math.round(protocol.stable.holdS / 60);
-  const surgeTimes = results.surges.map((s) => clockTime(s.peakMs)).join(', ');
+  // Réveils et éveils brefs seuls dans la note et sur la courbe : les mouvements, nombreux, n'y sont que comptés.
+  const marked = useMemo(() => results.surges.filter((s) => s.kind !== 'mouvement'), [results.surges]);
+  const longTimes = clockTimes(marked.filter((s) => s.kind === 'reveil').map((s) => s.peakMs));
+  const briefTimes = clockTimes(marked.filter((s) => s.kind === 'bref').map((s) => s.peakMs));
+  const { shortS, longS } = protocol.wake;
+  const shortText = durationText(shortS);
+  const longText = durationText(longS);
+  const calmMin = Math.round(protocol.calm.windowS / 60);
 
   return (
     <>
@@ -112,7 +125,16 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
         )}
         <StatTile label="Première moitié contre seconde moitié"
           value={`${bpmText(results.halves.first)} · ${bpmText(results.halves.second)}`} />
-        <StatTile label={<>Sursauts <HelpToggle helpKey="nuit:sursauts" label="Sursauts" /></>} value={String(results.surges.length)} />
+        <StatTile label={<>Réveils <HelpToggle helpKey="nuit:sursauts" label="Réveils" /></>} value={String(results.wakes.long)}
+          detail={`plus de ${longText}`} />
+        <StatTile label={<>Éveils brefs <HelpToggle helpKey="nuit:sursauts" label="Éveils brefs" /></>} value={String(results.wakes.brief)}
+          detail={`de ${shortText} à ${longText}`} />
+        <StatTile label={<>Mouvements <HelpToggle helpKey="nuit:sursauts" label="Mouvements" /></>} value={String(results.wakes.movements)}
+          detail={`moins de ${shortText}`} />
+        <StatTile label={<>Part de nuit calme <HelpToggle helpKey="nuit:calme" label="Part de nuit calme" /></>}
+          value={results.calmShare === null ? '—' : `${Math.round(results.calmShare * 100)} %`} />
+        <StatTile label={<>Régularité de la nuit <HelpToggle helpKey="nuit:regularite" label="Régularité de la nuit" /></>}
+          value={results.regularityBpm === null ? '—' : `${formatDecimal(results.regularityBpm, 1)} bpm`} detail="plus bas : plus régulier" />
         {low && (
           <StatTile label={<>Stabilisation <HelpToggle helpKey="nuit:stable" label="Stabilisation" /></>}
             value={results.stabilizedAtMs === null ? '—' : clockTime(results.stabilizedAtMs)} />
@@ -124,7 +146,7 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
           detail={`de ${clockTime(results.startMs)} à ${clockTime(results.endMs)}`} />
       </div>
       <HelpText helpKey="nuit:creux" note>
-        Le point le plus calme de votre nuit : la moyenne la plus basse sur {Math.round(protocol.lowWindowS / 60)} minutes de suite.
+        Le point le plus calme de votre nuit : la moyenne la plus basse sur {Math.round(protocol.lowWindowS / 60)} minutes de suite, sans compter les sursauts.
         Elle est plus basse que votre FC au repos éveillé : c'est normal, ne la saisissez pas comme FC repos.
       </HelpText>
       <HelpText helpKey="nuit:place" note>
@@ -132,9 +154,21 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
         ou un effort le soir, mais pas toujours. À comparer à vos autres nuits.
       </HelpText>
       <HelpText helpKey="nuit:sursauts" note>
-        Moments où le cœur accélère nettement pendant la nuit : un mouvement, un demi-réveil ou un changement de position, probablement.
-        C'est une estimation, pas une mesure de réveils. Compté : au moins {protocol.surge.riseBpm} bpm au-dessus de la FC des {Math.round(protocol.surge.baselineS / 60)} minutes
-        d'avant, tenu {protocol.surge.holdS} s.
+        Moments où le cœur accélère nettement pendant la nuit, rangés par leur durée : un mouvement ou un changement de position (moins
+        de {shortText}), un éveil bref (de {shortText} à {longText}), un réveil (plus de {longText}). C'est une estimation, pas une mesure
+        du sommeil. Compté : au moins {protocol.surge.riseBpm} bpm au-dessus de la FC des {Math.round(protocol.surge.baselineS / 60)} minutes
+        d'avant, tenu {protocol.surge.holdS} s ; sa durée court du début de la montée au retour de la FC à {protocol.surge.returnBpm} bpm
+        de celle d'avant. Rien n'est compté dans les {Math.round(protocol.surge.startSkipS / 60)} premières minutes, le temps de se poser.
+        {' '}Limite : quand la FC est déjà haute, un réveil la relève moins et peut passer pour un éveil bref.
+      </HelpText>
+      <HelpText helpKey="nuit:calme" note>
+        La part de la nuit où le cœur bat de façon régulière : tranches de {calmMin} minutes sans aucun sursaut, où la FC s'écarte en
+        moyenne de {formatDecimal(protocol.calm.sdBpm, 0)} bpm au plus de sa valeur moyenne (écart-type). À comparer d'une nuit à l'autre.
+      </HelpText>
+      <HelpText helpKey="nuit:regularite" note>
+        Indice maison : l'écart-type médian de la FC sur les tranches de {calmMin} minutes sans sursaut, en bpm. Plus il est bas, plus
+        la nuit est régulière. Il sert à comparer vos nuits entre elles. Calculé sur la FC seule, sans les intervalles entre deux battements,
+        ce n'est pas la variabilité cardiaque que donnent Polar, Oura ou Garmin : ne le comparez pas à leurs chiffres.
       </HelpText>
       <HelpText helpKey="nuit:stable" note>
         Stabilisation : premier moment où la FC lissée reste à moins de {protocol.stable.aboveLowBpm} bpm au-dessus de la plus basse pendant {stableHoldMin} min.
@@ -145,13 +179,19 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
           Pour l'écart à la FC repos, saisissez-la dans <Link to="/parametres">Réglages</Link>, bloc « Pratiquant ».
         </p>
       )}
-      {results.surges.length > 0 && <p className="ui-text-s night-note">Sursauts à {surgeTimes}.</p>}
+      {marked.length > 0 && (
+        <p className="ui-text-s night-note">
+          {longTimes && <>Réveils à {longTimes}.</>}
+          {longTimes && briefTimes && ' '}
+          {briefTimes && <>Éveils brefs à {briefTimes}.</>}
+        </p>
+      )}
 
       {rows.length > 1 && (
         <div className="night-curve">
           <HoverReadout read={read} label="FC lissée" color={HEART_RATE_COLOR} line />
           <HeartRateChart data={rows} zoom={zoom} x={x} zones={null} style={CURVE_BOX}>
-            {results.surges.map((s) => (
+            {marked.map((s) => (
               <ReferenceLine key={s.startMs} yAxisId="hr" x={toMin(s.peakMs)} stroke={NIGHT_SURGE_COLOR} strokeDasharray="4 3" ifOverflow="hidden" />
             ))}
             {low && (
@@ -160,7 +200,7 @@ export default function NightHrPanel({ results, protocol, restingBpm, minutes, s
             )}
           </HeartRateChart>
           <p className="ui-muted ui-text-xs night-note">
-            FC lissée sur {Math.round(protocol.smoothS / 60)} min. Point : la FC la plus basse ; traits orange : les sursauts.
+            FC lissée sur {Math.round(protocol.smoothS / 60)} min. Point : la FC la plus basse ; traits orange : les réveils et les éveils brefs.
           </p>
         </div>
       )}

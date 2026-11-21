@@ -117,6 +117,14 @@ describe('parseRecord et serializeRecord', () => {
     expect(parseRecord(serializeRecord(sansCreux))?.summary.night).toMatchObject({ lowBpm: null, lowAtMs: null });
     const abimee = { ...record(), summary: { ...record().summary, night: { ...night, avgBpm: 'x' } } };
     expect(parseRecord(JSON.stringify(abimee))?.summary.night).toBeUndefined();
+    // Protocole 2 (lot 218) : classes des sursauts, part calme et régularité ; absents d'une fiche ancienne.
+    const v2 = { ...night, protocol: 2, wakes: { movements: 36, brief: 11, long: 2 }, calmShare: 0.34, regularityBpm: 1.84 };
+    expect(parseRecord(serializeRecord(record({ summary: { ...record().summary, night: v2 } })))?.summary.night).toEqual(v2);
+    const sansTranche = { ...v2, calmShare: null, regularityBpm: null };
+    expect(parseRecord(serializeRecord(record({ summary: { ...record().summary, night: sansTranche } })))?.summary.night).toEqual(sansTranche);
+    expect(parseRecord(serializeRecord(r))?.summary.night).not.toHaveProperty('wakes');
+    const classesAbimees = { ...record(), summary: { ...record().summary, night: { ...v2, wakes: { movements: 1.5, brief: 0, long: 0 }, calmShare: 'x' } } };
+    expect(parseRecord(JSON.stringify(classesAbimees))?.summary.night).toEqual({ ...night, protocol: 2, calmShare: null, regularityBpm: 1.84 });
   });
 
   it('relisent une fiche à l\'identique', () => {

@@ -9,10 +9,11 @@ const meanBpm = (fromS: number, toS: number): number => {
 };
 
 describe('protocole de la FC de nuit', () => {
-  it('porte les valeurs de la version 1, en secondes', () => {
+  it('porte les valeurs de la version 2, en secondes', () => {
     expect(NIGHT_HR_TEST).toMatchObject({
-      id: 'fc-nuit', version: 1, lowWindowS: 300, lowCoverage: 0.7, smoothS: 300, gapS: 10, holdS: 5,
-      surge: { baselineS: 300, riseBpm: 8, holdS: 10, refractoryS: 60 },
+      id: 'fc-nuit', version: 2, lowWindowS: 300, lowCoverage: 0.7, smoothS: 300, gapS: 10, holdS: 5,
+      surge: { baselineS: 600, riseBpm: 8, holdS: 10, refractoryS: 60, returnBpm: 4, returnSmoothS: 10, returnMaxS: 1200, startSkipS: 900 },
+      wake: { shortS: 60, longS: 180 }, calm: { windowS: 300, sdBpm: 2 },
       stable: { aboveLowBpm: 3, holdS: 1800 }, nearLowBpm: 5, shortNightS: 10_800, minBpm: 25, maxBpm: 250, curveStepS: 30,
     });
   });

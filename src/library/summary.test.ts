@@ -390,7 +390,9 @@ describe('summarizeHeartRateSession : nuit du test « FC de nuit » (lot 213)', 
 
   it('range les chiffres de la nuit, les mêmes à 1 Hz et à 5 Hz ; aucun bloc hors de ce calcul', () => {
     const [at1, at5] = [1, 5].map((hz) => summarizeHeartRateSession(timed(hz), 'night-hr')!);
-    expect(at1.night).toMatchObject({ protocol: 1, surges: 1, coverage: 1 });
+    expect(at1.night).toMatchObject({ protocol: 2, surges: 1, coverage: 1, wakes: { movements: 1, brief: 0, long: 0 } });
+    expect(at1.night!.calmShare).toBeGreaterThan(0.9);
+    expect(at1.night!.regularityBpm).toBeGreaterThanOrEqual(0);
     expect(at1.night!.lowBpm).toBeGreaterThanOrEqual(50);
     expect(at1.night!.lowBpm).toBeLessThan(52);
     expect(Math.abs(at1.night!.lowAtMs! - (T0 + 7200_000))).toBeLessThanOrEqual(60_000);

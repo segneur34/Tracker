@@ -1,16 +1,19 @@
-// Banc de test : test « FC de nuit » de l'Entraînement (lot 213).
+// Banc de test : test « FC de nuit » de l'Entraînement (lot 213, chiffres réglés au lot 218).
 // Usage : node fc-nuit.mjs <port> [<dossier des captures>]
-// Sur un profil neuf, sans réseau ; importe `/src/...` dans la page (`dev`). Environ 40 s. Le script :
+// Sur un profil neuf, sans réseau ; importe `/src/...` dans la page (`dev`). Environ 50 s. Le script :
 //  1. importe une séance de muscu témoin (30 min, FC) ; son onglet « cardio » propose « La retenir » ; relève Statistiques ;
 //  2. fabrique dans la page une nuit de 8 h à 1 Hz sans position (`exampleNightHr`, écrite par `buildHeartRateGpx`
 //     avec le calcul `night-hr`, comme l'enregistreur), l'importe : fiche rangée sous `night-hr`, nom « Nuit du … » ;
 //     Statistiques inchangées (une nuit est hors des cumuls) ;
 //  3. ouvre son analyse (temps d'ouverture relevé, sur stderr) : onglet « test » comparé au calcul pur rejoué dans la
-//     page (FC la plus basse et son heure, « au milieu de la nuit », 3 sursauts, part mesurée) ; points donnés aux
-//     courbes ; « cardio » sans charge ni « La retenir » ; « réglages » : l'activité « FC de nuit » choisie et proposée ;
+//     page (FC la plus basse et son heure, « au milieu de la nuit », un réveil, un éveil bref et un mouvement, part de
+//     nuit calme, régularité et son aide qui la dit non comparable aux montres, heures des réveils et éveils brefs,
+//     aucun mot « phase », part mesurée) ; points donnés aux courbes ; « cardio » sans charge ni « La retenir » ;
+//     « réglages » : l'activité « FC de nuit » choisie et proposée ;
 //     ligne de bibliothèque « creux … bpm » ;
 //  4. joue une nuit courte en direct : page du test, « Lancer », Enregistrer prêt sur « FC de nuit », « Démarrer » avec
-//     la ceinture d'exemple (FC de nuit), page sombre lisible, activité figée, aucun « [bips] » ; « Arrêter » tenu :
+//     la ceinture d'exemple (FC de nuit), page sombre lisible, activité figée, aucun « [bips] », notification récrite
+//     au départ seulement (au plus toutes les 5 min la nuit, lot 218) ; « Arrêter » tenu :
 //     session rangée, analyse ouverte avec « Nuit incomplète » ; Statistiques toujours inchangées ;
 //  5. la FC max de la muscu retenue (zones connues) : la muscu montre la charge, la nuit non.
 import { appendFileSync } from 'node:fs';
@@ -32,10 +35,13 @@ const go = async (path, max = 4000) => {
 };
 /** Lignes « [bips] … » de la console (`platform/beeper.ts`), dans l'ordre. */
 const sounds = [];
+/** Envois de la notification (« [notification] … », version navigateur de `platform/notification.ts`), avec leur instant. */
+const notes = [];
 onMessage((msg) => {
   if (msg.method !== 'Runtime.consoleAPICalled' || msg.params.type !== 'debug') return;
   const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
   if (text.startsWith('[bips]')) sounds.push(text);
+  if (text.startsWith('[notification]')) notes.push({ atMs: Date.now(), text });
 });
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
@@ -117,11 +123,15 @@ const built = await evaluate(`(async () => {
   const gpx = buildHeartRateGpx([fixes], { name: 'FC de nuit', sport: 'night-hr' });
   const r = nightHrResults(heartRatePointsFrom(parseGpx(gpx).timedPoints), NIGHT_HR_TEST, {});
   const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  const at = (kind) => r.surges.filter((s) => s.kind === kind).map((s) => hhmm(s.peakMs)).join(', ');
   return { gpx, points: fixes.length, low: Math.round(r.low.bpm), lowAt: hhmm(r.low.atMs), place: r.low.place, surges: r.surges.length,
+    wakes: r.wakes, longAt: at('reveil'), briefAt: at('bref'), calm: r.calmShare === null ? null : Math.round(r.calmShare * 100),
+    regularity: r.regularityBpm === null ? null : r.regularityBpm.toFixed(1).replace('.', ','),
     coverage: Math.round(r.coverage * 100), avg: Math.round(r.avgBpm) };
 })()`);
-console.log(`nuit : ${built.points} points ; calcul pur : creux ${built.low} bpm à ${built.lowAt} (${built.place}), ${built.surges} sursauts, `
-  + `part mesurée ${built.coverage} %, moyenne ${built.avg} bpm`);
+console.log(`nuit : ${built.points} points ; calcul pur : creux ${built.low} bpm à ${built.lowAt} (${built.place}), ${built.surges} sursauts `
+  + `(réveils ${built.wakes.long} à ${built.longAt}, éveils brefs ${built.wakes.brief} à ${built.briefAt}, mouvements ${built.wakes.movements}), `
+  + `part calme ${built.calm} %, régularité ${built.regularity} bpm, part mesurée ${built.coverage} %, moyenne ${built.avg} bpm`);
 check('GPX écrit comme l\'enregistreur : sans position, type night-hr', !/lat=/.test(built.gpx) && built.gpx.includes('<type>night-hr</type>'));
 await go('/fractionne');
 console.log('import nuit :', await importGpx(built.gpx, 'nuit.gpx'));
@@ -158,8 +168,27 @@ console.log('FC la plus basse :', lowTile);
 check('FC la plus basse et son heure = calcul pur', lowTile?.replace(/\s+/g, ' ') === `${built.low} bpm à ${built.lowAt}`, lowTile);
 const placeTile = await tile('Test FC de nuit', 'Place du creux');
 check('creux « au milieu de la nuit »', placeTile?.startsWith('au milieu de la nuit') && built.place === 'milieu', placeTile);
-const surgesTile = await tile('Test FC de nuit', 'Sursauts');
-check('3 sursauts', surgesTile === '3' && built.surges === 3, surgesTile);
+const wakeTiles = { long: await tile('Test FC de nuit', 'Réveils'), brief: await tile('Test FC de nuit', 'Éveils brefs'), movements: await tile('Test FC de nuit', 'Mouvements') };
+check('un réveil, un éveil bref, un mouvement (calcul pur compris)',
+  /^1(\s|$)/.test(wakeTiles.long ?? '') && /^1(\s|$)/.test(wakeTiles.brief ?? '') && /^1(\s|$)/.test(wakeTiles.movements ?? '')
+    && built.wakes.long === 1 && built.wakes.brief === 1 && built.wakes.movements === 1,
+  JSON.stringify(wakeTiles));
+check('plus de tuile « Sursauts »', (await tile('Test FC de nuit', 'Sursauts')) === null);
+const calmTile = await tile('Test FC de nuit', 'Part de nuit calme');
+check('part de nuit calme = calcul pur', built.calm !== null && calmTile === `${built.calm} %`, calmTile);
+const regularityTile = await tile('Test FC de nuit', 'Régularité de la nuit');
+check('régularité de la nuit = calcul pur, en bpm', built.regularity !== null && regularityTile?.startsWith(`${built.regularity} bpm`), regularityTile);
+const noteText = (await panel('Test FC de nuit')).replace(/\s+/g, ' ');
+check('heures des réveils et des éveils brefs, pas des mouvements', noteText.includes(`Réveils à ${built.longAt}.`) && noteText.includes(`Éveils brefs à ${built.briefAt}.`)
+  && !/Mouvements à/.test(noteText), noteText.slice(0, 400));
+check('aucun mot « phase »', !/phase/i.test(noteText));
+await evaluate(`${panelExpr('Test FC de nuit')}?.querySelector('button[aria-label="Aide : Régularité de la nuit"]')?.click()`);
+await wait(300);
+const regularityHelp = (await panel('Test FC de nuit')).replace(/\s+/g, ' ');
+check('aide de la régularité : indice maison, non comparable à Polar, Oura ou Garmin',
+  /Indice maison/.test(regularityHelp) && /Polar, Oura ou Garmin/.test(regularityHelp), regularityHelp.match(/Indice maison[^.]*\./)?.[0] ?? '(absente)');
+await evaluate(`${panelExpr('Test FC de nuit')}?.querySelector('button[aria-label="Aide : Régularité de la nuit"]')?.click()`);
+await wait(200);
 const coverTile = await tile('Test FC de nuit', 'Part mesurée');
 check('part mesurée = calcul pur', coverTile?.startsWith(`${built.coverage} %`), coverTile);
 check('pas de « Nuit incomplète » sur 8 h', !(await panel('Test FC de nuit')).includes('Nuit incomplète'));
@@ -212,9 +241,17 @@ check('rangée « Test » sur « FC de nuit »', testPicked === 'FC de nuit', te
 // « connectée » suivi de la FC (pas « non connectée ») : « Démarrer » partirait sinon sans la ceinture.
 await waitFor(`/(^|\\s)connectée\\s+\\d+ bpm/.test(document.querySelector('.rec-page').innerText)`, { timeout: 8000, label: 'ceinture d\'exemple' });
 sounds.length = 0;
+notes.length = 0;
 console.log('démarrer :', await clickText('Démarrer'));
+const startedMs = Date.now();
 await waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Arrêter'))`, { timeout: 8000, label: 'enregistrement' });
-await wait(6000);
+// 16 s de nuit : la ceinture d'exemple change de FC chaque seconde ; au rythme ordinaire (5 s), la notification serait
+// récrite deux ou trois fois après les envois du départ.
+await wait(16_000);
+const lateNotes = notes.filter((n) => n.atMs - startedMs > 5000);
+console.log(`notifications pendant le direct : ${notes.length}, dont ${lateNotes.length} après 5 s`);
+check('notification de la nuit : envoyée au départ, pas récrite ensuite (5 min au plus)', notes.length >= 1 && lateNotes.length === 0,
+  notes.map((n) => `+${Math.round((n.atMs - startedMs) / 1000)} s ${n.text}`).join(' | '));
 check('page de nuit en présentation sombre', await evaluate(`Boolean(document.querySelector('.rec-page--nuit.ui-dark-scope'))`));
 const statusActivity = await evaluate(`document.querySelector('.rec-status__activity')?.innerText.replace(/\\s+/g, ' ') ?? '(absent)'`);
 check('activité affichée, pas de liste pour la changer', /FC de nuit/.test(statusActivity) && !(await evaluate(`Boolean(document.querySelector('.rec-status button.activity-select'))`)), statusActivity);

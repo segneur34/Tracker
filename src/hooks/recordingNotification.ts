@@ -1,9 +1,9 @@
-import { hasPositions } from '../core/sportProfiles';
+import { getSportProfile, hasPositions } from '../core/sportProfiles';
 import { clearRecordingNotification, updateRecordingNotification } from '../platform/notification';
 import { intervalStepAt, timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
 import type { LiveFieldContext } from '../recording/liveFields';
-import { liveNotification, liveNotificationKey, notificationFields, notificationStateKey, trainingStep } from '../recording/liveNotification';
+import { liveNotification, liveNotificationKey, notificationDue, notificationFields, notificationStateKey, trainingStep } from '../recording/liveNotification';
 import { displayedDurationMs } from '../recording/session';
 import { getFitnessTestView } from './useFitnessTest';
 import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer';
@@ -21,7 +21,8 @@ import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit 
  * `liveNotification` et posé par `platform/notification.ts`.
  *
  * Rythme : à l'arrivée des positions et des recalculs du direct, au plus
- * toutes les `MIN_UPDATE_MS`, et seulement si le texte change ; tout de suite
+ * toutes les `notificationMinUpdateS` du profil d'enregistrement (5 s ; 5 min
+ * la nuit, lot 218), et seulement si le texte change ; tout de suite
  * à un changement d'état (pause, reprise, pause automatique, GPS perdu ou revenu, FC perdue ou revenue, activité), de
  * phase du compteur du fractionné, et au premier calcul du direct. Le chronomètre d'Android fait tourner la
  * durée, ou le décompte de la phase, entre deux envois.
@@ -38,9 +39,6 @@ import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit 
  * sans ceinture (lot 210), le même service la tient ; les points d'heure seule
  * font le même office que les mesures, et les chiffres de FC en sont retirés.
  */
-
-/** Intervalle minimal entre deux envois sans changement d'état, en millisecondes. */
-const MIN_UPDATE_MS = 5000;
 
 /** Dernier envoi : sa clé et son instant. */
 let sentKey: string | null = null;
@@ -77,7 +75,8 @@ const update = (force: boolean) => {
   const stateKey = notificationStateKey({
     status, pausedReason: recorder.pausedReason, gpsLost: recorder.gpsLost, beltLost: recorder.beltLost, activityId: activity.id, timer, computed: live.updatedMs !== null,
   });
-  if (!force && stateKey === sentStateKey && nowMs - sentAtMs < MIN_UPDATE_MS) return;
+  const minUpdateS = getSportProfile(activity.base).recording.notificationMinUpdateS;
+  if (!notificationDue({ force, stateChanged: stateKey !== sentStateKey, nowMs, sentAtMs, minUpdateS })) return;
 
   // Muscu sans ceinture (lot 210) : ni FC ni zone, l'étape seule.
   const fields = notificationFields(effectiveNotificationFields(activity), hasPositions(activity.base) || recorder.heartRate !== null);

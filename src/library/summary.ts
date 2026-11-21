@@ -343,6 +343,7 @@ export const summarizeHeartRateSession = (timedPoints: readonly TimedTrackPoint[
 const summaryNight = (points: Parameters<typeof nightHrResults>[0]): SummaryNight | undefined => {
   const night = nightHrResults(points, NIGHT_HR_TEST);
   if (!night) return undefined;
+  // `surges` reste le total, toutes classes ; `wakes` les range.
   return {
     protocol: NIGHT_HR_TEST.version,
     lowBpm: night.low ? roundTo(night.low.bpm, 1) : null,
@@ -350,6 +351,9 @@ const summaryNight = (points: Parameters<typeof nightHrResults>[0]): SummaryNigh
     avgBpm: roundTo(night.avgBpm, 1),
     surges: night.surges.length,
     coverage: roundTo(night.coverage, 3),
+    wakes: night.wakes,
+    calmShare: night.calmShare === null ? null : roundTo(night.calmShare, 3),
+    regularityBpm: night.regularityBpm === null ? null : roundTo(night.regularityBpm, 2),
   };
 };
 

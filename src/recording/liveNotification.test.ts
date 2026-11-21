@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { IntervalTimerState } from './intervalTimer';
 import type { LiveFieldContext } from './liveFields';
 import {
-  liveNotification, liveNotificationKey, notificationFields, notificationStateKey, trainingStep, type LiveNotificationInput,
+  liveNotification, liveNotificationKey, notificationDue, notificationFields, notificationStateKey, trainingStep, type LiveNotificationInput,
 } from './liveNotification';
+import { getSportProfile } from '../core/sportProfiles';
 import { EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -191,5 +192,25 @@ describe('notificationStateKey (lot 67, sortie de recordingNotification)', () =>
       notificationStateKey({ status: 'recording', pausedReason: null, gpsLost, beltLost: false, activityId: 'running', timer: null, computed: true });
     expect(key(true)).not.toBe(key(false));
     expect(key(false)).toBe('recording||running||true');
+  });
+});
+
+describe('notificationDue : intervalle de la notification (lot 218)', () => {
+  const due = (patch: Partial<Parameters<typeof notificationDue>[0]>) =>
+    notificationDue({ force: false, stateChanged: false, nowMs: 100_000, sentAtMs: 0, minUpdateS: 5, ...patch });
+
+  it("attend l'intervalle du profil sans changement d'état, part tout de suite sinon", () => {
+    expect(due({ sentAtMs: 96_000 })).toBe(false);
+    expect(due({ sentAtMs: 95_000 })).toBe(true);
+    expect(due({ sentAtMs: 99_000, minUpdateS: 300 })).toBe(false);
+    expect(due({ sentAtMs: 99_000, minUpdateS: 300, stateChanged: true })).toBe(true);
+    expect(due({ sentAtMs: 99_000, minUpdateS: 300, force: true })).toBe(true);
+    expect(due({ sentAtMs: 100_000 - 300_000, minUpdateS: 300 })).toBe(true);
+  });
+
+  it('toutes les 5 s, sauf la nuit : toutes les 5 min', () => {
+    expect(getSportProfile('running').recording.notificationMinUpdateS).toBe(5);
+    expect(getSportProfile('muscu').recording.notificationMinUpdateS).toBe(5);
+    expect(getSportProfile('night-hr').recording.notificationMinUpdateS).toBe(300);
   });
 });

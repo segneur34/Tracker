@@ -129,6 +129,12 @@ export interface RecordingProfile {
    * non gardé allumé. Lu par `isSilentSport`, jamais par le nom du calcul.
    */
   silent: boolean;
+  /**
+   * Intervalle minimal entre deux envois de la notification sans changement
+   * d'état, en secondes (`hooks/recordingNotification.ts`) ; un changement
+   * d'état (pause, GPS ou ceinture perdus) part toujours tout de suite.
+   */
+  notificationMinUpdateS: number;
 }
 
 /**
@@ -150,6 +156,7 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   beltLostRearmS: 120,
   resumeOfferMaxAgeS: 600,
   silent: false,
+  notificationMinUpdateS: 5,
 };
 
 /**
@@ -168,8 +175,10 @@ const BOAT_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedM
 /**
  * FC de nuit (lot 213) : celui de l'Entraînement (pause automatique coupée),
  * silencieux : le téléphone est posé près du lit, la nuit ne doit pas sonner.
+ * Notification récrite au plus toutes les 5 min (lot 218 : toutes les 6 s,
+ * écran éteint compris, elle tenait le téléphone éveillé pour rien).
  */
-const NIGHT_RECORDING: RecordingProfile = { ...INTERVAL_RECORDING, silent: true };
+const NIGHT_RECORDING: RecordingProfile = { ...INTERVAL_RECORDING, silent: true, notificationMinUpdateS: 300 };
 
 /**
  * Répétitions retrouvées dans la vitesse d'une session faite sans le compteur

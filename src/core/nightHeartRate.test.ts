@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HeartRateSessionPoint } from './heartRateSession';
-import { nightHrResults, nightSessionName, type NightHrResults } from './nightHeartRate';
+import { nightHrResults, nightSessionName, surgeKind, type NightHrResults } from './nightHeartRate';
 import { EXAMPLE_NIGHT, NIGHT_HR_TEST, exampleNightHr } from '../recording/nightHrTest';
 
 /** Coucher d'exemple : 12/11/2026 à 23 h 20, heure de Paris (fuseau des tests). */
@@ -46,6 +46,10 @@ describe('nightHrResults : règle 2, mêmes chiffres quelle que soit la cadence'
     expect(at5.low!.bpm).toBeCloseTo(at1.low!.bpm, 6);
     expect(Math.abs(at5.low!.atMs - at1.low!.atMs)).toBeLessThanOrEqual(60_000);
     expect(at5.surges.map((s) => s.startMs)).toEqual(at1.surges.map((s) => s.startMs));
+    expect(at5.surges.map((s) => s.durationS)).toEqual(at1.surges.map((s) => s.durationS));
+    expect(at5.wakes).toEqual(at1.wakes);
+    expect(at5.calmShare).toBeCloseTo(at1.calmShare!, 9);
+    expect(at5.regularityBpm).toBeCloseTo(at1.regularityBpm!, 6);
     expect(at5.halves.first).toBeCloseTo(at1.halves.first!, 6);
     expect(at5.halves.second).toBeCloseTo(at1.halves.second!, 6);
     expect(Math.abs(at5.stabilizedAtMs! - at1.stabilizedAtMs!)).toBeLessThanOrEqual(60_000);
@@ -58,18 +62,25 @@ describe('nightHrResults : règle 2, mêmes chiffres quelle que soit la cadence'
     expect(at5.curve.length).toBe(at1.curve.length);
   });
 
-  it("nuit d'exemple : creux au milieu, vers 3 h 30 de nuit, trois sursauts à leurs heures", () => {
+  it("nuit d'exemple : creux au milieu, vers 3 h 30 de nuit, un mouvement, un éveil bref et un réveil à leurs heures", () => {
     expect(at1.low!.place).toBe('milieu');
     expect(at1.low!.bpm).toBeLessThan(52);
     expect(at1.low!.bpm).toBeGreaterThan(48);
     expect(Math.abs((at1.low!.atMs - T0) / 1000 - EXAMPLE_NIGHT.lowAtS)).toBeLessThan(HOUR_S);
     expect(at1.surges).toHaveLength(EXAMPLE_NIGHT.surges.length);
+    expect(at1.surges.map((s) => s.kind)).toEqual(['mouvement', 'bref', 'reveil']);
+    expect(at1.wakes).toEqual({ movements: 1, brief: 1, long: 1 });
     at1.surges.forEach((s, k) => {
-      const centerS = EXAMPLE_NIGHT.surges[k].atS;
-      expect((s.startMs - T0) / 1000).toBeGreaterThan(centerS - 60);
-      expect((s.endMs - T0) / 1000).toBeLessThan(centerS + 60);
+      const { atS, widthS } = EXAMPLE_NIGHT.surges[k];
+      expect((s.startMs - T0) / 1000).toBeGreaterThan(atS - widthS / 2 - 15);
+      expect((s.endMs - T0) / 1000).toBeLessThan(atS + widthS / 2 + 15);
+      expect(s.durationS).toBe((s.endMs - s.startMs) / 1000);
       expect(s.peakBpm - s.baselineBpm).toBeGreaterThanOrEqual(NIGHT_HR_TEST.surge.riseBpm);
     });
+    // Le bruit de la nuit d'exemple (écart-type d'environ 1 bpm) la laisse calme presque partout.
+    expect(at1.calmShare).toBeGreaterThan(0.8);
+    expect(at1.regularityBpm).toBeGreaterThan(0.5);
+    expect(at1.regularityBpm).toBeLessThan(NIGHT_HR_TEST.calm.sdBpm);
     expect(at1.incomplete).toBe(false);
     expect(at1.coverage).toBeCloseTo(1, 6);
     expect(at1.stabilizedAtMs).not.toBeNull();
@@ -80,7 +91,7 @@ describe('nightHrResults : règle 2, mêmes chiffres quelle que soit la cadence'
     const coarse = run(night(EXAMPLE_NIGHT.durationS, exampleNightHr));
     expect(Math.abs(fine.avgBpm - coarse.avgBpm)).toBeLessThan(0.3);
     expect(Math.abs(fine.low!.bpm - coarse.low!.bpm)).toBeLessThan(0.5);
-    expect(fine.surges).toHaveLength(coarse.surges.length);
+    expect(fine.surges.map((s) => s.kind)).toEqual(coarse.surges.map((s) => s.kind));
     expect(fine.low!.place).toBe(coarse.low!.place);
   });
 
@@ -88,7 +99,9 @@ describe('nightHrResults : règle 2, mêmes chiffres quelle que soit la cadence'
     const holed = run(night(EXAMPLE_NIGHT.durationS, heldExample, { keep: (t) => t % 7 !== 3 && !(t % 600 >= 100 && t % 600 < 103) }));
     expect(Math.abs(holed.avgBpm - at1.avgBpm)).toBeLessThan(0.2);
     expect(Math.abs(holed.low!.bpm - at1.low!.bpm)).toBeLessThan(0.5);
-    expect(holed.surges).toHaveLength(at1.surges.length);
+    expect(holed.surges.map((s) => s.kind)).toEqual(at1.surges.map((s) => s.kind));
+    expect(Math.abs(holed.regularityBpm! - at1.regularityBpm!)).toBeLessThan(0.2);
+    expect(Math.abs(holed.calmShare! - at1.calmShare!)).toBeLessThan(0.05);
     expect(holed.quality.gapCount).toBe(0);
     expect(holed.quality.maxStepS).toBe(5);
     expect(holed.coverage).toBeCloseTo(1, 6);
@@ -147,7 +160,7 @@ describe('nightHrResults : creux, sursauts, nuit courte', () => {
     }
   });
 
-  it('compte 2 sursauts, ignore un trop court, réunit deux bosses trop rapprochées', () => {
+  it("compte 2 sursauts, ignore un trop court, réunit deux bosses trop rapprochées ; durée jusqu'au retour près de la ligne de base", () => {
     const bump = (tS: number) => {
       if (tS >= 3600 && tS < 3630) return 65; // 30 s : un sursaut
       if (tS >= 5400 && tS < 5405) return 65; // 5 s : trop court
@@ -156,8 +169,109 @@ describe('nightHrResults : creux, sursauts, nuit courte', () => {
     };
     const r = run(night(4 * HOUR_S, bump));
     expect(r.surges).toHaveLength(2);
-    expect(r.surges[0]).toMatchObject({ startMs: T0 + 3600_000, endMs: T0 + 3630_000, peakBpm: 65, baselineBpm: 50 });
-    expect(r.surges[1]).toMatchObject({ startMs: T0 + 7200_000, endMs: T0 + 7270_000 });
+    // Moyenne sur 11 s centrée : elle repasse sous 50 + 4 bpm 4 s avant et 4 s après la bosse.
+    expect(r.surges[0]).toMatchObject({ startMs: T0 + 3596_000, endMs: T0 + 3633_000, durationS: 37, kind: 'mouvement', peakBpm: 65, baselineBpm: 50 });
+    expect(r.surges[1]).toMatchObject({ startMs: T0 + 7196_000, endMs: T0 + 7273_000, kind: 'bref' });
+  });
+
+  it('range les sursauts en mouvement, éveil bref et réveil, aux mêmes durées à 1 Hz et à 5 Hz', () => {
+    // Bosses de 30 s, 2 min et 5 min, à 1 h, 2 h et 3 h.
+    const bumps = (tS: number) => ((tS >= 3600 && tS < 3630) || (tS >= 7200 && tS < 7320) || (tS >= 10_800 && tS < 11_100) ? 66 : 52);
+    const [at1, at5] = [1, 5].map((hz) => run(night(4 * HOUR_S, (t) => bumps(Math.floor(t)), { hz })));
+    expect(at1.surges.map((s) => s.kind)).toEqual(['mouvement', 'bref', 'reveil']);
+    expect(at1.surges.map((s) => s.durationS)).toEqual([35, 125, 305]);
+    expect(at1.wakes).toEqual({ movements: 1, brief: 1, long: 1 });
+    expect(at5.surges.map((s) => s.durationS)).toEqual(at1.surges.map((s) => s.durationS));
+    expect(at5.wakes).toEqual(at1.wakes);
+  });
+
+  it("mesure la durée jusqu'au retour à la ligne de base + 4 bpm, pas le temps au-dessus du seuil", () => {
+    // 64 bpm 15 s, puis une descente d'1 bpm toutes les 6 s jusqu'à 50 : au-dessus de 50 + 8 pendant 51 s,
+    // au-dessus de 50 + 4 pendant 69 s, plus 3 s de montée lue dans la moyenne sur 11 s.
+    const slow = (tS: number) => {
+      const u = tS - 3600;
+      if (u < 0) return 50;
+      if (u < 15) return 64;
+      return Math.max(50, 64 - Math.ceil((u - 15 + 1) / 6));
+    };
+    for (const hz of [1, 5]) {
+      const r = run(night(3 * HOUR_S, (t) => slow(Math.floor(t)), { hz }));
+      expect(r.surges).toHaveLength(1);
+      expect(r.surges[0].kind).toBe('bref');
+      expect(Math.abs(r.surges[0].durationS - 72)).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('ne compte aucun sursaut dans les 15 premières minutes, le temps de se poser', () => {
+    // Descente de 100 à 60 bpm en 2 min, puis 60 ; une bosse de 30 s à 12 min, une autre à 20 min.
+    const settle = (tS: number) => {
+      if (tS < 120) return 100 - tS / 3;
+      if ((tS >= 720 && tS < 750) || (tS >= 1200 && tS < 1230)) return 75;
+      return 60;
+    };
+    const points = night(2 * HOUR_S, (t) => settle(Math.floor(t)));
+    const r = run(points);
+    expect(r.surges).toHaveLength(1);
+    expect((r.surges[0].startMs - T0) / 1000).toBeGreaterThan(1150);
+    // Sans ce délai, la bosse de 12 min comptait.
+    expect(nightHrResults(points, { ...NIGHT_HR_TEST, surge: { ...NIGHT_HR_TEST.surge, startSkipS: 0 } })!.surges).toHaveLength(2);
+  });
+
+  it('lit le creux hors des secondes de sursaut : entre les pics, plus bas que le creux brut', () => {
+    // 50 bpm ; 10 min à 48,5 à 1 h ; de 2 h à 2 h 20, 46 bpm piqué toutes les 2 min d'un sursaut de 15 s à 75 bpm
+    // (moyenne brute de la zone : 49,6 bpm, au-dessus des 48,5 de 1 h).
+    const spiky = (tS: number) => {
+      if (tS >= 3600 && tS < 4200) return 48.5;
+      if (tS >= 7200 && tS < 8400) return (tS - 7200) % 120 >= 60 && (tS - 7200) % 120 < 75 ? 75 : 46;
+      return 50;
+    };
+    for (const hz of [1, 5]) {
+      const r = run(night(4 * HOUR_S, (t) => spiky(Math.floor(t)), { hz }));
+      expect(r.wakes.movements).toBe(10);
+      expect(r.wakes.long + r.wakes.brief).toBe(0);
+      expect(r.low!.bpm).toBeCloseTo(46, 6);
+      const atS = (r.low!.atMs - T0) / 1000;
+      expect(atS).toBeGreaterThan(7200);
+      expect(atS).toBeLessThan(8400);
+    }
+  });
+
+  it('ne lit pas le creux dans une fenêtre surtout prise par un réveil', () => {
+    // 55 bpm ; à 2 h, 1 min à 45 bpm suivie d'un réveil de 5 min à 80 bpm.
+    const r = run(night(4 * HOUR_S, (t) => (t >= 7140 && t < 7200 ? 45 : t >= 7200 && t < 7500 ? 80 : 55)));
+    expect(r.wakes.long).toBe(1);
+    expect(r.low!.bpm).toBeGreaterThan(51);
+  });
+
+  it('part de nuit calme et régularité : nuit plate contre ondulation de ±4 bpm, à 1 Hz et à 5 Hz', () => {
+    for (const hz of [1, 5]) {
+      const flat = run(night(4 * HOUR_S, () => 55, { hz }));
+      expect(flat.calmShare).toBe(1);
+      expect(flat.regularityBpm).toBeCloseTo(0, 6);
+      // Sinus de 20 s tenu à la seconde : écart-type de 4 / √2, au-dessus du seuil de 2 bpm.
+      const wavy = run(night(4 * HOUR_S, (t) => 55 + 4 * Math.sin((2 * Math.PI * Math.floor(t)) / 20), { hz }));
+      expect(wavy.surges).toHaveLength(0);
+      expect(wavy.calmShare).toBe(0);
+      expect(wavy.regularityBpm).toBeCloseTo(4 / Math.SQRT2, 1);
+    }
+  });
+
+  it("une tranche qui porte un sursaut n'est pas calme ; sans tranche entière, ni part ni indice", () => {
+    // 4 h plates, un sursaut de 30 s à 1 h 02, au milieu d'une tranche de 5 min : une tranche sur 48 perdue.
+    const r = run(night(4 * HOUR_S, (t) => (t >= 3720 && t < 3750 ? 70 : 55)));
+    expect(r.surges).toHaveLength(1);
+    expect(r.calmShare).toBeCloseTo(47 / 48, 9);
+    expect(r.regularityBpm).toBeCloseTo(0, 6);
+    const short = run(night(200, () => 55));
+    expect(short.calmShare).toBeNull();
+    expect(short.regularityBpm).toBeNull();
+  });
+
+  it("classe une durée : moins de 60 s, jusqu'à 180 s, au-delà", () => {
+    expect(surgeKind(59, NIGHT_HR_TEST.wake)).toBe('mouvement');
+    expect(surgeKind(60, NIGHT_HR_TEST.wake)).toBe('bref');
+    expect(surgeKind(180, NIGHT_HR_TEST.wake)).toBe('bref');
+    expect(surgeKind(181, NIGHT_HR_TEST.wake)).toBe('reveil');
   });
 
   it('dit incomplète une nuit de 2 h, chiffres compris', () => {

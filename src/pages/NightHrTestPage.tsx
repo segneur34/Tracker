@@ -86,7 +86,10 @@ function NightHrTestPage() {
           <li><strong>FC la plus basse</strong> : la moyenne la plus basse sur {lowMin} minutes de suite, son heure, et sa place dans la nuit
             (en début, au milieu ou en fin de nuit) ; son écart à votre FC repos, si elle est saisie dans Pratiquant.</li>
           <li><strong>FC moyenne</strong> de la nuit, et la première moitié contre la seconde moitié.</li>
-          <li><strong>Sursauts</strong> : les moments où le cœur accélère nettement (un mouvement, un demi-réveil, probablement).</li>
+          <li><strong>Sursauts</strong> : les moments où le cœur accélère nettement, rangés par leur durée en réveils, éveils brefs et
+            mouvements (une estimation, pas une mesure du sommeil).</li>
+          <li><strong>Part de nuit calme</strong> et <strong>régularité de la nuit</strong> : la part où le cœur bat régulièrement, et un
+            indice maison pour comparer vos nuits entre elles.</li>
           <li><strong>Stabilisation</strong> : quand la FC se pose près de la plus basse, et le temps passé près d'elle.</li>
           <li><strong>Courbe de la nuit</strong> en heures d'horloge, et un tableau heure par heure.</li>
           <li><strong>Qualité de l'enregistrement</strong> : la part de la nuit mesurée, les trous de la ceinture, l'intervalle entre deux mesures.</li>

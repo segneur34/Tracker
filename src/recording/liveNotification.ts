@@ -116,6 +116,19 @@ export const notificationStateKey = ({ status, pausedReason, gpsLost, beltLost, 
   return `${status}|${pausedReason ?? ''}|${activityId ?? ''}|${phase}|${computed}${gpsLost ? '|gps-perdu' : ''}${beltLost ? '|fc-perdue' : ''}`;
 };
 
+/**
+ * Faut-il préparer un nouvel envoi de la notification : toujours s'il est forcé ou si l'état a changé
+ * (`notificationStateKey`), sinon une fois passé `minUpdateS` (`RecordingProfile.notificationMinUpdateS`) depuis le
+ * dernier. Un texte inchangé n'est pas renvoyé pour autant (`liveNotificationKey`).
+ */
+export const notificationDue = ({ force, stateChanged, nowMs, sentAtMs, minUpdateS }: {
+  force: boolean;
+  stateChanged: boolean;
+  nowMs: number;
+  sentAtMs: number;
+  minUpdateS: number;
+}): boolean => force || stateChanged || nowMs - sentAtMs >= minUpdateS * 1000;
+
 /** Clé d'une notification : deux notifications de même clé disent la même chose. */
 export const liveNotificationKey = (content: RecordingNotificationContent, standalone: boolean): string =>
   JSON.stringify([content.title, content.text, content.lines, content.chrono, standalone]);

@@ -271,6 +271,21 @@ await wait(3500);
 check('session démarrée, le compteur continue', /Travail 1[/]8/.test(await text('.ivl-live__phase'))
   && (await evaluate(`[...document.querySelectorAll('button.ui-btn--danger')].some((b) => b.textContent.includes('Arrêter') && !b.closest('.ivl'))`)), await text('.ivl-live__phase'));
 await shoot('timer-muscu');
+// Lot 226 : titre « Enregistrement… » pendant l'enregistrement. Lot 228 : chiffres et compteur repliables, choix gardé sur l'appareil.
+check('titre « Enregistrement… » pendant l\'enregistrement', (await raw('.ui-page h1')) === 'Enregistrement…', await raw('.ui-page h1'));
+console.log('réduire les chiffres :', await clickText('Réduire les chiffres'));
+await wait(300);
+check('chiffres repliés : plus de tuile Durée, bouton « Afficher les chiffres »', (await evaluate(`document.querySelectorAll('.rec-stat').length`)) === 0
+  && (await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Afficher les chiffres')`)) === true);
+console.log('réduire le compteur :', await clickText('Réduire le compteur'));
+await wait(300);
+check('compteur replié : carte absente, bouton « Afficher le compteur »', (await evaluate(`!document.querySelector('.ivl')`)) === true
+  && (await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Afficher le compteur')`)) === true);
+const gardeRepli = await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); return JSON.stringify(s.recording ?? null); })()`);
+check('repli gardé sur l\'appareil (même mécanisme que « Réduire la carte »)', /"chiffres":false/.test(gardeRepli) && /"compteur":false/.test(gardeRepli), gardeRepli);
+console.log('rouvrir :', await clickText('Afficher les chiffres'), '|', await clickText('Afficher le compteur'));
+await wait(300);
+check('rouverts d\'un geste', (await evaluate(`document.querySelectorAll('.rec-stat').length`)) > 0 && (await evaluate(`!!document.querySelector('.ivl')`)) === true);
 // « Arrêter » de la session se tient 2 s : le compteur s'arrête avec elle (Q12 du 28/10).
 await watchEnd();
 console.log('arrêter la session :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));

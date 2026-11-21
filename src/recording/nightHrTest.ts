@@ -10,12 +10,19 @@
  * chiffres. Une mesure vaut au plus `holdS` secondes : un trou reste un trou.
  *
  * Valeurs de la version 1 : recherche du 12/11 (`docs/backlog/213-fc-nuit-recherche.md`),
- * hypothèses prudentes, à régler sur de vraies nuits.
+ * hypothèses prudentes. Version 2 (lot 218), réglée sur les nuits du 12 au
+ * 15/11 : ligne de base sur 10 min, durée d'un sursaut jusqu'au retour à la
+ * ligne de base + 4 bpm, rangement en mouvements (moins d'1 min), éveils brefs
+ * (1 à 3 min) et réveils (plus de 3 min), rien dans les 15 premières minutes ;
+ * part de nuit calme et indice de régularité sur des tranches de 5 min, calmes
+ * sous 2 bpm d'écart-type.
  */
 
 import { nightPlace, type NightHrParams, type NightHrPlace } from '../core/nightHeartRate';
 
-export type { NightHrPlace, NightHrPlaceProtocol, NightHrStableProtocol, NightHrSurgeProtocol } from '../core/nightHeartRate';
+export type {
+  NightHrCalmProtocol, NightHrPlace, NightHrPlaceProtocol, NightHrStableProtocol, NightHrSurgeProtocol, NightHrWakeProtocol,
+} from '../core/nightHeartRate';
 
 export type NightHrTestId = 'fc-nuit';
 
@@ -34,11 +41,13 @@ export interface NightHrProtocol extends NightHrParams {
 export const NIGHT_HR_TEST: NightHrProtocol = {
   id: 'fc-nuit',
   label: 'FC de nuit',
-  version: 1,
+  version: 2,
   lowWindowS: 300,
   lowCoverage: 0.7,
   smoothS: 300,
-  surge: { baselineS: 300, riseBpm: 8, holdS: 10, refractoryS: 60 },
+  surge: { baselineS: 600, riseBpm: 8, holdS: 10, refractoryS: 60, returnBpm: 4, returnSmoothS: 10, returnMaxS: 1200, startSkipS: 900 },
+  wake: { shortS: 60, longS: 180 },
+  calm: { windowS: 300, sdBpm: 2 },
   gapS: 10,
   holdS: 5,
   stable: { aboveLowBpm: 3, holdS: 30 * 60 },
@@ -65,15 +74,17 @@ interface ExampleSurge {
 
 /**
  * Repères de la nuit d'exemple (`exampleNightHr`), en secondes depuis le départ :
- * sa durée prévue, l'instant du creux et le centre de ses sursauts.
+ * sa durée prévue, l'instant du creux et le centre de ses sursauts, un de chaque
+ * classe au protocole : un mouvement (une trentaine de secondes), un éveil bref
+ * (deux minutes environ), un réveil (près de six minutes).
  */
 export const EXAMPLE_NIGHT = {
   durationS: 8 * 3600,
   lowAtS: 12_600,
   surges: [
-    { atS: 6_600, widthS: 90, riseBpm: 16 },
-    { atS: 16_800, widthS: 60, riseBpm: 13 },
-    { atS: 23_400, widthS: 120, riseBpm: 18 },
+    { atS: 6_600, widthS: 40, riseBpm: 14 },
+    { atS: 16_800, widthS: 150, riseBpm: 16 },
+    { atS: 23_400, widthS: 400, riseBpm: 20 },
   ] as readonly ExampleSurge[],
 } as const;
 
@@ -86,7 +97,8 @@ const surgeBpm = (tS: number, { atS, widthS, riseBpm }: ExampleSurge): number =>
 /**
  * FC d'exemple d'une nuit, déterministe (le banc la rejoue à l'identique) :
  * 68 bpm au coucher, descente à l'endormissement, creux vers 50 bpm à 3 h 30,
- * lente remontée, trois sursauts (1 h 50, 4 h 40, 6 h 30), réveil après 7 h 30.
+ * lente remontée, trois sursauts (un mouvement à 1 h 50, un éveil bref à 4 h 40,
+ * un réveil à 6 h 30), réveil du matin après 7 h 30.
  * `tS` : secondes depuis le départ.
  */
 export const exampleNightHr = (tS: number): number => {
