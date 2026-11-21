@@ -3,8 +3,10 @@ import { registerPlugin } from '@capacitor/core';
 import { base64ToBytes, bytesToBase64 } from '../core/base64';
 import { fileErrorCode, plainError } from './errorText';
 import { filesystem, isMissingPrivateFile } from './files';
-import { isNativeApp } from './runtime';
+import { isDesktopApp, isNativeApp } from './runtime';
 import { jsonStore } from './storage';
+import { bridgeErrorText, callDiskMemory, createDiskFolder } from './diskMemory';
+import type { DesktopOpening, DesktopProposal } from './desktopBridge';
 
 /**
  * Le dossier mémoire : seul point d'accès autorisé (`docs/ETAT_DU_PROJET.md` §6).
@@ -34,6 +36,12 @@ import { jsonStore } from './storage';
  * et y lit et écrit, y compris les fichiers copiés depuis le PC. Tant
  * qu'aucun dossier n'est accessible, les sessions enregistrées attendent dans
  * un dossier privé (`pendingFolder`).
+ *
+ * Dans le programme Windows, la mémoire est un vrai dossier du disque, tenu par
+ * la coquille (`diskMemory.ts`) : proposé au premier lancement (en principe
+ * `Documents\Tracker`), rien n'y est écrit avant que l'utilisateur ne
+ * l'adopte, et un dossier retenu introuvable n'est jamais recréé. La mémoire
+ * du navigateur du programme n'y sert pas.
  */
 
 export interface FolderEntry {
@@ -48,8 +56,11 @@ export interface FolderEntry {
 /** Taille et date d'un fichier. `mtimeMs` peut valoir 0 (fournisseur du téléphone qui ne la donne pas). */
 export type FileStat = Pick<FolderEntry, 'size' | 'mtimeMs'>;
 
-/** `browser` : mémoire privée du navigateur ; `picked` : dossier choisi sur le PC ; `device` : dossier du téléphone. */
-export type MemoryKind = 'browser' | 'picked' | 'device';
+/**
+ * `browser` : mémoire privée du navigateur ; `picked` : dossier choisi sur le PC ; `device` : dossier du téléphone ;
+ * `disk` : dossier du disque tenu par le programme Windows.
+ */
+export type MemoryKind = 'browser' | 'picked' | 'device' | 'disk';
 
 export interface MemoryFolder {
   kind: MemoryKind;
@@ -493,20 +504,114 @@ export const pickFolderToImport = async (): Promise<ImportEntry[] | null> => {
   });
 };
 
+// --- Ordinateur : dossier du disque, tenu par le programme Windows ---
+
+/** Ce que l'écran dit du dossier mémoire du programme Windows (`desktopMemoryPlace`). */
+export type DesktopMemoryPlace =
+  /** Aucun dossier retenu : le dossier proposé, `null` si le programme n'a pas pu en donner un. */
+  | { state: 'none'; proposal: DesktopProposal | null }
+  | { state: 'ready'; path: string; oneDrive: boolean }
+  /** Le dossier retenu n'existe plus (déplacé, renommé, disque débranché) : il n'est pas recréé. */
+  | { state: 'missing'; path: string }
+  /**
+   * Le dossier retenu ne se lit pas ; `path` vaut `null` quand c'est le réglage du programme qui ne se lit pas.
+   * `detail` : la phrase à montrer (`bridgeErrorText`).
+   */
+  | { state: 'unreadable'; path: string | null; detail: string };
+
+let desktopPlace: DesktopMemoryPlace | null = null;
+
+/** État du dossier mémoire du programme Windows, posé à l'ouverture et au choix ; `null` ailleurs ou avant l'ouverture. */
+export const desktopMemoryPlace = (): DesktopMemoryPlace | null => (isDesktopApp() ? desktopPlace : null);
+
+/**
+ * Comment désigner le dossier dans le programme Windows : la fenêtre de Windows, ouverte sur le dossier retenu
+ * (`window`) ou sur Documents (`documents`), ou le dossier proposé tel quel (`proposed`, « Utiliser ce dossier »).
+ */
+export type DesktopChoiceStart = 'window' | 'documents' | 'proposed';
+
+/** Dernier nom d'un chemin de Windows ; le chemin entier pour la racine d'un disque. */
+const lastName = (path: string): string => path.split(/[\\/]/).filter((part) => part !== '').pop() ?? path;
+
+const diskFolder = (path: string): MemoryFolder => createDiskFolder('memoire', { label: path });
+
+/** Ouvre le dossier retenu par le programme ; sans dossier retenu, demande le dossier proposé, sans rien créer. */
+const openDesktopMemory = async (): Promise<MemoryAccess> => {
+  let opening: DesktopOpening;
+  try {
+    opening = await callDiskMemory((m) => m.ouvrir());
+  } catch (err) {
+    // Rien de sûr sur le dossier retenu : rien n'est proposé à neuf, qui ferait oublier le vrai.
+    desktopPlace = { state: 'unreadable', path: null, detail: plainError(err) };
+    return { state: 'needs-permission', label: '' };
+  }
+  switch (opening.etat) {
+    case 'aucun':
+      desktopPlace = { state: 'none', proposal: await callDiskMemory((m) => m.proposer()).catch(() => null) };
+      return { state: 'unavailable', reason: 'Aucun dossier mémoire choisi.' };
+    case 'pret':
+      desktopPlace = { state: 'ready', path: opening.chemin, oneDrive: opening.oneDrive };
+      return { state: 'ready', folder: diskFolder(opening.chemin) };
+    case 'introuvable':
+      desktopPlace = { state: 'missing', path: opening.chemin };
+      return { state: 'needs-permission', label: opening.chemin };
+    default:
+      desktopPlace = { state: 'unreadable', path: opening.chemin, detail: bridgeErrorText(opening.code, opening.detail) };
+      return { state: 'needs-permission', label: opening.chemin ?? '' };
+  }
+};
+
+/**
+ * Désigne le dossier mémoire du programme Windows. Le dossier proposé ou choisi est d'abord lu sans rien y écrire :
+ * sous-dossier d'une mémoire refusé, descente dans `Tracker` si son parent a été désigné ; seulement ensuite le
+ * programme le retient, le crée s'il manque, et il devient la mémoire. Un refus laisse retenu le dossier d'avant.
+ * `null` si l'utilisateur renonce.
+ */
+const chooseDesktopFolder = async (start: DesktopChoiceStart): Promise<MemoryFolder | null> => {
+  let path: string;
+  let names: Set<string>;
+  if (start === 'proposed') {
+    path = (await callDiskMemory((m) => m.proposer())).chemin;
+    names = new Set((await createDiskFolder('candidat', { label: path }).list('')).map((e) => e.name));
+  } else {
+    const choice = await callDiskMemory((m) => m.choisir({ titre: 'Dossier mémoire de Tracker', documents: start === 'documents' }));
+    if (!choice) return null;
+    path = choice.chemin;
+    names = new Set(choice.noms);
+  }
+  const pickedName = lastName(path);
+  if (isMemorySubfolder(pickedName, names)) throw subfolderRefusal(pickedName);
+  const adopted = await callDiskMemory((m) => m.adopter({ descendre: shouldDescendIntoMemory(pickedName, names) }));
+  desktopPlace = { state: 'ready', path: adopted.chemin, oneDrive: adopted.oneDrive };
+  return diskFolder(adopted.chemin);
+};
+
+/** Rouvre le dossier retenu par le programme Windows (« Réessayer ») ; lève s'il ne s'ouvre toujours pas. */
+const reopenDesktopMemory = async (): Promise<MemoryFolder> => {
+  const access = await openDesktopMemory();
+  if (access.state === 'ready') return access.folder;
+  const place = desktopPlace;
+  throw place?.state === 'unreadable'
+    ? Object.assign(new Error(place.detail), { code: 'UNKNOWN' })
+    : Object.assign(new Error(plainError({ code: 'NOT_FOUND' })), { code: 'NOT_FOUND' });
+};
+
 // --- Choix du dossier, navigateur et téléphone ---
 
-/** Vrai si l'on peut choisir un vrai dossier : sur le téléphone, et dans Chrome et Edge sur ordinateur. */
+/** Vrai si l'on peut choisir un vrai dossier : sur le téléphone, dans le programme Windows, et dans Chrome et Edge sur ordinateur. */
 export const canChooseFolder = (): boolean =>
-  isNativeApp() || (typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function');
+  isNativeApp() || isDesktopApp() || (typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function');
 
 /**
  * Ouvre le sélecteur de dossier, à appeler depuis un clic. Rend `null` si
  * l'utilisateur renonce. Le dossier choisi devient la mémoire ; un
  * sous-dossier d'une mémoire est refusé (`FolderRefusedError`), et la mémoire
- * en service reste en place.
+ * en service reste en place. `desktop` ne vaut que dans le programme Windows
+ * (`DesktopChoiceStart`).
  */
-export const chooseMemoryFolder = async (): Promise<MemoryFolder | null> => {
+export const chooseMemoryFolder = async (desktop: DesktopChoiceStart = 'window'): Promise<MemoryFolder | null> => {
   if (isNativeApp()) return pickDeviceFolder();
+  if (isDesktopApp()) return chooseDesktopFolder(desktop);
   if (!canChooseFolder()) return null;
   // La fenêtre s'ouvre sur le dossier en service, s'il y en a un : c'est le seul moyen d'en
   // voir le chemin complet, que le navigateur ne donne pas. Sinon, sur Documents.
@@ -527,10 +632,13 @@ export const chooseMemoryFolder = async (): Promise<MemoryFolder | null> => {
 
 /**
  * Redonne l'autorisation au dossier choisi, à appeler depuis un clic. Sur le
- * téléphone, Android ne sait que le faire désigner à nouveau.
+ * téléphone, Android ne sait que le faire désigner à nouveau. Dans le
+ * programme Windows, le dossier retenu est simplement rouvert, sans contrôle de
+ * plus (il l'a été à son adoption) ; lève s'il ne s'ouvre pas.
  */
 export const reconnectMemoryFolder = async (): Promise<MemoryFolder | null> => {
   if (isNativeApp()) return pickDeviceFolder();
+  if (isDesktopApp()) return reopenDesktopMemory();
   const handle = await readSavedHandle();
   if (!handle) return null;
   const state = (await handle.requestPermission?.(READ_WRITE)) ?? 'granted';
@@ -540,10 +648,18 @@ export const reconnectMemoryFolder = async (): Promise<MemoryFolder | null> => {
   return pickedFolder(handle);
 };
 
-/** Oublie le dossier choisi : la mémoire revient à celle du navigateur. */
+/**
+ * Oublie le dossier choisi : la mémoire revient à celle du navigateur. Dans le programme Windows, plus aucun dossier
+ * n'est retenu (le dossier lui-même n'est pas touché).
+ */
 export const forgetChosenFolder = async (): Promise<void> => {
   if (isNativeApp()) {
     jsonStore.write(DEVICE_FOLDER_KEY, null);
+    return;
+  }
+  if (isDesktopApp()) {
+    await callDiskMemory((m) => m.oublier()).catch(() => undefined);
+    desktopPlace = null;
     return;
   }
   try {
@@ -553,9 +669,13 @@ export const forgetChosenFolder = async (): Promise<void> => {
   }
 };
 
-/** Mémoire en service au démarrage : le dossier choisi s'il est accessible, sinon celle du navigateur. */
+/**
+ * Mémoire en service au démarrage : le dossier choisi s'il est accessible, sinon celle du navigateur. Dans le
+ * programme Windows, le dossier retenu seul, jamais la mémoire du navigateur.
+ */
 export const openMemoryFolder = async (): Promise<MemoryAccess> => {
   if (isNativeApp()) return openDeviceFolder();
+  if (isDesktopApp()) return openDesktopMemory();
   const handle = await readSavedHandle();
   let notice: string | undefined;
   if (handle) {

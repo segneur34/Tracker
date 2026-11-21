@@ -8,8 +8,8 @@ import {
   switchToBrowserMemory,
   useLibraryFields,
 } from '../hooks/useSessionLibrary';
-import { READ_ONLY_MEMORY_MESSAGE, browserMemoryIsGuaranteed } from '../platform/memoryFolder';
-import { isNativeApp } from '../platform/runtime';
+import { READ_ONLY_MEMORY_MESSAGE, browserMemoryIsGuaranteed, desktopMemoryPlace } from '../platform/memoryFolder';
+import { isDesktopApp, isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
 import RefreshLibraryButton from './RefreshLibraryButton';
@@ -37,11 +37,17 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
  * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
  * repliée comprise ; dans les bibliothèques, ils sont dans le menu « … ».
+ *
+ * Dans le programme Windows, la même carte dit le dossier du disque : proposé au
+ * premier lancement (« Utiliser ce dossier », « Choisir un autre dossier »),
+ * introuvable (« Réessayer »), dans OneDrive ; jamais la mémoire du navigateur.
  */
 
 
 const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 } as const;
 const rowStyle = { display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' } as const;
+
+const IN_ONEDRIVE_TEXT = "Ce dossier est dans OneDrive, qui peut gêner l'enregistrement des fichiers : un dossier hors de OneDrive est plus sûr.";
 
 function MemoryStatus({
   detailed = false, compact = false, collapse,
@@ -57,6 +63,11 @@ function MemoryStatus({
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
   const native = isNativeApp();
+  /** Programme Windows : dossier du disque, proposé au premier lancement, jamais la mémoire du navigateur. */
+  const desktop = isDesktopApp();
+  /** État du dossier du programme Windows, posé avant chaque changement d'état de la mémoire. */
+  const place = desktopMemoryPlace();
+  const proposal = place?.state === 'none' ? place.proposal : null;
   /** Dans Réglages : explications sous des « ? ». */
   const inSettings = useInSettings();
   /** Le navigateur a-t-il promis de garder sa mémoire ? Seul le refus se dit (Réglages, mémoire du navigateur). */
@@ -75,6 +86,14 @@ function MemoryStatus({
       case 'ready':
         return `${plural(library.sessions.length, 'session')} · ${folderLabel ?? 'mémoire'}`;
       case 'needs-permission':
+        if (place?.state === 'missing') {
+          return `Le dossier ${place.path} est introuvable : déplacé, renommé ou sur un disque débranché. Rien n'est recréé à sa place.`;
+        }
+        if (place?.state === 'unreadable') {
+          return place.path === null
+            ? `Le réglage du programme qui retient le dossier mémoire ne se lit pas : ${place.detail}`
+            : `Le dossier ${place.path} ne se lit pas : ${place.detail}`;
+        }
         return native
           ? `Android a retiré l'accès au ${folderLabel ?? 'dossier choisi'}.`
           : `Le ${folderLabel ?? 'dossier choisi'} attend votre autorisation.`;
@@ -182,7 +201,40 @@ function MemoryStatus({
           </>
         )}
 
-        {status === 'needs-permission' && (
+        {status === 'unavailable' && desktop && (
+          <>
+            <p style={mutedStyle}>
+              Tracker garde vos sessions dans un dossier de ce PC, que vous pouvez copier pour les sauvegarder ou les
+              passer au téléphone. Rien n'y est écrit avant « Utiliser ce dossier ».
+            </p>
+            {proposal && <p style={mutedStyle}>Dossier proposé : {proposal.chemin}</p>}
+            {proposal?.documentsOneDrive && (
+              <p style={mutedStyle}>
+                Vos Documents sont dans OneDrive, qui peut gêner l'enregistrement des fichiers : le dossier proposé est
+                hors de OneDrive.
+              </p>
+            )}
+            {proposal?.oneDrive && <p style={mutedStyle}>{IN_ONEDRIVE_TEXT}</p>}
+            <div style={rowStyle}>
+              {proposal && <Button variant="primary" onClick={() => void chooseFolder('proposed')}>Utiliser ce dossier</Button>}
+              <Button variant={proposal ? 'secondary' : 'primary'} onClick={() => void chooseFolder('documents')}>
+                Choisir un autre dossier
+              </Button>
+            </div>
+          </>
+        )}
+
+        {status === 'needs-permission' && desktop && (
+          <div style={rowStyle}>
+            <Button variant="primary" onClick={() => void reconnectFolder()}>Réessayer</Button>
+            {/* Réglage du programme illisible : aucun dossier ne peut être retenu tant qu'il ne se lit pas. */}
+            {!(place?.state === 'unreadable' && place.path === null) && (
+              <Button onClick={() => void chooseFolder('documents')}>Choisir un autre dossier</Button>
+            )}
+          </div>
+        )}
+
+        {status === 'needs-permission' && !desktop && (
           <div style={rowStyle}>
             <Button variant="primary" onClick={() => void reconnectFolder()}>
               {native ? 'Choisir à nouveau le dossier' : 'Reconnecter le dossier'}
@@ -249,6 +301,23 @@ function MemoryStatus({
             <div style={rowStyle}>
               <Button onClick={() => void chooseFolder()}>Voir ou changer le dossier</Button>
               <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>
+            </div>
+          </>
+        )}
+
+        {detailed && status === 'ready' && folderKind === 'disk' && (
+          <>
+            <p style={mutedStyle}>
+              Emplacement : {folderLabel}, sur ce PC.
+              <HelpToggle helpKey="memoire:emplacement" label="Emplacement" />
+            </p>
+            <HelpText helpKey="memoire:emplacement">
+              Pour sauvegarder vos sessions ou les passer au téléphone, copiez ce dossier entier. Changer de dossier ne
+              déplace rien : la mémoire devient celle du dossier choisi.
+            </HelpText>
+            {place?.state === 'ready' && place.oneDrive && <p style={mutedStyle}>{IN_ONEDRIVE_TEXT}</p>}
+            <div style={rowStyle}>
+              <Button onClick={() => void chooseFolder()}>Changer de dossier</Button>
             </div>
           </>
         )}

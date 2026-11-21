@@ -6,8 +6,9 @@ import { folderId } from '../../library/libraryCache';
 import { imuFileName } from '../../library/record';
 import {
   canChooseFolder, chooseMemoryFolder, FolderRefusedError, forgetChosenFolder, openMemoryFolder, readOnlyFolder,
-  reconnectMemoryFolder, type MemoryFolder,
+  reconnectMemoryFolder, type DesktopChoiceStart, type MemoryFolder,
 } from '../../platform/memoryFolder';
+import { isDesktopApp } from '../../platform/runtime';
 import { jsonStore, storageStartupFailure } from '../../platform/storage';
 import { errorMessage } from '../../core/basics';
 import { libraryState, reportError, setState } from './store';
@@ -204,12 +205,14 @@ export const canChooseMemoryFolder = canChooseFolder;
 /**
  * Désigne un dossier comme mémoire, depuis un clic. Les sessions de la
  * mémoire du navigateur y sont recopiées ; les changements qu'on n'avait pas
- * pu écrire dans l'ancien dossier sont reportés dans le nouveau.
+ * pu écrire dans l'ancien dossier sont reportés dans le nouveau. Dans le programme Windows, `desktop` dit
+ * comment le désigner : le dossier proposé (« Utiliser ce dossier »), ou la fenêtre de Windows ouverte sur Documents
+ * ou sur le dossier retenu ; la mémoire du navigateur du programme n'y est pas recopiée.
  */
-export const chooseFolder = async (): Promise<void> => {
+export const chooseFolder = async (desktop: DesktopChoiceStart = 'window'): Promise<void> => {
   let picked: MemoryFolder | null;
   try {
-    picked = await chooseMemoryFolder();
+    picked = await chooseMemoryFolder(desktop);
   } catch (err) {
     setState({ error: err instanceof FolderRefusedError ? err.message : `Dossier inaccessible : ${errorMessage(err, 'erreur inconnue')}` });
     return;
@@ -266,6 +269,12 @@ export const reconnectFolder = async (): Promise<void> => {
       setState({ error: err.message });
       await carryUnwritten(carried);
       return;
+    }
+    if (isDesktopApp()) {
+      // Programme Windows : la carte suit l'état relu du dossier retenu (toujours introuvable, illisible, ou oublié).
+      const carried = takeUnwritten();
+      await openLibrary();
+      await carryUnwritten(carried);
     }
     setState({ error: `Dossier inaccessible : ${errorMessage(err, 'erreur inconnue')}` });
     return;

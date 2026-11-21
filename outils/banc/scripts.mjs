@@ -1,6 +1,7 @@
 // Registre des scripts du banc qui pilotent un Chrome sans fenêtre, lu par `passe.mjs`.
 // Hors registre : `make-gpx.mjs` (fabrique la trace), `charge-ts.mjs` et `*-diagnostic.mjs` (sans navigateur),
-// `cdp.mjs` (WebView du téléphone), `shots.mjs` (chemins en arguments).
+// `cdp.mjs` (WebView du téléphone), `shots.mjs` (chemins en arguments), `exe-fermeture.mjs` et `memoire-disque.mjs`
+// (lancent eux-mêmes le programme Windows : `node exe-fermeture.mjs <Tracker.exe>`).
 //
 // Champs d'une entrée :
 //  - `nom` : le fichier `<nom>.mjs` de `outils/banc/` ;
@@ -59,6 +60,10 @@ export const SCRIPTS = [
   { nom: 'depense', args: ['{port}', '{captures?}'], pages: ['course', 'reglages'] },
   { nom: 'donnees', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'velo', 'accueil', 'profil'], dev: true },
   { nom: 'entrainement', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'] },
+  // Import de fichiers du disque (`DOM.setFileInputFiles`) par le champ des GPX puis par le champ « dossier » ; pensé pour le programme Windows (`passe.mjs --exe`).
+  { nom: 'exe-import', args: ['{port}', '{travail}'], pages: ['bibliotheque'] },
+  // Tuiles de la carte rangées dans le Cache API puis relues sans réseau, fausses tuiles ; pensé pour le programme Windows (`passe.mjs --exe`).
+  { nom: 'exe-tuiles', args: ['{port}'], pages: ['voile'] },
   { nom: 'familles', args: ['{port}', '{captures?}'], pages: ['reglages'] },
   // Mesure (lot 114) : fluidité, ouverture d'une longue voile, seuil changé, zoom d'un graphe, résumés refaits, démarrage ; ×1 puis processeur ralenti ×6, en s ; seul (tâches longues et images par seconde), environ 12 min.
   { nom: 'fluidite', args: ['{port}', '{travail}', '{captures?}'], pages: ['voile', 'course', 'accueil', 'bibliotheque'], solo: true, sansCache: true, delaiMin: 45 },

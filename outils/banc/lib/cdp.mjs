@@ -3,7 +3,8 @@
 // sommeil fixe, import de GPX, lecture des fiches, captures, contrôles. Mode d'emploi : LISEZMOI, « Bibliothèque ».
 // Les diagnostics (durées des attentes, durée totale) vont sur stderr, jamais sur stdout : la sortie standard d'un
 // script sert à prouver la neutralité d'un changement. `BANC_DIAG=0` les coupe.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TEMPS, horlogeScript } from './horloge.mjs';
 
 /** Adresse de l'application ; `BASE` la remplace (par exemple `http://127.0.0.1:4191`). */
@@ -68,6 +69,92 @@ const PAGE_SCRIPT = `(() => {
 const STATE = `(() => { const b = window.__banc; if (!b) return null; return { doc: b.doc, ready: document.readyState, mounted: (document.getElementById('root')?.childElementCount ?? 1) > 0, fetches: b.fetches, timers: b.timers.size, last: b.lastMutation, quiet: b.now() - b.lastMutation }; })()`;
 // Deux images, et au plus 500 ms de vrai temps si la page n'en dessine pas.
 const TWO_FRAMES = `new Promise((r) => { let done = false; const f = () => { if (!done) { done = true; r(true); } }; requestAnimationFrame(() => requestAnimationFrame(f)); (window.__banc?.setTimeout ?? setTimeout)(f, 500); })`;
+
+/**
+ * Programme Windows dont la mémoire est un dossier du disque (`TRACKER_MEMOIRE`, posée par le lanceur) : les scripts qui
+ * lisent ou écrivent la mémoire par `navigator.storage.getDirectory()` y trouveraient l'OPFS, vide. Leur expression est
+ * réécrite (`evaluate`) pour appeler `window.__bancMemoire()`, une racine qui ressemble à celle de l'OPFS : le dossier
+ * `Tracker` est celui du disque, lu et écrit par le pont de la coquille (comme le fait l'application) ; tout autre nom va
+ * à l'OPFS réel. Réservé aux expressions des scripts : l'application, elle, ne voit pas cette racine.
+ */
+const MEMOIRE_DISQUE_SCRIPT = `(() => {
+  const pont = window.trackerBureau?.memoire;
+  if (window.__bancMemoire || !pont) return;
+  const appel = async (nom, argument) => {
+    const r = await pont[nom]({ racine: 'memoire', ...argument });
+    if (!r.ok) throw new DOMException(r.message, r.code === 'NOT_FOUND' ? 'NotFoundError' : 'InvalidStateError');
+    return r.valeur;
+  };
+  const absent = (nom) => new DOMException('absent : ' + nom, 'NotFoundError');
+  const enfant = (chemin, nom) => (chemin ? chemin + '/' + nom : nom);
+  const octets = (o) => o.buffer.slice(o.byteOffset, o.byteOffset + o.byteLength);
+  const fichier = (chemin, nom) => ({
+    kind: 'file', name: nom,
+    async getFile() {
+      const c = enfant(chemin, nom);
+      const s = await appel('stat', { chemin: c });
+      if (!s) throw absent(nom);
+      return {
+        name: nom, size: s.size, lastModified: s.mtimeMs,
+        text: async () => (await appel('lireTexte', { chemin: c })) ?? '',
+        arrayBuffer: async () => octets(await appel('lireOctets', { chemin: c })),
+        slice: (a, b) => ({ arrayBuffer: async () => octets(await appel('lireOctets', { chemin: c })).slice(a, b) }),
+      };
+    },
+    async createWritable() {
+      const c = enfant(chemin, nom);
+      const parties = [];
+      return {
+        write: async (donnees) => { parties.push(donnees); },
+        close: async () => {
+          if (parties.every((p) => typeof p === 'string')) await appel('ecrireTexte', { chemin: c, texte: parties.join('') });
+          else {
+            const morceaux = await Promise.all(parties.map(async (p) => (typeof p === 'string' ? new TextEncoder().encode(p) : p instanceof Uint8Array ? p : new Uint8Array(await new Blob([p]).arrayBuffer()))));
+            const tout = new Uint8Array(morceaux.reduce((n, m) => n + m.length, 0));
+            let at = 0;
+            for (const m of morceaux) { tout.set(m, at); at += m.length; }
+            await appel('ecrireOctets', { chemin: c, octets: tout });
+          }
+        },
+      };
+    },
+  });
+  const dossier = (chemin, nom) => {
+    const liste = () => appel('lister', { chemin });
+    const poignee = (e) => (e.kind === 'directory' ? dossier(enfant(chemin, e.name), e.name) : fichier(chemin, e.name));
+    return {
+      kind: 'directory', name: nom,
+      async getDirectoryHandle(n, option) {
+        const e = (await liste()).find((x) => x.name === n);
+        if (e && e.kind === 'directory') return dossier(enfant(chemin, n), n);
+        if (e) throw new DOMException('pas un dossier : ' + n, 'TypeMismatchError');
+        if (option && option.create) return dossier(enfant(chemin, n), n);
+        throw absent(n);
+      },
+      async getFileHandle(n, option) {
+        const e = (await liste()).find((x) => x.name === n);
+        if (e && e.kind === 'file') return fichier(chemin, n);
+        if (e) throw new DOMException('pas un fichier : ' + n, 'TypeMismatchError');
+        if (option && option.create) return fichier(chemin, n);
+        throw absent(n);
+      },
+      async *entries() { for (const e of await liste()) yield [e.name, poignee(e)]; },
+      async *keys() { for (const e of await liste()) yield e.name; },
+      async removeEntry(n) { await appel('effacer', { chemin: enfant(chemin, n) }); },
+    };
+  };
+  const reel = () => navigator.storage.getDirectory();
+  window.__bancMemoire = () => ({
+    kind: 'directory', name: '',
+    getDirectoryHandle: async (n, option) => (n === 'Tracker' ? dossier('', n) : (await reel()).getDirectoryHandle(n, option)),
+    getFileHandle: async (n, option) => (await reel()).getFileHandle(n, option),
+    removeEntry: async (n, option) => (n === 'Tracker' ? undefined : (await reel()).removeEntry(n, option)),
+    entries: () => ({ [Symbol.asyncIterator]: async function* () { const r = await reel(); for await (const e of r.entries()) yield e; } }),
+  });
+})()`;
+const MEMOIRE_DISQUE = Boolean(process.env.TRACKER_MEMOIRE);
+/** L'expression d'un script, réécrite pour la mémoire du disque ; inchangée ailleurs. Pour les scripts qui ont leur propre `Runtime.evaluate`. */
+export const pourMemoire = (expression) => (MEMOIRE_DISQUE ? expression.replaceAll('navigator.storage.getDirectory()', 'window.__bancMemoire()') : expression);
 
 /** Connexion minimale au protocole (celle du navigateur, pour le contexte isolé). */
 const openSocket = async (url) => {
@@ -159,6 +246,10 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
 
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable'); await send('Network.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: PAGE_SCRIPT });
+  if (MEMOIRE_DISQUE) {
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: MEMOIRE_DISQUE_SCRIPT });
+    await send('Runtime.evaluate', { expression: MEMOIRE_DISQUE_SCRIPT });
+  }
   if (TEMPS > 1) {
     await send('Page.addScriptToEvaluateOnNewDocument', { source: horlogeScript(TEMPS, startedAt) });
     diag(`horloge de la page ×${TEMPS}`);
@@ -168,7 +259,7 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
   /** Valeur d'une expression de la page (promesse attendue) ; `undefined` si elle lève. */
   /** Valeur de l'expression dans la page ; `undefined` si elle lève (l'exception va sur stderr), jamais un objet vide. */
   const evaluate = async (expression) => {
-    const r = (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result;
+    const r = (await send('Runtime.evaluate', { expression: pourMemoire(expression), returnByValue: true, awaitPromise: true })).result;
     if (r?.exceptionDetails) {
       diag(`evaluate : ${r.exceptionDetails.exception?.description?.split(String.fromCharCode(10))[0] ?? r.exceptionDetails.text}`);
       return undefined;
@@ -273,8 +364,23 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
     return 'ok';
   };
 
-  /** Fiches JSON du dossier `Tracker/sessions` de la mémoire du navigateur (OPFS). */
-  const records = async () => (await evaluate(`(async () => {
+  /**
+   * Fiches JSON du dossier `Tracker/sessions` de la mémoire du navigateur (OPFS) ; dans le programme Windows prêt d'avance
+   * sur un dossier du disque (`TRACKER_MEMOIRE`, posé par le lanceur), celles de ce dossier, lues par Node.
+   */
+  const records = async () => {
+    const dossier = process.env.TRACKER_MEMOIRE;
+    if (!dossier) return recordsOpfs();
+    const list = [];
+    let noms = [];
+    try { noms = readdirSync(join(dossier, 'sessions')); } catch { return list; }
+    for (const nom of noms) {
+      if (!nom.endsWith('.json')) continue;
+      try { list.push(JSON.parse(readFileSync(join(dossier, 'sessions', nom), 'utf8'))); } catch { /* fiche en cours d'écriture : au prochain tour */ }
+    }
+    return list;
+  };
+  const recordsOpfs = async () => (await evaluate(`(async () => {
     let dir;
     try { dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions'); } catch { return []; }
     const list = [];

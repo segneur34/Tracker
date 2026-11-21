@@ -248,6 +248,7 @@ const PLATFORM_ONLY: readonly [string, RegExp][] = [
   ['showDirectoryPicker', /\bshowDirectoryPicker\b/],
   ['new Notification', /\bnew\s+Notification\b/],
   ['paquet @capacitor ou @capgo', /['"`]@(?:capacitor|capgo)\//],
+  ['pont du programme Windows (trackerBureau)', /\btrackerBureau\b/],
 ];
 
 /** Texte d'un fichier sans ses commentaires : lignes de commentaire et de bloc retirées, fin de ligne « // … » coupée. */

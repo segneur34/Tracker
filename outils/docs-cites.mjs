@@ -27,7 +27,7 @@ const DOCUMENTS = [
 // Fichiers générés par la construction et ignorés par git : jamais parcourus, pour voir ici ce que voit un clone neuf
 // (vérification sur GitHub ; `licences.json` n'était trouvé que dans la copie Android, sur ce seul poste).
 const GENERES = ['android/app/src/main/assets', 'android/capacitor-cordova-android-plugins']
-const IGNORES = new Set(['node_modules', '.git', 'build', 'dist', '.gradle', 'worktrees'])
+const IGNORES = new Set(['node_modules', '.git', 'build', 'dist', '.gradle', 'worktrees', 'sortie'])
 // Ce que l'application crée à l'exécution ou qui vient d'ailleurs que du dépôt : jamais vérifié sur le disque.
 const HORS_DEPOT = new Set([
   'Tracker/', 'sessions/', 'reglages/', 'en-attente/', 'tuiles/', 'z_x_y.png', 'sat_z_x_y.png', '_index.json',
@@ -50,7 +50,7 @@ const parcourir = (dossier) => {
     else fichiers.push(norm(path.relative(racine, p)))
   }
 }
-for (const d of ['src', 'outils', 'docs', 'android', 'public', 'assets', '.github', '.claude']) parcourir(path.join(racine, d))
+for (const d of ['src', 'outils', 'bureau', 'docs', 'android', 'public', 'assets', '.github', '.claude']) parcourir(path.join(racine, d))
 for (const f of fs.readdirSync(racine)) if (fs.statSync(path.join(racine, f)).isFile()) fichiers.push(f)
 
 const EXT_CODE = /\.(ts|tsx|css|java|kt|mjs|js|xml|json|gradle|html|yml)$/

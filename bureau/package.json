@@ -1,0 +1,11 @@
+{
+  "name": "tracker-bureau",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@electron/packager": "20.3.0",
+    "electron": "45.3.4"
+  }
+}

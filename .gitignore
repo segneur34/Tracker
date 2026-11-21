@@ -26,6 +26,9 @@ dist-ssr
 # Sorties de vitest 5 (reporters)
 .vitest/
 
+# Programme Windows : dossier fabriqué et profil d'essai (bureau/dist et bureau/node_modules sont déjà couverts)
+bureau/sortie/
+
 # Copies de travail des lots menés en parallèle (/chaine)
 .claude/worktrees/
 

@@ -1,7 +1,7 @@
 {
   "name": "tracker",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "type": "module",
   "engines": {
     "node": "^22.18.0 || ^24.0.0 || >=26.0.0"
@@ -14,7 +14,9 @@
     "verif": "node outils/verif.mjs",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "backlog": "node outils/backlog.mjs"
+    "backlog": "node outils/backlog.mjs",
+    "bureau": "node outils/bureau.mjs",
+    "exe": "node outils/bureau.mjs --exe"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

@@ -138,7 +138,12 @@ async function briqueDocuments() {
 }
 
 async function briqueTsc() {
-  const r = await lancer(BIN.tsc, ['-b'])
+  let r = await lancer(BIN.tsc, ['-b'])
+  // La coquille Windows (`bureau/`) se vérifie à part, seulement là où ses dépendances sont installées.
+  if (r.code === 0 && existsSync(join(RACINE, 'bureau', 'node_modules', 'electron'))) {
+    const coquille = await lancer(BIN.tsc, ['-p', 'bureau', '--noEmit'])
+    r = { ...coquille, ms: r.ms + coquille.ms }
+  }
   if (r.code === 0) return { ok: true, ms: r.ms, details: [] }
   const erreurs = sansCouleur(r.out + r.err)
     .split('\n')
