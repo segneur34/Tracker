@@ -22,7 +22,14 @@ export default defineConfig({
     // Des tests lourds (corpus GPX, vent à tous les seuils) dépassaient les 5 s par défaut dès que le poste était occupé, un test différent à chaque fois.
     testTimeout: 30_000,
     // Copies de travail des lots menés en parallèle (`/chaine`) : jamais testées depuis le dépôt principal.
-    exclude: [...configDefaults.exclude, '.claude/**'],
+    // Le programme Windows (`bureau/`) ne vit que sous Windows : ses tests manient des chemins `C:\…`, des jonctions
+    // et la casse du disque, et échouent ailleurs (la vérification de GitHub tourne sous Linux). Hors Windows ils
+    // sont écartés, avec les deux tests qui chargent ce code ; le poste, lui, les joue tous.
+    exclude: [
+      ...configDefaults.exclude,
+      '.claude/**',
+      ...(process.platform === 'win32' ? [] : ['bureau/**', 'outils/bureau.test.mjs', 'src/platform/memoryFolder.disk.test.ts']),
+    ],
   },
   build: {
     // Une seule feuille de style, dans l'ordre d'aujourd'hui : aucune page chargée à la demande ne peut en manquer
