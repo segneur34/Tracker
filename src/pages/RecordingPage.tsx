@@ -376,7 +376,7 @@ const liveSummaryItems = (
 };
 
 /** Carte de l'enregistrement en cours, réduite ou non, et dénivelé de la trace suivie, ouvert ou non ; mémorisé sur l'appareil. */
-const RECORDING_SECTION_DEFAULTS = { carte: true, denivele: false };
+const RECORDING_SECTION_DEFAULTS = { carte: true, denivele: false, chiffres: true, compteur: true };
 
 /**
  * « Arrêter » : tenu le temps réglé dans Réglages (2 s par défaut), pour qu'un
@@ -546,8 +546,12 @@ function MarkGuideSlot({ activity }: { activity: Activity }) {
  * l'horloge, le direct, la ceinture et le guidage : le reste de la page n'est
  * pas redessiné à chaque position.
  */
-function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, courseMarksOf, followedLengthM }: FollowedProps & {
+function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, courseMarksOf, followedLengthM, foldable, folded, onToggleFold }: FollowedProps & {
   summaryShown: boolean;
+  /** Muscu (lot 228) : les tuiles de chiffres se replient ; `folded` : elles le sont, les alertes restent. */
+  foldable: boolean;
+  folded: boolean;
+  onToggleFold: () => void;
   /** Chiffre « Heure » affiché : l'horloge bat chaque seconde. */
   clockShown: boolean;
   liveActivity: Activity | null;
@@ -580,7 +584,10 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
       )}
 
       <Card heading="En cours">
-        {heartRate && <BpmTile belt={heartRate} target={zoneAlert.active ? zoneAlert.target : 0} />}
+        {/* Replié, la tuile BPM ne reste que si la ceinture ne mesure pas (FC perdue : une alerte). */}
+        {heartRate && (!folded || heartRate.state !== 'connected' || heartRate.bpm === null) && (
+          <BpmTile belt={heartRate} target={zoneAlert.active ? zoneAlert.target : 0} />
+        )}
         {heartRate && (heartRate.state === 'searching' || heartRate.state === 'lost') && liveActivity && hasPositions(liveActivity.base) && (
           // Ceinture perdue ou jamais trouvée (lot 198) : on peut renoncer à elle, l'enregistrement continue sans cardio.
           <div className="rec-belt-stop">
@@ -592,15 +599,18 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
           </div>
         )}
         {zoneAlert.active && zoneAlert.band && liveActivity && <LiveHeartBand activity={liveActivity} band={zoneAlert.band} />}
-        <div style={STAT_GRID}>
-          <Stat label="Durée" value={formatClock(durationMs)} />
-          {liveActivity && followed && (courseMarksOf && markGuide.active
-            ? courseStatItems(liveActivity, markGuide)
-            : followStatItems(liveActivity, progress, followedLengthM)
-          ).map((item) => <Stat key={item.label} {...item} />)}
-          {liveActivity && liveStatItems(liveActivity, live.stats, heartRate?.bpm ?? null, options, heartRate !== null)
-            .map((item) => <Stat key={item.label} {...item} />)}
-        </div>
+        {!folded && (
+          <div style={STAT_GRID}>
+            <Stat label="Durée" value={formatClock(durationMs)} />
+            {liveActivity && followed && (courseMarksOf && markGuide.active
+              ? courseStatItems(liveActivity, markGuide)
+              : followStatItems(liveActivity, progress, followedLengthM)
+            ).map((item) => <Stat key={item.label} {...item} />)}
+            {liveActivity && liveStatItems(liveActivity, live.stats, heartRate?.bpm ?? null, options, heartRate !== null)
+              .map((item) => <Stat key={item.label} {...item} />)}
+          </div>
+        )}
+        {foldable && <Button size="s" variant="secondary" onClick={onToggleFold}>{folded ? 'Afficher les chiffres' : 'Réduire les chiffres'}</Button>}
         {liveActivity && sportFamily(liveActivity.base) === 'voile' && (
           <div className="rec-grid-fit">
             <LegCard title="Bord en cours" leg={live.stats.legs.current}
@@ -677,7 +687,7 @@ function RecordingScreen() {
     setPicking(false);
   }
   const native = isNativeApp();
-  const { open: shown, toggle: toggleShown } = useOpenSections<'carte' | 'denivele'>('recording', RECORDING_SECTION_DEFAULTS);
+  const { open: shown, toggle: toggleShown } = useOpenSections<'carte' | 'denivele' | 'chiffres' | 'compteur'>('recording', RECORDING_SECTION_DEFAULTS);
 
   // Famille puis activité : celle demandée par l'adresse (« Lancer » d'une page de l'Entraînement, `?activite=`),
   // sinon celle de la trace suivie, sinon la dernière enregistrée.
@@ -955,7 +965,7 @@ function RecordingScreen() {
   return (
     // FC de nuit en cours (lot 213) : la page en sombre et sobre, sur les variables du thème sombre (`ui-dark-scope`).
     <div className={`ui-page rec-page${silentLive ? ' rec-page--nuit ui-dark-scope' : ''}`}>
-      <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
+      <PageHeader title={busy ? 'Enregistrement…' : 'Enregistrer'} subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
       {!busy && !pending && <Card className="rec-options">
         <div className="rec-test-form">
@@ -1263,7 +1273,8 @@ function RecordingScreen() {
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
       {showCounter && <IntervalCard kind={counterTimer ? 'timer' : 'fractionne'} recording={busy} muscu={counterTimer}
-        stopRecording={<StopButton status={status} inCounter />} />}
+        stopRecording={<StopButton status={status} inCounter />}
+        fold={busy && liveHeartOnly ? { folded: !shown.compteur, onToggle: () => toggleShown('compteur') } : undefined} />}
 
       {showTest && <FitnessTestCard testId={guidedTestId} activity={liveActivity} />}
 
@@ -1279,7 +1290,8 @@ function RecordingScreen() {
       {elevationShown && followed && liveActivity && <FollowedElevation trace={followed} activity={liveActivity} busy={busy} />}
       {busy && (
         <RecordingFigures summaryShown={summaryShown} clockShown={clockShown} liveActivity={liveActivity} followed={followed}
-          courseMarksOf={courseMarksOf} followedLengthM={followedLengthM} />
+          courseMarksOf={courseMarksOf} followedLengthM={followedLengthM}
+          foldable={liveHeartOnly} folded={liveHeartOnly && !shown.chiffres} onToggleFold={() => toggleShown('chiffres')} />
       )}
 
       <RecordingGpsCard busy={busy} liveHeartOnly={liveHeartOnly} deviceGps={native && sourceChoice === 'device'} />

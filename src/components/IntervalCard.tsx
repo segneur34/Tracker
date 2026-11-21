@@ -231,9 +231,11 @@ type CardView = 'compteur' | 'chrono';
  * ne regarde pas, si elle tourne, se rappelle en pastille sur son bouton.
  * `recording` : un enregistrement tourne.
  */
-function IntervalCard({ kind = 'fractionne', recording, muscu = false, stopRecording }: {
+function IntervalCard({ kind = 'fractionne', recording, muscu = false, stopRecording, fold }: {
   kind?: WorkoutKind;
   recording: boolean;
+  /** Carte repliable (muscu en direct, lot 228) : l'état de repli est gardé par la page ; les vues restent montées, rien ne s'arrête. */
+  fold?: { folded: boolean; onToggle: () => void };
   /** Bouton qui arrête l'enregistrement (celui de la page, tenu), proposé à la fin de la séance pendant un enregistrement. */
   stopRecording?: ReactNode;
   /** Séances du Timer pour une muscu (lot I du 25/10) : la séance va dans la session. */
@@ -256,6 +258,11 @@ function IntervalCard({ kind = 'fractionne', recording, muscu = false, stopRecor
     ? `${formatStopwatch(chrono.elapsedMs)}${chrono.status === 'paused' ? ' · arrêt' : ''}` : null;
   const phaseClass = shown === 'compteur' && counterLive && timer.state?.phase ? ` ivl--${timer.state.phase.kind}` : '';
 
+  const what = shown === 'chrono' ? 'le chrono' : 'le compteur';
+  if (fold?.folded) {
+    return <Button variant="secondary" block onClick={fold.onToggle}>Afficher {what}</Button>;
+  }
+
   return (
     <Card className={`ivl${phaseClass}`} aria-label="Compteur">
       <div className="ivl-switch" role="group" aria-label="Compteur ou chrono">
@@ -269,6 +276,7 @@ function IntervalCard({ kind = 'fractionne', recording, muscu = false, stopRecor
         </button>
       </div>
       {shown === 'compteur' ? <CounterView kind={kind} recording={recording} muscu={muscu} timer={timer} stopRecording={stopRecording} /> : <StopwatchView state={chrono} />}
+      {fold && <Button size="s" variant="secondary" onClick={fold.onToggle}>Réduire {what}</Button>}
     </Card>
   );
 }
