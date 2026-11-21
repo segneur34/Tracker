@@ -39,3 +39,11 @@ Tranché par défaut la nuit du 21/11, à confirmer :
 - La carte suit la boussole du téléphone (comme demandé), pas la direction du déplacement.
 
 Tranché par l'orchestrateur : nord en haut au départ, choix gardé sur l'appareil ; carte déplacée à la main : elle reste orientée, « Recentrer » reprend le suivi ; pas de réglage dans Réglages.
+
+## Licence (constaté par l'agent du lot, 21/11)
+
+leaflet-rotate est sous GPL-3.0 (0.2.8 comme 0.6.2) : refusée par le contrôle des licences du dépôt (`ALLOWED_LICENSES`, `src/core/licenses.ts`, liste d'exceptions vide depuis le lot 189), et une exception est une décision de l'utilisateur. Écartée cette nuit. Tranché par défaut la nuit du 21/11, à confirmer : `@tomickigrzegorz/leaflet-rotate` 0.3.0 (MIT, sans caret), qui ne lit ni boussole ni GPS et reste utilisable dans Gtracker, sous les mêmes conditions de sonde ; si la sonde échoue, le lot est bloqué (ni `leaflet-rotate-map`, ni rotation CSS).
+
+## Sonde du 21/11 : bloqué
+
+`@tomickigrzegorz/leaflet-rotate` 0.3.0 (MIT, aucun script d'installation, aucun appel réseau, aucune lecture de capteur) branchée seule (import et `Pane.tsx`) : `general` 19 échecs, `onglets` 17 échecs et 66 erreurs de console, 3 erreurs de console en fin de `trace-suivie`. Cause : l'extension remplace `L.Renderer.prototype.onAdd` par une version qui lit `map._rotate`, alors que le moteur Canvas de Leaflet 1.9.4 appelle `Renderer.prototype.onAdd.call(this)` sans lui passer la carte (`TypeError: Cannot read properties of undefined (reading '_rotate')`) : toute carte dessinée en Canvas plante, même sans rotation (`TrackSegmentsLayer` des analyses). Extension retirée, dépôt revenu au commit. Voies restantes (Q74) : rustine de trois lignes sur le prototype de l'extension puis sonde entière ; attendre une version corrigée ; exception de licence pour leaflet-rotate (GPL-3.0), Tracker seul ; notre propre rotation dans `components/map/` d'après la branche « rotate » de Leaflet (BSD-2), gros lot. Le calcul pur du cap lissé et ses 10 tests sont gardés dans `docs/backlog/225-brouillon/` (extension `.txt` pour rester hors des vérifications), avec le diff de la sonde.
