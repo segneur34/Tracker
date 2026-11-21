@@ -94,6 +94,17 @@ export const followedTraceFromSession = (
 };
 
 /**
+ * Trace suivie dans l'autre sens (lot 222) : ses points et ses balises à
+ * rebours, le reste tel quel. Avancement, profil et montée restante se
+ * recalculent d'eux-mêmes sur ce nouvel objet (caches par trace).
+ */
+export const reverseFollowedTrace = (trace: FollowedTrace): FollowedTrace => ({
+  ...trace,
+  points: [...trace.points].reverse(),
+  ...(trace.marks ? { marks: [...trace.marks].reverse() } : {}),
+});
+
+/**
  * Écart toléré quand la trace suivie est amincie pour être gardée sur
  * l'appareil, en mètres : très en deçà de l'écart qui la quitte
  * (`FOLLOW_DEFAULTS.maxOffsetM`), et du bruit du GPS.

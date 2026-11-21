@@ -3,7 +3,7 @@ import { accumulateElevation } from '../core/elevation';
 import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import { at } from '../test/geo.fixture';
 import { followedAltitudeAt, followedProfile, followedRowIndex, hasFollowedElevation, remainingGainM } from './followedProfile';
-import { followedTraceFromPoints, followedTraceLengthM, type FollowedPoint, type FollowedTrace } from './followedTrace';
+import { followedTraceFromPoints, followedTraceLengthM, reverseFollowedTrace, type FollowedPoint, type FollowedTrace } from './followedTrace';
 
 const MIN_GAIN = ELEVATION_PRESETS.route.minGainM;
 
@@ -120,6 +120,20 @@ describe('remainingGainM', () => {
     expect(remainingGainM(gappy, 0, MIN_GAIN)).toBe(100);
     // Dans le trou : pas d'altitude du moment, le reste part du point suivant qui en a une.
     expect(remainingGainM(gappy, 750, MIN_GAIN)).toBe(20);
+  });
+
+  it('trace inversée : sa montée est la descente de l\'origine, au départ comme en route', () => {
+    // 100 → 160 → 120 → 170 → 110 m : 110 m de montée, 100 de descente ; à rebours, l'inverse.
+    const uneven = road([[0, 100], [500, 160], [1000, 120], [1500, 170], [2000, 110]]);
+    const reversed = reverseFollowedTrace(uneven);
+    const there = accumulateElevation(uneven.points.map((p) => p.eleM ?? NaN), MIN_GAIN);
+    const back = accumulateElevation(reversed.points.map((p) => p.eleM ?? NaN), MIN_GAIN);
+    expect(there).toEqual({ gainM: 110, lossM: 100 });
+    expect(back).toEqual({ gainM: there.lossM, lossM: there.gainM });
+    expect(remainingGainM(reversed, 0, MIN_GAIN)).toBe(there.lossM);
+    // Au premier sommet du retour (170 m, à 500 m de l'arrivée de l'origine) : reste 160 - 120.
+    expect(remainingGainM(reversed, followedTraceLengthM(reversed) / 4, MIN_GAIN)).toBeCloseTo(40, 3);
+    expect(followedProfile(reversed).rows[0].eleM).toBeCloseTo(110, 3);
   });
 
   it('0 sans altitude du tout', () => {

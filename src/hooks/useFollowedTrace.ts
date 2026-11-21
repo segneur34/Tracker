@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
-import { FOLLOWED_TRACE_TOLERANCE_M, followedTraceFromPoints, thinFollowedTrace, type FollowedTrace } from '../recording/followedTrace';
+import {
+  FOLLOWED_TRACE_TOLERANCE_M, followedTraceFromPoints, reverseFollowedTrace as reverseFollowedPoints, thinFollowedTrace, type FollowedTrace,
+} from '../recording/followedTrace';
 import { sanitizeMarkGuide } from '../recording/markGuide';
 import { createListeners } from './createStore';
 
@@ -41,15 +43,28 @@ const getSnapshot = (): FollowedTrace | null => {
   return followed;
 };
 
-const set = (next: FollowedTrace | null) => {
-  followed = next && thinFollowedTrace(next, FOLLOWED_TRACE_TOLERANCE_M);
+/** Écrit la trace telle quelle, gardée et annoncée. */
+const write = (next: FollowedTrace | null) => {
+  followed = next;
   jsonStore.write(STORAGE_KEY, followed);
   listeners.notify();
 };
 
+const set = (next: FollowedTrace | null) => write(next && thinFollowedTrace(next, FOLLOWED_TRACE_TOLERANCE_M));
+
 export const followTrace = (trace: FollowedTrace): void => set(trace);
 
 export const clearFollowedTrace = (): void => set(null);
+
+/**
+ * La trace suivie dans l'autre sens (« Inverser », lot 222), gardée ainsi : le
+ * sens survit à une reprise. Déjà amincie, elle ne l'est pas de nouveau, sans
+ * quoi des inversions répétées éroderaient le tracé. Rien sans trace.
+ */
+export const reverseFollowedTrace = (): void => {
+  const current = getSnapshot();
+  if (current) write(reverseFollowedPoints(current));
+};
 
 export const useFollowedTrace = (): FollowedTrace | null => useSyncExternalStore(listeners.subscribe, getSnapshot);
 

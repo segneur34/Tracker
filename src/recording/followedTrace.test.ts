@@ -6,7 +6,7 @@ import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import {
   createFollowCursor, FOLLOW_DEFAULTS, FOLLOWED_TRACE_ELEVATION_TOLERANCE_M, FOLLOWED_TRACE_TOLERANCE_M,
   followedTraceFromPoints, followedTraceFromRoute, followedTraceFromSession, followedTraceLengthM, followProgress,
-  splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
+  reverseFollowedTrace, splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
 import { M_PER_DEG_LAT, ORIGIN, at, fixesAlong, mPerDegLon } from '../test/geo.fixture';
 
@@ -326,6 +326,47 @@ describe('découpe de la trace suivie', () => {
   it("aux bords : rien de fait au départ, tout fait à l'arrivée", () => {
     expect(splitFollowedTrace(line, 0)).toEqual({ done: [], remaining: line.points });
     expect(splitFollowedTrace(line, followedTraceLengthM(line))).toEqual({ done: line.points, remaining: [] });
+  });
+});
+
+describe('trace suivie inversée', () => {
+  const line = traceOf([[0, 0], [0, 500], [0, 1000]]);
+  const lengthM = followedTraceLengthM(line);
+
+  it('deux inversions rendent la trace d\'origine, balises comprises, le reste tel quel', () => {
+    const course = followedTraceFromPoints([A, B, C], 'Parcours', 'route', 'wingfoil', [A, C])!;
+    const reversed = reverseFollowedTrace(course);
+    expect(reversed.points).toEqual([C, B, A]);
+    expect(reversed.marks).toEqual([C, A]);
+    expect({ ...reversed, points: course.points, marks: course.marks }).toEqual(course);
+    expect(reverseFollowedTrace(reversed)).toEqual(course);
+    expect(reverseFollowedTrace(line)).not.toHaveProperty('marks');
+    // L'origine n'est pas touchée.
+    expect(course.points).toEqual([A, B, C]);
+  });
+
+  it('même longueur ; la découpe à p est le miroir de celle de l\'origine à L - p', () => {
+    const reversed = reverseFollowedTrace(line);
+    expect(followedTraceLengthM(reversed)).toBeCloseTo(lengthM, 6);
+    for (const p of [0, 250, 500, 800, lengthM]) {
+      const mirror = splitFollowedTrace(line, lengthM - p);
+      const cut = splitFollowedTrace(reversed, p);
+      expect(cut.done.length).toBe(mirror.remaining.length);
+      [...cut.done].reverse().forEach((q, k) => {
+        expect(q.lat).toBeCloseTo(mirror.remaining[k].lat, 9);
+        expect(q.lon).toBeCloseTo(mirror.remaining[k].lon, 9);
+      });
+    }
+  });
+
+  // 5 m/s : un point tous les 5 m à 1 Hz, tous les mètres à 5 Hz.
+  it.each([{ hz: 1, stepM: 5 }, { hz: 5, stepM: 1 }])('un parcours couru à l\'envers avance sur la trace inversée, pas sur l\'origine ($hz Hz)', ({ stepM }) => {
+    const fixes = walk([[0, 1000], [0, 0]], stepM);
+    const reversed = reverseFollowedTrace(line);
+    expect(followProgress(line, [fixes])?.progressM ?? 0).toBeLessThan(FOLLOW_DEFAULTS.aheadM);
+    expect(followProgress(reversed, [fixes])!.progressM).toBeGreaterThan(lengthM - 5);
+    // À mi-chemin : la moitié faite, depuis l'autre bout.
+    expect(followProgress(reversed, [fixes.slice(0, Math.ceil(fixes.length / 2))])!.progressM).toBeCloseTo(lengthM / 2, -1);
   });
 });
 

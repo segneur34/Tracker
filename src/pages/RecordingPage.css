@@ -93,36 +93,11 @@
   }
 }
 
-/* Téléphone debout, dénivelé ouvert pendant un enregistrement : carte et graphe tiennent à l'écran, les chiffres
-   passent dessous. La carte prend ce qui reste au-dessus de la barre du bas (`useRecMapFit` donne son haut et la hauteur
-   du graphe), sans dépasser sa hauteur ordinaire. Le reste de la page se resserre comme sur le téléphone tourné. */
-.ui-page.rec-page--fit {
-  /* Zoom et choix du fond finissent à 120 px du haut de la carte : ils restent dedans, avec la position sous les yeux. */
-  --rec-map-min-h: 140px;
-}
-
-.rec-page--fit .ui-page-header__subtitle {
-  display: none;
-}
-
-/* Le nom de la trace sur sa ligne, les boutons dessous, plutôt que le nom étroit sur quatre lignes. */
-.rec-page--fit .rec-follow > .ui-grow {
+/* Téléphone debout (lot 222 : la carte garde sa hauteur, le graphe de dénivelé dessous, la page défile) : le nom de la
+   trace suivie sur sa ligne, ses boutons (Dénivelé, Inverser, Retirer) dessous, plutôt que le nom étroit sur quatre
+   lignes. */
+.rec-follow--stacked > .ui-grow {
   flex-basis: calc(100% - 28px);
-}
-
-.rec-page--fit .rec-map > div {
-  box-sizing: border-box;
-  height: min(45vh, max(var(--rec-map-min-h), calc(100dvh - var(--tabbar-h) - var(--inset-bottom) - var(--space-3)
-    - var(--rec-fit-elevation, 0px) - var(--space-5) - var(--rec-fit-top, 0px)))) !important;
-}
-
-.rec-page--fit .rec-elevation {
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.rec-page--fit .rec-elevation > .ui-mt-10 {
-  margin-top: 0;
 }
 
 /* Ce qui reste à monter, sous le graphe de dénivelé de la trace suivie. */

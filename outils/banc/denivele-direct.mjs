@@ -1,24 +1,28 @@
 // Banc de test : graphe de dénivelé de la trace suivie, sur la page Enregistrer.
 // Usage : node denivele-direct.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
-// Sur un profil neuf, sans réseau, environ 5 min en temps réel (cinq rejeux à ×10 d'une course de 3 km à 5 m/s). Trace
+// Sur un profil neuf, sans réseau, environ 6 min en temps réel (six rejeux à ×10 d'une course de 3 km à 5 m/s). Trace
 // posée dans `tracker.followedTrace`, en ligne droite vers le nord, deux bosses connues : 100 → 160 → 120 → 170 → 110 m,
-// un sommet ou un creux tous les 750 m, donc 110 m de D+. Le script vérifie :
+// un sommet ou un creux tous les 750 m, donc 110 m de D+ (100 m dans l'autre sens). Le script vérifie :
 //  1. au repos : bouton, graphe fermé d'office puis sous la carte, total exact, pas de repère de position, état retenu
-//     après rechargement, survol (un rond sur la carte, retiré à la sortie) ;
-//  2. sans bouton : trace sans altitude, altitude isolée, voile avec balises, surf ;
+//     après rechargement, survol (un rond sur la carte, retiré à la sortie) ; « Inverser » (lot 222) entre « Dénivelé »
+//     et « Retirer » : total de l'autre sens, gardé après rechargement, rendu par une seconde inversion ;
+//  2. sans bouton : trace sans altitude, altitude isolée, voile avec balises (ni « Inverser »), surf ;
 //  3. rejeu, graphe ouvert : le repère avance et colle à l'avancement, « reste » descend à 0 selon le calcul à la main,
 //     courbe inchangée et jamais redessinée (seuls le repère et « reste » changent dans le panneau), carte qui suit,
 //     jamais de « Recentrer » ;
 //  4. à la fin du rejeu : survol sans décrocher la carte ; zoom au double-clic, « Tout voir », repère absent hors de la
 //     plage ; carte réduite ; 390×844 et 844×390 tactile, sans débordement ni chevauchement, « Réduire la carte » visible,
-//     zoom aux doigts (double toucher, deux doigts) et repère laissé par un doigt ; téléphone debout, page en haut, carte
-//     et graphe à l'écran, carte au moins à son minimum, tuiles sans case vide à l'ouverture et à la fermeture du graphe ;
-//     graphe fermé, et au repos, carte à 45 % de la hauteur ; 360×640 : carte au minimum, le graphe passe sous la barre ;
+//     zoom aux doigts (double toucher, deux doigts) et repère laissé par un doigt ; téléphone debout (lot 222), carte à
+//     sa hauteur ordinaire (45 % de l'écran) graphe ouvert comme fermé, graphe dessous, page qui défile, sous-titre
+//     gardé, tuiles sans case vide à l'ouverture et à la fermeture du graphe ; 360×640 : de même, le graphe se rejoint
+//     en défilant ;
 //  5. rejeu, graphe fermé : chiffres identiques en fin de rejeu ;
 //  6. processeur ralenti six fois : temps de tâches, graphe ouvert au plus 1,15 × fermé ; tâches longues sur la sortie
 //     d'erreur, pour information (elles comptent en entier dès 50 ms : trop de bruit pour un verdict) ;
 //  7. rejeu zoomé : le zoom tient pendant que la position avance, le repère entre puis sort de la plage ;
-//  8. au repos, téléphone debout, graphe ouvert : carte à 45 % de la hauteur, sous-titre gardé.
+//  8. au repos, téléphone debout, graphe ouvert : carte à 45 % de la hauteur, sous-titre gardé ;
+//  9. trace partie dans le mauvais sens (lot 222) : rejeu sur la trace inversée, « à rejoindre » ; « Inverser » pendant
+//     le rejeu : l'avancement revient aussitôt, « reste » descend, fin à 100 % et « reste 0 m D+ ».
 // Le graphe peut être sous le bas de la fenêtre : on le ramène à l'écran avant tout geste (`chartOnScreen`).
 // Verdicts : fin par « Tout passe. » ou le nombre d'échecs, code 0 ou 1.
 import { writeFileSync } from 'node:fs';
@@ -44,6 +48,8 @@ const north = (m) => ({ lat: O.lat + (m / R) * (180 / Math.PI), lon: O.lon });
 /** Sommets et creux : distance en mètres, altitude en mètres. */
 const HILLS = [[0, 100], [750, 160], [1500, 120], [2250, 170], [3000, 110]];
 const TOTAL_GAIN_M = 110;
+/** D+ de la trace inversée : la descente de l'aller, 40 + 60 m. */
+const REVERSED_GAIN_M = 100;
 const LENGTH_M = 3000;
 const eleAt = (d) => {
   for (let k = 1; k < HILLS.length; k++) {
@@ -113,6 +119,10 @@ const state = () => evaluate(`(() => {
   const chart = card?.querySelector('.zoom-chart') ?? null;
   return {
     hasButton: button('Dénivelé') !== null,
+    hasReverse: button('Inverser') !== null,
+    followButtons: [...(document.querySelector('.rec-follow')?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim()),
+    pageHeight: document.scrollingElement.scrollHeight,
+    subtitle: Boolean(document.querySelector('.ui-page-header__subtitle')?.getBoundingClientRect().height),
     pressed: button('Dénivelé')?.getAttribute('aria-pressed') ?? null,
     followLine: [...document.querySelectorAll('.ui-alert')].some((a) => a.textContent.includes('Trace suivie')),
     card: rect(card),
@@ -151,9 +161,8 @@ const pageTop = async () => {
   await wait(300);
   return state();
 };
-/** Hauteur minimale de la carte (feuille de style) et haut de la barre du bas. */
-const fitLimits = () => evaluate(`(() => ({
-  minH: Number.parseFloat(getComputedStyle(document.querySelector('.rec-page')).getPropertyValue('--rec-map-min-h')),
+/** Haut de la barre du bas, et bas des boutons du coin de la carte (zoom, choix du fond). */
+const barLimits = () => evaluate(`(() => ({
   barTop: document.querySelector('.shell-tabbar').getBoundingClientRect().top,
   layersBottom: Math.max(...[...document.querySelectorAll('.rec-map .leaflet-top .leaflet-control')].map((c) => c.getBoundingClientRect().bottom)),
 }))()`);
@@ -322,10 +331,29 @@ check('état retenu après rechargement', s.card !== null && s.pressed === 'true
 const sections = await evaluate(`JSON.parse(localStorage.getItem('tracker.sections') ?? '{}').recording ?? null`);
 check('état rangé dans tracker.sections', sections?.denivele === true && sections?.carte === true, JSON.stringify(sections));
 
+// « Inverser » (lot 222) : la trace dans l'autre sens, gardée sur l'appareil, rendue par une seconde inversion.
+check('repos : « Inverser » entre « Dénivelé » et « Retirer »', JSON.stringify(s.followButtons) === JSON.stringify(['Dénivelé', 'Inverser', 'Retirer']), JSON.stringify(s.followButtons));
+/** Altitude du premier point de la trace gardée. */
+const storedStartEle = () => evaluate(`JSON.parse(localStorage.getItem('tracker.followedTrace') ?? 'null')?.points?.[0]?.eleM ?? null`);
+await clickText('Inverser');
+await waitFor(`document.querySelector('.rec-elevation__gain')?.textContent.trim() === '${REVERSED_GAIN_M} m D+ au total'`, { timeout: 3000, label: 'total inversé' });
+s = await state();
+check(`inversée : ${REVERSED_GAIN_M} m D+ au total, la descente de l'aller`, s.text === `${REVERSED_GAIN_M} m D+ au total`, s.text);
+check('inversée : gardée à rebours sur l\'appareil', (await storedStartEle()) === HILLS.at(-1)[1], `${await storedStartEle()}`);
+await go('/enregistrer');
+await settle({ max: 3000 });
+s = await state();
+check('inversée : le sens tient après rechargement', s.text === `${REVERSED_GAIN_M} m D+ au total`, s.text);
+await clickText('Inverser');
+await waitFor(`document.querySelector('.rec-elevation__gain')?.textContent.trim() === '${TOTAL_GAIN_M} m D+ au total'`, { timeout: 3000, label: 'total rendu' });
+s = await state();
+check('seconde inversion : le sens et le total d\'origine', s.text === `${TOTAL_GAIN_M} m D+ au total` && (await storedStartEle()) === HILLS[0][1], `${s.text}, ${await storedStartEle()}`);
+
 // --- 2. Sans bouton ---
 await setTrace(TRACES.sansAltitude);
 s = await state();
 check('sans altitude : ni bouton ni graphe, trace suivie gardée', !s.hasButton && s.card === null && s.followLine, JSON.stringify([s.hasButton, s.followLine]));
+check('sans altitude : « Inverser » offert', s.hasReverse);
 await setTrace(TRACES.altitudeIsolee);
 s = await state();
 check('une altitude isolée : ni bouton ni graphe', !s.hasButton && s.card === null, `${s.hasButton}`);
@@ -334,6 +362,7 @@ check('voile avec balises : famille choisie', (await pickFamily('Voile')) === 'o
 await settle({ max: 1000 });
 s = await state();
 check('voile avec balises : ni bouton ni graphe', !s.hasButton && s.card === null, `${s.hasButton}`);
+check('voile avec balises : ni « Inverser », « Retirer » gardé', !s.hasReverse && s.followButtons.includes('Retirer'), JSON.stringify(s.followButtons));
 await setTrace(TRACES.surf);
 check('surf : famille choisie', (await pickFamily('Surf')) === 'ok');
 await settle({ max: 1000 });
@@ -431,12 +460,21 @@ await settle({ max: 1500 });
 
 await setSize(390, 844, true);
 s = await pageTop();
-const fit = await fitLimits();
-process.stderr.write(`390×844, page en haut : carte de ${Math.round(s.map.t)} à ${Math.round(s.map.b)} px (${Math.round(s.map.h)} de haut, minimum ${fit.minH}), graphe de ${Math.round(s.card.t)} à ${Math.round(s.card.b)} px, barre à ${Math.round(fit.barTop)}\n`);
-check('390×844 : graphe entièrement à l\'écran, au-dessus de la barre, page en haut', s.card.t >= 0 && s.card.b <= fit.barTop, JSON.stringify([s.card, fit.barTop]));
-check('390×844 : carte au moins à son minimum', fit.minH > 0 && s.map.h >= fit.minH - 0.5, `${s.map.h} contre ${fit.minH}`);
-check('390×844 : zoom et choix du fond dans la carte', fit.layersBottom <= s.map.b, `${fit.layersBottom} contre ${s.map.b}`);
+const bar = await barLimits();
+process.stderr.write(`390×844, page en haut : carte de ${Math.round(s.map.t)} à ${Math.round(s.map.b)} px (${Math.round(s.map.h)} de haut), graphe de ${Math.round(s.card.t)} à ${Math.round(s.card.b)} px, barre à ${Math.round(bar.barTop)}, page de ${s.pageHeight} px\n`);
+// Lot 222 : la carte garde sa hauteur ordinaire, le graphe se pose dessous et la page défile.
+check('390×844 : graphe ouvert, carte à sa hauteur ordinaire (45 % de la hauteur)', Math.abs(s.map.h - (s.height * 0.45 + 2)) <= 1, `${s.map.h}`);
+check('390×844 : graphe sous la carte', s.card.t >= s.map.b, JSON.stringify([s.map, s.card]));
+check('390×844 : la page défile', s.pageHeight > s.height, `${s.pageHeight} contre ${s.height}`);
+check('390×844 : sous-titre gardé pendant l\'enregistrement', s.subtitle);
+check('390×844 : zoom et choix du fond dans la carte', bar.layersBottom <= s.map.b, `${bar.layersBottom} contre ${s.map.b}`);
 check('390×844 : les chiffres passent sous le graphe', s.enCours !== null && s.enCours.t >= s.card.b, JSON.stringify([s.card, s.enCours]));
+check('390×844 : nom de la trace sur sa ligne, ses boutons dessous', await evaluate(`(() => {
+  const line = document.querySelector('.rec-follow');
+  const name = line?.querySelector('.ui-grow')?.getBoundingClientRect();
+  const first = line?.querySelector('button')?.getBoundingClientRect();
+  return Boolean(name && first && first.top >= name.bottom - 1);
+})()`));
 const emptyOpen = await emptyTilePoints();
 check('390×844 : tuiles sans case vide, graphe ouvert', emptyOpen === 0, `${emptyOpen} points`);
 await shoot('denivele-390-haut');
@@ -454,17 +492,17 @@ check('390×844 : graphe rouvert, même carte', Math.abs(reopened.map.h - s.map.
 const emptyReopen = await emptyTilePoints();
 check('390×844 : tuiles sans case vide après la réouverture', emptyReopen === 0, `${emptyReopen} points`);
 
-// Petit téléphone : tout ne tient pas, la carte s'arrête à son minimum, le graphe passe sous la barre et se rejoint en défilant.
+// Petit téléphone : la carte garde aussi sa hauteur ordinaire, le graphe passe sous la barre et se rejoint en défilant.
 await setSize(360, 640, true);
 const small = await pageTop();
-const smallFit = await fitLimits();
-const seen = Math.round(Math.max(0, Math.min(small.card.b, smallFit.barTop) - small.card.t));
-process.stderr.write(`360×640, page en haut : carte de ${Math.round(small.map.t)} à ${Math.round(small.map.b)} px (${Math.round(small.map.h)} de haut), graphe de ${Math.round(small.card.t)} à ${Math.round(small.card.b)} px, ${seen} px visibles, barre à ${Math.round(smallFit.barTop)}\n`);
-check('360×640 : carte à son minimum', Math.abs(small.map.h - smallFit.minH) <= 1, `${small.map.h} contre ${smallFit.minH}`);
+const smallBar = await barLimits();
+const seen = Math.round(Math.max(0, Math.min(small.card.b, smallBar.barTop) - small.card.t));
+process.stderr.write(`360×640, page en haut : carte de ${Math.round(small.map.t)} à ${Math.round(small.map.b)} px (${Math.round(small.map.h)} de haut), graphe de ${Math.round(small.card.t)} à ${Math.round(small.card.b)} px, ${seen} px visibles, barre à ${Math.round(smallBar.barTop)}\n`);
+check('360×640 : carte à sa hauteur ordinaire (45 % de la hauteur)', Math.abs(small.map.h - (small.height * 0.45 + 2)) <= 1, `${small.map.h}`);
 check('360×640 : pas de débordement', small.overflow <= 0, `${small.overflow} px`);
 await shoot('denivele-360');
 const smallOn = await chartOnScreen();
-check('360×640 : le graphe se rejoint en défilant', smallOn.card.t >= 0 && smallOn.card.b <= smallFit.barTop, JSON.stringify([smallOn.card, smallFit.barTop]));
+check('360×640 : le graphe se rejoint en défilant', smallOn.card.t >= 0 && smallOn.card.b <= smallBar.barTop, JSON.stringify([smallOn.card, smallBar.barTop]));
 
 await setSize(390, 844, true);
 s = await pageTop();
@@ -589,5 +627,37 @@ process.stderr.write(`390×844, au repos, graphe ouvert : carte de ${s.map ? Mat
 check('390×844, au repos : graphe ouvert, carte à 45 % de la hauteur', s.card !== null && s.map !== null && Math.abs(s.map.h - (s.height * 0.45 + 2)) <= 1, `${s.map?.h}`);
 check('390×844, au repos : sous-titre gardé', await evaluate(`Boolean(document.querySelector('.ui-page-header__subtitle')?.getBoundingClientRect().height)`));
 await setSize(1400, 1000, false);
+
+// --- 9. Trace partie dans le mauvais sens, inversée pendant le rejeu (lot 222) ---
+await clickText('Inverser');
+await waitFor(`document.querySelector('.rec-elevation__gain')?.textContent.trim() === '${REVERSED_GAIN_M} m D+ au total'`, { timeout: 3000, label: 'trace à rebours' });
+await prepareReplay();
+await evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Démarrer'))?.click(); 'ok'`);
+// 80 positions à ×10 : 400 m courus vers le nord sur une trace qui part du nord.
+await waitFor(`(() => {
+  const s = [...document.querySelectorAll('.rec-stat')].find((x) => x.children[0]?.textContent.trim() === 'Points');
+  return Number(s?.children[1]?.textContent) >= 80;
+})()`, { timeout: 20000, every: 300, label: '400 m courus' });
+s = await state();
+const wrongWay = Object.entries(s.stats).find(([k]) => k.startsWith('Fait, sur'))?.[1] ?? null;
+check('mauvais sens : la trace reste « à rejoindre »', wrongWay === 'à rejoindre', `${wrongWay}`);
+check('mauvais sens : « reste » toute la montée de la trace à rebours', s.text === `reste ${REVERSED_GAIN_M} m D+`, s.text);
+check('en route : « Inverser » entre « Dénivelé » et « Retirer »', JSON.stringify(s.followButtons) === JSON.stringify(['Dénivelé', 'Inverser', 'Retirer']), JSON.stringify(s.followButtons));
+await clickText('Inverser');
+await waitFor(`(() => {
+  const s = [...document.querySelectorAll('.rec-stat')].find((x) => x.children[0]?.textContent.trim().startsWith('Fait, sur'));
+  return /^\\d+ %$/.test(s?.children[1]?.textContent.trim() ?? '');
+})()`, { timeout: 5000, every: 200, label: 'avancement revenu' });
+s = await state();
+// L'avancement est rejoué sur tout l'enregistrement : il tombe aussitôt sur ce qui est déjà couru.
+const ranM = (s.points - 1) * SPEED_MS;
+check('inversée en route : l\'avancement revient sur ce qui est couru (±3 %)', s.donePct !== null && Math.abs(s.donePct - (100 * ranM) / LENGTH_M) <= 3, `${s.donePct} % pour ${ranM} m`);
+const backGain = Number.parseInt(/reste (\d+) m D\+/.exec(s.text ?? '')?.[1] ?? 'NaN', 10);
+check('inversée en route : « reste » suit le calcul à la main (±5 m)', Math.abs(backGain - gainAfter((s.donePct / 100) * LENGTH_M)) <= 5, `${s.text}, attendu ${Math.round(gainAfter((s.donePct / 100) * LENGTH_M))}`);
+await waitReplayEnd();
+await wait(3000);
+s = await state();
+check('inversée en route : fin à 100 % et « reste 0 m D+ »', s.donePct === 100 && s.text === 'reste 0 m D+', `${s.donePct} %, ${s.text}`);
+await endRecording('rejeu inversé en route');
 
 await finish();

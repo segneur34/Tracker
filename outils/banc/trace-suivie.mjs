@@ -1,6 +1,6 @@
 // Banc de test : la trace suivie pendant un enregistrement à pied, sur la carte du direct.
 // Usage : node trace-suivie.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
-// Sur un profil neuf, sans réseau, environ 20 s. Le script écrit lui-même deux GPX dans le dossier de travail :
+// Sur un profil neuf, sans réseau, environ 30 s. Le script écrit lui-même deux GPX dans le dossier de travail :
 // un itinéraire sans heure à deux branches distantes de 100 m (500 m vers le nord, 100 m vers l'est, 500 m vers le
 // sud), et un rejeu à 5 m/s et 1 Hz qui fait 250 m sur la première branche, 70 m hors piste vers la seconde, revient,
 // puis va jusqu'à 400 m. Le script :
@@ -10,7 +10,10 @@
 //  3. relève les attributs SVG des tracés, en plan : reste en pointillé foncé et épais, partie faite en gris, sous le
 //     calque de la trace enregistrée ;
 //  4. passe en satellite par le bouton de la carte : liseré blanc sous les deux tracés, à leur épaisseur, calque
-//     sous ceux des tracés ; retour au plan : plus de liseré.
+//     sous ceux des tracés ; retour au plan : plus de liseré ;
+//  5. rejeu fini, enregistrement en cours (lot 222) : « Retirer », puis « Suivre une trace » et le même itinéraire :
+//     ligne et tracé revenus, activité inchangée, avancement revenu à 36 %, positions inchangées ; à l'arrêt, la session
+//     rangée a toutes ses positions et ses 540 m.
 // Verdicts ; fin par « Tout passe. » ou le nombre d'échecs, code 0 ou 1.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,7 +55,7 @@ writeFileSync(replayPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version=
 }\n</trkseg></trk></gpx>\n`);
 
 // --- Protocole (lib/cdp.mjs) ---
-const { evaluate, go, settle, wait, waitFor, blockNetwork, importFiles, clickText, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { evaluate, go, settle, wait, waitFor, blockNetwork, importFiles, clickText, shoot, check, finish, logs, records } = await connect({ port, width: 1400, height: 1000, shotDir });
 await blockNetwork();
 
 /** Attributs SVG des tracés d'un calque de la carte, dans l'ordre du dessin. */
@@ -155,6 +158,40 @@ check('retour au plan', await clickText('Plan', '.map-base-switch__menu button')
 await wait(500);
 check('plan : plus de liseré', await evaluate(`document.querySelectorAll('.leaflet-traceSuivieLisere-pane svg path').length`) === 0);
 
+// 5. Retirée par erreur puis rechoisie en route (lot 222) : ni l'activité ni la trace enregistrée ne changent.
+const liveActivityName = () => evaluate(`document.querySelector('.rec-status__activity')?.textContent.replace('Activité', '').trim() ?? null`);
+const followLine = () => evaluate(`document.querySelector('.rec-follow')?.textContent.trim() ?? null`);
+const button = (text) => evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === ${JSON.stringify(text)})`);
+const pickerOpen = () => evaluate(`[...document.querySelectorAll('.ui-card__title')].some((t) => t.textContent.trim() === 'Suivre une trace')`);
+const pointCount = () => evaluate(`[...document.querySelectorAll('.rec-stat')].find((x) => x.children[0]?.textContent.trim() === 'Points')?.children[1]?.textContent.trim() ?? null`);
+const activityBefore = await liveActivityName();
+const pointsBefore = await pointCount();
+check('en route : pas de « Suivre une trace » tant qu\'une trace est suivie', !(await button('Suivre une trace')));
+check('en route : « Retirer »', await clickText('Retirer') === 'ok');
+await settle({ max: 1000 });
+check('retirée : plus de ligne ni de tracé de la trace suivie', (await followLine()) === null
+  && (await evaluate(`document.querySelectorAll('.leaflet-traceSuivie-pane svg path').length`)) === 0);
+check('retirée : « Suivre une trace » offert en route', await clickText('Suivre une trace') === 'ok');
+await waitFor(`[...document.querySelectorAll('button')].some((b) => b.querySelector('strong')?.textContent.trim() === 'Deux branches')`, { timeout: 5000, label: 'itinéraire proposé' });
+const pickedAt = Date.now();
+check('choix en route : même itinéraire', await evaluate(`(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.querySelector('strong')?.textContent.trim() === 'Deux branches');
+  if (!b) return 'absent';
+  b.click();
+  return 'ok';
+})()`) === 'ok');
+await waitFor(`Boolean(document.querySelector('.rec-follow')) && Boolean(document.querySelector('.leaflet-traceSuivie-pane svg path'))`, { timeout: 5000, label: 'trace rechoisie' });
+await settle({ max: 1500 });
+console.log('rechoisie :', await followLine());
+check('rechoisie : la ligne de la trace suivie revient, le choix se referme', Boolean((await followLine())?.includes('Deux branches')) && !(await button('Suivre une trace')) && !(await pickerOpen()));
+check('rechoisie : activité inchangée', activityBefore !== null && (await liveActivityName()) === activityBefore, `${await liveActivityName()} contre ${activityBefore}`);
+// Le direct se recalcule au plus toutes les 2 s (`useLiveRecording`) : « à rejoindre » jusque-là.
+const doneAgain = await waitFor(donePercent, { timeout: 5000, every: 200, label: 'avancement revenu' });
+console.error(`avancement revenu ${Date.now() - pickedAt} ms après le choix`);
+check('rechoisie : avancement revenu sur ce qui est couru', doneAgain !== null && doneAgain >= 35 && doneAgain <= 37, `${doneAgain} %`);
+check('rechoisie : trace enregistrée inchangée', pointsBefore !== null && (await pointCount()) === pointsBefore, `${await pointCount()} contre ${pointsBefore}`);
+await shoot('trace-suivie-rechoisie');
+
 // Arrêt tenu : la session est rangée et son analyse s'ouvre d'elle-même (lot 212) ; plus de « Jeter », le profil du
 // banc est neuf à chaque script.
 const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
@@ -163,6 +200,11 @@ await evaluate(`(() => { const b = window.__stopButton; b?.dispatchEvent(new Poi
 const opened = await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 8000, label: 'analyse ouverte' });
 check('arrêt tenu : session rangée, analyse ouverte', down === 'ok' && Boolean(opened));
 await settle({ max: 2000 });
+const saved = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - t0) < 2000), { timeout: 8000, label: 'fiche rangée' });
+console.log('fiche :', saved ? `${saved.summary.pointCount} points, ${Math.round(saved.summary.distanceM)} m` : 'absente');
+// Rejeu : 540 m, une position tous les 5 m.
+check('session rangée intacte : toutes les positions, toute la distance', saved && saved.summary.pointCount === replay.length && Math.abs(saved.summary.distanceM - 540) <= 10,
+  saved ? `${saved.summary.pointCount} points, ${saved.summary.distanceM} m` : 'absente');
 
 console.log('--- console (erreurs, avertissements) ---');
 [...new Set(logs)].slice(0, 10).forEach((l) => console.log(l));
