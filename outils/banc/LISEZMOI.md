@@ -19,6 +19,8 @@ Le tableau final, une ligne par script : durées des deux côtés ; résultat (`
 
 ## Lanceur
 
+Après un passage réussi, le lanceur ne garde que les 3 copies « avant » les plus récemment utilisées (`COPIES_AVANT_GARDEES` dans `copies.mjs`, celle du passage comprise) et retire les autres : jonction `node_modules` seule d'abord, puis `git worktree remove`, jamais un worktree qui n'est pas de ce dépôt, rien si un autre passage tient un port du banc. Les relevés ne sont pas touchés.
+
 `node outils/banc/passe.mjs [noms…] [--pages a,b] [--tous] [--avant <commit>] [--scripts-par-cote] [-j N] [--sans-reseau] [--gpx <dossier>] [--brouillon <dossier>] [--temps k] [--captures] [--garder] [--sans-cache] [--nettoyer-avant] [--chrome <port>] [--port <port Vite>]`
 
 - Sélection : des noms, ou `--pages` (étiquettes du registre `scripts.mjs` : voile, course, velo, surf, fractionne, enregistrer, bibliotheque, planification, statistiques, profil, reglages, accueil), ou `--tous` ; sans rien, le passage courant : `general`, `statistiques`, `profil`, `onglets`, `bench`, `familles`, `cardio`, plus `library` et `planning` avec `--gpx <dossier>` (les GPX faits à la main) ; il ne comprend plus `tailles` (20 min), à jouer par son nom ou `--pages` quand le lot touche la mise en page, le thème ou Réglages. `--sans-reseau` écarte les scripts marqués `reseau`. Un script marqué `manuel` dans le registre n'est jamais lancé, la raison est dans le tableau.

@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PAGES, PASSAGE_COURANT, SCRIPTS } from './scripts.mjs';
+import { COPIES_AVANT_GARDEES, copiesARetirer, worktreesDe } from './copies.mjs';
 
 const BANC = path.dirname(fileURLToPath(import.meta.url));
 const DEPOT = path.resolve(BANC, '..', '..');
@@ -565,6 +566,7 @@ try {
         git(['worktree', 'prune']);
         git(['worktree', 'add', '--detach', racineAvant, commitAvant]);
       }
+      try { const t = new Date(); fs.utimesSync(racineAvant, t, t); } catch { /* usage non noté : la copie paraîtra plus ancienne */ }
       const nm = path.join(racineAvant, 'node_modules');
       if (!fs.existsSync(nm)) fs.symlinkSync(MODULES, nm, WINDOWS ? 'junction' : 'dir');
       jonction = nm;
@@ -612,6 +614,37 @@ try {
     try { git(['worktree', 'remove', '--force', racineAvant]); } catch (e) { console.error(`worktree non retiré : ${e.message}`); }
   }
 }
+
+// --- Ménage des anciennes copies « avant » ---
+// Après un passage réussi : ne garde que les COPIES_AVANT_GARDEES plus récemment utilisées (celle du passage comprise).
+// Rien si un autre passage du banc tourne (ports en écoute). Le dossier est partagé avec le banc d'un dépôt voisin :
+// seuls les worktrees de CE dépôt (`git worktree list`) sont candidats. Le lien node_modules part seul, sans récursion.
+async function menage() {
+  if (code !== 0 || opts.exe) return;
+  for (const p of [4191, 4192, 4195, 4196, opts.port, opts.port + 1]) {
+    if (!(await libre(p))) { console.error(`ménage des copies « avant » reporté : le port ${p} est occupé (un autre passage ?)`); return; }
+  }
+  const worktrees = worktreesDe(git(['worktree', 'list', '--porcelain'])).map((w) => {
+    let utilise = 0;
+    try { utilise = fs.statSync(w.chemin).mtimeMs; } catch { /* dossier disparu : le plus ancien */ }
+    return { ...w, utilise };
+  });
+  const aRetirer = copiesARetirer({ worktrees, brouillon: opts.brouillon, courante: racineAvant, garder: COPIES_AVANT_GARDEES });
+  for (const copie of aRetirer) {
+    try {
+      const nm = path.join(copie, 'node_modules');
+      let st = null;
+      try { st = fs.lstatSync(nm); } catch { /* pas de node_modules */ }
+      if (st?.isSymbolicLink()) {
+        try { fs.unlinkSync(nm); } catch { fs.rmdirSync(nm); }
+      }
+      git(['worktree', 'remove', '--force', copie]);
+      console.error(`ancienne copie « avant » retirée : ${path.basename(copie)}`);
+    } catch (e) { console.error(`copie « avant » non retirée (${copie}) : ${e.message}`); }
+  }
+  if (aRetirer.length) git(['worktree', 'prune']);
+}
+try { await menage(); } catch (e) { console.error(`ménage des copies « avant » : ${e.message}`); }
 
 // --- Tableau ---
 const identiques = (a, b) => fs.readFileSync(a, 'utf8') === fs.readFileSync(b, 'utf8');
