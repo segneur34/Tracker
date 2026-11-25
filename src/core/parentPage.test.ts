@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { analysisPath, libraryPath, parentPage, sessionFamily } from './parentPage';
+import { SETTINGS_SENSORS_PATH, analysisPath, libraryPath, parentPage, sessionFamily, settingsBlockFromSearch } from './parentPage';
+
+describe('Réglages ouverts sur un bloc (lot 232)', () => {
+  it("lit le bloc désigné par l'adresse de Réglages, rien sans paramètre", () => {
+    expect(settingsBlockFromSearch(SETTINGS_SENSORS_PATH.slice(SETTINGS_SENSORS_PATH.indexOf('?')))).toBe('capteurs');
+    expect(settingsBlockFromSearch('')).toBeNull();
+    expect(settingsBlockFromSearch('?activite=x')).toBeNull();
+  });
+
+  it("Réglages ouverts par le lien de la ceinture renvoient à Enregistrer, sinon à l'accueil", () => {
+    expect(SETTINGS_SENSORS_PATH).toBe('/parametres?bloc=capteurs');
+    expect(parentPage('/parametres', '?bloc=capteurs')).toBe('/enregistrer');
+    expect(parentPage('/parametres/', '?bloc=capteurs')).toBe('/enregistrer');
+    expect(parentPage('/parametres', '?bloc=autre')).toBe('/');
+    expect(parentPage('/parametres', '')).toBe('/');
+  });
+});
 
 describe('parentPage', () => {
   it("rien au-dessus de l'accueil", () => {

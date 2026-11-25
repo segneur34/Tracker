@@ -18,7 +18,8 @@ import {
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTutorials } from '../hooks/useTutorials';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { settingsBlockFromSearch } from '../core/parentPage';
 import { useTileCache } from '../hooks/useTileCache';
 import { isTileTemplate, type MapBase } from '../core/mapBase';
 import { useThemedShade, useThemeSettings } from '../hooks/useTheme';
@@ -772,7 +773,20 @@ function SettingsPage() {
   } = useAllSportSettings();
   const { profile, setName, setNumber, setSex, setThresholds, age } = useRunnerProfile();
   const shown = useThemedShade();
-  const { open, toggle, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
+  const { open, toggle, set: setBlocks, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
+  /**
+   * Arrivée par `?bloc=capteurs` (lien « Aucune ceinture choisie » de la page Enregistrer, lot 232) : le bloc s'ouvre
+   * et vient en haut de l'écran, une fois ; ouverts par la barre, les blocs gardent leur état.
+   */
+  const sensorsRef = useRef<HTMLDivElement>(null);
+  const { search } = useLocation();
+  const wantsSensors = settingsBlockFromSearch(search) === 'capteurs';
+  useEffect(() => {
+    if (!wantsSensors) return;
+    setBlocks({ capteurs: true });
+    const id = window.setTimeout(() => sensorsRef.current?.scrollIntoView({ block: 'start' }), 0);
+    return () => window.clearTimeout(id);
+  }, [wantsSensors, setBlocks]);
   const { open: openActivity, toggle: toggleActivity, closeAll: closeActivities } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart, closeAll: closeParts } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
   const { open: openFamily, toggle: toggleFamily, closeAll: closeFamilies } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
@@ -918,7 +932,7 @@ function SettingsPage() {
         )}
       </div>
 
-      <div style={cardStyle}>
+      <div style={cardStyle} ref={sensorsRef}>
         <PanelTitle label="Capteurs" open={open.capteurs} onToggle={() => toggle('capteurs')} />
         {open.capteurs && <div className="settings-block__body"><HeartRateBeltSettings /></div>}
       </div>

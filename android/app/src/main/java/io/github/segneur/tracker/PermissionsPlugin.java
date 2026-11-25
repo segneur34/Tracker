@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import com.getcapacitor.JSObject;
@@ -16,8 +17,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /**
  * Autorisations qui ne passent pas par une demande système ordinaire
  * (src/platform/permissions.ts) : la batterie « sans restriction » et le
- * démarrage automatique. La position et les notifications sont demandées par
- * le greffon du GPS, le Bluetooth par celui de la ceinture.
+ * démarrage automatique ; et le réglage de la localisation d'Android, coupée
+ * pendant un enregistrement (lot 232). La position et les notifications sont
+ * demandées par le greffon du GPS, le Bluetooth par celui de la ceinture.
  *
  * Batterie : l'écran système « Autoriser l'application à toujours
  * s'exécuter en arrière-plan ? » (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).
@@ -25,8 +27,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * Store encadre ; l'APK est diffusé par lien, hors boutique.
  *
  * Démarrage automatique : propre à MIUI et HyperOS, sans interface standard
- * ni état lisible. On ouvre leur écran s'il existe, sinon les réglages de
- * l'application.
+ * ni état lisible (une lecture propre à Xiaomi annonçait « désactivé » à
+ * tort, Gtracker lot 419). On ouvre leur écran s'il existe, sinon les
+ * réglages de l'application ; la marque du téléphone suffit à la page pour
+ * cacher la ligne hors de Xiaomi, Redmi et POCO.
  */
 @CapacitorPlugin(name = "Permissions")
 public class PermissionsPlugin extends Plugin {
@@ -55,6 +59,15 @@ public class PermissionsPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Marque du téléphone : la page ne montre la ligne du démarrage automatique que sur un Xiaomi. */
+    @PluginMethod
+    public void deviceBrand(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("manufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+        ret.put("brand", Build.BRAND == null ? "" : Build.BRAND);
+        call.resolve(ret);
+    }
+
     /** Ouvre l'écran du démarrage automatique de MIUI / HyperOS, sinon les réglages de l'application. */
     @PluginMethod
     public void openAutostart(PluginCall call) {
@@ -62,6 +75,13 @@ public class PermissionsPlugin extends Plugin {
         miui.setComponent(new ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"));
         if (start(miui) || start(appSettings())) call.resolve();
         else call.reject("Réglages de l'application introuvables");
+    }
+
+    /** Ouvre le réglage de la localisation d'Android : « Activer la localisation » d'Enregistrer, quand elle est coupée. */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        if (start(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))) call.resolve();
+        else call.reject("Réglage de la localisation introuvable");
     }
 
     /** Ouvre les réglages de l'application : une autorisation refusée s'y rend. */

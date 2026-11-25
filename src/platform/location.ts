@@ -47,18 +47,27 @@ export interface LocationWatchOptions {
 /** Arrête la réception des positions. */
 export type StopLocation = () => Promise<void>;
 
+/**
+ * Cause d'un échec que la page sait traiter, dite par la source elle-même (lot 232) : `'locationOff'`, la
+ * localisation du téléphone est coupée (« Activer la localisation »).
+ */
+export type LocationErrorCause = 'locationOff';
+
+/** Échec de la source : son message, et sa cause quand la page en fait quelque chose. */
+export type LocationErrorListener = (message: string, cause?: LocationErrorCause) => void;
+
 export interface LocationSource {
   /** Libellé affiché à l'utilisateur. */
   label: string;
   /**
    * Démarre la réception : `onFix` à chaque position, `onError` quand la
-   * source échoue (permission refusée, localisation coupée). Rend la fonction
-   * d'arrêt.
+   * source échoue (permission refusée, localisation coupée), avec sa cause
+   * quand la page en fait quelque chose. Rend la fonction d'arrêt.
    */
   start(
     options: LocationWatchOptions,
     onFix: (fix: LocationFix) => void,
-    onError: (message: string) => void
+    onError: LocationErrorListener
   ): Promise<StopLocation>;
 }
 
@@ -121,7 +130,7 @@ const startNative = async (
   role: NativeRole,
   options: LocationWatchOptions,
   onFix: (fix: LocationFix) => void,
-  onError: (message: string) => void
+  onError: LocationErrorListener
 ): Promise<StopLocation> => {
   if (role === 'ponctuelle' && nativeHolder?.role === 'enregistrement') throw new Error(HELD_BY_RECORDING);
   let stopped = false;
@@ -167,7 +176,7 @@ const startNative = async (
         if (stopped) return;
         if (error) {
           if (isLocationDisabled(error)) {
-            if (!toldDisabled) onError(LOCATION_DISABLED_TEXT);
+            if (!toldDisabled) onError(LOCATION_DISABLED_TEXT, 'locationOff');
             toldDisabled = true;
             retry = setTimeout(() => {
               retry = null;
@@ -306,7 +315,7 @@ type CapacitorBridge = { fromNative?: (message: NativeMessage) => void };
  * d'une source démarrée, sans relance. Lève si le pont manque ou si le service a déjà un détenteur : la reprise retombe
  * alors sur l'arrêt. Rend l'arrêt, qui rend aussi le pont.
  */
-export const adoptRunningService = (onFix: (fix: LocationFix) => void, onError: (message: string) => void): StopLocation => {
+export const adoptRunningService = (onFix: (fix: LocationFix) => void, onError: LocationErrorListener): StopLocation => {
   const bridge = (window as unknown as { Capacitor?: CapacitorBridge }).Capacitor;
   const original = bridge?.fromNative;
   if (!bridge || !original) throw new Error('Pont du téléphone introuvable.');
@@ -325,7 +334,10 @@ export const adoptRunningService = (onFix: (fix: LocationFix) => void, onError: 
     if (stopping === null && pluginId === 'BackgroundGeolocation' && methodName === 'start') {
       try {
         if (success === true && save === true && data) onFix(fromPlugin(data));
-        else if (success === false && error) onError(isLocationDisabled(error) ? LOCATION_DISABLED_TEXT : locationErrorText(error));
+        else if (success === false && error) {
+          if (isLocationDisabled(error)) onError(LOCATION_DISABLED_TEXT, 'locationOff');
+          else onError(locationErrorText(error));
+        }
       } catch (err) {
         console.warn('Message du service GPS repris illisible', err);
       }
@@ -405,10 +417,25 @@ export interface SatelliteCount {
 interface GnssPlugin {
   start(): Promise<void>;
   stop(): Promise<void>;
+  refreshAssistance(): Promise<{ sent: boolean }>;
   addListener(event: 'satellites', listener: (data: SatelliteCount) => void): Promise<PluginListenerHandle>;
 }
 
 const gnss = registerPlugin<GnssPlugin>('Gnss');
+
+/**
+ * « Réessayer » du GPS (lot 232) : demande au téléphone de recharger ses données d'aide (heure, orbites des
+ * satellites), qui hâtent une position, sans arrêter le service, la trace ni la notification ; ces données ne sont
+ * jamais effacées. Vrai si le téléphone a pris la demande ; faux dans le navigateur, ou si elle n'a pas pu partir.
+ */
+export const refreshGpsAssistance = async (): Promise<boolean> => {
+  if (!isNativeApp()) return false;
+  try {
+    return (await gnss.refreshAssistance()).sent === true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Suit les satellites du GPS sur le téléphone (`GnssPlugin.java`), une fois

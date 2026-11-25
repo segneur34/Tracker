@@ -9,18 +9,19 @@ import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveHeartRate, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
 import { armBeltWatch, armGpsWatch, disarmBeltWatch, disarmGpsWatch, getBeeper, onBeltLost, onGpsLost } from '../platform/beeper';
-import { readPermissions } from '../platform/permissions';
+import { openLocationSettings, readPermissions } from '../platform/permissions';
 import {
   continueMotionCapture, findMotionCapture, motionCapturePath, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture,
   runningMotionCapture, startMotionCapture, stopMotionCapture, type MotionCapture, type MotionSetup,
 } from '../platform/motion';
 import {
-  RECORDING_BELT_HOLDER, adoptBelt, beltState, holdBelt, keepBeltAlive, latestHeartRate, releaseOrphanedBelt, savedBelt, stopBeltKeepAlive, subscribeBeltState,
-  subscribeHeartRate,
+  RECORDING_BELT_HOLDER, adoptBelt, beltState, holdBelt, keepBeltAlive, latestHeartRate, releaseOrphanedBelt, retryBelt, savedBelt, stopBeltKeepAlive,
+  subscribeBeltState, subscribeHeartRate,
   type BeltState, type HeartRateBelt, type HeartRateSample,
 } from '../platform/heartRate';
 import {
-  adoptRunningService, deviceLocationSource, stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation,
+  adoptRunningService, deviceLocationSource, refreshGpsAssistance, stopOrphanedDeviceLocation, type LocationErrorCause, type LocationFix, type LocationSource,
+  type LocationWatchOptions, type StopLocation,
 } from '../platform/location';
 import { readRecoveryServices, type RecoveryServices } from '../platform/recovery';
 import type { SessionTest } from '../recording/fitnessTest';
@@ -31,9 +32,11 @@ import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { runCommand as intervalCommand, seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine,
-  journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, journalSessionActivity, parseJournal, type ParsedJournal,
+  journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalGpsLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine,
+  journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, journalSessionActivity, parseJournal, type JournalBeltEvent,
+  type JournalGpsEvent, type ParsedJournal,
 } from '../recording/journal';
+import { GPS_RETRY_FEEDBACK_MS, type BeltAside } from '../recording/recordingRetry';
 import {
   NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, journalExtras, rebuildRecordingStats, recordedSessionGpx, recordedWithPositions, recoveryDecision,
   resumedPhase, type RecordedTrack, type RecoveryJournal,
@@ -277,8 +280,18 @@ export interface RecorderState {
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
   gpsLost: boolean;
+  /** Aucune position reçue depuis le départ, ou depuis la reprise d'un journal (lot 232) ; effacé à la première. */
+  awaitingFix: boolean;
+  /** Localisation du téléphone coupée, dite par la source (lot 232) ; effacé à la position suivante. */
+  locationOff: boolean;
+  /** Vrai quelques secondes après « Réessayer » du GPS : « nouvelle tentative… » (`GPS_RETRY_FEEDBACK_MS`). */
+  gpsRetrying: boolean;
   /** FC perdue : plus de mesure lisible d'une ceinture qui en donnait (lot 177) ; effacé à la mesure suivante. */
   beltLost: boolean;
+  /** Ceinture de la session laissée de côté (lot 232) : injoignable (`failed`) ou plus cherchée (`stopped`) ; `null` sinon. */
+  beltAside: BeltAside;
+  /** Vrai pendant un nouvel essai ou une reprise de la ceinture demandés par la page : « nouvelle tentative… ». */
+  beltRetrying: boolean;
   /**
    * Vrai pendant le `starting` d'une session relue du journal, positions déjà en mémoire : les guidages se rejouent
    * alors au lieu de repartir de zéro.
@@ -308,7 +321,12 @@ const INITIAL_STATE: RecorderState = {
   interruptions: [],
   error: null,
   gpsLost: false,
+  awaitingFix: false,
+  locationOff: false,
+  gpsRetrying: false,
   beltLost: false,
+  beltAside: null,
+  beltRetrying: false,
   resuming: false,
   landOnRecording: false,
 };
@@ -418,9 +436,10 @@ let dropBelt: (() => void) | null = null;
 /** Dernière erreur signalée par la source (localisation coupée…), effacée de l'état à la position suivante. */
 let sourceError: string | null = null;
 
-const onSourceError = (message: string): void => {
+/** Échec dit par la source : son message remplace l'alerte, et la localisation coupée est retenue pour la page (lot 232). */
+const onSourceError = (message: string, cause?: LocationErrorCause): void => {
   sourceError = message;
-  setState({ error: message });
+  setState({ error: message, locationOff: cause === 'locationOff' });
 };
 
 /** Alerte de la page Enregistrer quand le GPS se tait (lot 115). */
@@ -473,11 +492,50 @@ const onGpsWatchExpired = (): void => {
   applyGpsWatch(gpsWatchOnExpired(gpsWatch, Date.now()));
 };
 
-/** Arrête la veille de l'enregistrement : minuteur désarmé, machine remise au départ. */
+/** Fin de « nouvelle tentative… » du GPS ; `null` hors de ce retour. */
+let gpsRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Arrête la veille de l'enregistrement : minuteur désarmé, machine remise au départ, « nouvelle tentative… » oublié. */
 const stopGpsWatch = (): void => {
   if (gpsWatchOn) void disarmGpsWatch().catch(() => {});
   gpsWatchOn = false;
   gpsWatch = START_GPS_WATCH;
+  if (gpsRetryTimer !== null) clearTimeout(gpsRetryTimer);
+  gpsRetryTimer = null;
+};
+
+/** Vrai pendant l'enregistrement, en cours ou en pause : les boutons de secours n'agissent que là. */
+const recordingNow = (): boolean => state.status === 'recording' || state.status === 'paused';
+
+/** Écrit une ligne du GPS au journal, tout de suite. */
+const journalGps = (what: JournalGpsEvent): void => {
+  pendingLines += journalGpsLine(Date.now(), what);
+  void flushJournal();
+};
+
+/**
+ * « Réessayer » du GPS pendant l'enregistrement (lot 232) : le téléphone recharge ses données d'aide au GPS
+ * (`refreshGpsAssistance`), rien d'autre n'est touché (service, trace, notification). « nouvelle tentative… » reste
+ * affiché `GPS_RETRY_FEEDBACK_MS`, même si la demande n'a rien pu envoyer (navigateur) : un retour visible à l'appui. Un
+ * appui pendant ce retour est ignoré. L'appui et son résultat laissent chacun une ligne au journal.
+ */
+export const retryRecordingGps = async (): Promise<void> => {
+  if (!recordingNow() || heartOnly || state.gpsRetrying) return;
+  journalGps('retry');
+  setState({ gpsRetrying: true });
+  gpsRetryTimer = setTimeout(() => {
+    gpsRetryTimer = null;
+    if (state.gpsRetrying) setState({ gpsRetrying: false });
+  }, GPS_RETRY_FEEDBACK_MS);
+  const sent = await refreshGpsAssistance();
+  if (recordingNow()) journalGps(sent ? 'assisted' : 'unassisted');
+};
+
+/** « Activer la localisation » (lot 232) : le réglage d'Android s'ouvre, l'enregistrement continue ; une ligne au journal. */
+export const openRecordingLocationSettings = async (): Promise<void> => {
+  if (!recordingNow()) return;
+  journalGps('settings');
+  await openLocationSettings().catch(() => undefined);
 };
 
 /** Message de la perte de la fréquence cardiaque, ajouté à l'alerte comme « GPS perdu ». */
@@ -595,6 +653,8 @@ const receiveFix = (received: LocationFix): void => {
   const recording = currentProfile;
   if (role === 'ignore' || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
+  // Une position est venue, pause manuelle comprise : plus d'attente, et la localisation est rallumée.
+  if (state.awaitingFix || state.locationOff) setState({ awaitingFix: false, locationOff: false });
   // Veille du GPS, hors pause manuelle : le minuteur est repoussé, ou l'alerte de perte s'efface (avant les abonnés :
   // le guidage des balises reprend son rythme à cette position).
   if (role === 'evaluate' && gpsWatchOn) applyGpsWatch(gpsWatchOnFix(gpsWatch, Date.now(), recording));
@@ -1028,6 +1088,7 @@ const abandonResume = async (): Promise<void> => {
   setState({
     status: 'idle', resuming: false, sport: null, activity: null, sourceLabel: null, pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks: [], stats: EMPTY_RECORDING_STATS, gpsLost: false, beltLost: false,
+    beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, gpsRetrying: false,
   });
 };
 
@@ -1066,6 +1127,7 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
   setState({
     status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!withoutBelt), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, rangeFailed: false, saved: null, error: null, gpsLost: false, beltLost: false,
+    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, gpsRetrying: false,
   });
 };
 
@@ -1143,6 +1205,8 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
     // comme avant la chute. Sinon, une ceinture redemandée est veillée selon ce qu'elle mesurait (`watchResumedBelt`).
     let beltRewired = false;
     // Muscu partie sans la ceinture (lot 210) : aucune à reprendre, le minuteur repart plus bas.
+    // Retenue pour « Réessayer » et « Reprendre la ceinture » (lot 232), même cessée d'être cherchée en route.
+    if (withPositions && parsed.header?.belt) rememberRecordingBelt(parsed.header.belt, beltMaxAgeS, parsed.beltStopped);
     if (!withoutBelt) {
       const release = await adoptBelt(RECORDING_BELT_HOLDER).catch(() => null);
       if (release) {
@@ -1293,16 +1357,131 @@ const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => 
 };
 
 /**
+ * Ceinture demandée par la session et son écart toléré, gardés même quand elle est rendue (injoignable, plus
+ * cherchée) : « Réessayer » et « Reprendre la ceinture » la redemandent (lot 232). `null` si la session n'en a pas.
+ */
+let recordingBelt: { belt: HeartRateBelt; maxAgeS: number } | null = null;
+/** Message de la ceinture injoignable affiché dans l'alerte, retiré seul à la reprise ou à l'abandon ; `null` sinon. */
+let beltError: string | null = null;
+/** Numéro du dernier essai ou de la dernière reprise de la ceinture : seul le plus récent éteint « nouvelle tentative… ». */
+let beltAttempt = 0;
+/** Prise de la ceinture par « Reprendre la ceinture » en cours, `null` sinon : un départ attend sa fin. */
+let beltTaking: Promise<unknown> | null = null;
+
+/** Message d'une ceinture injoignable, l'enregistrement continuant sans elle. */
+const beltUnreachableError = (err: unknown): string =>
+  `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.`;
+
+/**
+ * Retient la ceinture demandée par la session, même rendue ensuite : « Réessayer » et « Reprendre la ceinture » la
+ * redemandent. `stopped` : l'utilisateur avait cessé de la chercher (journal relu), la page propose de la reprendre.
+ */
+const rememberRecordingBelt = (belt: HeartRateBelt, maxAgeS: number, stopped = false): void => {
+  recordingBelt = { belt, maxAgeS };
+  if (stopped) setState({ beltAside: 'stopped' });
+};
+
+/**
  * Prend la ceinture comme `takeBelt`, sans jamais lever : si elle ne répond pas, elle est rendue, la tuile BPM
- * retirée, et l'alerte le dit. L'enregistrement, départ ou reprise, continue sans elle.
+ * retirée, et l'alerte le dit. L'enregistrement, départ ou reprise, continue sans elle ; la ceinture reste retenue
+ * pour « Réessayer » (lot 232).
  */
 const takeBeltOrWarn = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => {
+  rememberRecordingBelt(belt, maxAgeS);
+  beltError = null;
   try {
     await takeBelt(belt, maxAgeS);
   } catch (err) {
     releaseRecordingBelt();
-    setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
+    beltError = beltUnreachableError(err);
+    setState({ heartRate: null, beltAside: 'failed', error: beltError });
   }
+};
+
+/** L'alerte sans le message de la ceinture injoignable : ce qu'elle disait par ailleurs est gardé ; `null` s'il ne reste rien. */
+const withoutBeltError = (error: string | null): string | null => {
+  const message = beltError;
+  if (error === null || message === null) return error;
+  const rest = error.replace(` ${message}`, '').replace(message, '').trim();
+  return rest === '' ? null : rest;
+};
+
+/** Écrit une ligne de la ceinture au journal, tout de suite. */
+const journalBelt = (what: JournalBeltEvent): void => {
+  pendingLines += journalBeltLine(Date.now(), what);
+  void flushJournal();
+};
+
+/**
+ * « Reprendre la ceinture » (lot 232), après l'avoir laissée (injoignable, ou plus cherchée) : la ceinture de la
+ * session est redemandée, le message de la ceinture injoignable retiré, et la veille de la FC repart de zéro, comme au
+ * départ (rien avant la première mesure ; en pause manuelle, elle attend la reprise). En échec, le nouveau message
+ * remplace l'ancien. Le journal le dit (`'asked'`) : une reprise après une chute de la page la redemande de nouveau.
+ * Hors de la file des commandes : la prise peut durer (connexion, fenêtre d'autorisation du Bluetooth), et Pause,
+ * Reprendre ou Arrêter passent pendant ce temps. Un « Arrêter de chercher » ou un arrêt appuyés pendant la prise
+ * l'emportent : la ceinture prise ensuite est rendue aussitôt, sans tuile, et un échec ne ramène ni le message ni la
+ * proposition de réessayer ; un départ suivant attend la fin de la prise (`beltTaking`), pour ne pas se faire rendre
+ * sa ceinture par elle. Sans effet sur une session sans position (muscu), qui garde sa ceinture.
+ */
+export const retakeRecordingBelt = async (): Promise<void> => {
+  const asked = recordingBelt;
+  if (asked === null || heartOnly || !recordingNow() || state.beltRetrying) return;
+  const mine = ++beltAttempt;
+  releaseRecordingBelt();
+  journalBelt('asked');
+  setState({ beltRetrying: true, beltLost: false, error: withoutBeltError(withoutBeltLost(state.error)) });
+  beltError = null;
+  const taking = holdBelt(RECORDING_BELT_HOLDER, asked.belt);
+  beltTaking = taking;
+  try {
+    const release = await taking;
+    if (beltAttempt !== mine || !recordingNow()) {
+      // Abandonnée ou session arrêtée pendant la prise : l'abandon tient, la ceinture est rendue sans être suivie.
+      release();
+      if (beltAttempt === mine && recordingNow()) setState({ heartRate: null });
+      return;
+    }
+    wireBelt(release, asked.maxAgeS);
+    if (state.pausedReason === 'manual') applyBeltWatch(gpsWatchOnPause(beltWatch));
+    setState({ beltAside: null });
+  } catch (err) {
+    if (beltAttempt !== mine || !recordingNow()) return;
+    journalBelt('failed');
+    beltError = beltUnreachableError(err);
+    setState({ heartRate: null, beltAside: 'failed', error: joinMessages(state.error, beltError) });
+  } finally {
+    if (beltTaking === taking) beltTaking = null;
+    if (beltAttempt === mine) setState({ beltRetrying: false });
+  }
+};
+
+/**
+ * « Réessayer » de la ceinture pendant l'enregistrement (lot 232) : la ceinture tenue est cherchée tout de suite par
+ * le téléphone, sans attendre sa tentative suivante, puis ses essais ordinaires reprennent ; rien d'autre n'est
+ * touché. Une ceinture rendue (injoignable) ou que le téléphone ne demande plus est reprise (`retakeRecordingBelt`),
+ * sauf sans position (muscu), où elle n'est jamais lâchée. Un appui pendant un essai est ignoré. L'appui et son
+ * résultat laissent chacun une ligne au journal.
+ */
+export const retryRecordingBelt = async (): Promise<void> => {
+  if (!recordingNow() || state.beltRetrying) return;
+  const current = beltState();
+  if (!heartOnly && recordingBelt !== null && (dropBelt === null || current === 'off' || current === 'unsupported')) {
+    await retakeRecordingBelt();
+    return;
+  }
+  if (dropBelt === null) return;
+  const mine = ++beltAttempt;
+  journalBelt('retry');
+  setState({ beltRetrying: true });
+  let result: JournalBeltEvent;
+  try {
+    result = (await retryBelt()) ? 'found' : 'missed';
+  } catch {
+    result = 'failed';
+  }
+  // Abandonnée entre-temps : le résultat ne vaut plus, le journal finit sur l'abandon.
+  if (recordingNow() && beltAttempt === mine) journalBelt(result);
+  if (beltAttempt === mine) setState({ beltRetrying: false });
 };
 
 /** Suit dans l'état les mesures d'une ceinture tenue ; `release` la rend. */
@@ -1340,20 +1519,26 @@ const releaseRecordingBelt = (): void => {
 };
 
 /**
- * « Arrêter de chercher » (lot 198), ceinture perdue ou jamais trouvée en route : l'enregistrement la rend et continue
- * sans cardio, tuile BPM et alerte de FC perdue retirées. Plus rien ne la recherche jusqu'à la fin de la sortie : le
- * greffon n'est plus demandé (fin de sa reprise seule), la pause ne la reprend pas, et une reprise après une chute de
- * la page ne la redemande pas, le journal le disant (`journalBeltLine`). Seul « Continuer l'enregistrement », après
- * une application tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu) : partie avec
- * elle, elle la garde, trous dans la FC compris ; sans elle, elle se chronomètre dès le départ (lot 210).
+ * « Arrêter de chercher » (lot 198), ceinture perdue, jamais trouvée, sans mesure ou injoignable en route :
+ * l'enregistrement la rend et continue sans cardio, tuile BPM, alerte de FC perdue (minuteur désarmé, son compris) et
+ * message de la ceinture injoignable retirés. Plus rien ne la recherche : le greffon n'est plus demandé (fin de sa
+ * reprise seule), la pause ne la reprend pas, et une reprise après une chute de la page ne la redemande pas, le
+ * journal le disant (`journalBeltLine`). Réversible depuis le lot 232, donc sans confirmation : « Reprendre la
+ * ceinture » (`retakeRecordingBelt`) la redemande, comme « Continuer l'enregistrement » après une application tuée.
+ * Sans effet sur une session sans position (muscu) : partie avec elle, elle la garde, trous dans la FC compris ; sans
+ * elle, elle se chronomètre dès le départ (lot 210).
  */
 export const stopRecordingBeltSearch = (): void => {
-  if (heartOnly || dropBelt === null) return;
+  // Ceinture tenue, injoignable, ou en cours de reprise : un abandon pendant la prise l'emporte sur elle.
+  if (heartOnly || (dropBelt === null && state.beltAside !== 'failed' && !state.beltRetrying)) return;
   if (state.status === 'idle' || state.status === 'stopping') return;
   releaseRecordingBelt();
-  pendingLines += journalBeltLine(Date.now(), 'stopped');
-  void flushJournal();
-  setState({ heartRate: null, beltLost: false, error: withoutBeltLost(state.error) });
+  journalBelt('stopped');
+  // Un essai encore en cours ne rallume pas « nouvelle tentative… » à sa fin.
+  beltAttempt += 1;
+  const error = withoutBeltError(withoutBeltLost(state.error));
+  beltError = null;
+  setState({ heartRate: null, beltLost: false, beltAside: 'stopped', beltRetrying: false, error });
 };
 
 /**
@@ -1414,6 +1599,8 @@ const resetSession = (init: { withPositions: boolean; source: LocationSource | n
   marks = [];
   currentTest = null;
   sourceError = null;
+  recordingBelt = null;
+  beltError = null;
   stopGpsWatch();
   gpsWatchOn = watchesGps(init.profile, init.withPositions);
   offGpsLost ??= onGpsLost(onGpsWatchExpired);
@@ -1437,6 +1624,8 @@ export const startRecording = exclusive(async (
   const sport = activity.base;
   const withPositions = hasPositions(sport);
   if (withPositions && source === null) return;
+  // Reprise de la ceinture d'une session arrêtée pendant sa prise : finie avant, sa ceinture est rendue sous ce nom.
+  await beltTaking?.catch(() => undefined);
   const recovery = await recoverInterruptedRecording();
   // La session d'un journal a repris seule : pas de second départ.
   if (isBusy()) return;
@@ -1455,6 +1644,7 @@ export const startRecording = exclusive(async (
     status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!!options.heartRate), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: recoveryNotice, gpsLost: false, beltLost: false,
+    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, gpsRetrying: false,
   });
 
   if (!withPositions) {
@@ -1769,10 +1959,15 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   const wasRecording = state.status === 'recording';
   stopGpsWatch();
   stopBeltWatch();
+  // Un essai ou une reprise de la ceinture encore en cours ne vaut plus : sa ceinture sera rendue à sa fin.
+  beltAttempt += 1;
   // Sans ceinture : plus de point d'heure seule, celui de l'arrêt est posé plus bas (`withStopPoint`).
   stopClock();
   // Les alertes de perte du GPS et de la FC ne survivent pas à l'enregistrement.
-  setState({ status: 'stopping', gpsLost: false, beltLost: false, error: withoutBeltLost(withoutGpsLost(state.error)) });
+  setState({
+    status: 'stopping', gpsLost: false, beltLost: false, beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, gpsRetrying: false,
+    error: withoutBeltLost(withoutGpsLost(state.error)),
+  });
   // Écrit avant de couper le GPS : une chute d'ici la fin ne propose ni reprise ni « Continuer ».
   pendingLines += journalStopLine(stoppedAtMs);
   await flushJournal();

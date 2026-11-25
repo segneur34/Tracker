@@ -51,22 +51,43 @@ vi.mock('../platform/files', async (importOriginal) => {
   };
 });
 
-/** Ceinture simulée : prise et rendue sans Bluetooth, mesures émises à la demande ; le service au premier plan relevé. */
+/**
+ * Ceinture simulée : prise et rendue sans Bluetooth, mesures émises à la demande ; le service au premier plan relevé.
+ * `holdFails` : la prise est refusée (Bluetooth éteint) ; `holdGate` : la prise attend cette promesse ; `state` : l'état
+ * de la connexion ; `retries` et `retrySeen` : les nouveaux essais demandés au greffon, et ce qu'ils rendent.
+ */
 const belt = vi.hoisted(() => {
   const listeners = new Set<(sample: { bpm: number; timeMs: number; contact: boolean | null }) => void>();
   return {
     listeners,
     keepAlive: 0,
     stopKeepAlive: 0,
-    /** Ceintures rendues par l'enregistreur. */
+    /** Ceintures prises, puis rendues, par l'enregistreur. */
+    holds: 0,
     releases: 0,
+    holdFails: null as Error | null,
+    holdGate: null as Promise<void> | null,
+    state: 'off' as 'off' | 'connecting' | 'connected' | 'searching' | 'lost' | 'unsupported',
+    retries: 0,
+    retrySeen: true as boolean | Error,
     emit: (timeMs: number, bpm: number, contact: boolean | null = true) => listeners.forEach((l) => l({ bpm, timeMs, contact })),
   };
 });
 vi.mock('../platform/heartRate', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../platform/heartRate')>()),
-  holdBelt: async () => () => {
-    belt.releases += 1;
+  holdBelt: async () => {
+    if (belt.holdGate) await belt.holdGate;
+    if (belt.holdFails) throw belt.holdFails;
+    belt.holds += 1;
+    return () => {
+      belt.releases += 1;
+    };
+  },
+  beltState: () => belt.state,
+  retryBelt: async () => {
+    belt.retries += 1;
+    if (belt.retrySeen instanceof Error) throw belt.retrySeen;
+    return belt.retrySeen;
   },
   subscribeHeartRate: (listener: (sample: { bpm: number; timeMs: number; contact: boolean | null }) => void) => {
     belt.listeners.add(listener);
@@ -181,9 +202,13 @@ const { effectiveRecordingProfile } = await import('./useSportSettings');
 const T0 = Date.UTC(2026, 9, 27, 9, 0, 0);
 const activity = baseActivity('running');
 
-/** Source simulée : compte ses démarrages et ses arrêts, dit si elle tourne, émet à la demande tant qu'elle tourne. */
+/**
+ * Source simulée : compte ses démarrages et ses arrêts, dit si elle tourne, émet à la demande tant qu'elle tourne ;
+ * `fail` joue un échec de la source, avec sa cause.
+ */
 const fakeSource = () => {
   let onFix: ((fix: LocationFix) => void) | null = null;
+  let onError: ((message: string, cause?: 'locationOff') => void) | null = null;
   const source = {
     starts: 0,
     stops: 0,
@@ -191,11 +216,12 @@ const fakeSource = () => {
     /** Durée du prochain arrêt, en millisecondes ; un second arrêt pendant le premier rend la main tout de suite. */
     stopDelayMs: 5,
     label: 'Simulée',
-    start: async (_options: unknown, fix: (f: LocationFix) => void) => {
+    start: async (_options: unknown, fix: (f: LocationFix) => void, error: (message: string, cause?: 'locationOff') => void) => {
       source.starts += 1;
       // Un démarrage qui prend un peu de temps, comme le greffon.
       await new Promise((resolve) => setTimeout(resolve, 5));
       onFix = fix;
+      onError = error;
       source.active = true;
       let stopping = false;
       return async () => {
@@ -204,11 +230,13 @@ const fakeSource = () => {
         stopping = true;
         await new Promise((resolve) => setTimeout(resolve, delay));
         onFix = null;
+        onError = null;
         source.active = false;
         source.stops += 1;
       };
     },
     emit: (s: number, speedMs = 3) => onFix?.({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-5, lon: 3, speedMs, accuracyM: 4 }),
+    fail: (message: string, cause?: 'locationOff') => onError?.(message, cause),
   };
   return source satisfies LocationSource & object;
 };
@@ -223,6 +251,11 @@ const reset = async () => {
 };
 
 beforeEach(() => {
+  belt.holdFails = null;
+  belt.holdGate = null;
+  belt.state = 'off';
+  belt.retries = 0;
+  belt.retrySeen = true;
   journal.text = null;
   journal.headers = 0;
   journal.unreadable = false;
@@ -726,7 +759,7 @@ describe('prévenir quand ça rate (lot 115)', () => {
     await recorder.stopRecording();
   });
 
-  it("« Arrêter de chercher » (lot 198) : la ceinture est rendue, alerte et tuile retirées, plus rien ne la suit jusqu'à l'arrêt", async () => {
+  it("« Arrêter de chercher » (lot 198) : la ceinture est rendue, alerte et tuile retirées, plus rien ne la suit sans « Reprendre la ceinture »", async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(T0);
     const source = fakeSource();
@@ -743,6 +776,8 @@ describe('prévenir quand ça rate (lot 115)', () => {
     expect(recorder.getRecorderState().beltLost).toBe(false);
     expect(recorder.getRecorderState().error ?? '').not.toContain(recorder.BELT_LOST_ERROR);
     expect(recorder.getRecorderState().status).toBe('recording');
+    // Laissée de côté, réversible (lot 232) : la page propose de la reprendre.
+    expect(recorder.getRecorderState().beltAside).toBe('stopped');
     // Plus suivie : une mesure qui arriverait encore ne réarme rien, et la pause ne la reprend pas.
     beltWatch.arms = [];
     belt.emit(T0 + 62_000, 100);
@@ -1257,5 +1292,274 @@ describe('aller-retour du journal (audit du 03/11, C4)', () => {
     expect(fromJournal.pointCount).toBe(fromMemory.pointCount);
     expect(fromJournal.content).toBe(fromMemory.content);
     expect(journal.text).toBeNull();
+  });
+});
+
+describe('boutons de secours de la ceinture (lot 232)', () => {
+  const BELT = { address: '00:11:22:33:44:55', name: 'Ceinture' };
+  /** Lignes de la ceinture écrites au journal, dans l'ordre. */
+  const beltLines = (): string[] => (journal.text ?? '').split('\n').filter((l) => l.startsWith('["belt"')).map((l) => JSON.parse(l)[2] as string);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("injoignable au départ : retenue de côté, « Réessayer » la reprend, le message s'efface et rien d'autre ne bouge", async () => {
+    permissions.notificationsDenied = true;
+    try {
+      belt.holdFails = new Error('Bluetooth éteint');
+      const source = fakeSource();
+      await recorder.startRecording(activity, source, { heartRate: BELT });
+      await settle();
+      let state = recorder.getRecorderState();
+      expect(state.beltAside).toBe('failed');
+      expect(state.heartRate).toBeNull();
+      expect(state.error).toContain('Ceinture cardio injoignable : Bluetooth éteint');
+      expect(state.error).toMatch(/Notifications refusées/);
+      belt.holdFails = null;
+      await recorder.retryRecordingBelt();
+      state = recorder.getRecorderState();
+      expect(state.beltAside).toBeNull();
+      expect(state.beltRetrying).toBe(false);
+      expect(state.heartRate).not.toBeNull();
+      expect(state.error ?? '').not.toContain('Ceinture cardio injoignable');
+      // L'avertissement des notifications reste.
+      expect(state.error).toMatch(/^Notifications refusées/);
+      await settle();
+      expect(beltLines()).toEqual(['asked']);
+      expect(source.starts).toBe(1);
+    } finally {
+      permissions.notificationsDenied = false;
+    }
+  });
+
+  it('injoignable puis de nouveau refusée : le message revient, une seule fois, et la proposition de réessayer reste', async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    belt.holdFails = new Error('permission refusée');
+    await recorder.retakeRecordingBelt();
+    const state = recorder.getRecorderState();
+    expect(state.beltAside).toBe('failed');
+    expect(state.error).toBe("Ceinture cardio injoignable : permission refusée. L'enregistrement continue sans elle.");
+    await settle();
+    expect(beltLines()).toEqual(['asked', 'failed']);
+  });
+
+  it('« Arrêter de chercher » sur une ceinture injoignable : le message part, « Reprendre la ceinture » la redemande', async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    recorder.stopRecordingBeltSearch();
+    expect(recorder.getRecorderState().beltAside).toBe('stopped');
+    expect(recorder.getRecorderState().error).toBeNull();
+    belt.holdFails = null;
+    const holds = belt.holds;
+    await recorder.retakeRecordingBelt();
+    expect(belt.holds).toBe(holds + 1);
+    expect(recorder.getRecorderState().beltAside).toBeNull();
+    expect(recorder.getRecorderState().heartRate).not.toBeNull();
+    await settle();
+    expect(beltLines()).toEqual(['stopped', 'asked']);
+  });
+
+  it('reprise après « Arrêter de chercher » : la veille de la FC repart de zéro, rien avant la première mesure', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    belt.emit(T0, 100);
+    recorder.stopRecordingBeltSearch();
+    beltWatch.arms = [];
+    await recorder.retakeRecordingBelt();
+    expect(beltWatch.arms).toEqual([]);
+    belt.emit(T0 + 5000, 100);
+    expect(beltWatch.arms).toEqual([60_000]);
+  });
+
+  it('Pause et Reprendre passent pendant une prise de la ceinture qui ne rend pas la main ; la ceinture prise ensuite suit la session', async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    const source = fakeSource();
+    await recorder.startRecording(activity, source, { heartRate: BELT });
+    belt.holdFails = null;
+    let open!: () => void;
+    belt.holdGate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const retake = recorder.retakeRecordingBelt();
+    try {
+      await settle();
+      expect(recorder.getRecorderState().beltRetrying).toBe(true);
+      await recorder.pauseRecording();
+      expect(recorder.getRecorderState().status).toBe('paused');
+      expect(recorder.getRecorderState().pausedReason).toBe('manual');
+      await recorder.resumeRecording();
+      expect(recorder.getRecorderState().status).toBe('recording');
+      await recorder.pauseRecording();
+      expect(recorder.getRecorderState().status).toBe('paused');
+    } finally {
+      open();
+    }
+    await retake;
+    expect(recorder.getRecorderState().heartRate).not.toBeNull();
+    expect(recorder.getRecorderState().beltAside).toBeNull();
+    expect(recorder.getRecorderState().beltRetrying).toBe(false);
+    expect(recorder.getRecorderState().status).toBe('paused');
+  });
+
+  it("Arrêter pendant une prise de la ceinture qui ne rend pas la main : l'arrêt passe, la ceinture prise ensuite est rendue", async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    belt.holdFails = null;
+    let open!: () => void;
+    belt.holdGate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const retake = recorder.retakeRecordingBelt();
+    let releases = 0;
+    try {
+      await settle();
+      await recorder.stopRecording();
+      expect(recorder.getRecorderState().status).toBe('idle');
+      expect(recorder.getRecorderState().beltRetrying).toBe(false);
+      releases = belt.releases;
+    } finally {
+      open();
+    }
+    await retake;
+    expect(belt.releases).toBe(releases + 1);
+    expect(recorder.getRecorderState().heartRate).toBeNull();
+    expect(recorder.getRecorderState().beltAside).toBeNull();
+  });
+
+  it("« Arrêter de chercher » pendant la reprise l'emporte : la ceinture prise ensuite est rendue aussitôt", async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    belt.holdFails = null;
+    let open!: () => void;
+    belt.holdGate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const retake = recorder.retakeRecordingBelt();
+    try {
+      await settle();
+      expect(recorder.getRecorderState().beltRetrying).toBe(true);
+      recorder.stopRecordingBeltSearch();
+      expect(recorder.getRecorderState().beltRetrying).toBe(false);
+    } finally {
+      open();
+    }
+    const releases = belt.releases;
+    await retake;
+    expect(belt.releases).toBe(releases + 1);
+    expect(recorder.getRecorderState().heartRate).toBeNull();
+    expect(recorder.getRecorderState().beltAside).toBe('stopped');
+    expect(recorder.getRecorderState().beltRetrying).toBe(false);
+  });
+
+  it('ceinture tenue encore cherchée : « Réessayer » demande au téléphone une recherche tout de suite, sans la lâcher', async () => {
+    belt.state = 'searching';
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    const releases = belt.releases;
+    await recorder.retryRecordingBelt();
+    expect(belt.retries).toBe(1);
+    expect(belt.releases).toBe(releases);
+    expect(recorder.getRecorderState().beltRetrying).toBe(false);
+    belt.retrySeen = false;
+    await recorder.retryRecordingBelt();
+    belt.retrySeen = new Error('Bluetooth éteint');
+    await recorder.retryRecordingBelt();
+    await settle();
+    expect(beltLines()).toEqual(['retry', 'found', 'retry', 'missed', 'retry', 'failed']);
+  });
+
+  it('hors enregistrement, rien : ni essai, ni reprise, ni ligne au journal', async () => {
+    await recorder.retryRecordingBelt();
+    await recorder.retakeRecordingBelt();
+    recorder.stopRecordingBeltSearch();
+    expect(belt.retries).toBe(0);
+    expect(recorder.getRecorderState().beltAside).toBeNull();
+  });
+
+  it('muscu : « Réessayer » ne lâche jamais la ceinture, « Reprendre la ceinture » est sans effet', async () => {
+    belt.state = 'lost';
+    await recorder.startRecording(baseActivity('muscu'), null, { heartRate: BELT });
+    const releases = belt.releases;
+    await recorder.retryRecordingBelt();
+    expect(belt.retries).toBe(1);
+    await recorder.retakeRecordingBelt();
+    expect(belt.releases).toBe(releases);
+    expect(recorder.getRecorderState().heartRate).not.toBeNull();
+  });
+
+  it("l'arrêt efface la ceinture laissée de côté : rien ne reste à la session suivante", async () => {
+    belt.holdFails = new Error('Bluetooth éteint');
+    await recorder.startRecording(activity, fakeSource(), { heartRate: BELT });
+    expect(recorder.getRecorderState().beltAside).toBe('failed');
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().beltAside).toBeNull();
+    belt.holdFails = null;
+    await recorder.savePendingSession();
+    recorder.dismissRecorderResult();
+    await recorder.startRecording(activity, fakeSource());
+    await recorder.retakeRecordingBelt();
+    expect(recorder.getRecorderState().heartRate).toBeNull();
+  });
+});
+
+describe('boutons de secours du GPS (lot 232)', () => {
+  const gpsLines = (): string[] => (journal.text ?? '').split('\n').filter((l) => l.startsWith('["gps"')).map((l) => JSON.parse(l)[2] as string);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("en attente de la première position depuis le départ, plus après elle ; jamais pour une session sans position", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    expect(recorder.getRecorderState().awaitingFix).toBe(true);
+    source.emit(0);
+    expect(recorder.getRecorderState().awaitingFix).toBe(false);
+    await recorder.stopRecording();
+    await recorder.savePendingSession();
+    recorder.dismissRecorderResult();
+    await recorder.startRecording(baseActivity('muscu'), null, { heartRate: { address: '00:11:22:33:44:55', name: 'Ceinture' } });
+    expect(recorder.getRecorderState().awaitingFix).toBe(false);
+  });
+
+  it('localisation coupée, dite par la source : retenue pour la page, effacée à la position suivante', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.fail('Localisation coupée', 'locationOff');
+    expect(recorder.getRecorderState().locationOff).toBe(true);
+    expect(recorder.getRecorderState().error).toBe('Localisation coupée');
+    source.fail('Autre panne');
+    expect(recorder.getRecorderState().locationOff).toBe(false);
+    source.fail('Localisation coupée', 'locationOff');
+    source.emit(0);
+    expect(recorder.getRecorderState().locationOff).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+  });
+
+  it("« Réessayer » : « nouvelle tentative… » 5 s, un second appui ignoré, l'appui et son résultat au journal ; rien d'autre ne bouge", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await recorder.retryRecordingGps();
+    expect(recorder.getRecorderState().gpsRetrying).toBe(true);
+    await recorder.retryRecordingGps();
+    vi.advanceTimersByTime(4_999);
+    expect(recorder.getRecorderState().gpsRetrying).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(recorder.getRecorderState().gpsRetrying).toBe(false);
+    vi.useRealTimers();
+    await settle();
+    // Navigateur : rien n'a pu partir vers le téléphone.
+    expect(gpsLines()).toEqual(['retry', 'unassisted']);
+    expect(source.starts).toBe(1);
+    expect(source.stops).toBe(0);
+    expect(source.active).toBe(true);
+  });
+
+  it("« Activer la localisation » : une ligne au journal, l'enregistrement continue ; hors enregistrement, rien", async () => {
+    await recorder.openRecordingLocationSettings();
+    expect(journal.text).toBeNull();
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    await recorder.openRecordingLocationSettings();
+    await settle();
+    expect(gpsLines()).toEqual(['settings']);
+    expect(recorder.getRecorderState().status).toBe('recording');
   });
 });

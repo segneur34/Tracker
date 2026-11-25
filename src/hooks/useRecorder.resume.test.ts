@@ -1349,6 +1349,38 @@ describe('ceinture cardio après une coupure', () => {
     expect(belt.asked).toEqual([]);
   });
 
+  it('« Arrêter de chercher » puis reprise seule : la page propose « Reprendre la ceinture », qui la redemande (lot 232)', async () => {
+    await recordUntil20();
+    recorder.stopRecordingBeltSearch();
+    await settle();
+    services.gps = true;
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().status).toBe('recording');
+    expect(fresh.getRecorderState().beltAside).toBe('stopped');
+    expect(belt.asked).toEqual([strap.address]);
+    await fresh.retakeRecordingBelt();
+    expect(belt.asked).toEqual([strap.address, strap.address]);
+    expect(fresh.getRecorderState().beltAside).toBeNull();
+    expect(fresh.getRecorderState().heartRate).not.toBeNull();
+    await settle();
+    expect(lineCount('belt')).toBe(2);
+  });
+
+  it('reprise seule, ceinture du départ injoignable : « Réessayer » la reprend (lot 232)', async () => {
+    await recordUntil20();
+    services.gps = true;
+    belt.holdFails = true;
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().beltAside).toBe('failed');
+    belt.holdFails = false;
+    await fresh.retryRecordingBelt();
+    expect(fresh.getRecorderState().beltAside).toBeNull();
+    expect(fresh.getRecorderState().heartRate).not.toBeNull();
+    expect(fresh.getRecorderState().error ?? '').not.toContain('Ceinture cardio injoignable');
+  });
+
   it('« Arrêter de chercher » en route : la reprise seule ne la redemande pas, « Continuer » si, puis la reprise suivante aussi', async () => {
     await recordUntil20();
     recorder.stopRecordingBeltSearch();

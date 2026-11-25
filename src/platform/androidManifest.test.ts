@@ -74,6 +74,12 @@ describe('manifeste Android : ce qui reste', () => {
     expect(tag).not.toContain('tools:node');
   });
 
+  it('déclare la permission des commandes du GPS, normale et sans demande : « Réessayer » recharge ses données d\'aide (lot 232)', () => {
+    const tag = tagWithName(MANIFEST, 'uses-permission', 'android.permission.ACCESS_LOCATION_EXTRA_COMMANDS');
+    expect(tag).toBeDefined();
+    expect(tag).not.toContain('tools:node');
+  });
+
   it("changer la taille ou la graisse du texte du téléphone ne recrée pas l'activité (enregistrement en cours, lot 232)", () => {
     const changes = tagWithName(MANIFEST, 'activity', '.MainActivity')?.match(/android:configChanges="([^"]*)"/)?.[1].split('|') ?? [];
     expect(changes).toEqual(expect.arrayContaining(['fontScale', 'fontWeightAdjustment', 'orientation', 'screenSize', 'uiMode', 'density']));

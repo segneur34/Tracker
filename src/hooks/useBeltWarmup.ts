@@ -1,6 +1,6 @@
 import { plainError } from '../platform/errorText';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { holdBelt, releaseBelt, type HeartRateBelt } from '../platform/heartRate';
+import { holdBelt, releaseBelt, retryBelt, type HeartRateBelt } from '../platform/heartRate';
 
 /** Nom de la connexion prise par la page Enregistrer avant le départ. */
 const HOLDER = 'depart';
@@ -18,13 +18,19 @@ const HOLDER = 'depart';
 export function useBeltWarmup(belt: HeartRateBelt | null, active: boolean): {
   /** Échec de la connexion (permission refusée, Bluetooth éteint), ou `null`. */
   error: string | null;
-  /** Nouvel essai après un échec. */
+  /**
+   * « Réessayer » : après un échec, la connexion est redemandée ; ceinture encore cherchée, le téléphone la cherche
+   * tout de suite, sans attendre sa tentative suivante (lot 232).
+   */
   retry: () => void;
+  /** Vrai pendant un nouvel essai : « nouvelle tentative… ». */
+  retrying: boolean;
   /** Lance le départ en gardant la connexion jusqu'à ce qu'il soit fait. */
   handOver: (start: () => Promise<void>) => Promise<void>;
 } {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [retrying, setRetrying] = useState(false);
   /** Vrai pendant le départ : la connexion n'est pas rendue quand la page cesse de la vouloir. */
   const handingOver = useRef(false);
   /** Numéro de la dernière prise : une prise annulée ne rend pas la ceinture qu'une plus récente tient. */
@@ -51,7 +57,17 @@ export function useBeltWarmup(belt: HeartRateBelt | null, active: boolean): {
     };
   }, [active, belt, attempt]);
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    if (error !== null) {
+      setAttempt((n) => n + 1);
+      return;
+    }
+    setRetrying(true);
+    retryBelt()
+      // Refusé (Bluetooth éteint entre-temps) : dit comme un échec de la connexion, que « Réessayer » redemande.
+      .catch((err: unknown) => setError(plainError(err, 'erreur inconnue')))
+      .finally(() => setRetrying(false));
+  }, [error]);
 
   const handOver = useCallback(async (start: () => Promise<void>) => {
     handingOver.current = true;
@@ -63,5 +79,5 @@ export function useBeltWarmup(belt: HeartRateBelt | null, active: boolean): {
     }
   }, []);
 
-  return { error, retry, handOver };
+  return { error, retry, retrying, handOver };
 }

@@ -3,6 +3,18 @@ import type { SportType } from './types';
 
 const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).includes(s);
 
+/** Réglages. */
+const SETTINGS_ROUTE = '/parametres';
+
+/**
+ * Réglages ouverts sur le bloc « Capteurs » (`?bloc=capteurs`, lot 232), où se trouve le bouton « Ajouter » d'une
+ * ceinture : le lien « Aucune ceinture choisie » de la page Enregistrer.
+ */
+export const SETTINGS_SENSORS_PATH = `${SETTINGS_ROUTE}?bloc=capteurs`;
+
+/** Bloc de Réglages désigné par l'adresse (`?bloc=`), `null` s'il n'y en a pas : les blocs gardent alors leur état. */
+export const settingsBlockFromSearch = (search: string): string | null => new URLSearchParams(search).get('bloc');
+
 /**
  * Page au-dessus d'une adresse, où renvoie la touche retour d'Android (et le
  * geste du bord de l'écran) : l'analyse d'une session renvoie à la
@@ -12,12 +24,15 @@ const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).i
  * Enregistrer en mode Timer (`?minuterie`) renvoie à la liste du Timer ; une
  * leçon des tutoriels à leur liste, et celle-ci à Réglages ; les
  * Statistiques remontent d'un cran (activité, famille, vue d'ensemble), la
- * période gardée ; toute autre page renvoie à l'accueil. `null` à l'accueil :
+ * période gardée ; Réglages ouverts par le lien de la ceinture d'Enregistrer
+ * (`?bloc=capteurs`) y renvoient ; toute autre page renvoie à l'accueil. `null` à l'accueil :
  * rien au-dessus.
  */
 export const parentPage = (pathname: string, search: string): string | null => {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return null;
+  // Réglages ouverts par le lien de la page Enregistrer (`?bloc=capteurs`, lot 232) : retour à Enregistrer.
+  if (path === SETTINGS_ROUTE && settingsBlockFromSearch(search) === 'capteurs') return '/enregistrer';
   const parts = path.split('/').filter(Boolean);
   if (parts.length === 2 && parts[1] === 'analyse' && isFamily(parts[0])) {
     return libraryPath(parts[0], new URLSearchParams(search).get('activite') ?? undefined);

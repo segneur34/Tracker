@@ -2,6 +2,7 @@ import { roundBearingDeg } from '../core/angles';
 import { errorMessage } from '../core/basics';
 import { Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { SETTINGS_SENSORS_PATH } from '../core/parentPage';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
 import { zoneLabel } from '../components/heartRateColors';
@@ -37,7 +38,7 @@ import { liveStatsOptionsFor, useLiveRecording } from '../hooks/useLiveRecording
 import { useBeltLive } from '../hooks/useBeltLive';
 import { useBeltWarmup } from '../hooks/useBeltWarmup';
 import { useSatellites } from '../hooks/useSatellites';
-import { useMissingPermissions } from '../hooks/usePermissions';
+import { usePermissions } from '../hooks/usePermissions';
 import { setBeepsMuted, skipMark, useMarkGuide } from '../hooks/useMarkGuide';
 import { usePerActivityChoice } from '../hooks/usePerActivityChoice';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -50,11 +51,14 @@ import { getMotionCapabilities, type MotionCapabilities } from '../platform/moti
 import { beltLabels } from '../platform/beltList';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, chooseSavedBelt, savedBelt, savedBelts, setExampleBeltBpm, type BeltState, type HeartRateBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
-import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
+import { PERMISSION_LABEL, batteryRestricted, missingPermissions as missingOf } from '../recording/permissionsPrompt';
+import { beltRetryOffer, beltRetryUnderAlert, gpsRetryOffer, warmupRetryShown } from '../recording/recordingRetry';
+import { requestPermission } from '../platform/permissions';
 import {
   addRecordingMark, changeRecordingActivity, getLastFix, getLiveFixes,
-  getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
-  resumeRecording, startRecording, stopRecording, stopRecordingBeltSearch, type RecorderState,
+  getLiveHeadingFixes, getLiveSegmentCount, openRecordingLocationSettings, pauseRecording,
+  resumeRecording, retakeRecordingBelt, retryRecordingBelt, retryRecordingGps, startRecording, stopRecording, stopRecordingBeltSearch,
+  type RecorderState,
   useLivePosition, useRecordingClock, useRecorderSelector, useRecorderStatus,
 } from '../hooks/useRecorder';
 import { followedProfile, hasFollowedElevation } from '../recording/followedProfile';
@@ -449,12 +453,14 @@ const useScreenOnWhile = (on: boolean): void => {
  * Case d'une mesure proposée au départ (sauts, cadence, ceinture, pumping) et
  * son explication dessous ; `children` après elle (état de la ceinture).
  */
-function CaptureOption({ label, checked, disabled, onChange, note, children }: {
+function CaptureOption({ label, checked, disabled, onChange, note, noteAlert, children }: {
   label: string;
   checked: boolean;
   disabled: boolean;
   onChange: (checked: boolean) => void;
   note: React.ReactNode;
+  /** La note s'affiche dans un cadre d'alerte rouge (état qui empêche la mesure demandée, lot 232). */
+  noteAlert?: boolean;
   children?: React.ReactNode;
 }) {
   return (
@@ -463,7 +469,9 @@ function CaptureOption({ label, checked, disabled, onChange, note, children }: {
         <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
         <span>{label}</span>
       </label>
-      <span className="ui-muted ui-text-s rec-indent">{note}</span>
+      {noteAlert
+        ? <div className="ui-alert ui-alert--danger rec-alert-link">{note}</div>
+        : <span className="ui-muted ui-text-s rec-indent">{note}</span>}
       {children}
     </div>
   );
@@ -541,6 +549,85 @@ function MarkGuideSlot({ activity }: { activity: Activity }) {
 }
 
 /**
+ * Boutons de secours de la ceinture pendant l'enregistrement (`beltRetryOffer`, lot 232) : « Réessayer » une ceinture
+ * cherchée, perdue ou injoignable, « Arrêter de chercher » (sans confirmation : « Reprendre la ceinture » la rend), et
+ * « Reprendre la ceinture » après l'abandon. `underAlert` : la rangée posée sous l'alerte rouge, montrée seulement
+ * quand l'alerte parle de la ceinture ; celle de la carte « En cours » se tait alors (un seul jeu de boutons). Aucun ne
+ * touche à la trace ni à la notification.
+ */
+function BeltRescue({ underAlert }: { underAlert: boolean }) {
+  const status = useRecorderSelector((s) => s.status);
+  const heartRate = useRecorderSelector((s) => s.heartRate);
+  const beltLost = useRecorderSelector((s) => s.beltLost);
+  const beltAside = useRecorderSelector((s) => s.beltAside);
+  const retrying = useRecorderSelector((s) => s.beltRetrying);
+  const withPositions = useRecorderSelector((s) => s.sport === null || hasPositions(s.sport));
+  const input = { active: status === 'recording' || status === 'paused', withPositions, heartRate, beltLost, beltAside };
+  const offer = beltRetryOffer(input);
+  // Un seul jeu de boutons, comme pour le GPS : sous l'alerte rouge quand elle parle de la ceinture, sinon sous la tuile.
+  const alertShown = useRecorderSelector((s) => s.error !== null) && beltRetryUnderAlert(input);
+  if (underAlert !== alertShown) return null;
+  if (!offer.retry && !offer.stop && !offer.retake) return null;
+  return (
+    <div className="rec-rescue">
+      {!underAlert && offer.stop && <span className="ui-muted">Sans elle, l'enregistrement continue, sans cardio.</span>}
+      <span className="rec-rescue__actions">
+        {offer.retry && (
+          <Button size="s" disabled={retrying} onClick={() => void retryRecordingBelt()}>
+            {retrying ? 'nouvelle tentative…' : 'Réessayer'}
+          </Button>
+        )}
+        {offer.stop && <Button size="s" onClick={stopRecordingBeltSearch}>Arrêter de chercher</Button>}
+        {offer.retake && (
+          <Button size="s" disabled={retrying} onClick={() => void retakeRecordingBelt()}>
+            {retrying ? 'nouvelle tentative…' : 'Reprendre la ceinture'}
+          </Button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Boutons de secours du GPS pendant l'enregistrement (`gpsRetryOffer`, lot 232) : « Réessayer » tant qu'aucune
+ * position n'est venue ou que le GPS est perdu, hors pause manuelle, « nouvelle tentative… » quelques secondes après
+ * l'appui ; « Activer la localisation » quand elle est coupée. `underAlert` : la rangée posée sous l'alerte rouge (GPS
+ * perdu, localisation coupée) ; sinon sous la ligne d'état, avec l'attente écrite. Aucun ne touche à la trace ni à la
+ * notification.
+ */
+function GpsRescue({ underAlert }: { underAlert: boolean }) {
+  const status = useRecorderSelector((s) => s.status);
+  const pausedReason = useRecorderSelector((s) => s.pausedReason);
+  const awaitingFix = useRecorderSelector((s) => s.awaitingFix);
+  const gpsLost = useRecorderSelector((s) => s.gpsLost);
+  const locationOff = useRecorderSelector((s) => s.locationOff);
+  const retrying = useRecorderSelector((s) => s.gpsRetrying);
+  const offer = gpsRetryOffer({
+    active: status === 'recording' || status === 'paused',
+    manualPause: isManualPause({ status, pausedReason }),
+    awaitingFix,
+    gpsLost,
+    locationOff,
+  });
+  if (offer.underAlert !== underAlert || (!offer.retry && !offer.openSettings)) return null;
+  return (
+    <div className="rec-rescue">
+      {offer.waiting && <span className="ui-muted">en attente de la première position</span>}
+      <span className="rec-rescue__actions">
+        {offer.retry && (
+          <Button size="s" disabled={retrying} onClick={() => void retryRecordingGps()}>
+            {retrying ? 'nouvelle tentative…' : 'Réessayer'}
+          </Button>
+        )}
+        {offer.openSettings && (
+          <Button size="s" onClick={() => void openRecordingLocationSettings()}>Activer la localisation</Button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
  * Chiffres de l'enregistrement en cours : les grands chiffres de la carte
  * réduite (ou du téléphone tourné), puis la carte « En cours ». Seuls à suivre
  * l'horloge, le direct, la ceinture et le guidage : le reste de la page n'est
@@ -588,16 +675,8 @@ function RecordingFigures({ summaryShown, clockShown, liveActivity, followed, co
         {heartRate && (!folded || heartRate.state !== 'connected' || heartRate.bpm === null) && (
           <BpmTile belt={heartRate} target={zoneAlert.active ? zoneAlert.target : 0} />
         )}
-        {heartRate && (heartRate.state === 'searching' || heartRate.state === 'lost') && liveActivity && hasPositions(liveActivity.base) && (
-          // Ceinture perdue ou jamais trouvée (lot 198) : on peut renoncer à elle, l'enregistrement continue sans cardio.
-          <div className="rec-belt-stop">
-            <span className="ui-muted">Sans elle, l'enregistrement continue, sans cardio.</span>
-            <Button size="s" onClick={() => {
-              // Sans retour possible pendant la sortie : un appui par mégarde, en courant, ne doit pas suffire.
-              if (window.confirm("Arrêter de chercher la ceinture ? L'enregistrement continue sans cardio jusqu'à la fin de la sortie.")) stopRecordingBeltSearch();
-            }}>Arrêter de chercher</Button>
-          </div>
-        )}
+        {/* Ceinture cherchée, perdue, injoignable ou laissée (lots 198 et 232) : réessayer, y renoncer, la reprendre. */}
+        <BeltRescue underAlert={false} />
         {zoneAlert.active && zoneAlert.band && liveActivity && <LiveHeartBand activity={liveActivity} band={zoneAlert.band} />}
         {!folded && (
           <div style={STAT_GRID}>
@@ -806,7 +885,11 @@ function RecordingScreen() {
   // Ceinture cochée : connectée dès maintenant, avant le départ, pour voir qu'elle répond.
   const beltWarmup = useBeltWarmup(belt, (heartOnly || (native && sourceChoice === 'device')) && measureHeartRate && !busy && pending === null);
   const beltLive = useBeltLive();
-  const missingPermissions = useMissingPermissions();
+  const { status: permissions } = usePermissions();
+  // Batterie restreinte (lot 232) : dite au repos par son alerte et son bouton, donc retirée de la note de bas de page.
+  const batteryAlertShown = native && !busy && pending === null && batteryRestricted(permissions);
+  const missingPermissions = (permissions ? missingOf(permissions, savedBelt() !== null) : [])
+    .filter((key) => !(batteryAlertShown && key === 'battery'));
   const analyzing = useRecorderSelector((s) => s.analyzing);
   // Muscu : « Démarrer » jamais grisé, sans la ceinture la séance est chronométrée (lot 210).
   const canStart = !busy && pending === null && chosen !== null && !restingChosen
@@ -1022,10 +1105,11 @@ function RecordingScreen() {
 
           {chosen && heartRateSetting !== null && (native || heartOnly) && !restingChosen && (
             // Muscu : cochée d'office, elle se décoche ; sans elle, la séance est chronométrée (lot 210).
-            <CaptureOption label="Ceinture cardio" checked={measureHeartRate} disabled={belt === null}
-              onChange={setHeartRatePicked}
+            // Case jamais grisée (lot 232) : elle montre la demande ; cochée sans ceinture retenue, la note passe en rouge.
+            <CaptureOption label="Ceinture cardio" checked={heartRatePicked} disabled={false}
+              onChange={setHeartRatePicked} noteAlert={belt === null && heartRatePicked}
               note={belt === null
-                ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».{heartOnly && ` ${withoutBeltNote}`}</>
+                ? <>Aucune ceinture choisie : <Link to={SETTINGS_SENSORS_PATH}>Réglages</Link>, bloc « Capteurs ».{heartOnly && ` ${withoutBeltNote}`}</>
                 : belt === EXAMPLE_BELT
                   ? `FC d'exemple du navigateur, pour éprouver ${nightChosen ? 'le test' : 'la muscu'} : la vraie ceinture est sur le téléphone. ${withoutBeltNote}`
                   : <>
@@ -1039,8 +1123,11 @@ function RecordingScreen() {
                 <span className="ui-text-s rec-indent">
                   <BeltStatus state={beltLive.state} bpm={beltLive.bpm}
                     offText={beltWarmup.error ? `connexion impossible : ${beltWarmup.error}` : null}>
-                    {beltWarmup.error && (
-                      <Button size="s" onClick={beltWarmup.retry}>Réessayer</Button>
+                    {/* Échec de la connexion, ou ceinture encore cherchée : un essai tout de suite, sans attendre le suivant (lot 232). */}
+                    {warmupRetryShown(beltLive.state, beltWarmup.error !== null) && (
+                      <Button size="s" disabled={beltWarmup.retrying} onClick={beltWarmup.retry}>
+                        {beltWarmup.retrying ? 'nouvelle tentative…' : 'Réessayer'}
+                      </Button>
                     )}
                     {/* Ceinture encore cherchée (lot 198) : on peut y renoncer, comme en décochant la case, muscu comprise (lot 210). */}
                     {(beltLive.state === 'connecting' || beltLive.state === 'searching' || beltLive.state === 'lost') && (
@@ -1225,6 +1312,8 @@ function RecordingScreen() {
           )}
         </div>
       )}
+      {/* GPS sans position depuis le départ : « Réessayer », sous la ligne d'état (lot 232) ; pas pour un rejeu. */}
+      {busy && !liveHeartOnly && sourceChoice === 'device' && <GpsRescue underAlert={false} />}
 
       {busy && pickOffered && !picking && (
         // En route, sans trace suivie : en choisir une (lot 222), retirée par erreur par exemple.
@@ -1271,6 +1360,16 @@ function RecordingScreen() {
       )}
 
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
+      {/* Sous l'alerte qui dit la panne (lot 232) : GPS perdu ou localisation coupée, ceinture perdue ou injoignable. */}
+      {error && busy && !liveHeartOnly && sourceChoice === 'device' && <GpsRescue underAlert />}
+      {error && busy && <BeltRescue underAlert />}
+      {batteryAlertShown && (
+        // Prévient sans jamais empêcher le départ : l'état se relit au retour de l'écran d'Android.
+        <div className="ui-alert ui-alert--danger ui-row-10 ui-center ui-wrap">
+          <span className="ui-grow">Batterie restreinte : Android peut couper l'enregistrement, application fermée.</span>
+          <Button size="s" onClick={() => void requestPermission('battery').catch(() => undefined)}>Autoriser</Button>
+        </div>
+      )}
 
       {showCounter && <IntervalCard kind={counterTimer ? 'timer' : 'fractionne'} recording={busy} muscu={counterTimer}
         stopRecording={<StopButton status={status} inCounter />}

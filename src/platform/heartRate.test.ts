@@ -17,6 +17,8 @@ const plugin = vi.hoisted(() => ({
   connection: { wanted: false, state: 'off', address: undefined as string | undefined },
   /** Écouteurs posés, par événement, pour jouer les événements du greffon. */
   listeners: {} as Record<string, (data: unknown) => void>,
+  /** Nouveaux essais demandés au greffon, et la réponse de chacun, à donner par le test. */
+  retries: [] as ((seen: boolean | Error) => void)[],
 }));
 
 vi.mock('./runtime', async (importOriginal) => ({
@@ -53,6 +55,9 @@ vi.mock('@capacitor/core', async (importOriginal) => ({
       plugin.stopScans += 1;
     },
     connection: async () => plugin.connection,
+    retryNow: () => new Promise<{ seen: boolean }>((resolve, reject) => {
+      plugin.retries.push((seen) => (seen instanceof Error ? reject(seen) : resolve({ seen })));
+    }),
   }),
 }));
 
@@ -65,6 +70,7 @@ beforeEach(() => {
   plugin.stopScans = 0;
   plugin.connection = { wanted: false, state: 'off', address: undefined };
   plugin.listeners = {};
+  plugin.retries = [];
   vi.resetModules();
 });
 
@@ -299,5 +305,32 @@ describe('appareils retenus', () => {
     expect(savedBelt()).toEqual({ ...belt, random: true });
     expect(savedBelts()).toEqual([{ ...belt, random: true }, other]);
     release();
+  });
+});
+
+/** « Réessayer » (lot 232) : le greffon cherche tout de suite ; un appui répété ne lance pas un second essai. */
+describe('nouvel essai', () => {
+  it('un seul essai à la fois : un second appel rend la même promesse, un appel après la fin en lance un nouveau', async () => {
+    const { retryBelt } = await import('./heartRate');
+    const first = retryBelt();
+    const second = retryBelt();
+    expect(second).toBe(first);
+    expect(plugin.retries).toHaveLength(1);
+    plugin.retries[0](true);
+    await expect(first).resolves.toBe(true);
+    const third = retryBelt();
+    expect(third).not.toBe(first);
+    expect(plugin.retries).toHaveLength(2);
+    plugin.retries[1](false);
+    await expect(third).resolves.toBe(false);
+  });
+
+  it('un refus du greffon (Bluetooth éteint) est rendu, et ne bloque pas un essai suivant', async () => {
+    const { retryBelt } = await import('./heartRate');
+    const refused = retryBelt();
+    plugin.retries[0](new Error('Bluetooth éteint'));
+    await expect(refused).rejects.toThrow('Bluetooth éteint');
+    void retryBelt();
+    expect(plugin.retries).toHaveLength(2);
   });
 });

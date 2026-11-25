@@ -116,6 +116,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- « Réessayer » du GPS (GnssPlugin, lot 232) : recharger les données d'aide au GPS, sans jamais les effacer ;
+         permission normale, sans demande. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
     <!-- Ceinture cardio (HeartRatePlugin) : recherche et connexion Bluetooth, sans en tirer de position. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />

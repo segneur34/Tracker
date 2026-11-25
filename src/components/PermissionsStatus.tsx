@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { savedBelt } from '../platform/heartRate';
 import {
-  markPermissionsSeen, openAppSettings, openAutostart, permissionsSeenVersion, readPermissions, requestPermission,
+  autostartOpenedBefore, markAutostartOpened, markPermissionsSeen, openAppSettings, openAutostart, permissionsSeenVersion,
+  readPermissions, requestPermission, waitForAppResume,
 } from '../platform/permissions';
 import { isNativeApp } from '../platform/runtime';
 import {
@@ -18,8 +19,9 @@ import './StatusLine.css';
 
 /**
  * Autorisations du téléphone dont l'enregistrement a besoin : une ligne par
- * autorisation (pourquoi, état, bouton), plus le démarrage automatique de
- * Xiaomi, sans état lisible. En tête de l'accueil (`PermissionsPrompt`) au
+ * autorisation (pourquoi, état, bouton), plus le démarrage automatique sur un
+ * Xiaomi, Redmi ou POCO seulement, sans état (le téléphone ne le dit pas de
+ * façon sûre ; lot 232, d'après Gtracker 408 et 419). En tête de l'accueil (`PermissionsPrompt`) au
  * premier lancement et après une mise à jour s'il en manque une ; dans
  * Réglages, bloc « Autorisations » (`PermissionsSettings`). Rien dans le
  * navigateur. Les états sont relus au retour d'un écran système.
@@ -74,7 +76,19 @@ function PermissionRow({ helpKey, label, why, children }: { helpKey: string; lab
   );
 }
 
-function PermissionRows({ keys, status, refresh }: { keys: PermissionKey[]; status: Status; refresh: () => Promise<Status> }) {
+/**
+ * Attente du retour de l'écran de la batterie avant d'ouvrir celui du démarrage automatique : passé ce délai, on
+ * n'ouvre pas un second écran par-dessus un utilisateur parti ailleurs.
+ */
+const BATTERY_RETURN_TIMEOUT_MS = 60_000;
+
+function PermissionRows({ keys, status, autostart, refresh }: {
+  keys: PermissionKey[];
+  status: Status;
+  /** Ligne du démarrage automatique : sur un Xiaomi seulement. */
+  autostart: boolean;
+  refresh: () => Promise<Status>;
+}) {
   return (
     <div className="permissions">
       {keys.map((key) => {
@@ -93,30 +107,59 @@ function PermissionRows({ keys, status, refresh }: { keys: PermissionKey[]; stat
           </PermissionRow>
         );
       })}
-      <PermissionRow helpKey="autorisations:demarrage" label="Démarrage automatique"
-        why="Sur Xiaomi, pour que l'enregistrement tienne en arrière-plan. Android ne dit pas s'il est activé : à vérifier soi-même.">
-        <Button size="s" onClick={() => void openAutostart().catch(() => undefined)}>Ouvrir</Button>
-      </PermissionRow>
+      {autostart && (
+        <PermissionRow helpKey="autorisations:demarrage" label="Démarrage automatique"
+          why="Pour que l'enregistrement tienne en arrière-plan. Android ne dit pas s'il est activé : à vérifier soi-même.">
+          <Button size="s" onClick={() => void openAutostart().catch(() => undefined)}>Ouvrir</Button>
+        </PermissionRow>
+      )}
     </div>
   );
 }
 
+/** Vrai pendant « Tout autoriser » : un second appui ne relance pas la suite, un seul écran de chaque à refermer. */
+let askingAll = false;
+
 /**
  * Demande toutes celles qui manquent, dans l'ordre : les demandes système
- * d'abord, puis l'écran de la batterie, qui quitte l'application.
+ * d'abord, puis l'écran de la batterie, qui quitte l'application ; sur un
+ * Xiaomi, son écran du démarrage automatique en dernier, une fois revenu de
+ * celui de la batterie, la première fois seulement sur cet appareil (son état
+ * ne se lit pas ; le bouton de sa ligne permet d'y revenir).
  */
-const askAll = async (keys: PermissionKey[], refresh: () => Promise<Status>): Promise<void> => {
-  let status = await refresh();
-  for (const key of keys) {
-    if (key === 'battery' || status[key] !== 'prompt') continue;
-    try {
-      await requestPermission(key);
-    } catch {
-      // Refus ou échec : on passe à la suivante.
+const askAll = async (keys: PermissionKey[], autostart: boolean, refresh: () => Promise<Status>): Promise<void> => {
+  if (askingAll) return;
+  askingAll = true;
+  try {
+    let status = await refresh();
+    for (const key of keys) {
+      if (key === 'battery' || status[key] !== 'prompt') continue;
+      try {
+        await requestPermission(key);
+      } catch {
+        // Refus ou échec : on passe à la suivante.
+      }
+      status = await refresh();
     }
-    status = await refresh();
+    let back: Promise<boolean> = Promise.resolve(true);
+    if (keys.includes('battery') && status.battery !== 'granted') {
+      try {
+        await requestPermission('battery');
+        // Écouté dès l'écran ouvert, pour ne pas manquer un retour rapide.
+        back = waitForAppResume(BATTERY_RETURN_TIMEOUT_MS);
+      } catch {
+        // Écran absent : l'état relu le dira, et rien n'attend son retour.
+      }
+      await refresh();
+    }
+    if (!autostart || autostartOpenedBefore()) return;
+    // Écran de la batterie laissé ouvert trop longtemps : on s'arrête là plutôt que d'en ouvrir un autre.
+    if (!(await back)) return;
+    markAutostartOpened();
+    await openAutostart().catch(() => undefined);
+  } finally {
+    askingAll = false;
   }
-  if (keys.includes('battery') && status.battery !== 'granted') await ask('battery', status.battery, refresh);
 };
 
 /**
@@ -124,7 +167,7 @@ const askAll = async (keys: PermissionKey[], refresh: () => Promise<Status>): Pr
  * `onDecided` apprend une fois, après la lecture des autorisations, si la carte paraît (le pop-up du profil attend alors).
  */
 export function PermissionsPrompt({ onDecided }: { onDecided?: (shown: boolean) => void }) {
-  const { status, refresh } = usePermissions();
+  const { status, autostart, refresh } = usePermissions();
   const [dismissed, setDismissed] = useState(false);
   const beltSaved = savedBelt() !== null;
   const [shown, setShown] = useState<boolean | null>(null);
@@ -168,9 +211,9 @@ export function PermissionsPrompt({ onDecided }: { onDecided?: (shown: boolean) 
             ? 'Tout est accordé : Tracker peut enregistrer écran éteint.'
             : "Pour enregistrer écran éteint, sans coupure, Tracker a besoin de ce qui suit. Chacune se règle aussi plus tard, dans Réglages › Autorisations."}
         </p>
-        <PermissionRows keys={keys} status={status} refresh={refresh} />
+        <PermissionRows keys={keys} status={status} autostart={autostart} refresh={refresh} />
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {missing.length > 0 && <Button variant="primary" onClick={() => void askAll(keys, refresh)}>Tout autoriser</Button>}
+          {missing.length > 0 && <Button variant="primary" onClick={() => void askAll(keys, autostart, refresh)}>Tout autoriser</Button>}
           <Button variant="ghost" onClick={close}>{missing.length === 0 ? 'Fermer' : 'Plus tard'}</Button>
         </div>
       </div>
@@ -180,7 +223,7 @@ export function PermissionsPrompt({ onDecided }: { onDecided?: (shown: boolean) 
 
 /** Bloc « Autorisations » de Réglages : toutes les lignes, Bluetooth compris. */
 export function PermissionsSettings() {
-  const { status, refresh } = usePermissions();
+  const { status, autostart, refresh } = usePermissions();
   if (!isNativeApp()) {
     return <p className="permissions__intro">Sur l'application Android seulement.</p>;
   }
@@ -189,10 +232,10 @@ export function PermissionsSettings() {
   const missing = missingPermissions(status, true);
   return (
     <div className="ui-stack-3">
-      <PermissionRows keys={keys} status={status} refresh={refresh} />
+      <PermissionRows keys={keys} status={status} autostart={autostart} refresh={refresh} />
       {missing.length > 0 && (
         <div>
-          <Button variant="primary" onClick={() => void askAll(keys, refresh)}>Tout autoriser</Button>
+          <Button variant="primary" onClick={() => void askAll(keys, autostart, refresh)}>Tout autoriser</Button>
         </div>
       )}
     </div>

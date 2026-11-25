@@ -160,15 +160,34 @@
 }
 
 /* Course à bornes en cours, sous la tuile BPM (05/11) : la bande et « Modifier » ; boutons de sa fenêtre.
-   Même ligne pour « Arrêter de chercher » une ceinture perdue (lot 198). */
+   Même ligne pour les boutons de secours (lot 232) : ceinture (« Réessayer », « Arrêter de chercher », « Reprendre la
+   ceinture ») sous la tuile BPM, GPS (« Réessayer », « Activer la localisation ») sous la ligne d'état ; sous l'alerte
+   rouge à leur place quand elle dit la panne, jamais aux deux endroits. */
 .rec-band,
-.rec-belt-stop {
+.rec-rescue {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
   font-size: var(--text-s);
+}
+
+.rec-rescue {
+  flex-wrap: wrap;
+}
+
+.rec-rescue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* Lien dans une alerte rouge (« Aucune ceinture choisie », lot 232) : à l'encre de l'alerte, souligné, lisible sur son fond. */
+.rec-alert-link a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .rec-band__actions {

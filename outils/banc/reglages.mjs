@@ -20,6 +20,9 @@
 //     reprend son défaut et garde l'autre ; les deux vidées : plus de réglage, « défaut » ;
 // 10. le seuil suit la session (lot 148, Q57) : seuil de Course changé, sa fiche recalculée ; seconde ouverture, fiche
 //     intacte (lastModified) ; réglages d'un autre appareil (seuil différent, sans geste) : fiche intacte.
+// 11. lien « Aucune ceinture choisie » d'Enregistrer (`/parametres?bloc=capteurs`, lot 232) : le bloc « Capteurs »,
+//     refermé avant, s'ouvre et vient en haut de l'écran, son corps visible (« Ajouter » n'existe qu'au téléphone) ;
+//     ouverts sans paramètre, les blocs gardent leur état.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
 
@@ -295,6 +298,31 @@ await evaluate(`(() => { const g = JSON.parse(localStorage.getItem('tracker.summ
 await go('/course', 4000);
 await settle({ max: 2000 });
 check('seuil : autres réglages sans geste, fiche intacte', (await courseRecord()).date === redone.date && (await courseRecord()).porte === 2, JSON.stringify(await courseRecord()));
+
+step('11. Réglages ouverts sur le bloc « Capteurs » (lot 232)');
+/**
+ * Titre du bloc « Capteurs », et son corps : le bloc est ouvert quand son corps est dessiné dans sa carte (dans le
+ * navigateur, il ne dit que « Sur l'application Android seulement. » : pas de ligne « Ceintures et montres » ni de
+ * bouton « Ajouter », réservés au téléphone).
+ */
+const sensorsTitle = `[...document.querySelectorAll('[role=button]')].find((x) => x.textContent.trim() === 'Capteurs')`;
+const sensorsBody = `${sensorsTitle}?.parentElement?.querySelector('.settings-block__body')`;
+const sensorsOpen = () => evaluate(`Boolean(${sensorsBody})`);
+await go('/parametres', 3000);
+if (await sensorsOpen()) await evaluate(`${sensorsTitle}?.click(); 'ok'`);
+await wait(300);
+check('Réglages ouverts par la barre : bloc « Capteurs » refermé', (await sensorsOpen()) === false);
+await go('/parametres?bloc=capteurs', 3000);
+await waitFor(`Boolean(${sensorsBody})`, { timeout: 2000, label: 'bloc Capteurs' });
+await wait(300);
+check('?bloc=capteurs : bloc « Capteurs » ouvert', (await sensorsOpen()) === true, await evaluate(`${sensorsBody}?.textContent ?? '(fermé)'`));
+const sensorsTop = await evaluate(`Math.round(${sensorsTitle}?.getBoundingClientRect().top ?? -1)`);
+// En haut de l'écran, ou aussi haut que la page le permet (page plus courte que l'écran, page déroulée jusqu'en bas).
+const atTop = await evaluate(`(() => { const t = ${sensorsTitle}?.getBoundingClientRect().top ?? -1; const bottom = Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight - 2; return t >= 0 && (t < 200 || bottom); })()`);
+check("?bloc=capteurs : bloc amené en haut de l'écran", atTop === true, `haut à ${sensorsTop} px`);
+check('?bloc=capteurs : corps du bloc visible', await evaluate(`(() => { const b = ${sensorsBody}; if (!b) return false; const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`));
+await go('/parametres', 3000);
+check('Réglages rouverts par la barre : le bloc garde son état (ouvert)', (await sensorsOpen()) === true);
 
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/parametres', 3000);

@@ -92,6 +92,7 @@ interface HeartRatePlugin {
   keepAlive(options: { title: string; text: string }): Promise<void>;
   stopKeepAlive(): Promise<void>;
   connection(): Promise<{ wanted: boolean; state: BeltState; address?: string }>;
+  retryNow(): Promise<{ seen: boolean }>;
   addListener(event: 'heartRate', listener: (data: { bpm: number; timeMs: number; contact?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'status', listener: (data: { state: BeltState; address?: string; random?: boolean }) => void): Promise<PluginListenerHandle>;
 }
@@ -325,6 +326,26 @@ export const adoptBelt = async (holder: string): Promise<(() => void) | null> =>
   holders.add(holder);
   setState(current);
   return () => releaseBelt(holder);
+};
+
+/** Nouvel essai en cours (`retryBelt`), `null` sans essai. */
+let retrying: Promise<boolean> | null = null;
+
+/**
+ * « Réessayer » (lot 232) : le greffon cherche la ceinture tenue tout de suite, sans attendre sa tentative suivante,
+ * puis reprend ses essais ordinaires ; rien n'est coupé ni lâché. Rend vrai si la recherche l'a vue (ou si elle est
+ * déjà liée). Un seul essai à la fois : un appel pendant le précédent rend la même promesse ; le greffon tient de
+ * son côté 6 s au moins entre deux recherches (`RETRY_GAP_MS`, limite d'Android). Lève si aucune ceinture n'est
+ * demandée ou si le Bluetooth est éteint. Dans le navigateur, la ceinture d'exemple répond aussitôt.
+ */
+export const retryBelt = (): Promise<boolean> => {
+  if (!isNativeApp()) return Promise.resolve(exampleTimer !== null);
+  retrying ??= plugin.retryNow()
+    .then((r) => r.seen === true)
+    .finally(() => {
+      retrying = null;
+    });
+  return retrying;
 };
 
 /** Ceinture d'exemple : connectée tout de suite, une mesure par seconde. */

@@ -18,8 +18,16 @@ import { jsonStore } from './storage';
 interface PermissionsPlugin {
   batteryStatus(): Promise<{ unrestricted: boolean }>;
   requestUnrestrictedBattery(): Promise<void>;
+  deviceBrand(): Promise<DeviceBrand>;
   openAutostart(): Promise<void>;
   openAppSettings(): Promise<void>;
+  openLocationSettings(): Promise<void>;
+}
+
+/** Marque du téléphone (`Build.MANUFACTURER`, `Build.BRAND`). */
+export interface DeviceBrand {
+  manufacturer: string;
+  brand: string;
 }
 
 const plugin = registerPlugin<PermissionsPlugin>('Permissions');
@@ -75,6 +83,20 @@ export const requestPermission = async (key: PermissionKey): Promise<void> => {
   }
 };
 
+/** Marque du téléphone, sans rien demander ; `null` dans le navigateur ou si la lecture échoue. */
+export const readDeviceBrand = async (): Promise<DeviceBrand | null> => {
+  if (!isNativeApp()) return null;
+  return plugin.deviceBrand().catch(() => null);
+};
+
+const AUTOSTART_OPENED_KEY = 'tracker.autostartOpened';
+
+/** Vrai si « Tout autoriser » a déjà ouvert l'écran du démarrage automatique sur cet appareil. */
+export const autostartOpenedBefore = (): boolean => jsonStore.read<unknown>(AUTOSTART_OPENED_KEY) === true;
+
+/** Retient que l'écran du démarrage automatique a été ouvert par « Tout autoriser » : il ne l'ouvrira plus. */
+export const markAutostartOpened = (): void => jsonStore.write(AUTOSTART_OPENED_KEY, true);
+
 /** Écran du démarrage automatique (MIUI, HyperOS), sinon les réglages de l'application. */
 export const openAutostart = async (): Promise<void> => {
   if (isNativeApp()) await plugin.openAutostart();
@@ -83,6 +105,14 @@ export const openAutostart = async (): Promise<void> => {
 /** Réglages de l'application : une autorisation refusée pour de bon s'y accorde. */
 export const openAppSettings = async (): Promise<void> => {
   if (isNativeApp()) await plugin.openAppSettings();
+};
+
+/**
+ * Réglage de la localisation d'Android : « Activer la localisation » d'Enregistrer, quand elle est coupée (lot 232).
+ * Sans effet dans le navigateur.
+ */
+export const openLocationSettings = async (): Promise<void> => {
+  if (isNativeApp()) await plugin.openLocationSettings();
 };
 
 /** Retour au premier plan (après un écran système, par exemple) ; rend le désabonnement. Sans effet dans le navigateur. */
@@ -99,6 +129,26 @@ export const onAppResume = (listener: () => void): (() => void) => {
     removed = true;
     remove?.();
   };
+};
+
+/**
+ * Attend le prochain retour au premier plan, une seule fois : vrai s'il vient dans `timeoutMs`, faux sinon (et
+ * aussitôt dans le navigateur). Sert à enchaîner deux écrans système sans les ouvrir l'un sur l'autre.
+ */
+export const waitForAppResume = (timeoutMs: number): Promise<boolean> => {
+  if (!isNativeApp()) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let stop: () => void = () => {};
+    const timer = setTimeout(() => {
+      stop();
+      resolve(false);
+    }, timeoutMs);
+    stop = onAppResume(() => {
+      clearTimeout(timer);
+      stop();
+      resolve(true);
+    });
+  });
 };
 
 // --- Version vue en dernier ---

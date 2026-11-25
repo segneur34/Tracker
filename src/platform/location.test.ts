@@ -130,6 +130,19 @@ describe('service GPS du téléphone partagé (D-B1)', () => {
     await stop();
   });
 
+  it('localisation coupée : dite une fois, avec sa cause, par la source elle-même (lot 232) ; une autre erreur sans cause', async () => {
+    const errors: [string, string | undefined][] = [];
+    const stop = await deviceLocationSource().start(OPTIONS, () => {}, (m, cause) => errors.push([m, cause]));
+    plugin.watch?.(undefined, { message: 'Location services disabled.' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0][0]).toContain('Localisation du téléphone coupée');
+    expect(errors[0][1]).toBe('locationOff');
+    plugin.watch?.(undefined, { message: 'User denied location permission', code: 'NOT_AUTHORIZED' });
+    expect(errors).toHaveLength(2);
+    expect(errors[1][1]).toBeUndefined();
+    await stop();
+  });
+
   it('service toujours refusé : une seule relance, puis un message en clair', async () => {
     plugin.refuseAlways = true;
     const errors: string[] = [];
@@ -203,14 +216,20 @@ describe('raccord au service GPS resté vivant (lot 156)', () => {
     const { bridge, seen } = fakeBridge();
     const fixes: LocationFix[] = [];
     const errors: string[] = [];
-    const stop = adoptRunningService((fix) => fixes.push(fix), (message) => errors.push(message));
+    const causes: (string | undefined)[] = [];
+    const stop = adoptRunningService((fix) => fixes.push(fix), (message, cause) => {
+      errors.push(message);
+      causes.push(cause);
+    });
     const refusal = (error: unknown, patch: Partial<Message> = {}) => fromGps({ success: false, data: undefined, error, ...patch });
 
     bridge.fromNative(refusal({ message: 'Location services disabled.', code: 'NOT_AUTHORIZED' }));
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('Localisation du téléphone coupée');
+    expect(causes[0]).toBe('locationOff');
     bridge.fromNative(refusal({ message: 'User denied location permission', code: 'NOT_AUTHORIZED' }));
     expect(errors[1]).toContain('Réglages');
+    expect(causes[1]).toBeUndefined();
     // Même sans appel gardé : un refus final en est encore un.
     bridge.fromNative(refusal({ message: 'Location services disabled.' }, { save: false }));
     expect(errors).toHaveLength(3);

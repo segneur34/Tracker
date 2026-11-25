@@ -24,6 +24,23 @@ export const requiredPermissions = (beltSaved: boolean): PermissionKey[] =>
 export const missingPermissions = (status: PermissionsStatus, beltSaved: boolean): PermissionKey[] =>
   requiredPermissions(beltSaved).filter((key) => status[key] !== 'granted' && status[key] !== 'unavailable');
 
+/** Marques de Xiaomi, qui ont toutes l'écran du démarrage automatique de MIUI ou HyperOS. */
+const XIAOMI_BRANDS = ['xiaomi', 'redmi', 'poco'];
+
+/** Vrai pour un téléphone de Xiaomi (Xiaomi, Redmi, POCO), lu au fabricant ou à la marque, casse ignorée. */
+export const isXiaomiDevice = (device: { manufacturer: string; brand: string }): boolean =>
+  [device.manufacturer, device.brand].some((name) => XIAOMI_BRANDS.includes(name.trim().toLowerCase()));
+
+/**
+ * La ligne « Démarrage automatique » n'a lieu que sur un Xiaomi (lot 232, d'après Gtracker 408 et 419) ; aucun état
+ * n'en est lu, Android ne le dit pas de façon sûre.
+ */
+export const showsAutostart = (device: { manufacturer: string; brand: string } | null): boolean =>
+  device !== null && isXiaomiDevice(device);
+
+/** Batterie restreinte : l'optimisation d'Android peut couper l'enregistrement ; faux tant que l'état n'est pas lu. */
+export const batteryRestricted = (status: PermissionsStatus | null): boolean => status?.battery === 'denied';
+
 /**
  * Montrer la carte d'office : s'il manque une autorisation requise, au
  * premier lancement (aucune version vue) ou après une mise à jour. « Plus

@@ -1,13 +1,18 @@
 // Banc de test : GPS perdu pendant un enregistrement (lot 115, décisions du 01/11).
 // Usage : node gps-perdu.mjs <port> <dossier de travail, chemin Windows>
-// Sur un profil neuf, sans réseau. Dure environ 2 min 30, à temps réel (rejeu ×1, minuteur de 60 s).
+// Sur un profil neuf, sans réseau. Dure environ 2 min 45, à temps réel (rejeu ×1, minuteur de 60 s).
 // Le script écrit une trace de voile datée de maintenant : 20 s de positions, un trou de 90 s, puis 30 s. Il vérifie :
 //  1. pendant le trou, rien avant 1 min sans position ;
 //  2. vers 1 min 01 : l'alerte rouge de la page Enregistrer (`ui-alert--danger`) dit « GPS perdu », le son est joué une
 //     seule fois (« [bips] gps perdu », version navigateur de `platform/beeper.ts`), la notification le dit au titre
 //     (« [notification] Voile · GPS perdu | … », version navigateur de `platform/notification.ts`) ;
 //  3. aucun rappel pendant le reste du trou ;
-//  4. au retour des positions : alerte effacée, notification sans « GPS perdu », toujours un seul son.
+//  4. au retour des positions : alerte effacée, notification sans « GPS perdu », toujours un seul son ; un rejeu ne
+//     propose jamais « Réessayer » du GPS (lot 232).
+//  5. (lot 232) GPS du navigateur, sans position (position du navigateur simulée, muette) : « en attente de la
+//     première position » et « Réessayer » sous la ligne d'état ; l'appui montre « nouvelle tentative… » 5 s, puis
+//     « Réessayer » revient ; la première position efface l'attente et le bouton. Aucun « Activer la localisation »
+//     (la localisation coupée n'existe que sur le téléphone).
 // La sortie standard ne porte aucune durée : elle sert à comparer deux passages.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -105,6 +110,9 @@ check('notification « GPS perdu » au titre', lostNotice.length >= 1 && lostNot
 await wait(Math.max(0, startedAt + 108_000 - Date.now()));
 check('aucun rappel pendant le trou', lostTones.length === 1, `${lostTones.length} son(s)`);
 
+check('rejeu : ni attente de la première position, ni « Réessayer » du GPS (lot 232)',
+  (await evaluate(`document.querySelectorAll('.rec-rescue').length`)) === 0);
+
 // 4. Retour des positions : tout s'efface.
 const mark = sent.length;
 const clearedAt = await waitFor(async () => !((await alertText()) ?? '').includes('GPS perdu'), 10_000);
@@ -119,6 +127,37 @@ console.log('Arrêter :', await holdStop());
 // Rangée dès l'arrêt, analyse ouverte d'elle-même (lot 212) ; plus de « Jeter », le profil du banc est neuf à chaque script.
 console.log('analyse ouverte :', (await waitFor(async () => (await evaluate('location.pathname'))?.endsWith('/analyse'), 8000)) !== null);
 await wait(500);
+
+// 5. « Réessayer » du GPS (lot 232) : GPS du navigateur, position simulée qui ne répond pas avant qu'on la donne.
+await go('/enregistrer');
+await clickText('Voile', '[aria-label=Famille] button');
+await wait(300);
+await evaluate(`[...document.querySelectorAll('input[type=radio]')][0].click(); 'ok'`);
+await wait(300);
+await evaluate(`(() => {
+  const g = navigator.geolocation;
+  g.watchPosition = (ok) => { window.__bancPosition = ok; return 1; };
+  g.clearWatch = () => { window.__bancPosition = null; };
+  return 'ok';
+})()`);
+console.log('Démarrer (GPS du navigateur) :', await clickText('Démarrer'));
+/** Texte des rangées de secours de la page (« en attente… », boutons), dans l'ordre. */
+const rescueText = () => evaluate(`[...document.querySelectorAll('.rec-rescue')].map((r) => r.textContent).join(' | ')`);
+const waiting = await waitFor(async () => (await rescueText()).includes('en attente de la première position'), 5000);
+check('sans position : « en attente de la première position » et « Réessayer »', waiting !== null && (await rescueText()).includes('Réessayer'), await rescueText());
+check('« Activer la localisation » absent dans le navigateur', !(await rescueText()).includes('Activer la localisation'), await rescueText());
+console.log('Réessayer :', await clickText('Réessayer', '.rec-rescue button'));
+await wait(300);
+check('appui : « nouvelle tentative… », bouton inactif',
+  (await evaluate(`[...document.querySelectorAll('.rec-rescue button')].some((b) => b.textContent === 'nouvelle tentative…' && b.disabled)`)) === true,
+  await rescueText());
+const back = await waitFor(async () => (await rescueText()).includes('Réessayer'), 7000);
+check('« Réessayer » revient après quelques secondes', back !== null, await rescueText());
+await evaluate(`window.__bancPosition?.({ timestamp: Date.now(), coords: { latitude: 43.7, longitude: 3.85, accuracy: 5, altitude: null, speed: null, heading: null } }); 'ok'`);
+const gone = await waitFor(async () => (await rescueText()) === '', 3000);
+check('première position : attente et bouton effacés', gone !== null, await rescueText());
+console.log('Arrêter :', await holdStop());
+await wait(1500);
 
 console.log(logs.length ? `console :\n  ${logs.join('\n  ')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est bon');

@@ -5,7 +5,7 @@ import { buildGpx } from './gpxWriter';
 import type { SessionTest } from './fitnessTest';
 import { runCommand, startRun } from './intervalTimer';
 import {
-  journalActivity, journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalPauseLine,
+  journalActivity, journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalGpsLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalPauseLine,
   journalResumeLine, journalTestLine, parseJournal,
 } from './journal';
 import { roundFix, splitIntoSegments } from './session';
@@ -335,6 +335,25 @@ describe('journal d’une session sans position (muscu, lot I du 25/10)', () => 
     const asked = stopped + journalBeltLine(T0 + 1800, 'asked') + journalFixLine(fixes[2]);
     expect(parseJournal(asked).beltStopped).toBe(false);
     expect(parseJournal(asked).fixes).toHaveLength(2);
+  });
+
+  it("les lignes d'un nouvel essai de la ceinture ne changent pas ce qu'une reprise redemande (lot 232)", () => {
+    const head = journalHeaderLine('running', T0, undefined, { belt: { address: 'a', name: 'b' } });
+    const stopped = head + journalBeltLine(T0 + 1000, 'stopped');
+    for (const what of ['retry', 'found', 'missed', 'failed'] as const) {
+      expect(parseJournal(head + journalBeltLine(T0 + 2000, what)).beltStopped).toBe(false);
+      expect(parseJournal(stopped + journalBeltLine(T0 + 2000, what)).beltStopped).toBe(true);
+    }
+  });
+
+  it('les lignes du GPS (« Réessayer », « Activer la localisation ») ne changent que la dernière heure lue (lot 232)', () => {
+    const head = journalHeaderLine('running', T0) + journalFixLine(fixes[0]);
+    const withGps = head + journalGpsLine(T0 + 5000, 'retry') + journalGpsLine(T0 + 5100, 'assisted') + journalGpsLine(T0 + 6000, 'settings');
+    const parsed = parseJournal(withGps);
+    expect(parsed.fixes).toEqual(parseJournal(head).fixes);
+    expect(parsed.breaks).toEqual([]);
+    expect(parsed.marks).toEqual([]);
+    expect(parsed.lastLineMs).toBe(T0 + 6000);
   });
 });
 

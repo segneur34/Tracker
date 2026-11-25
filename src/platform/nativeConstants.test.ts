@@ -13,6 +13,8 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  *   sans échéance, pris au démarrage, que le chien de garde ne rend pas.
  * - `IncomingFilePlugin.java` lit l'intention de départ dans `handleOnNewIntent`, parce que `BridgeActivity` l'y passe
  *   lui-même au démarrage (lot 35).
+ * - Les greffons maison `Permissions`, `HeartRate` et `Gnss` ont deux côtés : le Java répond, `platform/` appelle,
+ *   par les mêmes noms de méthodes et de réponses (lot 232).
  * - La reprise après une chute du moteur de la WebView passe par
  *   `window.Capacitor.fromNative`, qui reçoit les réponses des greffons
  *   (`adoptRunningService`), et compte sur l'appel gardé du greffon.
@@ -189,5 +191,55 @@ describe('fichiers reçus d\'une autre application (lot 35)', () => {
     expect(entry).toContain('runOnWorker(() -> {');
     expect(entry.indexOf('receive(context, uri, refusalWithoutFile);')).toBeGreaterThan(entry.indexOf('runOnWorker(() -> {'));
     expect(between(INCOMING_PLUGIN, 'private static void runOnWorker', 'public void load()')).toContain('catch (Exception | OutOfMemoryError e)');
+  });
+});
+
+/** Méthodes du greffon appelées par la page (`<objet>.<méthode>(`), sans les écouteurs, communs à tous les greffons. */
+const calledMethods = (source: string, object: string): string[] =>
+  [...new Set([...source.matchAll(new RegExp(String.raw`\b${object}\.(\w+)\(`, 'g'))].map((m) => m[1]))]
+    .filter((name) => name !== 'addListener' && name !== 'removeAllListeners')
+    .sort();
+
+/** Motif d'une méthode de greffon `name` dans le source Java. */
+const pluginMethod = (name: string): RegExp => new RegExp(String.raw`@PluginMethod\s+public void ${name}\(PluginCall call\)`);
+
+describe('greffons maison : ce que la page appelle, le Java le porte (lot 232)', () => {
+  const platformSource = (name: string): string => fs.readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
+
+  it.each([
+    ['Permissions', 'PermissionsPlugin.java', 'permissions.ts', 'plugin'],
+    ['HeartRate', 'HeartRatePlugin.java', 'heartRate.ts', 'plugin'],
+    ['Gnss', 'GnssPlugin.java', 'location.ts', 'gnss'],
+  ])('greffon %s : déclaré sous son nom, chaque méthode appelée existe', (name, javaFile, tsFile, object) => {
+    const java = appJava(javaFile);
+    const ts = platformSource(tsFile);
+    expect(MAIN_ACTIVITY).toContain(`registerPlugin(${javaFile.replace('.java', '')}.class);`);
+    expect(java).toContain(`@CapacitorPlugin(`);
+    expect(java).toMatch(new RegExp(`name = "${name}"`));
+    expect(ts).toMatch(new RegExp(String.raw`registerPlugin<\w+>\('${name}'\)`));
+    const called = calledMethods(ts, object);
+    expect(called.length).toBeGreaterThan(0);
+    for (const method of called) expect(java, method).toMatch(pluginMethod(method));
+  });
+
+  it('les boutons de secours et les autorisations sont bien appelés : le contrôle ci-dessus les couvre', () => {
+    expect(calledMethods(platformSource('permissions.ts'), 'plugin')).toEqual(expect.arrayContaining(['deviceBrand', 'openLocationSettings']));
+    expect(calledMethods(platformSource('heartRate.ts'), 'plugin')).toContain('retryNow');
+    expect(calledMethods(platformSource('location.ts'), 'gnss')).toContain('refreshAssistance');
+  });
+
+  it('les réponses sont lues sous les noms que le Java écrit', () => {
+    const permissions = appJava('PermissionsPlugin.java');
+    for (const key of ['manufacturer', 'brand', 'unrestricted']) expect(permissions, key).toContain(`ret.put("${key}"`);
+    expect(appJava('HeartRatePlugin.java')).toContain('ret.put("seen"');
+    expect(appJava('GnssPlugin.java')).toContain('ret.put("sent"');
+  });
+
+  it("« Réessayer » de la ceinture : au moins 6 s entre deux recherches, limite d'Android (5 par 30 s)", () => {
+    expect(Number(captured(appJava('HeartRatePlugin.java'), /\bRETRY_GAP_MS = (\d+);/))).toBeGreaterThanOrEqual(6000);
+  });
+
+  it("« Réessayer » du GPS ne demande jamais d'effacer les données d'aide", () => {
+    expect(appJava('GnssPlugin.java')).not.toMatch(/"delete_aiding_data"/);
   });
 });
