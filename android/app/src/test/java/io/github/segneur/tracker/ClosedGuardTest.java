@@ -277,6 +277,32 @@ public class ClosedGuardTest {
     }
 
     @Test
+    public void unePositionIncertaineNeFixePasLAncrage() {
+        // Fermée sans position : la première reçue est donnée à 500 m près, 1 km au nord du téléphone, qui ne bouge pas.
+        // Elle n'ancre rien : les positions précises suivantes, sur place, ne passent pas pour un départ.
+        ClosedGuard first = guard();
+        first.onClosed(0);
+        first.onFix(1000L, north(1000), LON, 500, NONE);
+        for (long t = 2000L; t < STILL_MS; t += 60_000L) first.onFix(t, LAT, LON, 5, NONE);
+        assertEquals(FixLog.STOP_STILL, first.check(STILL_MS));
+        // Même chose pour la dernière position connue à la fermeture : seule une position précise sert d'ancrage.
+        ClosedGuard last = guard();
+        last.onFix(0, LAT, LON, 5, NONE);
+        last.onFix(1000L, north(1000), LON, 500, NONE);
+        last.onClosed(2000L);
+        for (long t = 3000L; t < 2000L + STILL_MS; t += 60_000L) last.onFix(t, LAT, LON, 5, NONE);
+        assertEquals(FixLog.STOP_STILL, last.check(2000L + STILL_MS));
+        // Un vrai départ depuis la première position précise relance bien le compte.
+        ClosedGuard moving = guard();
+        moving.onClosed(0);
+        moving.onFix(1000L, north(1000), LON, 500, NONE);
+        moving.onFix(2000L, LAT, LON, 5, NONE);
+        moving.onFix(1_800_000L, north(400), LON, 5, NONE);
+        assertNull(moving.check(STILL_MS));
+        assertEquals(FixLog.STOP_STILL, moving.check(1_800_000L + STILL_MS));
+    }
+
+    @Test
     public void sansAucunePositionLeCompteCourtDepuisLaFermeture() {
         ClosedGuard guard = guard();
         guard.onClosed(5000L);

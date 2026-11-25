@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
-import type { LocationFix, LocationSource } from '../platform/location';
+import type { LocationFix, LocationSource, LocationWatchOptions } from '../platform/location';
 import type { MotionCapture } from '../platform/motion';
 import { recordingDurationMs } from '../recording/session';
 import { journalFixLine, parseJournal } from '../recording/journal';
@@ -209,6 +209,7 @@ const activity = baseActivity('running');
 const fakeSource = () => {
   let onFix: ((fix: LocationFix) => void) | null = null;
   let onError: ((message: string, cause?: 'locationOff') => void) | null = null;
+  let onLocationOn: (() => void) | null = null;
   const source = {
     starts: 0,
     stops: 0,
@@ -216,12 +217,20 @@ const fakeSource = () => {
     /** Durée du prochain arrêt, en millisecondes ; un second arrêt pendant le premier rend la main tout de suite. */
     stopDelayMs: 5,
     label: 'Simulée',
-    start: async (_options: unknown, fix: (f: LocationFix) => void, error: (message: string, cause?: 'locationOff') => void) => {
+    /** Options du dernier démarrage, telles que le service du téléphone les reçoit. */
+    options: null as LocationWatchOptions | null,
+    /** Ordres de pause manuelle reçus, comme le service du téléphone (lot 232, étape 2). */
+    pauses: [] as { paused: boolean; atMs: number }[],
+    start: async (
+      options: LocationWatchOptions, fix: (f: LocationFix) => void, error: (message: string, cause?: 'locationOff') => void, locationOn?: () => void
+    ) => {
       source.starts += 1;
+      source.options = options;
       // Un démarrage qui prend un peu de temps, comme le greffon.
       await new Promise((resolve) => setTimeout(resolve, 5));
       onFix = fix;
       onError = error;
+      onLocationOn = locationOn ?? null;
       source.active = true;
       let stopping = false;
       return async () => {
@@ -231,10 +240,16 @@ const fakeSource = () => {
         await new Promise((resolve) => setTimeout(resolve, delay));
         onFix = null;
         onError = null;
+        onLocationOn = null;
         source.active = false;
         source.stops += 1;
       };
     },
+    setPaused: async (paused: boolean, atMs: number) => {
+      source.pauses.push({ paused, atMs });
+    },
+    /** La localisation du téléphone, dite coupée, est rendue. */
+    locationBack: () => onLocationOn?.(),
     /** `accuracyM` : 4 m par défaut, calé d'emblée ; `null` : sans incertitude, comme un rejeu de fichier. */
     emit: (s: number, speedMs = 3, accuracyM: number | null = 4) =>
       onFix?.({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-5, lon: 3, speedMs, ...(accuracyM === null ? {} : { accuracyM }) }),
@@ -1653,6 +1668,58 @@ describe('boutons de secours du GPS (lot 232)', () => {
     source.emit(0);
     expect(recorder.getRecorderState().locationOff).toBe(false);
     expect(recorder.getRecorderState().error).toBeNull();
+  });
+
+  it('localisation rendue, dite par le service (lot 232, étape 2) : alerte rouge et message partis avant toute position', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.fail('Localisation coupée', 'locationOff');
+    expect(recorder.getRecorderState().locationOff).toBe(true);
+    source.locationBack();
+    expect(recorder.getRecorderState().locationOff).toBe(false);
+    expect(recorder.getRecorderState().error).toBeNull();
+    // Toujours en attente de la première position : la page le redit.
+    expect(recorder.getRecorderState().awaitingFix).toBe(true);
+    // Sans localisation dite coupée : rien ne bouge, un autre message reste.
+    source.fail('Autre panne');
+    source.locationBack();
+    expect(recorder.getRecorderState().error).toBe('Autre panne');
+  });
+
+  it('au départ, le service reçoit la session, ses textes en français et les seuils du profil', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    const header = parseJournal(journal.text!).header!;
+    expect(source.options?.notificationTitle).toBe('Tracker enregistre');
+    expect(source.options?.service).toMatchObject({
+      session: header.startedAtMs,
+      closedText: "Application fermée : l'enregistrement continue",
+      gpsLostTitle: 'GPS perdu',
+      stoppedTitle: 'Enregistrement arrêté',
+      gpsLostDelayS: 60,
+      gpsLostRearmS: 120,
+      guardStillRadiusM: 200,
+      guardStillDelayS: 3600,
+      guardMaxClosedS: 12 * 3600,
+      guardMovingHoldS: 5,
+    });
+    // Vitesse de la garde à pied : 2 km/h.
+    expect(source.options?.service?.guardMovingSpeedMs).toBeCloseTo(2 / 3.6, 6);
+  });
+
+  it('pause manuelle et reprise dites au service, à l\'heure des lignes du journal', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    for (let s = 0; s <= 10; s++) source.emit(s);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0 + 11_000);
+    await recorder.pauseRecording();
+    vi.setSystemTime(T0 + 15_000);
+    await recorder.resumeRecording();
+    vi.useRealTimers();
+    expect(source.pauses).toEqual([{ paused: true, atMs: T0 + 11_000 }, { paused: false, atMs: T0 + 15_000 }]);
+    expect(journal.text).toContain(`["pause",${T0 + 11_000}`);
+    expect(journal.text).toContain(`["resume",${T0 + 15_000}]`);
   });
 
   it("« Réessayer » : « nouvelle tentative… » 5 s, un second appui ignoré, l'appui et son résultat au journal ; rien d'autre ne bouge", async () => {

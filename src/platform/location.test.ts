@@ -1,38 +1,88 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adoptRunningService, createReplaySource, currentPosition, deviceLocationSource, type LocationFix } from './location';
+import {
+  attachDeviceLocation, clearLoggedFixes, createReplaySource, currentPosition, deviceLocationSource, deviceLocationState,
+  locationPermissionGranted, readLoggedFixes, stopOrphanedDeviceLocation, type LocationFix, type LocationWatchOptions,
+} from './location';
 
 /**
- * Greffon simulé, comme `@capgo/background-geolocation` : un seul service et
- * un seul destinataire ; un second `start` est refusé (`ALREADY_STARTED`) et
- * `stop` arrête le service pour tout le monde.
+ * Greffon `Recording` simulé, tel que `RecordingPlugin.java` répond (lot 232, étape 2) : un service, son journal, ses écouteurs, et la
+ * suite des appels reçus. Un refus porte un code, comme `call.reject(message, code)`.
  */
 const plugin = vi.hoisted(() => {
-  type Callback = (location?: { latitude: number; longitude: number; accuracy: number; time: number }, error?: { message: string; code?: string }) => void;
+  type Listener = (data: Record<string, unknown>) => void;
+  const refusal = (code: string) => Object.assign(new Error('message du téléphone, jamais montré'), { code });
   const fake = {
+    calls: [] as string[],
     running: false,
-    watch: null as Callback | null,
-    starts: 0,
-    /** Vrai : chaque `start` est refusé, comme un service tenu par un autre. */
-    refuseAlways: false,
-    start: async (_options: unknown, callback: Callback): Promise<void> => {
-      fake.starts += 1;
-      if (fake.running || fake.refuseAlways) {
-        queueMicrotask(() => callback(undefined, { message: 'Service already started', code: 'ALREADY_STARTED' }));
-        return;
-      }
+    session: null as number | null,
+    paused: false,
+    started: null as Record<string, unknown> | null,
+    pauses: [] as { paused: boolean; atMs: number }[],
+    log: null as string | null,
+    logReads: [] as (number | undefined)[],
+    /** Code du refus du prochain `start`, `clearLog` ou `currentPosition` ; `null` : il aboutit. */
+    startRefusal: null as string | null,
+    clearRefusal: null as string | null,
+    positionRefusal: null as string | null,
+    /** L'arrêt attend ceci avant de finir. */
+    stopGate: null as Promise<void> | null,
+    listeners: { fix: new Set<Listener>(), error: new Set<Listener>(), locationEnabled: new Set<Listener>() },
+    state: async () => ({ running: fake.running, session: fake.running ? fake.session : null, paused: fake.paused }),
+    start: async (options: Record<string, unknown>) => {
+      fake.calls.push('start');
+      if (fake.startRefusal) throw refusal(fake.startRefusal);
       fake.running = true;
-      fake.watch = callback;
+      fake.session = options.session as number;
+      fake.paused = false;
+      fake.started = options;
+      return fake.state();
     },
-    stop: async (): Promise<void> => {
+    stop: async () => {
+      fake.calls.push('stop');
+      await fake.stopGate;
       fake.running = false;
-      fake.watch = null;
+      fake.paused = false;
+      fake.calls.push('stopped');
     },
-    emit: (timeMs: number) => fake.watch?.({ latitude: 43, longitude: 3, accuracy: 5, time: timeMs }),
+    setPaused: async (options: { paused: boolean; atMs: number }) => {
+      fake.calls.push('setPaused');
+      fake.pauses.push(options);
+      fake.paused = options.paused;
+      return fake.state();
+    },
+    readLog: async (options: { afterMs?: number }) => {
+      fake.logReads.push(options.afterMs);
+      return { text: fake.log };
+    },
+    clearLog: async () => {
+      fake.calls.push('clearLog');
+      if (fake.clearRefusal) throw refusal(fake.clearRefusal);
+      fake.log = null;
+    },
+    currentPosition: async () => {
+      fake.calls.push('currentPosition');
+      if (fake.positionRefusal) throw refusal(fake.positionRefusal);
+      return { timeMs: 1_794_819_600_000, lat: 43.5, lon: 3.5, accuracyM: 6 };
+    },
+    checkPermissions: async () => ({ location: 'granted', notification: 'denied' }),
+    requestPermissions: async () => ({ location: 'granted', notification: 'granted' }),
+    addListener: async (event: 'fix' | 'error' | 'locationEnabled', listener: Listener) => {
+      fake.calls.push(`listen:${event}`);
+      fake.listeners[event].add(listener);
+      return {
+        remove: async () => {
+          fake.listeners[event].delete(listener);
+        },
+      };
+    },
+    emit: (timeMs: number) => fake.listeners.fix.forEach((l) => l({ timeMs, lat: 43, lon: 3, accuracyM: 5, speedMs: 2.5 })),
+    fail: (code: string) => fake.listeners.error.forEach((l) => l({ code, message: 'message du téléphone, jamais montré' })),
+    locationBack: () => fake.listeners.locationEnabled.forEach((l) => l({})),
   };
   return fake;
 });
 const runtime = vi.hoisted(() => ({ native: false }));
-vi.mock('@capgo/background-geolocation', () => ({ BackgroundGeolocation: plugin }));
+vi.mock('@capacitor/core', () => ({ registerPlugin: (name: string) => (name === 'Recording' ? plugin : {}) }));
 vi.mock('./runtime', () => ({ isNativeApp: () => runtime.native }));
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -74,225 +124,248 @@ describe('createReplaySource', () => {
   });
 });
 
-describe('service GPS du téléphone partagé (D-B1)', () => {
-  /** Laisse passer les promesses et les rappels en attente. */
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const SERVICE = {
+  session: T0,
+  closedText: 'fermée',
+  gpsLostTitle: 'GPS perdu',
+  stoppedTitle: 'arrêté',
+  stoppedText: 'à ranger',
+  gpsLostDelayS: 60,
+  gpsLostRearmS: 120,
+  guardStillRadiusM: 200,
+  guardStillDelayS: 3600,
+  guardMaxClosedS: 43_200,
+  guardMovingSpeedMs: 0.77,
+  guardMovingHoldS: 5,
+};
+const NATIVE_OPTIONS: LocationWatchOptions = { intervalMs: 1000, distanceFilterM: 0, notificationTitle: 'titre', notificationText: 'texte', service: SERVICE };
 
+describe('service de position du téléphone', () => {
   beforeEach(() => {
     runtime.native = true;
-    Object.assign(plugin, { running: false, watch: null, starts: 0, refuseAlways: false });
+    Object.assign(plugin, {
+      calls: [], running: false, session: null, paused: false, started: null, pauses: [], log: null, logReads: [],
+      startRefusal: null, clearRefusal: null, positionRefusal: null, stopGate: null,
+    });
+    plugin.listeners.fix.clear();
+    plugin.listeners.error.clear();
+    plugin.listeners.locationEnabled.clear();
   });
   afterEach(() => {
     runtime.native = false;
   });
 
-  it('une recherche de position puis un enregistrement : la recherche est close, l\'enregistrement reçoit les positions', async () => {
-    const search = currentPosition(15_000).then(() => 'trouvée', (err: Error) => err.message);
-    await settle();
-    expect(plugin.running).toBe(true);
-
-    const received: number[] = [];
-    const errors: string[] = [];
-    const stop = await deviceLocationSource().start(OPTIONS, (f) => received.push(f.timeMs), (m) => errors.push(m));
-    expect(await search).toBe("Recherche interrompue par l'enregistrement.");
-    expect(plugin.starts).toBe(2);
+  it('départ : la page écoute avant de démarrer, et donne au service la session, ses textes et ses délais', async () => {
+    const received: LocationFix[] = [];
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, (f) => received.push(f), () => {});
+    expect(plugin.calls).toEqual(['listen:fix', 'listen:error', 'listen:locationEnabled', 'start']);
+    expect(plugin.started).toEqual({ ...SERVICE, intervalMs: 1000, distanceFilterM: 0, title: 'titre', text: 'texte' });
 
     plugin.emit(T0);
     plugin.emit(T0 + 1000);
-    expect(received).toEqual([T0, T0 + 1000]);
-    expect(plugin.running).toBe(true);
-    expect(errors).toEqual([]);
-
+    expect(received.map((f) => f.timeMs)).toEqual([T0, T0 + 1000]);
+    expect(received[0]).toEqual({ timeMs: T0, lat: 43, lon: 3, accuracyM: 5, altitudeM: undefined, speedMs: 2.5, bearingDeg: undefined });
     await stop();
+  });
+
+  it("arrêt : le service s'arrête, l'écoute est retirée ensuite, et il suffit d'une fois", async () => {
+    const received: number[] = [];
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, (f) => received.push(f.timeMs), () => {});
+    await Promise.all([stop(), stop()]);
+    expect(plugin.calls.filter((c) => c === 'stop')).toHaveLength(1);
     expect(plugin.running).toBe(false);
-  });
-
-  it('une recherche de position pendant un enregistrement est refusée sans toucher au service', async () => {
-    const received: number[] = [];
-    const stop = await deviceLocationSource().start(OPTIONS, (f) => received.push(f.timeMs), () => {});
-    await expect(currentPosition()).rejects.toThrow(/enregistrement/);
-    expect(plugin.starts).toBe(1);
+    expect(plugin.listeners.fix.size).toBe(0);
+    expect(plugin.listeners.error.size).toBe(0);
+    expect(plugin.listeners.locationEnabled.size).toBe(0);
     plugin.emit(T0);
-    expect(received).toEqual([T0]);
-    await stop();
+    expect(received).toEqual([]);
   });
 
-  it('service déjà lancé : arrêté puis relancé une seule fois, sans message', async () => {
-    plugin.running = true;
-    const received: number[] = [];
-    const errors: string[] = [];
-    const stop = await deviceLocationSource().start(OPTIONS, (f) => received.push(f.timeMs), (m) => errors.push(m));
-    await settle();
-    expect(plugin.starts).toBe(2);
-    plugin.emit(T0);
-    expect(received).toEqual([T0]);
-    expect(errors).toEqual([]);
-    await stop();
+  it("un départ attend la fin de l'arrêt en cours", async () => {
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, () => {}, () => {});
+    let open!: () => void;
+    plugin.stopGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    const stopping = stop();
+    await Promise.resolve();
+    const starting = deviceLocationSource().start({ ...NATIVE_OPTIONS, service: { ...SERVICE, session: T0 + 1 } }, () => {}, () => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(plugin.calls.filter((c) => c === 'start')).toHaveLength(1);
+    open();
+    await stopping;
+    const stopAgain = await starting;
+    expect(plugin.calls.indexOf('stopped')).toBeLessThan(plugin.calls.lastIndexOf('start'));
+    expect(plugin.session).toBe(T0 + 1);
+    await stopAgain();
   });
 
-  it('localisation coupée : dite une fois, avec sa cause, par la source elle-même (lot 232) ; une autre erreur sans cause', async () => {
+  it('refus du départ : traduit par son code, écoute retirée, service jamais arrêté pour autant', async () => {
+    plugin.startRefusal = 'NOT_AUTHORIZED';
+    await expect(deviceLocationSource().start(NATIVE_OPTIONS, () => {}, () => {})).rejects.toThrow(/Réglages/);
+    plugin.startRefusal = 'START_FAILED';
+    const failed = await deviceLocationSource().start(NATIVE_OPTIONS, () => {}, () => {}).then(() => null, (err: Error) => err.message);
+    expect(failed).toBe('Localisation indisponible.');
+    expect(plugin.listeners.fix.size).toBe(0);
+    expect(plugin.calls).not.toContain('stop');
+  });
+
+  it('sans session à suivre : refusé avant tout appel', async () => {
+    await expect(deviceLocationSource().start(OPTIONS, () => {}, () => {})).rejects.toThrow();
+    expect(plugin.calls).toEqual([]);
+  });
+
+  it('erreurs du service : localisation coupée dite avec sa cause, refus traduit, journal en échec tu', async () => {
     const errors: [string, string | undefined][] = [];
-    const stop = await deviceLocationSource().start(OPTIONS, () => {}, (m, cause) => errors.push([m, cause]));
-    plugin.watch?.(undefined, { message: 'Location services disabled.' });
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, () => {}, (message, cause) => errors.push([message, cause]));
+    plugin.fail('LOCATION_DISABLED');
     expect(errors).toHaveLength(1);
     expect(errors[0][0]).toContain('Localisation du téléphone coupée');
     expect(errors[0][1]).toBe('locationOff');
-    plugin.watch?.(undefined, { message: 'User denied location permission', code: 'NOT_AUTHORIZED' });
+    plugin.fail('NOT_AUTHORIZED');
+    expect(errors[1][0]).toContain('Réglages');
+    plugin.fail('LOG_FAILED');
     expect(errors).toHaveLength(2);
-    expect(errors[1][1]).toBeUndefined();
+    expect(errors.flat().join(' ')).not.toContain('jamais montré');
+    await stop();
+    plugin.fail('LOCATION_DISABLED');
+    expect(errors).toHaveLength(2);
+  });
+
+  it('localisation rendue : dite à la page par son événement, sans erreur, et plus rien une fois arrêté', async () => {
+    const events: string[] = [];
+    const stop = await deviceLocationSource().start(
+      NATIVE_OPTIONS, () => {}, (_message, cause) => events.push(`erreur:${cause ?? ''}`), () => events.push('rendue')
+    );
+    plugin.fail('LOCATION_DISABLED');
+    plugin.locationBack();
+    expect(events).toEqual(['erreur:locationOff', 'rendue']);
+    // Un abonné en échec ne coupe pas l'écoute.
+    const failing = await attachDeviceLocation(() => {}, () => {}, () => {
+      throw new Error('abonné en échec');
+    });
+    expect(() => plugin.locationBack()).not.toThrow();
+    expect(events).toEqual(['erreur:locationOff', 'rendue', 'rendue']);
+    await stop();
+    await failing();
+    plugin.locationBack();
+    expect(events).toHaveLength(3);
+  });
+
+  it('un abonné en échec ne coupe pas l\'écoute', async () => {
+    const received: number[] = [];
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, (f) => {
+      received.push(f.timeMs);
+      throw new Error('abonné en échec');
+    }, () => {
+      throw new Error('abonné en échec');
+    });
+    expect(() => plugin.emit(T0)).not.toThrow();
+    expect(() => plugin.fail('LOCATION_DISABLED')).not.toThrow();
+    plugin.emit(T0 + 1000);
+    expect(received).toEqual([T0, T0 + 1000]);
     await stop();
   });
 
-  it('service toujours refusé : une seule relance, puis un message en clair', async () => {
-    plugin.refuseAlways = true;
-    const errors: string[] = [];
-    const stop = await deviceLocationSource().start(OPTIONS, () => {}, (m) => errors.push(m));
-    await settle();
-    await settle();
-    expect(plugin.starts).toBe(2);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).not.toMatch(/already/i);
+  it('une position sans heure ou sans coordonnées est écartée', async () => {
+    const received: number[] = [];
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, (f) => received.push(f.timeMs), () => {});
+    plugin.listeners.fix.forEach((l) => l({ lat: 43, lon: 3 }));
+    plugin.listeners.fix.forEach((l) => l({ timeMs: T0, lat: 'x', lon: 3 }));
+    expect(received).toEqual([]);
     await stop();
+  });
+
+  it('pause manuelle : transmise au service avec son heure', async () => {
+    const source = deviceLocationSource();
+    const stop = await source.start(NATIVE_OPTIONS, () => {}, () => {});
+    await source.setPaused?.(true, T0 + 5000);
+    await source.setPaused?.(false, T0 + 9000);
+    expect(plugin.pauses).toEqual([{ paused: true, atMs: T0 + 5000 }, { paused: false, atMs: T0 + 9000 }]);
+    await stop();
+  });
+
+  it('état du service : en route, sa session et sa pause ; arrêté, rien', async () => {
+    expect(await deviceLocationState()).toEqual({ running: false, session: null, paused: false });
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, () => {}, () => {});
+    await deviceLocationSource().setPaused?.(true, T0);
+    expect(await deviceLocationState()).toEqual({ running: true, session: T0, paused: true });
+    await stop();
+    expect(await deviceLocationState()).toEqual({ running: false, session: null, paused: false });
+  });
+
+  it('raccord au service resté en route : la page écoute de nouveau, sans jamais le relancer', async () => {
+    plugin.running = true;
+    plugin.session = T0;
+    const received: number[] = [];
+    const stop = await attachDeviceLocation((f) => received.push(f.timeMs), () => {});
+    expect(plugin.calls).toEqual(['listen:fix', 'listen:error', 'listen:locationEnabled']);
+    plugin.emit(T0 + 1000);
+    expect(received).toEqual([T0 + 1000]);
+    // Écouté par la page : il n'est pas orphelin.
+    await stopOrphanedDeviceLocation();
+    expect(plugin.running).toBe(true);
+    await stop();
+    expect(plugin.running).toBe(false);
+    expect(plugin.listeners.fix.size).toBe(0);
+  });
+
+  it('service orphelin : arrêté quand personne ne l\'écoute', async () => {
+    plugin.running = true;
+    await stopOrphanedDeviceLocation();
+    expect(plugin.running).toBe(false);
+  });
+
+  it('journal du service : lu après l\'heure donnée, ou en entier ; effacé sans jamais lever', async () => {
+    plugin.log = '{"format":"tracker-positions","version":1,"session":1}\n';
+    expect(await readLoggedFixes(T0)).toBe(plugin.log);
+    expect(await readLoggedFixes(null)).toBe(plugin.log);
+    expect(plugin.logReads).toEqual([T0, undefined]);
+    plugin.clearRefusal = 'RUNNING';
+    await expect(clearLoggedFixes()).resolves.toBeUndefined();
+    expect(plugin.log).not.toBeNull();
+    plugin.clearRefusal = null;
+    await clearLoggedFixes();
+    expect(await readLoggedFixes(null)).toBeNull();
+  });
+
+  it('une seule position : sans service ni écoute, possible pendant un enregistrement', async () => {
+    const stop = await deviceLocationSource().start(NATIVE_OPTIONS, () => {}, () => {});
+    plugin.calls = [];
+    expect(await currentPosition(15_000)).toMatchObject({ timeMs: 1_794_819_600_000, lat: 43.5, lon: 3.5, accuracyM: 6 });
+    expect(plugin.calls).toEqual(['currentPosition']);
+    expect(plugin.running).toBe(true);
+    await stop();
+  });
+
+  it('une seule position refusée : une phrase en clair selon le code', async () => {
+    plugin.positionRefusal = 'TIMEOUT';
+    await expect(currentPosition()).rejects.toThrow(/Position introuvable/);
+    plugin.positionRefusal = 'LOCATION_DISABLED';
+    await expect(currentPosition()).rejects.toThrow(/Position introuvable/);
+    plugin.positionRefusal = 'NOT_AUTHORIZED';
+    await expect(currentPosition()).rejects.toThrow(/Réglages/);
+    plugin.positionRefusal = 'START_FAILED';
+    await expect(currentPosition()).rejects.toThrow('Localisation indisponible.');
+  });
+
+  it('autorisation de position : lue chez le greffon, sans rien demander', async () => {
+    expect(await locationPermissionGranted()).toBe(true);
   });
 });
 
-describe('raccord au service GPS resté vivant (lot 156)', () => {
-  type Message = { pluginId?: string; methodName?: string; save?: boolean; success?: boolean; callbackId?: string; data?: unknown; error?: unknown };
-  const LOCATION = { latitude: 43.5, longitude: 3.5, accuracy: 4, altitude: 2, speed: 3, bearing: 90, time: T0 + 1000 };
-  const fromGps = (patch: Partial<Message> = {}): Message => ({
-    pluginId: 'BackgroundGeolocation', methodName: 'start', callbackId: '123', save: true, success: true, data: { ...LOCATION }, ...patch,
-  });
-
-  /** Pont simulé, comme `native-bridge.js` : efface `data` une fois le message traité. */
-  const fakeBridge = () => {
-    const seen: Message[] = [];
-    const bridge = {
-      fromNative: (message: Message): void => {
-        seen.push({ ...message });
-        delete message.data;
-        delete message.error;
-      },
-    };
-    vi.stubGlobal('window', { Capacitor: bridge });
-    return { bridge, seen };
-  };
-
+describe('navigateur : aucun service', () => {
   beforeEach(() => {
-    plugin.running = true;
-    plugin.starts = 0;
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    plugin.running = false;
+    plugin.calls = [];
   });
 
-  it('lit les positions au passage, les laisse à leur chemin, sans jamais relancer le service', async () => {
-    const { bridge, seen } = fakeBridge();
-    const fixes: LocationFix[] = [];
-    const stop = adoptRunningService((fix) => fixes.push(fix), () => undefined);
-    bridge.fromNative(fromGps());
-    expect(fixes).toHaveLength(1);
-    expect(fixes[0]).toMatchObject({ timeMs: T0 + 1000, lat: 43.5, lon: 3.5, accuracyM: 4, altitudeM: 2, speedMs: 3, bearingDeg: 90 });
-    expect(seen).toHaveLength(1);
-    expect(plugin.starts).toBe(0);
-    await stop();
-  });
-
-  it("ne garde que les positions du service : ni une réponse, ni un autre greffon, ni une autre méthode", async () => {
-    const { bridge, seen } = fakeBridge();
-    const fixes: LocationFix[] = [];
-    const stop = adoptRunningService((fix) => fixes.push(fix), () => undefined);
-    bridge.fromNative(fromGps({ pluginId: 'HeartRate' }));
-    bridge.fromNative(fromGps({ methodName: 'stop' }));
-    bridge.fromNative(fromGps({ save: false }));
-    bridge.fromNative(fromGps({ success: false }));
-    bridge.fromNative(fromGps({ data: undefined }));
-    expect(fixes).toHaveLength(0);
-    expect(seen).toHaveLength(5);
-    await stop();
-  });
-
-  it('un refus du service va au rappel d\'erreur, en clair, sans relance ni position', async () => {
-    const { bridge, seen } = fakeBridge();
-    const fixes: LocationFix[] = [];
-    const errors: string[] = [];
-    const causes: (string | undefined)[] = [];
-    const stop = adoptRunningService((fix) => fixes.push(fix), (message, cause) => {
-      errors.push(message);
-      causes.push(cause);
-    });
-    const refusal = (error: unknown, patch: Partial<Message> = {}) => fromGps({ success: false, data: undefined, error, ...patch });
-
-    bridge.fromNative(refusal({ message: 'Location services disabled.', code: 'NOT_AUTHORIZED' }));
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('Localisation du téléphone coupée');
-    expect(causes[0]).toBe('locationOff');
-    bridge.fromNative(refusal({ message: 'User denied location permission', code: 'NOT_AUTHORIZED' }));
-    expect(errors[1]).toContain('Réglages');
-    expect(causes[1]).toBeUndefined();
-    // Même sans appel gardé : un refus final en est encore un.
-    bridge.fromNative(refusal({ message: 'Location services disabled.' }, { save: false }));
-    expect(errors).toHaveLength(3);
-
-    // Ceux d'un autre greffon, ou d'une autre méthode, ne le regardent pas.
-    bridge.fromNative(refusal({ message: 'disabled' }, { pluginId: 'HeartRate' }));
-    bridge.fromNative(refusal({ message: 'disabled' }, { methodName: 'stop' }));
-    bridge.fromNative(fromGps({ success: false, data: undefined }));
-    expect(errors).toHaveLength(3);
-
-    expect(fixes).toHaveLength(0);
-    expect(plugin.starts).toBe(0);
-    expect(seen).toHaveLength(6);
-    await stop();
-    bridge.fromNative(refusal({ message: 'disabled' }));
-    expect(errors).toHaveLength(3);
-  });
-
-  it('un rappel d\'erreur en échec ne coupe pas le pont', async () => {
-    const { bridge, seen } = fakeBridge();
-    const stop = adoptRunningService(() => undefined, () => {
-      throw new Error('abonné en échec');
-    });
-    bridge.fromNative(fromGps({ success: false, data: undefined, error: { message: 'disabled' } }));
-    expect(seen).toHaveLength(1);
-    await stop();
-  });
-
-  it('un abonné en échec ne coupe pas le pont', async () => {
-    const { bridge, seen } = fakeBridge();
-    const stop = adoptRunningService(() => {
-      throw new Error('abonné en échec');
-    }, () => undefined);
-    bridge.fromNative(fromGps());
-    expect(seen).toHaveLength(1);
-    await stop();
-  });
-
-  it("l'arrêt rend le pont, arrête le service, et il suffit d'une fois", async () => {
-    const { bridge } = fakeBridge();
-    const original = bridge.fromNative;
-    const fixes: LocationFix[] = [];
-    const stop = adoptRunningService((fix) => fixes.push(fix), () => undefined);
-    expect(bridge.fromNative).not.toBe(original);
-    await Promise.all([stop(), stop()]);
-    expect(bridge.fromNative).toBe(original);
-    expect(plugin.running).toBe(false);
-    bridge.fromNative(fromGps());
-    expect(fixes).toHaveLength(0);
-  });
-
-  it('détient le service : une position ponctuelle est refusée, un second raccord aussi', async () => {
-    fakeBridge();
-    runtime.native = true;
-    const stop = adoptRunningService(() => undefined, () => undefined);
-    expect(() => adoptRunningService(() => undefined, () => undefined)).toThrow();
-    await expect(currentPosition()).rejects.toThrow();
-    runtime.native = false;
-    await stop();
-  });
-
-  it('sans pont : lève, la reprise retombe sur la mise en attente', () => {
-    vi.stubGlobal('window', {});
-    expect(() => adoptRunningService(() => undefined, () => undefined)).toThrow();
+  it('ni état, ni journal, ni raccord : le greffon n\'est jamais appelé', async () => {
+    expect(await deviceLocationState()).toEqual({ running: false, session: null, paused: false });
+    expect(await readLoggedFixes(T0)).toBeNull();
+    await clearLoggedFixes();
+    await stopOrphanedDeviceLocation();
+    await expect(attachDeviceLocation(() => {}, () => {})).rejects.toThrow();
+    expect(deviceLocationSource().setPaused).toBeUndefined();
+    expect(plugin.calls).toEqual([]);
   });
 });

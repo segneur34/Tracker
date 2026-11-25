@@ -3,7 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
 import type { SessionMark } from '../core/sessionMarks';
 import { decodeImu } from '../core/imuFile';
-import { DEFAULT_RECORDING, getSportProfile, hasPositions, type RecordingProfile } from '../core/sportProfiles';
+import { DEFAULT_RECORDING, getSportProfile, guardMovingSpeedMs, hasPositions, type RecordingProfile } from '../core/sportProfiles';
 import { cadenceSeries, joinCadence } from '../running/cadence';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveHeartRate, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
@@ -20,8 +20,8 @@ import {
   type BeltState, type HeartRateBelt, type HeartRateSample,
 } from '../platform/heartRate';
 import {
-  adoptRunningService, deviceLocationSource, refreshGpsAssistance, stopOrphanedDeviceLocation, type LocationErrorCause, type LocationFix, type LocationSource,
-  type LocationWatchOptions, type StopLocation,
+  attachDeviceLocation, clearLoggedFixes, deviceLocationSource, deviceLocationState, readLoggedFixes, refreshGpsAssistance, stopOrphanedDeviceLocation,
+  type LocationErrorCause, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation,
 } from '../platform/location';
 import { readRecoveryServices, type RecoveryServices } from '../platform/recovery';
 import type { SessionTest } from '../recording/fitnessTest';
@@ -37,6 +37,9 @@ import {
   journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, journalSessionActivity, parseJournal, type JournalBeltEvent,
   type JournalGpsEvent, type ParsedJournal,
 } from '../recording/journal';
+import {
+  catchUpFromNativeLog, parseNativeLog, withCaughtUpLines, type CatchUpSettings, type NativeCatchUp, type NativeLog, type NativeStopReason,
+} from '../recording/nativeLog';
 import { GPS_RETRY_FEEDBACK_MS, type BeltAside } from '../recording/recordingRetry';
 import {
   NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, journalExtras, rebuildRecordingStats, recordedSessionGpx, recordedWithPositions, recoveryDecision,
@@ -118,12 +121,16 @@ import { resetStopwatch } from './useStopwatch';
  * la reprise (`watchResumedBelt`), sans attendre sa première mesure.
  *
  * Reprise (lot 156, `recording/resume.ts`) : si le moteur de la page tombe, seule la page repart (`MainActivity.java`).
- * Le service GPS encore vivant, la session reprend seule (`resumeSilently`) : mémoire refaite depuis le journal, jamais
- * d'en-tête de plus, service jamais relancé, un segment neuf à la position suivante. Application tuée et rouverte peu
- * après : la session attend, non rangée, avec « Continuer l'enregistrement » (`continuePendingSession`) ou « Finir »
- * (`savePendingSession`) ; plus tard, elle est rangée d'office. L'en-tête du journal garde la ceinture et les
+ * Sur le téléphone, les positions viennent de notre service de position (`RecordingService.java`, lot 232 étape 2), qui
+ * survit aussi à l'application balayée hors des récentes et écrit chaque position dans son propre journal. Ce service
+ * encore en route pour la session, elle reprend seule (`resumeSilently`) : journal complété de ce que le service a reçu
+ * sans la page (`catchUpJournal`, `recording/nativeLog.ts`), mémoire refaite depuis lui, jamais d'en-tête de plus,
+ * service jamais relancé. Application tuée et rouverte peu après : la session attend, complétée de même, non rangée,
+ * avec « Continuer l'enregistrement » (`continuePendingSession`) ou « Finir » (`savePendingSession`) ; plus tard, ou
+ * arrêtée seule par la garde du service, elle est rangée d'office. L'en-tête du journal garde la ceinture et les
  * réglages de la capture du départ (lot 232) : les deux reprises les redemandent, la capture complétant son fichier
- * (`continueCapture`).
+ * (`continueCapture`). Application fermée, rien que les positions : ni FC, ni capteurs, ni bips de zone, de test ou
+ * de balise, de retour à la réouverture.
  *
  * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
  * source GPS ; avec la ceinture, chaque mesure (une par seconde au plus,
@@ -176,6 +183,8 @@ export interface PendingSession {
    * à … » ; `null` sinon, et après « Arrêter », que l'utilisateur a vu finir.
    */
   interruptedAtMs: number | null;
+  /** Session interrompue arrêtée seule par la garde du service de position, application fermée : sa raison ; `null` sinon. */
+  stopReason: NativeStopReason | null;
 }
 
 /**
@@ -234,6 +243,8 @@ export interface SavedSession {
   rangedBy: 'finish' | 'recovery';
   /** Heure où s'arrête la trace d'une session interrompue rangée d'office (`PendingSession.interruptedAtMs`) ; `null` sinon. */
   interruptedAtMs: number | null;
+  /** Raison de l'arrêt par la garde du service (`PendingSession.stopReason`) ; `null` sinon. */
+  stopReason: NativeStopReason | null;
 }
 
 /**
@@ -245,6 +256,8 @@ export interface InterruptedSession {
   file: string;
   /** Heure où s'arrête la trace. */
   atMs: number;
+  /** Arrêtée seule par la garde du service de position : sa raison ; `null` sinon. */
+  reason: NativeStopReason | null;
 }
 
 export interface RecorderState {
@@ -421,14 +434,32 @@ let manualBreakAutoPartMs: number | null = null;
 /** La session vient d'un journal relu : à l'arrêt, une capture d'avant la coupure se retrouve par son fichier. */
 let resumedSession = false;
 
-/** Reprise d'une pause manuelle : le prochain point gardé ouvre un segment et ne compte pas la pause dans la durée. */
-const markManualResume = (): void => {
+/**
+ * Reprise d'une pause manuelle : le prochain point gardé ouvre un segment et ne compte pas la pause dans la durée.
+ * Rend l'heure de la ligne écrite au journal : c'est elle que le service du téléphone reçoit avec l'ordre.
+ */
+const markManualResume = (): number => {
   pendingBreak = true;
   const clock = state.pauseClock;
   manualBreakAutoPartMs = clock?.frozenAtMs != null ? Math.max(0, clock.frozenAtMs - clock.sinceMs) : 0;
   // Écrit tout de suite : une reprise après une chute doit savoir la pause levée, même sans point gardé depuis.
-  pendingLines += journalResumeLine(Date.now());
+  const atMs = Date.now();
+  pendingLines += journalResumeLine(atMs);
   void flushJournal();
+  return atMs;
+};
+
+/**
+ * Dit au service du téléphone la pause manuelle ouverte ou levée, à l'heure de la ligne du journal (lot 232). Sans
+ * objet pour une source qui n'est pas ce service. Un ordre perdu ne coûte que la veille du GPS, application fermée :
+ * les positions restent gardées par le journal de la page, qui fait foi.
+ */
+const tellSourcePaused = async (paused: boolean, atMs: number): Promise<void> => {
+  try {
+    await currentSource?.setPaused?.(paused, atMs);
+  } catch (err) {
+    console.warn(`Pause non transmise au service de position : ${errorMessage(err, 'erreur inconnue')}`);
+  }
 };
 /** Positions reçues pendant la pause manuelle en cours, pour la carte seule : jamais gardées. */
 let pauseFixes: LocationFix[] = [];
@@ -467,6 +498,26 @@ let sourceError: string | null = null;
 const onSourceError = (message: string, cause?: LocationErrorCause): void => {
   sourceError = message;
   setState({ error: message, locationOff: cause === 'locationOff' });
+};
+
+/**
+ * Localisation du téléphone rendue, dite par le service (lot 232, étape 2) : l'alerte rouge et le message de la source
+ * s'effacent, sans attendre la première position. Avant toute position, la page revient à l'attente ordinaire de la
+ * première (`awaitingFix`, gardé depuis le départ) ; après, la veille du GPS reprend son cours (« GPS perdu », ajouté
+ * entre-temps, reste affiché : seule la position suivante le lève). Sans effet si la localisation n'était pas dite coupée.
+ */
+const onSourceLocationOn = (): void => {
+  if (!state.locationOff) return;
+  const message = sourceError;
+  sourceError = null;
+  setState({ locationOff: false, error: message === null ? state.error : withoutMessage(state.error, message) });
+};
+
+/** L'alerte sans `message` : ce qu'elle disait par ailleurs, avant ou après, est gardé ; `null` s'il ne reste rien. */
+const withoutMessage = (error: string | null, message: string): string | null => {
+  if (error === null) return null;
+  const rest = error.replace(` ${message}`, '').replace(message, '').trim();
+  return rest === '' ? null : rest;
 };
 
 /** Alerte de la page Enregistrer quand le GPS se tait (lot 115). */
@@ -542,7 +593,8 @@ const journalGps = (what: JournalGpsEvent): void => {
 
 /**
  * « Réessayer » du GPS pendant l'enregistrement (lot 232) : le téléphone recharge ses données d'aide au GPS
- * (`refreshGpsAssistance`), rien d'autre n'est touché (service, trace, notification). « nouvelle tentative… » reste
+ * (`refreshGpsAssistance`) et, tant qu'aucune position n'est venue depuis le départ, localisation allumée, le service
+ * de position refait son inscription au GPS ; rien d'autre n'est touché (trace, notification). « nouvelle tentative… » reste
  * affiché `GPS_RETRY_FEEDBACK_MS`, même si la demande n'a rien pu envoyer (navigateur) : un retour visible à l'appui. Un
  * appui pendant ce retour est ignoré. L'appui et son résultat laissent chacun une ligne au journal.
  */
@@ -852,12 +904,13 @@ const buildPendingSession = async (
   const gpx = recordedSessionGpx(activity, { ...recorded, segments: measured.segments }, tickMs);
   if (!gpx) {
     await recordingJournal.remove();
+    await clearLoggedFixes();
     if (withPositions && motion) await removeMotionCapture(motion.path);
     return null;
   }
   return {
     ...gpx, sport, activity, recovered, canContinue: false, intervals, marks,
-    motion: withPositions ? motion : null, motionBytes: measured.bytes, test, warning: null, interruptedAtMs: null,
+    motion: withPositions ? motion : null, motionBytes: measured.bytes, test, warning: null, interruptedAtMs: null, stopReason: null,
   };
 };
 
@@ -894,12 +947,14 @@ const rangePendingSession = async (
       pending.content, pending.sport, pending.activity?.id ?? null, pending.intervals, motion, pending.marks, foil, pending.test
     );
     await recordingJournal.remove();
+    // Le journal du service n'a plus rien à compléter ; la notification laissée par sa garde part avec lui.
+    await clearLoggedFixes();
     if (pending.motion && unreadable === null) await removeMotionCapture(pending.motion.path);
     const saved: SavedSession = {
       fileName: file ?? pending.fileName, libraryFile: file, location, content: pending.content, sport: pending.sport, activity: pending.activity,
       pointCount: pending.pointCount, recovered: pending.recovered, intervals: pending.intervals, marks: pending.marks,
       motionLeft: unreadable === null ? null : { path: unreadable, file }, rangedBy, warning: pending.warning,
-      interruptedAtMs: pending.interruptedAtMs,
+      interruptedAtMs: pending.interruptedAtMs, stopReason: pending.stopReason,
     };
     if (unreadable !== null && file !== null) {
       leftSessions.set(file, pending);
@@ -907,7 +962,7 @@ const rangePendingSession = async (
     }
     if (pending.interruptedAtMs !== null && file !== null) {
       const atMs = pending.interruptedAtMs;
-      setState({ interruptions: [...state.interruptions.filter((c) => c.file !== file), { file, atMs }] });
+      setState({ interruptions: [...state.interruptions.filter((c) => c.file !== file), { file, atMs, reason: pending.stopReason }] });
     }
     setState({ pending: null, rangeFailed: false, saved, error: state.rangeFailed ? null : state.error });
     return saved;
@@ -1006,17 +1061,38 @@ export const discardFailedSession = async (): Promise<boolean> => {
     setState({ error: `Session non jetée : ${errorMessage(err, 'erreur inconnue')}. Elle reste sur l'appareil.` });
     return false;
   }
+  await clearLoggedFixes();
   if (pending.motion) await removeMotionCapture(pending.motion.path).catch(() => undefined);
   setState({ pending: null, rangeFailed: false, error: null });
   return true;
 };
 
-/** Options de démarrage d'une source, communes au premier démarrage et à une reprise manuelle. */
+/**
+ * Options de démarrage d'une source, communes au premier démarrage, à « Continuer » et à une reprise manuelle. Pour le
+ * service du téléphone (lot 232, étape 2) : la session en cours (`startedAtMs`, celui de l'en-tête du journal), ses
+ * textes quand l'application est fermée, et les délais de sa veille du GPS et de sa garde, ceux du profil. La veille
+ * n'y tourne que si la page veille aussi (`watchesGps`). La vraie vitesse de la garde est celle du calcul de
+ * l'activité (`guardMovingSpeedMs`), sans mise à l'échelle par l'allure : rien ne la connaît encore au départ.
+ */
 const sourceOptions = (activity: Activity, recording: RecordingProfile): LocationWatchOptions => ({
   intervalMs: recording.intervalMs,
   distanceFilterM: recording.distanceFilterM,
   notificationTitle: 'Tracker enregistre',
   notificationText: `Session ${activity.name} en cours`,
+  service: {
+    session: startedAtMs,
+    closedText: "Application fermée : l'enregistrement continue",
+    gpsLostTitle: 'GPS perdu',
+    stoppedTitle: 'Enregistrement arrêté',
+    stoppedText: 'Touchez pour le ranger',
+    gpsLostDelayS: watchesGps(recording, true) ? recording.gpsLostDelayS : 0,
+    gpsLostRearmS: recording.gpsLostRearmS,
+    guardStillRadiusM: recording.guardStillRadiusM,
+    guardStillDelayS: recording.guardStillDelayS,
+    guardMaxClosedS: recording.guardMaxClosedS,
+    guardMovingSpeedMs: guardMovingSpeedMs(getSportProfile(activity.base)),
+    guardMovingHoldS: recording.guardMovingHoldS,
+  },
 });
 
 const isBusy = (): boolean => state.status !== 'idle';
@@ -1114,6 +1190,111 @@ const recoveryFactsOf = (parsed: ParsedJournal): { journal: RecoveryJournal; off
   };
 };
 
+/** Journal de la page complété de ce que le service de position a reçu sans elle (`catchUpJournal`). */
+interface CaughtUpJournal {
+  /** Texte du journal tel qu'il est maintenant sur le disque, lignes rattrapées comprises. */
+  text: string;
+  parsed: ParsedJournal;
+  catchUp: NativeCatchUp;
+}
+
+/** Réglages du rattrapage : pause automatique et calage du GPS de l'activité, trou de trace de son calcul. */
+const catchUpSettingsOf = (activity: Activity): CatchUpSettings => {
+  const { autoPauseSpeedMs, autoPauseDelayS, settleAccuracyM, settleMaxWaitS } = effectiveRecordingProfile(activity);
+  return { autoPauseSpeedMs, autoPauseDelayS, settleAccuracyM, settleMaxWaitS, maxGapS: getSportProfile(activity.base).maxGapS };
+};
+
+/** Sans activité à positions, rien n'est rattrapé : ces réglages ne sont alors lus par personne. */
+const NO_CATCH_UP: CatchUpSettings = { autoPauseSpeedMs: 0, autoPauseDelayS: 0, settleAccuracyM: 0, settleMaxWaitS: 0, maxGapS: 0 };
+
+const lastFixMsOf = (list: ReadonlyArray<LocationFix>): number | null => (list.length > 0 ? list[list.length - 1].timeMs : null);
+
+/**
+ * Complète le journal de la page des positions que le service du téléphone a écrites et qu'elle n'a pas (lot 232,
+ * étape 2) : celles reçues application fermée, moteur de rendu tombé, ou messages calés écran éteint. Les lignes sont
+ * ajoutées au fichier, puis le journal est relu tel qu'il sera relu plus tard. Sans journal du service (navigateur,
+ * rejeu, autre session, fichier illisible), ou pour une session sans position (muscu, FC de nuit, que le service ne
+ * suit pas), rien n'est ajouté et la coupure reste une frontière de segment. Rejoué, il n'ajoute plus rien. Une
+ * écriture en échec n'est que consignée : la session en mémoire est complète, et le journal du service reste là pour
+ * une prochaine fois.
+ */
+const catchUpJournal = async (text: string, parsed: ParsedJournal, activity: Activity | null): Promise<CaughtUpJournal> => {
+  const follows = activity !== null && hasPositions(activity.base);
+  let log: NativeLog | null = null;
+  if (follows && parsed.header !== null) {
+    try {
+      log = parseNativeLog(await readLoggedFixes(lastFixMsOf(parsed.fixes)));
+    } catch (err) {
+      console.warn(`[reprise] journal du service illisible : ${errorMessage(err, 'erreur inconnue')}`);
+    }
+  }
+  const catchUp = catchUpFromNativeLog(parsed, log, follows && activity !== null ? catchUpSettingsOf(activity) : NO_CATCH_UP);
+  if (catchUp.lines.length === 0) return { text, parsed, catchUp };
+  const completed = withCaughtUpLines(text, catchUp.lines);
+  try {
+    await recordingJournal.append(completed.slice(text.length));
+  } catch (err) {
+    console.warn(`[reprise] positions rattrapées non écrites au journal : ${errorMessage(err, 'erreur inconnue')}`);
+  }
+  console.info(`[reprise] ${catchUp.keptCount} positions rattrapées du journal du service`);
+  return { text: completed, parsed: parseJournal(completed), catchUp };
+};
+
+/**
+ * À l'arrêt, service arrêté et son journal fermé : si le service a écrit des positions que la page n'a jamais
+ * reçues (messages calés écran éteint), le journal en est complété et la trace entière est rendue, en segments.
+ * `null` quand la page a tout reçu, ou que rien ne se rattrape : la trace en mémoire fait alors foi, comme toujours.
+ */
+const segmentsCaughtUpAtStop = async (activity: Activity): Promise<LocationFix[][] | null> => {
+  try {
+    const log = parseNativeLog(await readLoggedFixes(lastFixMsOf(fixes)));
+    if (log === null || log.session !== startedAtMs) return null;
+    const receivedMs = lastReceivedMs;
+    if (!log.entries.some((entry) => entry.kind === 'fix' && isNewerFix(receivedMs, roundFix(entry.fix)))) return null;
+    // Ce qui attend encore d'être écrit (le point de l'arrêt) va au journal d'abord : il est relu tel qu'il est.
+    await flushJournal();
+    const text = await recordingJournal.read();
+    if (text === null) return null;
+    const { parsed, catchUp } = await catchUpJournal(text, parseJournal(text), activity);
+    // Jamais moins que la mémoire : un journal en retard d'une écriture ne lui fait rien perdre.
+    if (catchUp.lines.length === 0 || parsed.fixes.length < fixes.length) return null;
+    return splitIntoSegments(parsed.fixes, parsed.breaks);
+  } catch (err) {
+    console.warn(`[arrêt] rattrapage impossible, la trace reçue est gardée : ${errorMessage(err, 'erreur inconnue')}`);
+    return null;
+  }
+};
+
+/**
+ * Retient l'heure sous laquelle une position reçue est une redélivrance : la plus tardive de ce que le rattrapage a
+ * lu du journal du service, gardé ou non, et de la dernière position gardée. Les positions d'une pause manuelle,
+ * que le service a écrites sans que rien n'en soit gardé, ne reviennent ainsi ni par l'écoute ni à l'arrêt.
+ */
+const markCaughtUp = (catchUp: NativeCatchUp): void => {
+  const known = [catchUp.phase.lastReceivedMs, catchUp.caughtUpToMs, lastFixMsOf(fixes)].filter((ms): ms is number => ms !== null);
+  lastReceivedMs = known.length > 0 ? Math.max(...known) : null;
+};
+
+/**
+ * Pose dans la session ce que le rattrapage dit de sa suite : frontière de segment à venir, ancre de la pause
+ * automatique, calage du GPS en cours, heure de la dernière position connue (`markCaughtUp`). Rend la pause en cours,
+ * manuelle ou automatique, pour l'état.
+ */
+const applyCatchUpPhase = (catchUp: NativeCatchUp): Pick<RecorderState, 'pausedReason' | 'pauseClock'> => {
+  const { phase } = catchUp;
+  pendingBreak = phase.pendingBreak;
+  manualBreakAutoPartMs = phase.manualBreakAutoPartMs;
+  belowSinceMs = phase.belowSinceMs;
+  // Calage du GPS en cours pendant la fermeture : la réception en direct le poursuit depuis la même première position.
+  settleFirstMs = phase.settleFirstMs;
+  markCaughtUp(catchUp);
+  if (phase.manualPause) {
+    return { pausedReason: 'manual', pauseClock: { sinceMs: phase.manualPause.atMs - phase.manualPause.autoPartMs, frozenAtMs: phase.manualPause.atMs } };
+  }
+  if (phase.autoPausedSinceMs !== null) return { pausedReason: 'auto', pauseClock: { sinceMs: phase.autoPausedSinceMs, frozenAtMs: null } };
+  return { pausedReason: null, pauseClock: null };
+};
+
 /** Arrête ce qui peut tourner encore sans personne pour l'écouter : GPS, ceinture, minuteurs des veilles et bips d'approche. */
 const stopOrphans = async (): Promise<void> => {
   await stopOrphanedDeviceLocation();
@@ -1162,28 +1343,36 @@ const heartSourceLabel = (withBelt: boolean): string => (withBelt ? 'Ceinture ca
  * guidages sur ces positions. Le journal n'est jamais récrit, seulement complété, et le saut de ligne d'abord écrit
  * le protège d'une dernière ligne tronquée par la coupure ; la dernière position fait écarter ses redélivrances.
  */
-const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: LocationSource | null): void => {
-  const withPositions = hasPositions(activity.base);
+/**
+ * Points et segments d'un journal relu, posés dans la session ; rend ses statistiques. Une position rattrapée du
+ * journal du service y entre comme les autres : sans fréquence cardiaque, sans bip ni veille.
+ */
+const loadPointsFromJournal = (parsed: ParsedJournal, withPositions: boolean): RecordingStats => {
   const list = withPositions ? parsed.fixes : parsed.heartFixes;
-  resetSession({ withPositions, source: withPositions ? source : null, profile: effectiveRecordingProfile(activity), startedAtMs: parsed.header?.startedAtMs ?? Date.now() });
   fixes = parsed.fixes;
   segmentBreaks = parsed.breaks;
   heartFixes = parsed.heartFixes;
   heartBreaks = parsed.heartBreaks;
-  pendingLines = '\n';
   const last = list[list.length - 1] ?? null;
   lastReceivedMs = last?.timeMs ?? null;
   lastReceivedFix = fixes[fixes.length - 1] ?? null;
   // Un repère posé avant la position suivante suit le temps écoulé depuis la dernière, trou compris.
   lastReceivedAtMs = lastReceivedFix?.timeMs ?? null;
+  return rebuildRecordingStats(
+    list,
+    parsed.manualBreaks.map((b) => ({ index: withPositions ? b.fixIndex : b.heartIndex, autoPartMs: b.autoPartMs }))
+  );
+};
+
+const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: LocationSource | null): void => {
+  const withPositions = hasPositions(activity.base);
+  resetSession({ withPositions, source: withPositions ? source : null, profile: effectiveRecordingProfile(activity), startedAtMs: parsed.header?.startedAtMs ?? Date.now() });
+  pendingLines = '\n';
+  const stats = loadPointsFromJournal(parsed, withPositions);
   intervalRuns = new Map(parsed.intervalRuns.map((run) => [run.startedAtMs, run]));
   marks = parsed.marks;
   currentTest = parsed.test;
   resumedSession = true;
-  const stats = rebuildRecordingStats(
-    list,
-    parsed.manualBreaks.map((b) => ({ index: withPositions ? b.fixIndex : b.heartIndex, autoPartMs: b.autoPartMs }))
-  );
   // Muscu partie sans la ceinture : ses points d'heure seule reprennent (lot 210).
   withoutBelt = !withPositions && parsed.header?.withoutBelt === true;
   setState({
@@ -1237,20 +1426,36 @@ const watchResumedBelt = (parsed: ParsedJournal, paused: boolean): void => {
 };
 
 /**
- * Reprise silencieuse : le service a survécu à la chute du moteur de la page. Rien n'est récrit : capture, ceinture et
- * GPS sont rebranchés tels qu'ils tournent (une ceinture que le téléphone ne tient plus est redemandée, une capture
- * qui ne tourne plus est relancée en complétant son fichier), la session reprend où le journal l'a laissée (pause
- * manuelle comprise), et le point suivant ouvre un segment. Faux, enregistreur au repos et journal intact, si un
- * maillon manque.
+ * Reprise silencieuse : un service de l'enregistrement a survécu à la page (moteur de rendu tombé ; sur le téléphone,
+ * application balayée puis rouverte, lot 232 étape 2). Il n'est jamais relancé. Session à positions : le journal est
+ * d'abord complété de ce que le service de position a reçu sans la page (`catchUpJournal`) ; la session revient
+ * entière, sans frontière de segment tant que son journal est continu, pauses manuelle et automatique comprises, et
+ * le calage du GPS au départ suit son cours. Capture et ceinture sont rebranchées telles qu'elles tournent (une
+ * ceinture que le téléphone ne tient plus est redemandée, une capture qui ne tourne plus est relancée en complétant son
+ * fichier). Puis la page écoute de nouveau le service, en tampon, relit la fin de son journal, et vide son tampon : une
+ * position arrivée pendant cette relecture n'est ni perdue ni doublée. Session sans position (muscu) : la ceinture et
+ * le chronomètre reprennent, le point suivant ouvre un segment. Faux, enregistreur au repos, si un maillon manque, ou
+ * si la garde du service l'a arrêtée entre-temps : la session passe alors en attente, où le rattrapage est refait.
  */
-const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promise<boolean> => {
+const resumeSilently = async (text: string, read: ParsedJournal, activity: Activity): Promise<boolean> => {
   const sport = activity.base;
   const withPositions = hasPositions(sport);
   try {
+    const first = withPositions ? await catchUpJournal(text, read, activity) : null;
+    // Arrêté par sa garde entre-temps : plus rien à rejoindre, la session se range.
+    if (first?.catchUp.guardStop) throw new Error('enregistrement arrêté par la garde du service');
+    const parsed = first?.parsed ?? read;
     restoreFromJournal(parsed, activity, withPositions ? deviceLocationSource() : null);
-    const phase = resumedPhase(parsed);
-    pendingBreak = phase.pendingBreak;
-    manualBreakAutoPartMs = phase.manualBreakAutoPartMs;
+    let pause: Pick<RecorderState, 'pausedReason' | 'pauseClock'>;
+    if (first) pause = applyCatchUpPhase(first.catchUp);
+    else {
+      const phase = resumedPhase(parsed);
+      pendingBreak = phase.pendingBreak;
+      manualBreakAutoPartMs = phase.manualBreakAutoPartMs;
+      pause = { pausedReason: phase.pauseClock ? 'manual' : null, pauseClock: phase.pauseClock };
+    }
+    // Une pause manuelle ne s'ouvre ni ne se lève sans la page : celle-ci vaut jusqu'au bout de la reprise.
+    const manualPaused = pause.pausedReason === 'manual';
     // Capteurs et ceinture ne valent pas la trace : leur lecture en échec ne fait pas renoncer à la reprise.
     const capture = await runningMotionCapture().catch(() => null);
     const ours = capture?.path === motionCapturePath(startedAtMs) ? capture : null;
@@ -1259,8 +1464,8 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
     else if (ours) {
       setState({ measuringMotion: true, motionSetup: ours.setup });
       // Un ordre de pause ou de reprise perdu avec la page : la capture suit la session.
-      if (phase.pauseClock !== null && ours.listening) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
-      if (phase.pauseClock === null && !ours.listening) await resumeMotionCapture().catch(() => setState({ error: SENSORS_RESUME_ERROR }));
+      if (manualPaused && ours.listening) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
+      if (!manualPaused && !ours.listening) await resumeMotionCapture().catch(() => setState({ error: SENSORS_RESUME_ERROR }));
     }
     const beltMaxAgeS = getSportProfile(sport).heartRate.maxAgeS;
     // Ceinture reprise telle quelle (liaison tenue par le téléphone), ou prise d'office en muscu : sa veille repart
@@ -1287,30 +1492,54 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
     }
     // La capture du départ ne tourne plus (fermée avec l'activité) : relancée en complétant son fichier, après la
     // ceinture, dont le refus remplace les messages. Un journal d'avant, qui ne la porte pas, la laisse arrêtée.
-    if (!ours && parsed.header?.motion) await continueCapture(parsed.header.motion, phase.pauseClock !== null);
-    // Sans attente jusqu'au passage en enregistrement : aucune position ne peut arriver d'ici là, ni être mal jugée.
-    if (withPositions) stopSource = adoptRunningService(receiveFix, onSourceError);
-    setState({
-      status: phase.pauseClock ? 'paused' : 'recording', resuming: false, landOnRecording: true,
-      pausedReason: phase.pauseClock ? 'manual' : null, pauseClock: phase.pauseClock,
-    });
+    if (!ours && parsed.header?.motion) await continueCapture(parsed.header.motion, manualPaused);
+    // La page écoute de nouveau : le service la sait revenue. Ses positions attendent dans un tampon, le temps de
+    // relire ce qu'il a écrit pendant que capteurs et ceinture se rebranchaient.
+    const buffered: LocationFix[] = [];
+    let live = false;
+    let lastLineMs = parsed.lastLineMs;
+    if (first) {
+      stopSource = await attachDeviceLocation((fix) => {
+        if (live) receiveFix(fix);
+        else buffered.push(fix);
+      }, onSourceError, onSourceLocationOn);
+      // Le journal est relu tel qu'il est sur le disque, lignes de la ceinture comprises.
+      await flushJournal();
+      const textNow = (await recordingJournal.read()) ?? first.text;
+      const second = await catchUpJournal(textNow, parseJournal(textNow), activity);
+      if (second.catchUp.guardStop) throw new Error('enregistrement arrêté par la garde du service');
+      if (second.catchUp.lines.length > 0) setState({ stats: loadPointsFromJournal(second.parsed, true) });
+      pause = applyCatchUpPhase(second.catchUp);
+      lastLineMs = second.parsed.lastLineMs;
+    }
+    setState({ status: pause.pauseClock ? 'paused' : 'recording', resuming: false, landOnRecording: true, ...pause });
     // Hors pause, le premier point ouvre le segment neuf ; en pause, il attend la reprise.
     if (withoutBelt) startClock();
     if (gpsWatchOn && currentProfile) {
       // Rien n'est dû avant une position, mais le service peut se taire dès maintenant : le minuteur repart d'ici.
       const armedStep = gpsWatchOnFix(START_GPS_WATCH, Date.now(), currentProfile);
-      applyGpsWatch(phase.pauseClock ? gpsWatchOnPause(armedStep.state) : armedStep);
+      applyGpsWatch(manualPaused ? gpsWatchOnPause(armedStep.state) : armedStep);
     }
     if (beltRewired && beltWatchOn && currentProfile) {
       // Comme le GPS : le minuteur de la page tombée est repris par une veille qui saura lire son échéance.
       const armedBelt = gpsWatchOnFix(START_GPS_WATCH, Date.now(), beltWatchSettings(currentProfile));
-      applyBeltWatch(phase.pauseClock ? gpsWatchOnPause(armedBelt.state) : armedBelt);
+      applyBeltWatch(manualPaused ? gpsWatchOnPause(armedBelt.state) : armedBelt);
     } else {
       // Une ceinture redemandée est veillée dès maintenant si elle mesurait avant la coupure, sinon dès sa première
       // mesure ; jamais pendant la pause manuelle : sa veille l'attend, et la reprise manuelle la rend.
-      watchResumedBelt(parsed, phase.pauseClock !== null);
+      watchResumedBelt(parsed, manualPaused);
     }
-    console.info(`[reprise] enregistrement repris seul après une chute du moteur : ${fixes.length || heartFixes.length} points relus`);
+    if (first) {
+      // Tampon vidé d'un trait, puis l'écoute passe en direct : ce que la relecture a déjà pris est écarté par son heure.
+      live = true;
+      for (const fix of buffered) receiveFix(fix);
+      // Un ordre de pause perdu avec la page : le service suit la session, à l'heure que porte le journal.
+      const service = await deviceLocationState().catch(() => null);
+      if (service?.running && service.paused !== manualPaused) {
+        await tellSourcePaused(manualPaused, (manualPaused ? state.pauseClock?.frozenAtMs : lastLineMs) ?? Date.now());
+      }
+    }
+    console.info(`[reprise] enregistrement repris seul, service resté en route : ${fixes.length || heartFixes.length} points relus`);
     return true;
   } catch (err) {
     console.warn(`[reprise] impossible, la session retourne en attente : ${errorMessage(err, 'erreur inconnue')}`);
@@ -1324,11 +1553,11 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
  * session reprise, journal et service rebranchés ; une pause ou un second départ sont ignorés (`exclusive`). Appelée
  * depuis un départ, qui tient déjà cette place, elle ne la reprend pas : il la rendrait trop tôt.
  */
-const resumeHoldingCommands = async (parsed: ParsedJournal, activity: Activity): Promise<boolean> => {
-  if (running) return resumeSilently(parsed, activity);
+const resumeHoldingCommands = async (text: string, parsed: ParsedJournal, activity: Activity): Promise<boolean> => {
+  if (running) return resumeSilently(text, parsed, activity);
   let resumed = false;
   await runCommand(async () => {
-    resumed = await resumeSilently(parsed, activity);
+    resumed = await resumeSilently(text, parsed, activity);
   });
   return resumed;
 };
@@ -1336,43 +1565,74 @@ const resumeHoldingCommands = async (parsed: ParsedJournal, activity: Activity):
 /** Reprise en cours : un départ qui arrive pendant celle du lancement l'attend, au lieu de la doubler. */
 let recovering: Promise<JournalRecovery> | null = null;
 
+/**
+ * Session en attente reconstruite d'un journal relu, complété du rattrapage : points, repères (comptés depuis le plus
+ * tôt du départ et du premier point), séances du compteur et test coupé, capture retrouvée ; `null` s'il n'y a rien à
+ * garder (journal effacé). Ni en-tête ni changement lisibles : aucun calcul deviné, rangée « à classer ».
+ */
+const recoveredPending = async (parsed: ParsedJournal, activity: Activity | null, motion: MotionCapture | null): Promise<PendingSession | null> => {
+  const recorded: RecordedTrack = {
+    segments: splitIntoSegments(parsed.fixes, parsed.breaks),
+    heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks),
+  };
+  const { intervals, marks: recoveredMarks, test } = journalExtras(parsed, recordedWithPositions(activity?.base ?? null, recorded));
+  return buildPendingSession(activity, recorded, true, intervals, recoveredMarks, motion, test);
+};
+
+/**
+ * Range d'office une session interrompue qui ne continue plus, sans mener à Enregistrer ni ouvrir l'analyse (lot 212).
+ * Coupée par le téléphone, ou arrêtée seule par la garde du service (pas par « Arrêter ») : sa carte de fin et son
+ * analyse disent l'heure de l'arrêt, et sa raison.
+ */
+const rangeInterrupted = async (pending: PendingSession, parsed: ParsedJournal, guardStop: NativeCatchUp['guardStop']): Promise<void> => {
+  const ranged: PendingSession = {
+    ...pending, canContinue: false, interruptedAtMs: interruptedAtMs(parsed, guardStop), stopReason: guardStop?.reason ?? null,
+  };
+  setState({ pending: ranged, rangeFailed: false, analyzing: true, saved: null, error: null, landOnRecording: false });
+  await startRanging(ranged, 'recovery');
+};
+
 const recoverOnce = async (): Promise<JournalRecovery> => {
   if (isBusy() || state.pending) return 'free';
-  const services: RecoveryServices = await readRecoveryServices();
   let text: string | null;
   try {
     text = await recordingJournal.read();
   } catch (err) {
+    // Lus quand même : la page répond ainsi au téléphone, qui ne la recharge plus (`MainActivity.pageAnswered`).
+    await readRecoveryServices(null);
     await stopOrphans();
     return setJournalAside(`Session interrompue illisible (${errorMessage(err, 'erreur inconnue')})`);
   }
   const nowMs = Date.now();
   if (text === null) {
-    // Un service sans journal : rien à reprendre (recherche de position coupée par une chute, par exemple).
+    // Un service sans journal : rien à reprendre, et son propre journal n'a plus de session à compléter.
+    const services: RecoveryServices = await readRecoveryServices(null);
     if (recoveryDecision({ journal: null, services, nowMs, offerMaxAgeS: 0 }) === 'stopServices') await stopOrphans();
+    await clearLoggedFixes();
     return 'free';
   }
-  const parsed = parseJournal(text);
-  const facts = recoveryFactsOf(parsed);
-  const session = journalSession(parsed);
-  if (recoveryDecision({ ...facts, services, nowMs }) === 'resume' && session && await resumeHoldingCommands(parsed, session.activity)) return 'free';
+  const read = parseJournal(text);
+  const session = journalSession(read);
+  // Le service de position ne compte que s'il enregistre la session de ce journal.
+  const services: RecoveryServices = await readRecoveryServices(read.header?.startedAtMs ?? null);
+  if (recoveryDecision({ ...recoveryFactsOf(read), services, nowMs }) === 'resume' && session) {
+    if (await resumeHoldingCommands(text, read, session.activity)) return 'free';
+    // La reprise manquée a pu compléter le journal : il est relu tel qu'il est.
+    text = (await recordingJournal.read().catch(() => null)) ?? text;
+  }
+  // Le service est arrêté d'abord : son journal, fermé, se relit en entier.
   await stopOrphans();
   // Capture restée ouverte après un rechargement de la page : fermée, elle attend avec la session.
   const orphan = await stopMotionCapture().catch(() => null);
-  const { header } = parsed;
   try {
-    // Ni en-tête ni changement lisibles : aucun calcul deviné, la session sera rangée « à classer ».
-    const sport = session?.sport ?? null;
-    const recorded: RecordedTrack = {
-      segments: splitIntoSegments(parsed.fixes, parsed.breaks),
-      heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks),
-    };
-    // Séances du compteur, repères (comptés depuis le plus tôt du départ et du premier point) et test coupé.
-    const { intervals, marks: recoveredMarks, test } = journalExtras(parsed, recordedWithPositions(sport, recorded));
+    // Ce que le service a reçu sans la page, jusqu'à sa mort ou son arrêt par la garde, entre dans la session.
+    const { parsed, catchUp } = await catchUpJournal(text, parseJournal(text), session?.activity ?? null);
+    const { header } = parsed;
     const motion = header ? (orphan?.path.endsWith(`/${header.startedAtMs}.imu`) ? orphan : await findMotionCapture(header.startedAtMs)) : null;
-    const pending = await buildPendingSession(session?.activity ?? null, recorded, true, intervals, recoveredMarks, motion, test);
-    // Services arrêtés à présent : seul l'âge du journal décide, reprise échouée comprise.
-    const canContinue = recoveryDecision({ ...facts, services: NO_RECOVERY_SERVICES, nowMs }) === 'offer';
+    const pending = await recoveredPending(parsed, session?.activity ?? null, motion);
+    // Services arrêtés à présent : seul l'âge du journal complété décide, reprise échouée comprise. Arrêtée par la
+    // garde, la session porte une ligne `stop` : elle se range sans « Continuer ».
+    const canContinue = recoveryDecision({ ...recoveryFactsOf(parsed), services: NO_RECOVERY_SERVICES, nowMs }) === 'offer';
     if (!pending) return 'free';
     if (canContinue) {
       // Pas rangée : rangée puis continuée, elle passerait pour un doublon d'elle-même (même instant de départ).
@@ -1380,11 +1640,7 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
       setState({ pending: { ...pending, canContinue }, rangeFailed: false, saved: null, error: null, landOnRecording: true });
       return 'free';
     }
-    // Trop ancienne pour continuer, ou arrêtée : rangée d'office, sans mener à Enregistrer ni ouvrir l'analyse (lot 212).
-    // Coupée par le téléphone (pas par « Arrêter ») : sa carte de fin et son analyse disent l'heure de la coupure.
-    const ranged = { ...pending, interruptedAtMs: interruptedAtMs(parsed) };
-    setState({ pending: ranged, rangeFailed: false, analyzing: true, saved: null, error: null, landOnRecording: false });
-    await startRanging(ranged, 'recovery');
+    await rangeInterrupted(pending, parsed, catchUp.guardStop);
     return 'free';
   } catch (err) {
     return setJournalAside(`Session interrompue non récupérée (${errorMessage(err, 'erreur inconnue')})`);
@@ -1720,12 +1976,13 @@ export const startRecording = exclusive(async (
     // seule redemandent.
     const extras = { belt: options.heartRate ?? null, motion: options.motion ?? null };
     await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity, extras));
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError, onSourceLocationOn);
     setState({ status: 'recording' });
   } catch (err) {
     stopSource = null;
     stopGpsWatch();
     await recordingJournal.remove();
+    await clearLoggedFixes();
     setState({ status: 'idle', error: `Démarrage impossible : ${errorMessage(err, 'erreur inconnue')}` });
     return;
   }
@@ -1744,7 +2001,12 @@ export const startRecording = exclusive(async (
 
 /**
  * « Continuer l'enregistrement » : la session en attente reprend sur son journal, dans un segment neuf, service
- * relancé par ce geste (l'application est au premier plan). Le temps hors de l'application ne compte pas (`continuedPause`).
+ * relancé par ce geste (l'application est au premier plan), sur la même session : il complète son propre journal (lot
+ * 232, étape 2), après une ligne `start`. Le journal de la page est d'abord complété de ce que ce service avait écrit
+ * (déjà fait à la réouverture, d'ordinaire sans rien ajouter), et la levée de la pause lui est dite, à l'heure de sa
+ * ligne : ce qu'il avait écrit pendant une pause manuelle n'est jamais repris. Arrêtée entre-temps par sa garde (ce
+ * qu'un journal du service illisible à la réouverture aurait caché), elle ne continue pas : elle est rangée d'office,
+ * avec sa raison. Le temps hors de l'application ne compte pas (`continuedPause`).
  * Les séances du compteur, coupées avec l'application, s'arrêtent à la dernière ligne. La capture du départ, gardée
  * dans l'en-tête, est relancée en complétant son fichier ; un journal d'avant, qui ne la porte pas, la laisse arrêtée,
  * son fichier retrouvé à l'arrêt. La ceinture du départ est redemandée (celle de l'en-tête, sinon pour un journal
@@ -1764,17 +2026,28 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
     setState({ pending: before, rangeFailed: false, error: `Reprise impossible : ${errorMessage(why, 'erreur inconnue')}. La session reste en attente.` });
   };
   let parsed: ParsedJournal;
+  let caughtUp: NativeCatchUp;
   try {
     const text = await recordingJournal.read();
     if (text === null) throw new Error('journal introuvable');
-    parsed = parseJournal(text);
+    // Déjà complété à la réouverture ; refait ici, sans rien ajouter d'ordinaire, pour savoir jusqu'où le service a écrit.
+    ({ parsed, catchUp: caughtUp } = await catchUpJournal(text, parseJournal(text), activity));
   } catch (err) {
     setState({ error: `Reprise impossible : ${errorMessage(err, 'erreur inconnue')}. La session reste en attente.` });
+    return;
+  }
+  if (caughtUp.guardStop) {
+    // Arrêtée seule par la garde du service, ce qu'un journal du service illisible à la réouverture avait caché : elle
+    // ne continue plus, elle se range d'office, complétée de ce qu'il avait écrit (sa ligne `stop` est au journal).
+    const pending = await recoveredPending(parsed, activity, before.motion).catch(() => null);
+    if (pending) await rangeInterrupted({ ...pending, warning: before.warning }, parsed, caughtUp.guardStop);
+    else setState({ pending: { ...before, canContinue: false } });
     return;
   }
   try {
     const nowMs = Date.now();
     restoreFromJournal(parsed, activity, source);
+    markCaughtUp(caughtUp);
     const atMs = parsed.lastLineMs ?? nowMs;
     for (const run of intervalRuns.values()) {
       const stopped = intervalCommand(run, 'stop', atMs);
@@ -1796,7 +2069,10 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
     await flushJournal();
     const heartRate = getSportProfile(activity.base).heartRate;
     if (withPositions && source) {
-      stopSource = await source.start(sourceOptions(activity, effectiveRecordingProfile(activity)), receiveFix, onSourceError);
+      stopSource = await source.start(sourceOptions(activity, effectiveRecordingProfile(activity)), receiveFix, onSourceError, onSourceLocationOn);
+      // La levée est dite au service, à l'heure de sa ligne : ce qu'il avait écrit avant, pendant une pause manuelle,
+      // ne sera jamais pris pour des positions à garder.
+      if (lifted.resumeLine) await tellSourcePaused(false, nowMs);
       if (belt) {
         await takeBeltOrWarn(belt, heartRate.maxAgeS);
         // `continuedPause` a levé la pause manuelle : une ceinture qui mesurait avant la coupure est veillée dès ici.
@@ -1851,6 +2127,8 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
   if (beltWatchOn) applyBeltWatch(gpsWatchOnPause(beltWatch));
   pendingLines += journalPauseLine(frozenAtMs, frozenAtMs - pauseClock.sinceMs);
   await flushJournal();
+  // Le journal d'abord, le service ensuite, à l'heure de la ligne : il n'apprend jamais une pause que le journal ignore.
+  await tellSourcePaused(true, frozenAtMs);
   if (state.measuringMotion) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
 });
 
@@ -1872,11 +2150,14 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
   if (stopSource !== null) {
     // Le GPS est resté allumé pendant la pause : la position suivante ouvre le segment. Jusque-là, la carte reste sur
     // la dernière position reçue en pause (`pauseFixes`, vidé au premier point gardé), pas sur le point de la pause.
-    markManualResume();
+    const resumedAtMs = markManualResume();
     const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
     setState({ status: 'recording', pausedReason: null, pauseClock: null, ...(sensorsFailed ? { error: SENSORS_RESUME_ERROR } : {}) });
     if (gpsWatchOn) applyGpsWatch(gpsWatchOnResume(gpsWatch, Date.now(), currentProfile));
     if (beltWatchOn) applyBeltWatch(gpsWatchOnResume(beltWatch, Date.now(), beltWatchSettings(currentProfile)));
+    // Une fois la levée écrite au journal, le service l'apprend, à la même heure.
+    await flushJournal();
+    await tellSourcePaused(false, resumedAtMs);
     return;
   }
   if (currentSource === null) return;
@@ -1885,9 +2166,11 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
   const source = currentSource;
   const profile = currentProfile;
   try {
-    markManualResume();
+    const resumedAtMs = markManualResume();
     sourceError = null;
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError, onSourceLocationOn);
+    await flushJournal();
+    await tellSourcePaused(false, resumedAtMs);
     const sensorsFailed = state.measuringMotion && await resumeMotionCapture().then(() => false, () => true);
     // L'erreur de la source peut arriver avant la fin du démarrage (localisation coupée) : elle reste affichée.
     setState({ status: 'recording', pausedReason: null, pauseClock: null, error: sourceError ?? (sensorsFailed ? SENSORS_RESUME_ERROR : null) });
@@ -2050,6 +2333,8 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   stopSource = null;
   currentSource = null;
   currentProfile = null;
+  // Service arrêté, son journal fermé : ce qu'il a écrit sans que la page le reçoive entre dans la trace, avant le GPX.
+  const caughtUpSegments = heartOnly ? null : await segmentsCaughtUpAtStop(activity);
   // Sans position : la durée va jusqu'à l'arrêt (pas en pause manuelle, qui l'a figée), point écrit au journal.
   let heart = splitIntoSegments(heartFixes, heartBreaks);
   if (heartOnly && wasRecording) {
@@ -2077,7 +2362,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
     built = await buildPendingSession(
-      activity, { segments: splitIntoSegments(fixes, segmentBreaks), heart }, false, intervals, [...marks], keptMotion, currentTest
+      activity, { segments: caughtUpSegments ?? splitIntoSegments(fixes, segmentBreaks), heart }, false, intervals, [...marks], keptMotion, currentTest
     );
     // L'alerte d'une capture incomplète suit la session jusqu'à son rangement, « Réessayer » compris.
     if (built) built = { ...built, warning: motionWarning };

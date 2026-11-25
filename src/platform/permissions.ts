@@ -1,14 +1,15 @@
 import { registerPlugin } from '@capacitor/core';
 import type { PermissionKey, PermissionState, PermissionsStatus } from '../core/domainTypes';
 import { bluetoothPermission, requestBluetoothPermission } from './heartRate';
+import { readServicePermissions, requestServicePermission } from './location';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';
 
 /**
  * Autorisations du téléphone : seul passage autorisé vers elles (règle 12),
  * pour la carte « Autorisations » (accueil et Réglages). Sur le téléphone, la
- * position et les notifications passent par le greffon du GPS
- * (`@capgo/background-geolocation`), le Bluetooth par celui de la ceinture
+ * position et les notifications passent par le greffon de l'enregistrement
+ * (`Recording`, lu par `platform/location.ts`), le Bluetooth par celui de la ceinture
  * (`HeartRate`), la batterie et le démarrage automatique par le greffon
  * maison `Permissions` (`android/…/PermissionsPlugin.java`). Dans le
  * navigateur, tout est sans objet et rien n'est demandé.
@@ -38,18 +39,11 @@ const UNAVAILABLE: PermissionsStatus = { location: 'unavailable', notifications:
 const fromCapacitor = (state: string | undefined): PermissionState =>
   state === 'granted' ? 'granted' : state === 'denied' ? 'denied' : 'prompt';
 
-/**
- * Module du greffon du GPS, chargé à la demande. Jamais le greffon lui-même au
- * bout d'une promesse : la résolution lui demanderait `then`, que Capacitor
- * prend pour une méthode native, et la promesse ne se tiendrait jamais.
- */
-const geolocation = () => import('@capgo/background-geolocation');
-
 /** État de chaque autorisation, sans rien demander. Une lecture qui échoue compte comme « à demander ». */
 export const readPermissions = async (): Promise<PermissionsStatus> => {
   if (!isNativeApp()) return UNAVAILABLE;
   const [gps, battery, bt] = await Promise.all([
-    geolocation().then((g) => g.BackgroundGeolocation.checkPermissions()).catch(() => null),
+    readServicePermissions().catch(() => null),
     plugin.batteryStatus().catch(() => null),
     bluetoothPermission().catch(() => null),
   ]);
@@ -70,10 +64,10 @@ export const requestPermission = async (key: PermissionKey): Promise<void> => {
   if (!isNativeApp()) return;
   switch (key) {
     case 'location':
-      await (await geolocation()).BackgroundGeolocation.requestPermissions({ permissions: ['location'] });
+      await requestServicePermission('location');
       return;
     case 'notifications':
-      await (await geolocation()).BackgroundGeolocation.requestPermissions({ permissions: ['notification'] });
+      await requestServicePermission('notification');
       return;
     case 'bluetooth':
       await requestBluetoothPermission();

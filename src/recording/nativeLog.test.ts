@@ -498,6 +498,32 @@ describe.each([1, 5])('rattrapage à %i Hz', (hz) => {
     expect(again.guardStop).toEqual({ atMs: at(3620), reason: 'still' });
   });
 
+  it('arrêt par la garde puis service relancé sur la même session (« Continuer ») : l\'arrêt est levé, aucune position perdue', () => {
+    // Ce que `FixLog.open` écrit : la même session complétée après sa ligne « stop », par une ligne « start ».
+    const steps = trace(hz).run(20, SAILING).stop(3620, 'still').silentUntil(3700).start(3700).run(3720, SAILING).steps;
+    const fixes = steps.filter((step) => step.kind === 'fix');
+    const live = liveSession(fixes.filter((step) => step.fix.timeMs < at(20)));
+    const text = cutBefore(live.lines, 12);
+    const { result, parsed } = caughtUp(text, steps);
+    expect(result.guardStop).toBeNull();
+    expect(result.lines).not.toContain(journalStopLine(at(3620)));
+    expect(parsed.stoppedAtMs).toBeNull();
+    expect(parsed.fixes).toHaveLength(fixes.length);
+    expect(parsed.fixes[parsed.fixes.length - 1].timeMs).toBe(at(3720 - 1 / hz));
+    // La relance ouvre un segment, à sa première position.
+    expect(parsed.breaks).toHaveLength(1);
+    expect(parsed.fixes[parsed.breaks[0]].timeMs).toBe(at(3700));
+    // Rejoué : plus rien à ajouter.
+    expect(catchUpFromNativeLog(parsed, nativeLog(steps), SETTINGS).lines).toEqual([]);
+
+    // Arrêté de nouveau après la relance : seul ce second arrêt compte.
+    const twice = [...steps, { kind: 'stop' as const, atMs: at(7400), reason: 'timeout' }];
+    const second = caughtUp(text, twice);
+    expect(second.result.guardStop).toEqual({ atMs: at(7400), reason: 'timeout' });
+    expect(second.parsed.stoppedAtMs).toBe(at(7400));
+    expect(second.parsed.fixes).toHaveLength(fixes.length);
+  });
+
   it('« Arrêter » déjà au journal de la page : les positions d\'avant sont rattrapées, pas celles d\'après', () => {
     const steps = trace(hz).run(30, SAILING).steps;
     const live = liveSession(steps.filter((step) => step.kind === 'fix' && step.fix.timeMs <= at(20)));

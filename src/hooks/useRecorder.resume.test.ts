@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
 import type { LocationFix, LocationSource, StopLocation } from '../platform/location';
 import { parseJournal } from '../recording/journal';
+import { NATIVE_LOG_FORMAT, NATIVE_LOG_VERSION } from '../recording/nativeLog';
 import { EMPTY_RECORDING_STATS, addFixAfterManualPause, addFixToStats, displayedDurationMs, type RecordingStats } from '../recording/session';
 
 /**
@@ -38,35 +39,84 @@ vi.mock('../platform/files', async (importOriginal) => ({
   recordingJournal: journal,
 }));
 
-/** Services vivants vus par `Recovery.state()`. */
-const services = vi.hoisted(() => ({ gps: false, belt: false }));
-vi.mock('../platform/recovery', () => ({ readRecoveryServices: async () => ({ gps: services.gps, belt: services.belt }) }));
+/**
+ * Services vivants vus à la réouverture : `gps`, notre service de position, pour la session du journal relu
+ * (`Recording.state()`), `belt`, celui de la ceinture sans position (`Recovery.state()`). Les sessions demandées sont
+ * notées.
+ */
+const services = vi.hoisted(() => ({ gps: false, belt: false, asked: [] as (number | null)[] }));
+vi.mock('../platform/recovery', () => ({
+  readRecoveryServices: async (session: number | null) => {
+    services.asked.push(session);
+    return { gps: services.gps, belt: services.belt };
+  },
+}));
 
-/** Service GPS : le raccord sans relance, et les arrêts. */
+/**
+ * Service de position du téléphone : le raccord sans relance, les arrêts, son journal (`log`, `null` sans fichier),
+ * ses effacements, et les ordres de pause qu'il reçoit ; `paused` : sa pause manuelle, telle qu'il la dit.
+ */
 const gpsService = vi.hoisted(() => ({
   onFix: null as ((fix: LocationFix) => void) | null,
-  onError: null as ((message: string) => void) | null,
+  onError: null as ((message: string, cause?: 'locationOff') => void) | null,
+  onLocationOn: null as (() => void) | null,
   adoptions: 0,
   adoptFails: false,
   stops: 0,
   orphanStops: 0,
+  log: null as string | null,
+  logReads: [] as (number | null)[],
+  cleared: 0,
+  paused: false,
+  pauses: [] as { paused: boolean; atMs: number }[],
+  /** Positions que le service reçoit pendant que la page se rebranche : écrites à son journal, et données à la page. */
+  duringAttach: [] as LocationFix[],
 }));
-vi.mock('../platform/location', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../platform/location')>()),
-  adoptRunningService: (onFix: (fix: LocationFix) => void, onError: (message: string) => void): StopLocation => {
-    if (gpsService.adoptFails) throw new Error('pont introuvable');
-    gpsService.adoptions += 1;
-    gpsService.onFix = onFix;
-    gpsService.onError = onError;
-    return async () => {
-      gpsService.stops += 1;
-      gpsService.onFix = null;
-    };
-  },
-  stopOrphanedDeviceLocation: async () => {
-    gpsService.orphanStops += 1;
-  },
-}));
+vi.mock('../platform/location', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../platform/location')>();
+  /** Le service tel que la page le voit au téléphone : il connaît la pause manuelle. */
+  const phone = {
+    label: 'GPS du téléphone',
+    start: async () => async () => undefined,
+    setPaused: async (paused: boolean, atMs: number) => {
+      gpsService.pauses.push({ paused, atMs });
+      gpsService.paused = paused;
+    },
+  };
+  return {
+    ...original,
+    deviceLocationSource: () => phone,
+    attachDeviceLocation: async (
+      onFix: (fix: LocationFix) => void, onError: (message: string, cause?: 'locationOff') => void, onLocationOn?: () => void
+    ): Promise<StopLocation> => {
+      if (gpsService.adoptFails) throw new Error('pont introuvable');
+      gpsService.adoptions += 1;
+      gpsService.onFix = onFix;
+      gpsService.onError = onError;
+      gpsService.onLocationOn = onLocationOn ?? null;
+      for (const fix of gpsService.duringAttach) {
+        gpsService.log = `${gpsService.log ?? ''}${JSON.stringify([fix.timeMs, fix.lat, fix.lon, fix.accuracyM ?? null, null, fix.speedMs ?? null, null])}\n`;
+        onFix(fix);
+      }
+      return async () => {
+        gpsService.stops += 1;
+        gpsService.onFix = null;
+      };
+    },
+    stopOrphanedDeviceLocation: async () => {
+      gpsService.orphanStops += 1;
+    },
+    readLoggedFixes: async (afterMs: number | null) => {
+      gpsService.logReads.push(afterMs);
+      return gpsService.log;
+    },
+    clearLoggedFixes: async () => {
+      gpsService.cleared += 1;
+      gpsService.log = null;
+    },
+    deviceLocationState: async () => ({ running: services.gps, session: null, paused: gpsService.paused }),
+  };
+});
 
 /** Réglages d'une capture, tels que la page les passe. */
 type Setup = { placement: 'poitrine' | 'taille'; foil: boolean; jumps: boolean; cadence: boolean };
@@ -254,6 +304,11 @@ const fakeSource = () => {
   const source = {
     starts: 0,
     label: 'Simulée',
+    /** Ordres de pause manuelle reçus, comme le service du téléphone (lot 232, étape 2). */
+    pauses: [] as { paused: boolean; atMs: number }[],
+    setPaused: async (paused: boolean, atMs: number) => {
+      source.pauses.push({ paused, atMs });
+    },
     start: async (_options: unknown, fix: (f: LocationFix) => void) => {
       source.starts += 1;
       onFix = fix;
@@ -308,11 +363,20 @@ beforeEach(async () => {
   journal.readFails = false;
   services.gps = false;
   services.belt = false;
+  services.asked = [];
   gpsService.onFix = null;
+  gpsService.onError = null;
+  gpsService.onLocationOn = null;
   gpsService.adoptions = 0;
   gpsService.adoptFails = false;
   gpsService.stops = 0;
   gpsService.orphanStops = 0;
+  gpsService.log = null;
+  gpsService.logReads = [];
+  gpsService.cleared = 0;
+  gpsService.paused = false;
+  gpsService.pauses = [];
+  gpsService.duringAttach = [];
   sensors.starts = 0;
   sensors.stops = 0;
   sensors.pauses = 0;
@@ -1036,7 +1100,7 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     expect(fresh.getRecorderState().landOnRecording).toBe(false);
     // Coupée par le téléphone (lot 232) : la carte de fin et l'analyse disent l'heure de la dernière position.
     expect(fresh.getRecorderState().saved?.interruptedAtMs).toBe(T0 + 20_000);
-    expect(fresh.getRecorderState().interruptions).toEqual([{ file: 'rangee.gpx', atMs: T0 + 20_000 }]);
+    expect(fresh.getRecorderState().interruptions).toEqual([{ file: 'rangee.gpx', atMs: T0 + 20_000, reason: null }]);
   });
 
   it('proposé : pas rangée tant qu’on peut continuer (elle passerait pour un doublon d’elle-même), journal gardé', async () => {
@@ -1760,5 +1824,240 @@ describe('guidages rejoués en silence', () => {
     expect(after.target).toBe(before.target);
     expect(after.outcomes).toEqual(before.outcomes);
     expect(after.distanceM).toBeCloseTo(before.distanceM!, 3);
+  });
+});
+
+/** Le journal du service de position, tel que `FixLog.java` l'écrit : son en-tête, puis une ligne par position ou ordre. */
+const serviceLog = (session: number, lines: string[]): string =>
+  `${JSON.stringify({ format: NATIVE_LOG_FORMAT, version: NATIVE_LOG_VERSION, session })}\n${lines.join('')}`;
+const serviceFix = (fix: LocationFix): string =>
+  `${JSON.stringify([fix.timeMs, fix.lat, fix.lon, fix.accuracyM ?? null, null, fix.speedMs ?? null, null])}\n`;
+/** Positions écrites par le service, de `from` à `to` secondes. */
+const serviceFixes = (from: number, to: number, hz: number): string[] => {
+  const lines: string[] = [];
+  for (let k = Math.round(from * hz); k <= Math.round(to * hz); k++) lines.push(serviceFix(fixAt(k / hz)));
+  return lines;
+};
+/** Identifiant de la session en cours : le `startedAtMs` de l'en-tête du journal de la page. */
+const sessionId = (): number => parseJournal(journal.text!).header!.startedAtMs;
+
+describe.each([[1], [5]])('application balayée, service de position resté en route (lot 232, étape 2), à %i Hz', (hz) => {
+  it('rouverte : trace entière, sans frontière, mêmes chiffres qu\'une session sans coupure ; la suite en direct ; arrêt', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 25, hz);
+    await settle();
+    const session = sessionId();
+    // Le journal de la page s'écrit par paquets : sa queue, d'après 20 s, est perdue avec elle.
+    const lost = (line: string): boolean => line.startsWith('[') && ((JSON.parse(line) as unknown[])[0] as number) > T0 + 20_000;
+    journal.text = journal.text!.split('\n').filter((line) => !lost(line)).join('\n');
+    expect(parseJournal(journal.text).fixes).toHaveLength(20 * hz + 1);
+    services.asked = [];
+    // Balayée : le service continue seul et écrit chaque position.
+    gpsService.log = serviceLog(session, serviceFixes(0, 60, hz));
+    services.gps = true;
+    vi.setSystemTime(T0 + 61_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+
+    const state = fresh.getRecorderState();
+    expect(services.asked).toEqual([session]);
+    expect(state.status).toBe('recording');
+    expect(state.pending).toBeNull();
+    expect(state.landOnRecording).toBe(true);
+    expect(gpsService.adoptions).toBe(1);
+    expect(source.starts).toBe(1);
+    expect(fresh.getLiveFixes()).toHaveLength(60 * hz + 1);
+    expect(fresh.getLiveSegmentCount()).toBe(1);
+    // Le journal de la page est complété : une reprise suivante n'aurait plus rien à rattraper.
+    expect(parseJournal(journal.text!).fixes).toHaveLength(60 * hz + 1);
+
+    // Redélivrée par le service : écartée ; puis la suite en direct, dans le même segment.
+    gpsService.onFix!(fixAt(60));
+    run((s) => gpsService.onFix!(fixAt(s)), 60 + 1 / hz, 70, hz);
+    await settle();
+    let uncut: RecordingStats = EMPTY_RECORDING_STATS;
+    run((s) => { uncut = addFixToStats(uncut, fixAt(s)); }, 0, 70, hz);
+    expect(fresh.getRecorderState().stats).toEqual(uncut);
+    expect(lineCount('break')).toBe(0);
+    expect(headerCount()).toBe(1);
+
+    await fresh.stopRecording();
+    const saved = fresh.getRecorderState().saved!;
+    expect(saved.pointCount).toBe(70 * hz + 1);
+    expect((saved.content.match(/<trkseg>/g) ?? []).length).toBe(1);
+    expect(gpsService.stops).toBe(1);
+    // Rangée : le journal du service n'a plus rien à compléter.
+    expect(gpsService.cleared).toBeGreaterThan(0);
+    expect(gpsService.log).toBeNull();
+  });
+
+  it('positions reçues par le service pendant le raccord : ni perdues ni doublées', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, hz);
+    await settle();
+    gpsService.log = serviceLog(sessionId(), serviceFixes(0, 30, hz));
+    // Le service écrit et donne à la page ces positions pendant qu'elle se rebranche.
+    for (let k = Math.round(30 * hz) + 1; k <= Math.round(32 * hz); k++) gpsService.duringAttach.push(fixAt(k / hz));
+    services.gps = true;
+    vi.setSystemTime(T0 + 33_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getLiveFixes()).toHaveLength(32 * hz + 1);
+    expect(fresh.getLiveSegmentCount()).toBe(1);
+    await settle();
+    const parsed = parseJournal(journal.text!);
+    expect(parsed.fixes).toHaveLength(32 * hz + 1);
+    expect(new Set(parsed.fixes.map((f) => f.timeMs)).size).toBe(32 * hz + 1);
+  });
+
+  it('pause manuelle avant la fermeture : reste en pause, positions de la pause jamais gardées ; un ordre perdu est rendu au service', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, hz);
+    vi.setSystemTime(T0 + 20_500);
+    await recorder.pauseRecording();
+    await settle();
+    expect(source.pauses).toEqual([{ paused: true, atMs: T0 + 20_500 }]);
+    gpsService.log = serviceLog(sessionId(), [...serviceFixes(0, 20, hz), `["pause",${T0 + 20_500}]\n`, ...serviceFixes(21, 40, hz)]);
+    // Le service a perdu l'ordre (relancé entre-temps, par exemple) : il se croit hors pause.
+    gpsService.paused = false;
+    services.gps = true;
+    vi.setSystemTime(T0 + 41_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    const state = fresh.getRecorderState();
+    expect(state.status).toBe('paused');
+    expect(state.pausedReason).toBe('manual');
+    expect(state.stats.pointCount).toBe(20 * hz + 1);
+    expect(displayedDurationMs(state.stats, state.pauseClock, T0 + 300_000)).toBe(20_000);
+    expect(gpsService.pauses).toEqual([{ paused: true, atMs: T0 + 20_500 }]);
+    // Les positions de la pause, redélivrées, ne reviennent pas ; la reprise ouvre un segment.
+    run((s) => gpsService.onFix!(fixAt(s)), 30, 40, hz);
+    vi.setSystemTime(T0 + 41_000);
+    await fresh.resumeRecording();
+    expect(gpsService.pauses[gpsService.pauses.length - 1]).toEqual({ paused: false, atMs: T0 + 41_000 });
+    run((s) => gpsService.onFix!(fixAt(s)), 42, 50, hz);
+    await settle();
+    expect(fresh.getRecorderState().stats.pointCount).toBe(20 * hz + 1 + 8 * hz + 1);
+    expect(lineCount('break')).toBe(1);
+  });
+});
+
+describe('application balayée, cas du service de position (lot 232, étape 2)', () => {
+  it.each([[false], [true]])('arrêtée seule par la garde (service encore vu en route : %s) : rangée d\'office, entière, avec sa raison', async (seenRunning) => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, 1);
+    await settle();
+    gpsService.log = serviceLog(sessionId(), [...serviceFixes(0, 30, 1), `["stop",${T0 + 3_630_000},"still"]\n`]);
+    services.gps = seenRunning;
+    vi.setSystemTime(T0 + 3_700_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    const state = fresh.getRecorderState();
+    expect(state.status).toBe('idle');
+    expect(state.pending).toBeNull();
+    expect(state.saved).toMatchObject({ recovered: true, rangedBy: 'recovery', pointCount: 31, interruptedAtMs: T0 + 3_630_000, stopReason: 'still' });
+    expect(state.interruptions).toEqual([{ file: 'rangee.gpx', atMs: T0 + 3_630_000, reason: 'still' }]);
+    expect(state.landOnRecording).toBe(false);
+    // Le journal tel qu'au rangement : complété, avec sa ligne « stop » ; puis effacé, comme celui du service.
+    const ranged = parseJournal(library.journals[0]!);
+    expect(ranged.fixes).toHaveLength(31);
+    expect(ranged.stoppedAtMs).toBe(T0 + 3_630_000);
+    expect(journal.text).toBeNull();
+    expect(gpsService.log).toBeNull();
+    // Arrêtée : jamais rejointe, même vue en route un instant avant.
+    expect(gpsService.adoptions).toBe(0);
+  });
+
+  it('journal du service d\'une autre session : rien n\'est ajouté, « Continuer » proposé comme avant', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, 1);
+    await settle();
+    const session = sessionId();
+    gpsService.log = serviceLog(session - 60_000, serviceFixes(20, 60, 1));
+    services.asked = [];
+    // Un service qui suit une autre session ne prouve rien : la page ne le voit pas pour celle-ci.
+    services.gps = false;
+    vi.setSystemTime(T0 + 70_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(services.asked).toEqual([session]);
+    const state = fresh.getRecorderState();
+    expect(state.pending).toMatchObject({ canContinue: true, pointCount: 21 });
+    expect(parseJournal(journal.text!).fixes).toHaveLength(21);
+    expect(gpsService.adoptions).toBe(0);
+  });
+
+  it('« Continuer » depuis une pause manuelle, puis « Arrêter » aussitôt : rien de la pause gardé, levée dite au service, rangée', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, 1);
+    vi.setSystemTime(T0 + 21_000);
+    await recorder.pauseRecording();
+    await settle();
+    gpsService.log = serviceLog(sessionId(), [...serviceFixes(0, 20, 1), `["pause",${T0 + 21_000}]\n`, ...serviceFixes(21, 40, 1)]);
+    // Application tuée, service compris.
+    services.gps = false;
+    vi.setSystemTime(T0 + 60_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().pending?.canContinue).toBe(true);
+    expect(fresh.getRecorderState().pending?.pointCount).toBe(21);
+
+    const next = fakeSource();
+    const continuing = fresh.continuePendingSession(next);
+    const stopping = fresh.stopRecording();
+    await continuing;
+    await stopping;
+    const state = fresh.getRecorderState();
+    expect(next.starts).toBe(1);
+    expect(next.pauses).toEqual([{ paused: false, atMs: T0 + 60_000 }]);
+    expect(state.status).toBe('idle');
+    expect(state.pending).toBeNull();
+    expect(state.saved).toMatchObject({ rangedBy: 'finish', pointCount: 21 });
+    const ranged = parseJournal(library.journals[0]!);
+    expect(ranged.fixes).toHaveLength(21);
+    expect(ranged.fixes[ranged.fixes.length - 1].timeMs).toBe(T0 + 20_000);
+  });
+
+  it('positions écrites par le service et jamais reçues par la page (écran éteint) : rattrapées à l\'arrêt', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, 1);
+    await settle();
+    gpsService.log = serviceLog(sessionId(), serviceFixes(0, 30, 1));
+    vi.setSystemTime(T0 + 31_000);
+    await recorder.stopRecording();
+    const saved = recorder.getRecorderState().saved!;
+    expect(saved.pointCount).toBe(31);
+    expect((saved.content.match(/<trkseg>/g) ?? []).length).toBe(1);
+    expect(parseJournal(library.journals[0]!).fixes).toHaveLength(31);
+  });
+
+  it('localisation coupée puis rendue, dite par le service rejoint : l\'alerte part avant toute position', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run(source.emit, 0, 20, 1);
+    await settle();
+    services.gps = true;
+    vi.setSystemTime(T0 + 25_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    gpsService.onError!('Localisation du téléphone coupée', 'locationOff');
+    expect(fresh.getRecorderState().locationOff).toBe(true);
+    gpsService.onLocationOn!();
+    expect(fresh.getRecorderState().locationOff).toBe(false);
+    expect(fresh.getRecorderState().error).toBeNull();
+  });
+
+  it('sans journal : le journal du service est effacé, plus rien à compléter', async () => {
+    gpsService.log = serviceLog(T0, serviceFixes(0, 10, 1));
+    await recorder.recoverInterruptedRecording();
+    expect(services.asked).toEqual([null]);
+    expect(gpsService.log).toBeNull();
   });
 });

@@ -4,8 +4,8 @@ import { isNativeApp } from './runtime';
 /**
  * Notification de l'enregistrement : seul accès à elle (règle 12).
  *
- * Sur le téléphone, la notification permanente du service GPS (greffon
- * `@capgo/background-geolocation`, qui n'offre aucun moyen de la changer)
+ * Sur le téléphone, la notification permanente du service de position
+ * (`RecordingService.java`, qui ne la pose qu'au départ et application fermée)
  * est récrite par un greffon maison sur le même numéro : visible écran
  * verrouillé, titre, chiffres du direct, chronomètre d'Android. Pendant une
  * pause manuelle, le greffon la pose lui-même (`standalone`), que le

@@ -45,7 +45,8 @@ import { evaluateAutoPause, isNewerFix, roundFix } from './session';
  * 4. Service relancé sur le fichier de la même session : une ligne vide (`\n` seul, qui isole une dernière ligne
  *    tronquée), puis `["start", heure]`, horloge du téléphone. Ce qui suit ne continue pas ce qui précède.
  * 5. Arrêt par la garde : `["stop", heure, raison]`, horloge du téléphone ; raison `"still"` (resté sur place) ou
- *    `"timeout"` (durée maximale après la fermeture). Dernière ligne du fichier : rien ne s'écrit après.
+ *    `"timeout"` (durée maximale après la fermeture). Rien ne s'écrit après, sauf une relance du service sur la même
+ *    session (ligne `start`, item 4) : l'arrêt est alors levé, et la suite se rattrape.
  *
  * Relecture tolérante : une ligne vide, tronquée (processus tué en pleine écriture), illisible ou inconnue est
  * ignorée, le reste est gardé ; sans en-tête lisible, ou d'une autre version, le fichier entier est écarté. Le
@@ -250,7 +251,8 @@ const replayStart = (journal: CatchUpJournal, entries: NativeLogEntry[], lastMs:
  * pause manuelle, calage du GPS au départ tant que le journal de la page n'a aucune position (`judgeSettle`), pause
  * automatique jugée sur l'heure des positions, frontière de segment à la reprise d'une pause. Les ordres de pause que
  * le journal de la page a perdus y sont écrits, avec leur heure ; l'arrêt par la garde y devient sa ligne `stop`, et
- * rien n'est gardé après lui.
+ * rien n'est gardé après lui, sauf si le service a été relancé ensuite sur la même session (`start`, « Continuer ») :
+ * cet arrêt est alors levé, et ce que le service a écrit après la relance est rattrapé, sans aucune position perdue.
  *
  * Aucune frontière au raccord quand le service a tourné sans interruption : son journal porte encore une position
  * déjà connue de la page, et un silence du GPS reste un trou de la trace, comme en direct. Faute de cette preuve, un
@@ -284,17 +286,23 @@ export const catchUpFromNativeLog = (journal: CatchUpJournal, log: NativeLog | n
   let settling = lastMs === null;
   let settleFirstMs: number | null = null;
 
-  for (let i = from; i < entries.length && guardStop === null; i++) {
+  // Arrêt par la garde lu en route : il ne vaut que si le service n'a pas été relancé ensuite sur la même session.
+  let stopSeen: NativeCatchUp['guardStop'] = null;
+  for (let i = from; i < entries.length; i++) {
     const entry = entries[i];
     if (entry.kind === 'stop') {
-      guardStop = { atMs: entry.atMs, reason: entry.reason };
-      if (journal.stoppedAtMs === null) lines.push(journalStopLine(entry.atMs));
+      stopSeen ??= { atMs: entry.atMs, reason: entry.reason };
     } else if (entry.kind === 'start') {
+      // Relancé après un arrêt par la garde (session continuée) : l'arrêt n'en était pas un, la suite est rattrapée.
+      stopSeen = null;
       // Service relancé : la suite ne continue pas la trace, et la pause automatique repart de rien.
       if (lastReceivedMs !== null) pendingBreak = true;
       autoPausedSinceMs = null;
       belowSinceMs = null;
       unprovenFromMs = null;
+    } else if (stopSeen !== null) {
+      // Rien ne s'écrit après l'arrêt par la garde, sinon une relance : une ligne isolée là n'est pas de la session.
+      continue;
     } else if (entry.kind === 'pause') {
       if (manualPause) continue;
       // Depuis une pause automatique, celle-ci reste comptée dans la durée.
@@ -344,6 +352,10 @@ export const catchUpFromNativeLog = (journal: CatchUpJournal, log: NativeLog | n
       manualBreakAutoPartMs = null;
       keptCount++;
     }
+  }
+  if (stopSeen !== null) {
+    guardStop = stopSeen;
+    if (journal.stoppedAtMs === null) lines.push(journalStopLine(stopSeen.atMs));
   }
   // Aucune position après la dernière du journal, et rien qui prouve que le service tournait : la suivante ouvre un segment.
   if (unprovenFromMs !== null && manualPause === null) pendingBreak = true;

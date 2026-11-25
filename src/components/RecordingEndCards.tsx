@@ -193,7 +193,7 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
         {saved.interruptedAtMs !== null && (
           <>
             <br />
-            <span className="ui-text-s" data-testid="rec-end-interrupted">{interruptedNotice(saved.interruptedAtMs)}</span>
+            <span className="ui-text-s" data-testid="rec-end-interrupted">{interruptedNotice(saved.interruptedAtMs, saved.stopReason)}</span>
           </>
         )}
         {saved.motionLeft && (

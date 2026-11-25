@@ -3,7 +3,8 @@ import { interruptedNotice } from '../recording/resume';
 
 /**
  * « Enregistrement interrompu à … » en tête de l'analyse d'une session coupée par le téléphone ou l'application, puis
- * rangée d'office au lancement suivant (lot 232, d'après Gtracker 496) : la trace s'arrête là. Rien pour une autre
+ * rangée d'office au lancement suivant (lot 232, d'après Gtracker 496) : la trace s'arrête là ; arrêtée seule par la
+ * garde du service de position, application fermée, la raison est dite (Gtracker 403). Rien pour une autre
  * session, ni après « Arrêter » ; en mémoire seulement (perdu si l'application redémarre), comme `MotionLeftNotice`.
  */
 function RecordingInterruptedNotice({ file }: { file: string }) {
@@ -11,7 +12,7 @@ function RecordingInterruptedNotice({ file }: { file: string }) {
   if (!interrupted) return null;
   return (
     <div className="ui-alert ui-alert--warning ui-mb-10" role="status" data-testid="recording-interrupted">
-      {interruptedNotice(interrupted.atMs)}
+      {interruptedNotice(interrupted.atMs, interrupted.reason)}
     </div>
   );
 }

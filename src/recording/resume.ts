@@ -1,8 +1,9 @@
 import type { Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
-import { hasPositions } from '../core/sportProfiles';
+import { DEFAULT_RECORDING, hasPositions } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { formatTimeOfDay } from '../core/units';
+import { formatDuration, formatTimeOfDay } from '../core/units';
+import type { NativeStopReason } from './nativeLog';
 import type { LocationFix } from '../platform/location';
 import {
   addFixAfterManualPause, addFixToStats, EMPTY_RECORDING_STATS, sessionFileName, sessionTitle, splitIntoSegments, type HeartRateFix,
@@ -214,16 +215,28 @@ export const sessionFromJournal = (parsed: ParsedJournal, activities: Activity[]
 
 /**
  * Ce que disent la carte de fin et l'analyse d'une session interrompue rangée d'office (lot 232) : l'heure où sa trace
- * s'arrête.
+ * s'arrête, et pourquoi. `reason` : l'arrêt par la garde du service de position, application fermée (`still`, le
+ * téléphone n'a pas bougé ; `timeout`, durée maximale après la fermeture), d'après Gtracker 403 ; `null` : le
+ * téléphone ou l'application l'a coupé. Les durées dites sont celles de la garde (`RecordingProfile`).
  */
-export const interruptedNotice = (atMs: number): string =>
-  `Enregistrement interrompu à ${formatTimeOfDay(atMs)} : le téléphone ou l'application s'est arrêté, la trace s'arrête là.`;
+export const interruptedNotice = (atMs: number, reason: NativeStopReason | null = null): string => {
+  const at = formatTimeOfDay(atMs);
+  if (reason === 'still') {
+    return `Enregistrement arrêté seul à ${at} : application fermée, le téléphone n'avait pas bougé depuis ${formatDuration(DEFAULT_RECORDING.guardStillDelayS * 1000)}.`;
+  }
+  if (reason === 'timeout') {
+    return `Enregistrement arrêté seul à ${at}, ${formatDuration(DEFAULT_RECORDING.guardMaxClosedS * 1000)} après la fermeture de l'application.`;
+  }
+  return `Enregistrement interrompu à ${at} : le téléphone ou l'application s'est arrêté, la trace s'arrête là.`;
+};
 
 /**
  * Heure à laquelle un enregistrement interrompu s'est arrêté (`interruptedNotice`) : son dernier point gardé, sinon sa
- * dernière ligne ; `null` s'il a été arrêté par « Arrêter » (l'utilisateur l'a vu finir) ou sans rien de daté.
+ * dernière ligne ; `null` s'il a été arrêté par « Arrêter » (l'utilisateur l'a vu finir) ou sans rien de daté. Arrêté
+ * par la garde du service (`guardStop`, sa ligne `stop` au journal) : l'heure de la garde.
  */
-export const interruptedAtMs = (parsed: ParsedJournal): number | null => {
+export const interruptedAtMs = (parsed: ParsedJournal, guardStop: { atMs: number } | null = null): number | null => {
+  if (guardStop !== null) return guardStop.atMs;
   if (parsed.stoppedAtMs !== null) return null;
   const lastFix = parsed.fixes[parsed.fixes.length - 1]?.timeMs;
   const lastHeart = parsed.heartFixes[parsed.heartFixes.length - 1]?.timeMs;

@@ -5,7 +5,7 @@ import {
   journalStopLine, parseJournal,
 } from './journal';
 import {
-  NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, journalExtras, rebuildRecordingStats, recoveryDecision, resumedPhase, sessionFromJournal,
+  NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, interruptedNotice, journalExtras, rebuildRecordingStats, recoveryDecision, resumedPhase, sessionFromJournal,
   type RecoveryFacts,
 } from './resume';
 import { EMPTY_RECORDING_STATS, addFixAfterManualPause, addFixToStats, recordingDurationMs, displayedDurationMs, sessionFileName, type RecordingStats } from './session';
@@ -266,5 +266,16 @@ describe('session reconstruite d’un journal relu (lot 232)', () => {
     expect(interruptedAtMs(parseJournal(text))).toBe(T0 + 19_000);
     expect(interruptedAtMs(parseJournal(text + journalStopLine(T0 + 25_000)))).toBeNull();
     expect(interruptedAtMs(parseJournal(journalHeaderLine('kite', T0)))).toBe(T0);
+  });
+
+  it('arrêtée seule par la garde du service (lot 232, étape 2) : l’heure de la garde, ligne « stop » comprise', () => {
+    const stopped = journalAt(1, 20) + journalStopLine(T0 + 3_620_000);
+    expect(interruptedAtMs(parseJournal(stopped), { atMs: T0 + 3_620_000 })).toBe(T0 + 3_620_000);
+  });
+
+  it('ce que dit l’analyse : la coupure, ou l’arrêt par la garde et sa raison, durées de la garde du profil', () => {
+    expect(interruptedNotice(T0)).toMatch(/^Enregistrement interrompu à \d\d:\d\d:\d\d : le téléphone ou l'application s'est arrêté/);
+    expect(interruptedNotice(T0, 'still')).toMatch(/^Enregistrement arrêté seul à \d\d:\d\d:\d\d : application fermée, le téléphone n'avait pas bougé depuis 1 h 00\.$/);
+    expect(interruptedNotice(T0, 'timeout')).toMatch(/^Enregistrement arrêté seul à \d\d:\d\d:\d\d, 12 h 00 après la fermeture de l'application\.$/);
   });
 });

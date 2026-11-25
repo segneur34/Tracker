@@ -6,15 +6,16 @@ package io.github.segneur.tracker;
  * est absente ; son retour remet tout à zéro. Rayon, vitesse et durées viennent de la page, au départ
  * (`RecordingProfile` de src/core/sportProfiles.ts) ; une valeur nulle ou négative éteint sa règle.
  *
- * « Ne pas bouger » se juge depuis un point d'ancrage : la dernière position connue à la fermeture, puis chaque
+ * « Ne pas bouger » se juge depuis un point d'ancrage : la dernière position assez précise connue à la fermeture (à
+ * défaut, la première reçue ensuite), puis chaque
  * position qui s'en écarte de plus du rayon, qui devient l'ancrage et relance le compte. Une vraie vitesse relance
  * aussi le compte, sans sortir du rayon : un surfeur qui prend des vagues au même pic, un bateau qui tire des bords
  * serrés. Elle se lit dans la vitesse Doppler des positions, au moins `movingSpeedMs`, tenue sans interruption
  * pendant `movingHoldMs` : une pointe isolée du GPS ne relance rien, et une position sans vitesse ne prouve aucun
  * mouvement. La tenue se mesure en temps entre positions, jamais en nombre de positions : deux positions espacées
  * de 30 s au-dessus du seuil suffisent. Une position dont l'incertitude dépasse le rayon ne prouve ni départ ni
- * vitesse : elle ne déplace pas l'ancrage et interrompt la tenue. Sans aucune position (téléphone à l'abri, GPS
- * muet), rien ne prouve un mouvement non plus : le compte court depuis la fermeture.
+ * vitesse : elle ne fixe ni ne déplace l'ancrage et interrompt la tenue. Sans aucune position précise (téléphone à
+ * l'abri, GPS muet), rien ne prouve un mouvement non plus : le compte court depuis la fermeture.
  *
  * Machine pure, sans API d'Android, sur l'horloge monotone du téléphone (ClosedGuardTest).
  */
@@ -82,16 +83,23 @@ final class ClosedGuard {
      * `Double.NaN` si le téléphone ne la donne pas.
      */
     void onFix(long nowMs, double lat, double lon, double accuracyM, double speedMs) {
-        hasLast = true;
-        lastLat = lat;
-        lastLon = lon;
-        if (!closed()) return;
         boolean proves = Double.isNaN(accuracyM) || accuracyM <= radiusM;
+        // Seule une position assez précise sert de repère : la dernière connue à la fermeture en est une.
+        if (proves) {
+            hasLast = true;
+            lastLat = lat;
+            lastLon = lon;
+        }
+        if (!closed()) return;
         if (!hasAnchor) {
-            // Première position depuis la fermeture : elle fixe l'ancrage, le compte court déjà.
-            hasAnchor = true;
-            anchorLat = lat;
-            anchorLon = lon;
+            // Première position précise depuis la fermeture : elle fixe l'ancrage, le compte court déjà. Une position
+            // trop incertaine ne le fixe pas : placé loin du téléphone, il ferait prendre la position juste suivante
+            // pour un départ, ou un vrai départ pour un sur-place.
+            if (proves) {
+                hasAnchor = true;
+                anchorLat = lat;
+                anchorLon = lon;
+            }
         } else if (proves && distanceM(anchorLat, anchorLon, lat, lon) > radiusM) {
             reanchor(nowMs, lat, lon);
         }
