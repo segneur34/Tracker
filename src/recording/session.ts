@@ -14,7 +14,9 @@ import type { LocationFix } from '../platform/location';
  * Principe (`docs/ETAT_DU_PROJET.md` §12) : enregistrer brut, analyser
  * ensuite. Rien n'est filtré, sauf une position qui n'est pas plus récente que
  * la précédente : ce n'est pas une mesure mais une redélivrance, et elle
- * donnerait un intervalle nul au pipeline d'analyse.
+ * donnerait un intervalle nul au pipeline d'analyse ; et, au départ seulement,
+ * les positions d'un GPS qui se cale encore (`gpsSettle.ts`), loin de la vraie,
+ * qui feraient partir la trace d'un pic de vitesse.
  */
 
 /** Ce que les états de l'enregistreur disent de la pause : l'état (`RecorderState`) en porte plus. */

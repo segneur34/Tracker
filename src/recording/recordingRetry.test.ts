@@ -71,23 +71,38 @@ describe('boutons de la ceinture pendant l’enregistrement', () => {
 
 describe('boutons du GPS pendant l’enregistrement', () => {
   const gps = (patch: Partial<GpsRetryInput>): GpsRetryInput => ({
-    active: true, manualPause: false, awaitingFix: false, gpsLost: false, locationOff: false, ...patch,
+    active: true, manualPause: false, awaitingFix: false, settling: false, gpsLost: false, locationOff: false, ...patch,
   });
+  const NO_GPS = { retry: false, openSettings: false, underAlert: false, waiting: false, settling: false };
 
   it('positions reçues : rien', () => {
-    expect(gpsRetryOffer(gps({}))).toEqual({ retry: false, openSettings: false, underAlert: false, waiting: false });
+    expect(gpsRetryOffer(gps({}))).toEqual(NO_GPS);
   });
 
   it('aucune position depuis le départ : « Réessayer » sous la ligne d’état, avec l’attente écrite', () => {
-    expect(gpsRetryOffer(gps({ awaitingFix: true }))).toEqual({ retry: true, openSettings: false, underAlert: false, waiting: true });
+    expect(gpsRetryOffer(gps({ awaitingFix: true }))).toEqual({ ...NO_GPS, retry: true, waiting: true });
+  });
+
+  it('GPS qui se cale (lot 232) : le calage écrit sous la ligne d’état, sans « Réessayer »', () => {
+    expect(gpsRetryOffer(gps({ settling: true }))).toEqual({ ...NO_GPS, settling: true });
+  });
+
+  it('une seule ligne à la fois : l’attente, le GPS perdu et la localisation coupée priment sur le calage', () => {
+    expect(gpsRetryOffer(gps({ settling: true, awaitingFix: true }))).toEqual({ ...NO_GPS, retry: true, waiting: true });
+    expect(gpsRetryOffer(gps({ settling: true, gpsLost: true }))).toEqual({ ...NO_GPS, retry: true, underAlert: true });
+    expect(gpsRetryOffer(gps({ settling: true, locationOff: true }))).toEqual({ ...NO_GPS, openSettings: true, underAlert: true });
+  });
+
+  it('GPS qui se cale en pause manuelle : rien d’écrit', () => {
+    expect(gpsRetryOffer(gps({ settling: true, manualPause: true }))).toEqual(NO_GPS);
   });
 
   it('GPS perdu : « Réessayer » sous l’alerte rouge', () => {
-    expect(gpsRetryOffer(gps({ gpsLost: true }))).toEqual({ retry: true, openSettings: false, underAlert: true, waiting: false });
+    expect(gpsRetryOffer(gps({ gpsLost: true }))).toEqual({ ...NO_GPS, retry: true, underAlert: true });
   });
 
   it('localisation coupée : le réglage d’Android sous l’alerte, à la place de « Réessayer », pause manuelle comprise', () => {
-    const off = { retry: false, openSettings: true, underAlert: true, waiting: false };
+    const off = { ...NO_GPS, openSettings: true, underAlert: true };
     expect(gpsRetryOffer(gps({ locationOff: true, awaitingFix: true }))).toEqual(off);
     expect(gpsRetryOffer(gps({ locationOff: true, manualPause: true }))).toEqual(off);
   });
@@ -97,9 +112,7 @@ describe('boutons du GPS pendant l’enregistrement', () => {
   });
 
   it('hors enregistrement : rien', () => {
-    expect(gpsRetryOffer(gps({ active: false, awaitingFix: true, gpsLost: true, locationOff: true }))).toEqual({
-      retry: false, openSettings: false, underAlert: false, waiting: false,
-    });
+    expect(gpsRetryOffer(gps({ active: false, awaitingFix: true, settling: true, gpsLost: true, locationOff: true }))).toEqual(NO_GPS);
   });
 });
 

@@ -83,6 +83,8 @@ const load = async () => {
       return () => recorder.fixListeners.delete(listener);
     },
     getLiveSegments: () => recorder.segments,
+    // Calage du GPS au départ (lot 232) : joué dans `useRecorder.resume.test.ts`, jamais ici.
+    isGpsSettling: () => false,
   }));
   vi.doMock('../platform/beeper', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../platform/beeper')>()),

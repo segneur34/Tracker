@@ -81,7 +81,8 @@ export const GRADE_ANALYSIS: GradeProfile = { halfWindowM: 25, flatMaxGrade: 0.0
 /**
  * Réglage de l'enregistrement GPS sur téléphone. L'enregistreur ne filtre
  * rien : il demande au système une position par intervalle et garde tout ce
- * qui arrive, l'intelligence restant dans le pipeline d'analyse.
+ * qui arrive, l'intelligence restant dans le pipeline d'analyse ; seule
+ * exception, au départ, les positions d'un GPS qui se cale encore.
  */
 export interface RecordingProfile {
   /** Intervalle demandé entre deux positions, en millisecondes. */
@@ -135,6 +136,16 @@ export interface RecordingProfile {
    * d'état (pause, GPS ou ceinture perdus) part toujours tout de suite.
    */
   notificationMinUpdateS: number;
+  /**
+   * Calage du GPS au départ (`recording/gpsSettle.ts`) : incertitude annoncée, en mètres, sous laquelle une position
+   * est jugée calée ; avant elle, la trace ne commence pas.
+   */
+  settleAccuracyM: number;
+  /**
+   * Délai, en secondes depuis la première position reçue, au bout duquel la trace commence quand même : un GPS qui
+   * ne descend jamais sous `settleAccuracyM` ne bloque pas l'enregistrement. 0 : aucun calage.
+   */
+  settleMaxWaitS: number;
 }
 
 /**
@@ -142,7 +153,9 @@ export interface RecordingProfile {
  * Le 1 Hz tient aussi le coût du recalcul du vent (`docs/HISTORIQUE.md`, point 23).
  * Pause automatique sous 0,3 m/s (environ 1 km/h, sous le bruit GPS au repos)
  * pendant 60 s. GPS perdu après 1 min sans position, signalé de nouveau
- * seulement après 2 min de positions revenues (décision du 01/11).
+ * seulement après 2 min de positions revenues (décision du 01/11). Calage du
+ * GPS au départ (lot 232, valeurs de Gtracker) : la trace commence à la
+ * première position annoncée à 10 m près, ou 10 s après la première reçue.
  */
 export const DEFAULT_RECORDING: RecordingProfile = {
   intervalMs: 1000,
@@ -157,6 +170,8 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   resumeOfferMaxAgeS: 600,
   silent: false,
   notificationMinUpdateS: 5,
+  settleAccuracyM: 10,
+  settleMaxWaitS: 10,
 };
 
 /**

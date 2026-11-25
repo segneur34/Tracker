@@ -453,12 +453,12 @@ await shoot('stats-320');
 
 await go('/');
 const tab = (label) => `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === ${JSON.stringify(label)})`;
-check('barre du bas : case Statistiques', await evaluate(`!!${tab('Statistiques')}`));
-await evaluate(`${tab('Statistiques')}.click()`);
-await settle({ max: 1500 });
+// Case et page attendues, pas lues une fois : sous la charge du poste, l'accueil peut tarder au-delà du plafond de `go` (25/11).
+check('barre du bas : case Statistiques', await waitFor(`!!${tab('Statistiques')}`, { timeout: 5000, label: 'case Statistiques' }));
+await evaluate(`${tab('Statistiques')}?.click()`);
 // La page reprend le dernier affichage : l'adresse peut porter des paramètres.
-check('la case ouvre la page, allumée', (await search())?.startsWith('/statistiques')
-  && (await evaluate(`${tab('Statistiques')}.classList.contains('active')`)));
+check('la case ouvre la page, allumée', await waitFor(`location.pathname.startsWith('/statistiques') && Boolean(${tab('Statistiques')}?.classList.contains('active'))`,
+  { timeout: 5000, label: 'page Statistiques' }));
 
 // Ce script ne relève que les erreurs de console, pas les avertissements.
 const errors = logs.filter((l) => !l.startsWith('warning:'));

@@ -9,7 +9,7 @@ import {
   type LatLon, type MarkGuideSettings, type MarkGuideState, type MarkGuideView,
 } from '../recording/markGuide';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
-import { getLiveSegments, getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { getLiveSegments, getRecorderState, isGpsSettling, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { effectiveMarkGuide } from './useSportSettings';
 import { createStore } from './createStore';
 
@@ -92,7 +92,9 @@ const aimFromLastPosition = (current: Session) => {
 
 const onFix = (fix: LocationFix) => {
   const current = session;
-  if (!current) return;
+  // Position du calage du GPS au départ (lot 232), imprécise et pas gardée : elle ne valide ni ne guide, comme le
+  // rejeu après une coupure (`replayMarkGuide`, sur la trace gardée).
+  if (!current || isGpsSettling()) return;
   const step = stepMarkGuide(current.state, fix, current.marks, current.settings);
   current.state = step.state;
   current.distanceM = step.distanceM;

@@ -235,7 +235,9 @@ const fakeSource = () => {
         source.stops += 1;
       };
     },
-    emit: (s: number, speedMs = 3) => onFix?.({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-5, lon: 3, speedMs, accuracyM: 4 }),
+    /** `accuracyM` : 4 m par défaut, calé d'emblée ; `null` : sans incertitude, comme un rejeu de fichier. */
+    emit: (s: number, speedMs = 3, accuracyM: number | null = 4) =>
+      onFix?.({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-5, lon: 3, speedMs, ...(accuracyM === null ? {} : { accuracyM }) }),
     fail: (message: string, cause?: 'locationOff') => onError?.(message, cause),
   };
   return source satisfies LocationSource & object;
@@ -461,6 +463,127 @@ describe('repère « Note » (D11)', () => {
     // Dix secondes sans position (pause manuelle) : le repère avance avec elles.
     vi.setSystemTime(Date.now() + 10_000);
     expect(recorder.addRecordingMark()?.mark.timeMs).toBe(T0 + 15_000);
+  });
+});
+
+describe('calage du GPS au départ (lot 232)', () => {
+  it('rien de gardé ni de compté avant la première position calée, que la carte montre ; le chrono part avec la trace', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    const seenByOthers: number[] = [];
+    const offFixes = recorder.subscribeToFixes((f) => seenByOthers.push(f.timeMs));
+    source.emit(0, 12, 30);
+    source.emit(1, 8, 20);
+    let state = recorder.getRecorderState();
+    expect(state.settlingAccuracyM).toBe(20);
+    expect(state.awaitingFix).toBe(false);
+    expect(state.stats.pointCount).toBe(0);
+    expect(state.stats.firstMs).toBeNull();
+    expect(recorder.getLiveFixes()).toHaveLength(0);
+    expect(recorder.getLastFix()).toBeNull();
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 1000);
+
+    source.emit(2, 3, 8);
+    source.emit(3, 3, 40);
+    offFixes();
+    state = recorder.getRecorderState();
+    expect(state.settlingAccuracyM).toBeNull();
+    // Calé à 2 s : la position large qui suit est gardée, le calage ne joue plus.
+    expect(recorder.getLiveFixes().map((f) => f.timeMs)).toEqual([T0 + 2000, T0 + 3000]);
+    expect(state.stats.firstMs).toBe(T0 + 2000);
+    expect(recordingDurationMs(state.stats)).toBe(1000);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 3000);
+    // Les abonnés reçoivent toutes les positions ; guidage et test écartent celles du calage (`isGpsSettling`).
+    expect(seenByOthers).toEqual([T0, T0 + 1000, T0 + 2000, T0 + 3000]);
+    expect(recorder.isGpsSettling()).toBe(false);
+    await recorder.stopRecording();
+    // Le journal n'a que la trace : une reprise après coupure redonne les mêmes chiffres.
+    expect(parseJournal(journal.text ?? library.journals.at(-1) ?? '').fixes.map((f) => f.timeMs)).toEqual([T0 + 2000, T0 + 3000]);
+    expect(recorder.getRecorderState().settlingAccuracyM).toBeNull();
+  });
+
+  it.each([['1 Hz', 1], ['5 Hz', 0.2], ['pas de 7 s', 7]])('GPS qui ne se cale jamais, %s : la trace part 10 s après la première position, au temps', async (_name, stepS) => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    for (let k = 0; k * stepS <= 20; k++) source.emit(Math.round(k * stepS * 1000) / 1000, 3, 30);
+    const firstKeptS = Math.ceil(10 / stepS - 1e-9) * stepS;
+    expect(recorder.getLiveFixes()[0].timeMs).toBe(T0 + Math.round(firstKeptS * 1000));
+    expect(recorder.getRecorderState().stats.firstMs).toBe(T0 + Math.round(firstKeptS * 1000));
+    expect(recorder.getRecorderState().settlingAccuracyM).toBeNull();
+  });
+
+  it('« Note » pendant le calage : repère à l’heure seule, jamais avant le départ ; une fois calé, à sa position', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    const settling: boolean[] = [];
+    const off = recorder.subscribeToFixes(() => settling.push(recorder.isGpsSettling()));
+    source.emit(0, 3, 40);
+    vi.setSystemTime(T0 + 4000);
+    const early = recorder.addRecordingMark()!.mark;
+    expect(early).toEqual({ timeMs: T0 + 4000, lat: null, lon: null, label: null });
+    vi.setSystemTime(T0 + 5000);
+    source.emit(5, 3, 4);
+    const placed = recorder.addRecordingMark()!.mark;
+    expect(placed.lat).toBe(43 + 5e-5);
+    expect(placed.timeMs).toBe(T0 + 5000);
+    off();
+    expect(settling).toEqual([true, false]);
+    // Au journal comme dans la session : le premier à l'heure seule, le second à sa position.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(parseJournal(journal.text!).marks).toEqual([early, placed]);
+    expect(recorder.getRecorderState().marks).toEqual([early, placed]);
+  });
+
+  it('« Note » pendant le calage, position datée avant le départ : à l’heure du départ', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0 + 2000);
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    // Horloge du GPS un peu en retard sur celle du téléphone.
+    source.emit(1, 3, 40);
+    expect(recorder.addRecordingMark()!.mark.timeMs).toBe(T0 + 2000);
+  });
+
+  it('pause manuelle pendant le calage, puis reprise : la carte suit de nouveau la position du calage', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0, 3, 40);
+    await recorder.pauseRecording();
+    for (let s = 1; s <= 3; s++) source.emit(s, 3, 40);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 3000);
+    await recorder.resumeRecording();
+    source.emit(4, 3, 30);
+    expect(recorder.getRecorderState().settlingAccuracyM).toBe(30);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 4000);
+    expect(recorder.getLiveHeadingFixes()).toHaveLength(0);
+    source.emit(5, 3, 25);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 5000);
+    source.emit(6, 3, 4);
+    expect(recorder.getLiveFixes().map((f) => f.timeMs)).toEqual([T0 + 6000]);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 6000);
+  });
+
+  it('positions sans incertitude (rejeu d’un fichier) : gardées dès la première, aucun calage', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0, 3, null);
+    source.emit(1, 3, null);
+    expect(recorder.getLiveFixes()).toHaveLength(2);
+    expect(recorder.getRecorderState().settlingAccuracyM).toBeNull();
+  });
+
+  it('chaque départ se recale : le calage d’une session ne vaut pas pour la suivante', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0, 3, 4);
+    expect(recorder.getLiveFixes()).toHaveLength(1);
+    await reset();
+    await recorder.startRecording(activity, source);
+    source.emit(100, 3, 30);
+    expect(recorder.getLiveFixes()).toHaveLength(0);
+    expect(recorder.getRecorderState().settlingAccuracyM).toBe(30);
   });
 });
 

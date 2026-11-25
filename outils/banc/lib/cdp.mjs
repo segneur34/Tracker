@@ -23,6 +23,8 @@ export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Temps de la page : `ms / TEMPS` de vrai temps (horloge accélérée, lib/horloge.mjs). */
 export const vwait = (ms) => wait(ms / TEMPS);
 
+/** Attente d'une réponse du navigateur au-delà de laquelle la sortie d'erreur le dit (la moitié du délai du lanceur). */
+const SILENT_REPLY_MS = 5 * 60000;
 /** Délai au-delà duquel un minuteur de la page ne retient plus `settle` (une minuterie de fond, un délai réseau). */
 const SHORT_TIMER_MS = 1000;
 /** Requêtes attendues par `settle` : pas les images (tuiles de la carte, qui peuvent traîner) ni les flux. */
@@ -223,9 +225,13 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
   const requests = new Map();
   let loaderId = null;
 
+  // Une commande sans réponse (page figée) bloquait le script jusqu'au délai du lanceur sans rien dire (25/11) :
+  // la sortie d'erreur le nomme, sans rien changer au déroulé.
   const send = (method, params = {}) => new Promise((resolve) => {
     const i = ++id;
-    pending.set(i, resolve);
+    const muette = setTimeout(() => process.stderr.write(`cdp : ${method} sans réponse depuis ${SILENT_REPLY_MS / 60000} min (page figée ?)\n`), SILENT_REPLY_MS);
+    muette.unref();
+    pending.set(i, (msg) => { clearTimeout(muette); resolve(msg); });
     ws.send(JSON.stringify({ id: i, method, params }));
   });
   ws.onmessage = (e) => {
@@ -263,6 +269,8 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
     for (const l of listeners) l(msg);
   };
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+  // Connexion coupée par le navigateur : Node ne disait que « unsettled top-level await » (code 13).
+  ws.addEventListener('close', () => { if (pending.size > 0) process.stderr.write(`cdp : connexion au navigateur fermée, ${pending.size} commande(s) sans réponse\n`); });
 
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable'); await send('Network.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: PAGE_SCRIPT });

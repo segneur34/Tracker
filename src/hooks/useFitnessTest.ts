@@ -10,7 +10,7 @@ import {
   type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner,
 } from '../recording/fitnessTest';
 import { TEST_SIGNAL_TONES, type TestSignal } from '../recording/signalTones';
-import { getLiveSegments, getRecordedTest, getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { getLiveSegments, getRecordedTest, getRecorderState, isGpsSettling, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
 import { runnerAge, type RunnerProfile } from '../library/athleteProfile';
 import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
@@ -128,7 +128,9 @@ const advance = (current: Session, next: { state: FitnessTestState; signal: Test
 
 const onFix = (fix: LocationFix) => {
   const current = session;
-  if (!current) return;
+  // Position du calage du GPS au départ (lot 232), que la trace ne garde pas : le test part du premier point gardé,
+  // comme son rejeu après une coupure (`replayFitnessTest`, sur la trace gardée).
+  if (!current || isGpsSettling()) return;
   const resumed = current.sawPause;
   current.sawPause = false;
   // Vitesse du GPS, sinon celle tirée de la position précédente, proche (protocole du test).

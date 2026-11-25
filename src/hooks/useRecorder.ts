@@ -28,6 +28,7 @@ import type { SessionTest } from '../recording/fitnessTest';
 import {
   START_GPS_WATCH, beltWatchSettings, gpsWatchOnExpired, gpsWatchOnFix, gpsWatchOnPause, gpsWatchOnResume, watchesGps, type GpsWatchState, type GpsWatchStep,
 } from '../recording/gpsWatch';
+import { judgeSettle } from '../recording/gpsSettle';
 import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { runCommand as intervalCommand, seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
@@ -284,6 +285,12 @@ export interface RecorderState {
   awaitingFix: boolean;
   /** Localisation du téléphone coupée, dite par la source (lot 232) ; effacé à la position suivante. */
   locationOff: boolean;
+  /**
+   * Le GPS se cale au départ (`recording/gpsSettle.ts`, lot 232) : incertitude, en mètres, de la dernière position
+   * reçue, que la trace ne garde pas encore ; `null` hors calage (avant toute position, une fois la trace commencée,
+   * au repos).
+   */
+  settlingAccuracyM: number | null;
   /** Vrai quelques secondes après « Réessayer » du GPS : « nouvelle tentative… » (`GPS_RETRY_FEEDBACK_MS`). */
   gpsRetrying: boolean;
   /** FC perdue : plus de mesure lisible d'une ceinture qui en donnait (lot 177) ; effacé à la mesure suivante. */
@@ -323,6 +330,7 @@ const INITIAL_STATE: RecorderState = {
   gpsLost: false,
   awaitingFix: false,
   locationOff: false,
+  settlingAccuracyM: null,
   gpsRetrying: false,
   beltLost: false,
   beltAside: null,
@@ -360,6 +368,13 @@ const fixListeners = createListeners<[LocationFix]>({ safe: true });
  * écran éteint. Rend le désabonnement.
  */
 export const subscribeToFixes = (listener: (fix: LocationFix) => void): (() => void) => fixListeners.subscribe(listener);
+
+/**
+ * Vrai pendant le calage du GPS au départ (`recording/gpsSettle.ts`, lot 232) : lu par un abonné aux positions, la
+ * position qu'il reçoit n'est pas gardée dans la trace. Le guidage des balises et le test l'écartent : après une
+ * coupure, ils se rejouent sur la trace gardée seule, et le direct doit partir du même instant.
+ */
+export const isGpsSettling = (): boolean => settlingFix !== null;
 
 
 // --- Enregistrement en cours ---
@@ -417,6 +432,18 @@ const markManualResume = (): void => {
 };
 /** Positions reçues pendant la pause manuelle en cours, pour la carte seule : jamais gardées. */
 let pauseFixes: LocationFix[] = [];
+/** Le GPS s'est calé : une position a été jugée calée (`judgeSettle`), ou une est déjà gardée ; le calage ne joue plus. */
+let settled = false;
+/** Pendant le calage, heure de la première position vue ; `null` avant elle ou hors calage. */
+let settleFirstMs: number | null = null;
+/** Dernière position reçue pendant le calage, pour la carte seule : jamais gardée ; `null` hors calage. */
+let settlingFix: LocationFix | null = null;
+/** Calage remis au départ : à chaque session, neuve ou relue d'un journal, et au repos. */
+const resetSettle = (): void => {
+  settled = false;
+  settleFirstMs = null;
+  settlingFix = null;
+};
 /** Abonnés aux positions de la pause manuelle (la carte du direct, `useLivePosition`). */
 const pausePositionListeners = createListeners({ safe: true });
 /** Écritures du journal, enchaînées pour qu'elles arrivent dans l'ordre. */
@@ -647,6 +674,36 @@ const keepPoint = <P extends HeartRateFix>(fix: P, kept: P[], breaks: number[], 
   }
 };
 
+/**
+ * Calage du GPS au départ (`judgeSettle`, lot 232), tant qu'aucune position n'est gardée : vrai si la position n'est
+ * pas encore calée. Elle ne sert alors qu'à la carte du direct (`settlingFix`), comme une position de pause manuelle :
+ * ni journal, ni statistiques, ni pause automatique ; le chrono ne part qu'avec la trace. La première jugée calée clôt
+ * le calage pour la session ; une session reprise avec des positions gardées ne se recale pas.
+ */
+const stillSettling = (fix: LocationFix, recording: RecordingProfile): boolean => {
+  if (settled) return false;
+  if (fixes.length > 0) {
+    settled = true;
+    return false;
+  }
+  const verdict = judgeSettle(settleFirstMs, fix, recording);
+  if (!verdict.settled) {
+    settleFirstMs = verdict.firstSeenMs;
+    settlingFix = fix;
+    // Reprise d'une pause manuelle posée pendant le calage : rien n'est gardé, `keepPoint` ne videra pas ses positions ;
+    // la carte suit la position du calage, plus la dernière de la pause.
+    if (pauseFixes.length > 0) pauseFixes = [];
+    // Posé à chaque position, même incertitude comprise : la carte du direct suit l'état pour la redessiner.
+    setState({ settlingAccuracyM: fix.accuracyM ?? null });
+    return true;
+  }
+  settled = true;
+  settleFirstMs = null;
+  settlingFix = null;
+  if (state.settlingAccuracyM !== null) setState({ settlingAccuracyM: null });
+  return false;
+};
+
 /** Reçoit une position de la source. Le réglage est relu à chaque fois : l'activité peut changer en route. */
 const receiveFix = (received: LocationFix): void => {
   const role = receivedFixRole(state);
@@ -676,7 +733,11 @@ const receiveFix = (received: LocationFix): void => {
     pausePositionListeners.notify();
     return;
   }
+  // Jugée avant les abonnés : ceux qui rejouent la trace gardée après une coupure (guidage des balises, test) écartent
+  // les positions du calage (`isGpsSettling`), et partent avec elle ; la notification les voit toutes.
+  const settling = stillSettling(fix, recording);
   fixListeners.notify(fix);
+  if (settling) return;
 
   const auto = evaluateAutoPause(state.status === 'paused', belowSinceMs, fix, {
     speedMs: recording.autoPauseSpeedMs,
@@ -1081,6 +1142,7 @@ const abandonResume = async (): Promise<void> => {
   heartFixes = [];
   heartBreaks = [];
   pauseFixes = [];
+  resetSettle();
   pendingLines = '';
   intervalRuns = new Map();
   marks = [];
@@ -1088,7 +1150,7 @@ const abandonResume = async (): Promise<void> => {
   setState({
     status: 'idle', resuming: false, sport: null, activity: null, sourceLabel: null, pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks: [], stats: EMPTY_RECORDING_STATS, gpsLost: false, beltLost: false,
-    beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, gpsRetrying: false,
+    beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, settlingAccuracyM: null, gpsRetrying: false,
   });
 };
 
@@ -1127,7 +1189,7 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
   setState({
     status: 'starting', resuming: true, sport: activity.base, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!withoutBelt), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats, pending: null, rangeFailed: false, saved: null, error: null, gpsLost: false, beltLost: false,
-    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, gpsRetrying: false,
+    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, settlingAccuracyM: null, gpsRetrying: false,
   });
 };
 
@@ -1594,6 +1656,7 @@ const resetSession = (init: { withPositions: boolean; source: LocationSource | n
   manualBreakAutoPartMs = null;
   resumedSession = false;
   pauseFixes = [];
+  resetSettle();
   startedAtMs = init.startedAtMs;
   intervalRuns = new Map();
   marks = [];
@@ -1644,7 +1707,7 @@ export const startRecording = exclusive(async (
     status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : heartSourceLabel(!!options.heartRate), pausedReason: null, pauseClock: null,
     measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: recoveryNotice, gpsLost: false, beltLost: false,
-    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, gpsRetrying: false,
+    beltAside: null, beltRetrying: false, awaitingFix: withPositions, locationOff: false, settlingAccuracyM: null, gpsRetrying: false,
   });
 
   if (!withPositions) {
@@ -1904,7 +1967,7 @@ export const noteFitnessTest = (test: SessionTest, journal: boolean): void => {
  * Bouton « Note » : pose un repère à cet instant, à la dernière position
  * reçue (pause comprise), écrit tout de suite dans le journal. Rend le repère
  * et son numéro, ou `null` hors d'un enregistrement ou sans position encore.
- * Sans position (muscu), le repère est à l'heure seule.
+ * Sans position (muscu), ou avant le premier point gardé (calage du GPS au départ), le repère est à l'heure seule.
  */
 export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
   if (state.status !== 'recording' && state.status !== 'paused') return null;
@@ -1913,7 +1976,15 @@ export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
   // À l'heure des positions, pas à celle de l'horloge (qui en diffère pendant un rejeu) : celle de la dernière
   // position, plus le temps écoulé depuis sa réception (pause manuelle). Sans position (muscu) : à l'horloge seule.
   const sinceFixMs = fix !== null && fix === lastReceivedFix && lastReceivedAtMs !== null ? Math.max(0, Date.now() - lastReceivedAtMs) : 0;
-  const mark: SessionMark = { timeMs: fix ? fix.timeMs + sinceFixMs : Date.now(), lat: fix?.lat ?? null, lon: fix?.lon ?? null, label: null };
+  // Trace pas encore commencée, GPS en calage (lot 232), pause comprise : aucune position fiable ; repère à l'heure
+  // seule, que l'analyse rattache au départ de la trace (`locateMarks`). Jamais avant l'heure du départ : la reprise
+  // après coupure ne garde que les repères comptés depuis elle (`recording/resume.ts`).
+  const located = fix !== null && (settled || fixes.length > 0);
+  const atMs = fix ? fix.timeMs + sinceFixMs : Date.now();
+  const mark: SessionMark = located
+    ? { timeMs: atMs, lat: fix.lat, lon: fix.lon, label: null }
+    // Le calage ne joue que sur un GPS qui donne son incertitude, à l'heure du téléphone (jamais un rejeu).
+    : { timeMs: settlingFix !== null ? Math.max(atMs, startedAtMs) : atMs, lat: null, lon: null, label: null };
   marks = [...marks, mark];
   setState({ marks });
   pendingLines += journalNoteLine(mark);
@@ -1965,7 +2036,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   stopClock();
   // Les alertes de perte du GPS et de la FC ne survivent pas à l'enregistrement.
   setState({
-    status: 'stopping', gpsLost: false, beltLost: false, beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, gpsRetrying: false,
+    status: 'stopping', gpsLost: false, beltLost: false, beltAside: null, beltRetrying: false, awaitingFix: false, locationOff: false, settlingAccuracyM: null, gpsRetrying: false,
     error: withoutBeltLost(withoutGpsLost(state.error)),
   });
   // Écrit avant de couper le GPS : une chute d'ici la fin ne propose ni reprise ni « Continuer ».
@@ -2039,6 +2110,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   fixes = [];
   segmentBreaks = [];
   pauseFixes = [];
+  resetSettle();
   heartFixes = [];
   heartBreaks = [];
   heartOnly = false;
@@ -2066,8 +2138,12 @@ export const getLiveFixes = (): ReadonlyArray<LocationFix> => (isBusy() ? fixes 
 /** Dernière position gardée de l'enregistrement en cours. */
 export const getLastFix = (): LocationFix | null => (isBusy() && fixes.length > 0 ? fixes[fixes.length - 1] : null);
 
-/** Position de la carte du direct : la dernière gardée, ou en pause manuelle la dernière reçue (`shownLiveFix`). */
-export const getLivePosition = (): LocationFix | null => (isBusy() ? shownLiveFix(fixes[fixes.length - 1] ?? null, pauseFixes) : null);
+/**
+ * Position de la carte du direct : la dernière gardée, ou en pause manuelle la dernière reçue (`shownLiveFix`) ;
+ * pendant le calage du GPS au départ, la dernière reçue, que la trace ne garde pas encore (lot 232).
+ */
+export const getLivePosition = (): LocationFix | null =>
+  (isBusy() ? shownLiveFix(fixes[fixes.length - 1] ?? settlingFix, pauseFixes) : null);
 
 const subscribeToLivePosition = (listener: () => void): (() => void) => {
   const fromState = subscribe(listener);
@@ -2080,7 +2156,7 @@ const subscribeToLivePosition = (listener: () => void): (() => void) => {
 
 /**
  * Position de la carte du direct, pour la carte seule (point 210) : redessine à chaque position gardée, et en pause
- * manuelle à chaque position reçue ; `null` au repos.
+ * manuelle ou pendant le calage du GPS à chaque position reçue ; `null` au repos.
  */
 export const useLivePosition = (): LocationFix | null => useSyncExternalStore(subscribeToLivePosition, getLivePosition);
 

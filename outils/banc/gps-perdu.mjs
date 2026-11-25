@@ -13,6 +13,9 @@
 //     première position » et « Réessayer » sous la ligne d'état ; l'appui montre « nouvelle tentative… » 5 s, puis
 //     « Réessayer » revient ; la première position efface l'attente et le bouton. Aucun « Activer la localisation »
 //     (la localisation coupée n'existe que sur le téléphone).
+//  6. (lot 232, calage du GPS au départ) : cette première position est annoncée à 30 m, puis 18 m : « le GPS se cale
+//     (± 30 m) », puis « (± 18 m) », seul sur sa ligne, sans « Réessayer » ni attente, un cercle rond autour de la
+//     position sur la carte, aucun point gardé ; une position à 5 m commence la trace : texte et cercle partent.
 // La sortie standard ne porte aucune durée : elle sert à comparer deux passages.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -153,9 +156,39 @@ check('appui : « nouvelle tentative… », bouton inactif',
   await rescueText());
 const back = await waitFor(async () => (await rescueText()).includes('Réessayer'), 7000);
 check('« Réessayer » revient après quelques secondes', back !== null, await rescueText());
-await evaluate(`window.__bancPosition?.({ timestamp: Date.now(), coords: { latitude: 43.7, longitude: 3.85, accuracy: 5, altitude: null, speed: null, heading: null } }); 'ok'`);
+/** Donne une position du navigateur, d'incertitude `accuracy` mètres. */
+const givePosition = (accuracy) => evaluate(`window.__bancPosition?.({ timestamp: Date.now(), coords: { latitude: 43.7, longitude: 3.85, accuracy: ${accuracy}, altitude: null, speed: null, heading: null } }); 'ok'`);
+/** Cercle du calage sur la carte du direct : nombre de tracés dans son calque, et largeur et hauteur du premier, en pixels. */
+const settlingCircle = () => evaluate(`(() => {
+  const paths = [...document.querySelectorAll('.leaflet-calageGps-pane path')].filter((p) => (p.getAttribute('d') ?? '') !== '');
+  const box = paths[0]?.getBoundingClientRect();
+  return { count: paths.length, w: box ? Math.round(box.width) : 0, h: box ? Math.round(box.height) : 0 };
+})()`);
+/** Points gardés, lus dans la carte « En cours ». */
+const keptPoints = () => evaluate(`[...document.querySelectorAll('.rec-stat')].find((s) => s.textContent.startsWith('Points'))?.querySelector('.rec-stat__value')?.textContent ?? null`);
+
+// 6. Calage du GPS au départ (lot 232) : première position large.
+await givePosition(30);
+const settling = await waitFor(async () => (await rescueText()).includes('le GPS se cale (± 30 m)'), 3000);
+check('position à 30 m : « le GPS se cale (± 30 m) », seul, sans « Réessayer » ni attente',
+  settling !== null && (await rescueText()) === 'le GPS se cale (± 30 m)', await rescueText());
+await wait(300);
+const circle = await settlingCircle();
+check('position à 30 m : un cercle rond autour de la position', circle.count === 1 && circle.w > 10 && Math.abs(circle.w - circle.h) <= 2, JSON.stringify(circle));
+check('position à 30 m : aucun point gardé', (await keptPoints()) === '0', await keptPoints());
+await wait(300);
+await givePosition(18);
+const narrower = await waitFor(async () => (await rescueText()) === 'le GPS se cale (± 18 m)', 3000);
+await wait(300);
+const smaller = await settlingCircle();
+check('position à 18 m : « (± 18 m) », cercle plus petit', narrower !== null && smaller.count === 1 && smaller.w < circle.w, `${await rescueText()} ${JSON.stringify(smaller)}`);
+await wait(300);
+await givePosition(5);
 const gone = await waitFor(async () => (await rescueText()) === '', 3000);
-check('première position : attente et bouton effacés', gone !== null, await rescueText());
+check('position à 5 m : la trace commence, calage, attente et bouton effacés', gone !== null, await rescueText());
+await wait(300);
+check('position à 5 m : plus de cercle, un point gardé', (await settlingCircle()).count === 0 && (await keptPoints()) === '1',
+  `${JSON.stringify(await settlingCircle())} ${await keptPoints()}`);
 console.log('Arrêter :', await holdStop());
 await wait(1500);
 

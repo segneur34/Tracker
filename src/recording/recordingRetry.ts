@@ -85,6 +85,11 @@ export interface GpsRetryInput {
   manualPause: boolean;
   /** Aucune position reçue depuis le départ (ou depuis une reprise). */
   awaitingFix: boolean;
+  /**
+   * Des positions viennent, mais aucune n'est encore assez précise pour commencer la trace (`judgeSettle`) : le GPS
+   * se cale. Une position est venue, il n'y a rien à relancer.
+   */
+  settling: boolean;
   /** Alerte « GPS perdu » en cours. */
   gpsLost: boolean;
   /** Localisation du téléphone coupée, dite par la source. */
@@ -100,20 +105,24 @@ export interface GpsRetryOffer {
   underAlert: boolean;
   /** « en attente de la première position » écrit à côté, faute d'alerte qui le dise. */
   waiting: boolean;
+  /** « le GPS se cale » écrit à la place de l'attente, sans bouton : des positions viennent déjà. */
+  settling: boolean;
 }
 
-const NO_GPS_OFFER: GpsRetryOffer = { retry: false, openSettings: false, underAlert: false, waiting: false };
+const NO_GPS_OFFER: GpsRetryOffer = { retry: false, openSettings: false, underAlert: false, waiting: false, settling: false };
 
 /**
  * Boutons du GPS pendant l'enregistrement. Localisation coupée : seulement le réglage d'Android, sous l'alerte qui le
  * dit, pause manuelle comprise (rien ne viendra sans elle). Sinon, hors pause manuelle : « Réessayer » sous l'alerte
- * « GPS perdu », ou sous la ligne d'état tant qu'aucune position n'est venue.
+ * « GPS perdu », ou sous la ligne d'état tant qu'aucune position n'est venue ; pendant le calage du départ, le calage
+ * écrit seul, à la même place. Une seule ligne à la fois : l'alerte prime sur l'attente, l'attente sur le calage.
  */
 export const gpsRetryOffer = (input: GpsRetryInput): GpsRetryOffer => {
   if (!input.active) return NO_GPS_OFFER;
-  if (input.locationOff) return { retry: false, openSettings: true, underAlert: true, waiting: false };
+  if (input.locationOff) return { ...NO_GPS_OFFER, openSettings: true, underAlert: true };
   if (input.manualPause) return NO_GPS_OFFER;
-  if (input.gpsLost) return { retry: true, openSettings: false, underAlert: true, waiting: false };
-  if (input.awaitingFix) return { retry: true, openSettings: false, underAlert: false, waiting: true };
+  if (input.gpsLost) return { ...NO_GPS_OFFER, retry: true, underAlert: true };
+  if (input.awaitingFix) return { ...NO_GPS_OFFER, retry: true, waiting: true };
+  if (input.settling) return { ...NO_GPS_OFFER, settling: true };
   return NO_GPS_OFFER;
 };

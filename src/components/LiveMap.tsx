@@ -39,6 +39,11 @@ interface LiveMapProps {
    * prolonge la trace jusqu'à elle ne joint jamais deux segments (`liveTail`). Sans lui, aucun trait.
    */
   positionSegment?: number | null;
+  /**
+   * Incertitude de `position`, en mètres, pendant le calage du GPS au départ (lot 232) : un cercle autour d'elle, qui
+   * rétrécit à mesure que le GPS se cale. `null` ou absente une fois la trace commencée : pas de cercle.
+   */
+  accuracyM?: number | null;
   /** Couleur de la trace, celle de la famille du support. */
   color: string;
   /** Famille de l'activité : son fond de carte, plan ou satellite (`BaseTileLayer`). */
@@ -95,6 +100,13 @@ const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; in
 };
 const TARGET_CIRCLE_STYLE = { color: '#e65100', weight: 2, opacity: 0.8, fillOpacity: 0.08, interactive: false } as const;
 const AIM_STYLE = { color: '#e65100', weight: 2, opacity: 0.8, dashArray: '4 6', interactive: false } as const;
+/** Cercle d'incertitude de la position pendant le calage du GPS (donnée de carte, donc en dur). */
+const SETTLING_CIRCLE_STYLE = { color: '#1976d2', weight: 1, opacity: 0.7, fillColor: '#1976d2', fillOpacity: 0.15, interactive: false } as const;
+/**
+ * Calque du cercle du calage, sous la trace suivie (380) : posé quand le GPS commence à se caler, souvent après le
+ * point de position, il resterait sinon par-dessus lui et par-dessus les traits.
+ */
+const SETTLING_PANE = { name: 'calageGps', style: { zIndex: 370 } };
 const MARK_SIZE = 26;
 
 /** Repères des balises, gardés d'un rendu à l'autre : Leaflet ne les redessine que s'ils changent. */
@@ -261,12 +273,13 @@ const segmentPath = (segment: LocationFix[]): [number, number][] => {
  * position du moment (une flèche au cap, `PositionMarker`), et la trace
  * suivie s'il y en a une, la partie faite en gris, et sur un parcours ses balises
  * (la visée en orange, avec son cercle de validation et un pointillé depuis
- * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
- * suivie. Sans réseau, le fond manque mais traces et position restent. Un bouton sous le choix du fond la
+ * la position), et les notes posées en fanions numérotés. Pendant le calage du GPS au départ, un cercle
+ * d'incertitude entoure la position, pas encore gardée ; il tourne avec la carte, et reste rond. Sans position ni
+ * trace, la carte s'ouvre cadrée sur la trace suivie. Sans réseau, le fond manque mais traces et position restent. Un bouton sous le choix du fond la
  * tourne selon le téléphone, ou la remet nord en haut (`MapOrientation`), choix gardé sur l'appareil ; la flèche
  * tourne avec la carte, chiffres des balises et fanions restent droits.
  */
-function LiveMap({ segments, position, positionSegment = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes, hoverPoints }: LiveMapProps) {
+function LiveMap({ segments, position, positionSegment = null, accuracyM = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes, hoverPoints }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
   const [oriented, setOriented] = useMapOrientation();
   const halo = useMapBase(family)[0] === 'satellite';
@@ -294,6 +307,11 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
         <BaseTileLayer family={family} />
         <OrientationSwitch oriented={oriented} onChange={setOriented} />
         <MapOrientation oriented={oriented} frame={guideBounds} />
+        <Pane {...SETTLING_PANE}>
+          {position && accuracyM !== null && accuracyM > 0 && (
+            <Circle center={[position.lat, position.lon]} radius={accuracyM} pathOptions={SETTLING_CIRCLE_STYLE} />
+          )}
+        </Pane>
         {halo && (
           <Pane {...GUIDE_HALO_PANE}>
             {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_HALO_STYLE} />}

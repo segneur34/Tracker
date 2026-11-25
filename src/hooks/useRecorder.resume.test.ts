@@ -246,7 +246,7 @@ const reload = async () => {
   return recorder;
 };
 
-const fixAt = (s: number, speedMs = 3): LocationFix => ({ timeMs: T0 + round(s * 1000), lat: 43 + s * 1e-5, lon: 3, speedMs, accuracyM: 4 });
+const fixAt = (s: number, speedMs = 3, accuracyM = 4): LocationFix => ({ timeMs: T0 + round(s * 1000), lat: 43 + s * 1e-5, lon: 3, speedMs, accuracyM });
 
 /** Source simulée, relevant ses démarrages. */
 const fakeSource = () => {
@@ -261,7 +261,7 @@ const fakeSource = () => {
         onFix = null;
       };
     },
-    emit: (s: number, speedMs = 3) => onFix?.(fixAt(s, speedMs)),
+    emit: (s: number, speedMs = 3, accuracyM = 4) => onFix?.(fixAt(s, speedMs, accuracyM)),
   };
   return source satisfies LocationSource & object;
 };
@@ -506,6 +506,71 @@ describe.each([[1], [5]])('reprise silencieuse après une chute du moteur, à %i
     expect(page.getLiveSegmentCount()).toBe(3);
     expect(page.getRecorderState().stats.pointCount).toBe(40 * hz + 1);
     expect(displayedDurationMs(page.getRecorderState().stats, null, T0)).toBe(40_000);
+  });
+
+  /** Départ dont le GPS se cale : positions larges (30 m) jusqu'à `toS`, rien de gardé. */
+  const settlingUntil = async (toS: number) => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    run((s) => source.emit(s, 3, 30), 0, toS, hz);
+    await settle();
+    expect(recorder.getRecorderState().settlingAccuracyM).toBe(30);
+    expect(recorder.getLiveFixes()).toHaveLength(0);
+    return source;
+  };
+
+  it('chute pendant le calage du GPS : reprise sans position, le calage repart à la première position reçue ensuite', async () => {
+    await settlingUntil(3);
+    // Le journal n'a que son en-tête : rien n'est gardé pendant le calage.
+    expect(parseJournal(journal.text!).fixes).toHaveLength(0);
+    services.gps = true;
+    vi.setSystemTime(T0 + 4_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().status).toBe('recording');
+    expect(fresh.getRecorderState().settlingAccuracyM).toBeNull();
+
+    run((s) => gpsService.onFix!(fixAt(s, 3, 30)), 4, 20, hz);
+    await settle();
+    const state = fresh.getRecorderState();
+    expect(state.settlingAccuracyM).toBeNull();
+    // Dix secondes après la première position reçue par la page rouverte.
+    expect(fresh.getLiveFixes()[0].timeMs).toBe(T0 + 14_000);
+    expect(state.stats.firstMs).toBe(T0 + 14_000);
+    expect(parseJournal(journal.text!).fixes[0].timeMs).toBe(T0 + 14_000);
+    expect(displayedDurationMs(state.stats, null, T0)).toBe(6_000);
+  });
+
+  it('« Note » pendant le calage, puis chute : le repère à l’heure seule est gardé par la reprise', async () => {
+    await settlingUntil(3);
+    vi.setSystemTime(T0 + 3_500);
+    const mark = recorder.addRecordingMark()!.mark;
+    expect(mark).toEqual({ timeMs: T0 + 3_500, lat: null, lon: null, label: null });
+    await settle();
+    services.gps = true;
+    vi.setSystemTime(T0 + 4_000);
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().marks).toEqual([mark]);
+  });
+
+  it('chute après le calage : la session reprise ne se recale pas, mêmes chiffres que le journal', async () => {
+    const source = await settlingUntil(2);
+    // Calé à la première position à 4 m : la trace part de là.
+    run((s) => source.emit(s), 2 + 1 / hz, 20, hz);
+    await settle();
+    expect(recorder.getLiveFixes()[0].timeMs).toBe(T0 + round((2 + 1 / hz) * 1000));
+    const before = recorder.getRecorderState().stats;
+
+    services.gps = true;
+    const fresh = await reload();
+    await fresh.recoverInterruptedRecording();
+    expect(fresh.getRecorderState().stats).toEqual(before);
+    // Une position large après la reprise est gardée : le calage ne joue plus.
+    vi.setSystemTime(T0 + 21_000);
+    gpsService.onFix!(fixAt(21, 3, 50));
+    expect(fresh.getRecorderState().settlingAccuracyM).toBeNull();
+    expect(fresh.getLiveFixes().at(-1)?.timeMs).toBe(T0 + 21_000);
   });
 });
 
@@ -1630,5 +1695,70 @@ describe('guidages rejoués en silence', () => {
     expect(sounds.patterns).toBe(played);
     expect(fresh.getRecordedTest()?.startMs).toBe(T0);
     expect(parseJournal(journal.text!).test?.startMs).toBe(T0);
+  });
+
+  it('test de FC max, GPS qui se cale au départ (lot 232) : le test part du premier point gardé, en direct comme rejoué', async () => {
+    const test = baseActivity('run-test');
+    const guide = await import('./useFitnessTest');
+    guide.startFitnessTestGuide();
+    const live = fakeSource();
+    await recorder.startRecording(test, live);
+    run((s) => live.emit(s, 3, 30), 0, 2, 1);
+    expect(recorder.getRecorderState().settlingAccuracyM).toBe(30);
+    expect(recorder.getRecordedTest()).toBeNull();
+    run(live.emit, 3, 30, 1);
+    await settle();
+    const before = guide.getFitnessTestView();
+    expect(before.phase).toBe('echauffement');
+    expect(recorder.getRecordedTest()?.startMs).toBe(T0 + 3000);
+
+    services.gps = true;
+    const fresh = await reload();
+    const freshGuide = await import('./useFitnessTest');
+    freshGuide.startFitnessTestGuide();
+    await fresh.recoverInterruptedRecording();
+    const after = freshGuide.getFitnessTestView();
+    expect(after.phase).toBe('echauffement');
+    expect(after.remainingS).toBe(before.remainingS);
+    expect(fresh.getRecordedTest()?.startMs).toBe(T0 + 3000);
+  });
+
+  it('balises, GPS qui se cale au départ (lot 232) : rien d’avancé pendant le calage, le même état rejoué', async () => {
+    const wing = baseActivity('wingfoil');
+    const north = (m: number) => 43 + m / 111_000;
+    const marks = [{ lat: north(0), lon: 3 }, { lat: north(600), lon: 3 }, { lat: north(1200), lon: 3 }];
+    const { followedTraceFromPoints } = await import('../recording/followedTrace');
+    const trace = await import('./useFollowedTrace');
+    trace.followTrace(followedTraceFromPoints(marks, 'Parcours', 'route', wing.id, marks)!);
+    const guide = await import('./useMarkGuide');
+    guide.startMarkGuide();
+    // Pendant le calage, posé sur la première balise : une position imprécise ne la valide pas.
+    const along = (s: number, accuracyM = 4): LocationFix => ({ timeMs: T0 + s * 1000, lat: north(s < 3 ? 0 : 200 + s * 10), lon: 3, speedMs: 10, accuracyM });
+    let send: ((fix: LocationFix) => void) | null = null;
+    const live: LocationSource = {
+      label: 'Simulée',
+      start: async (_options, onFix) => {
+        send = onFix;
+        return async () => undefined;
+      },
+    };
+    await recorder.startRecording(wing, live);
+    run((s) => send?.(along(s, 40)), 0, 2, 1);
+    expect(guide.getMarkGuideView().outcomes).toEqual([]);
+    expect(guide.getMarkGuideView().distanceM).toBeNull();
+    expect(sounds.validated).toBe(0);
+    run((s) => send?.(along(s)), 3, 50, 1);
+    await settle();
+    const before = guide.getMarkGuideView();
+
+    services.gps = true;
+    const fresh = await reload();
+    const freshGuide = await import('./useMarkGuide');
+    freshGuide.startMarkGuide();
+    await fresh.recoverInterruptedRecording();
+    const after = freshGuide.getMarkGuideView();
+    expect(after.target).toBe(before.target);
+    expect(after.outcomes).toEqual(before.outcomes);
+    expect(after.distanceM).toBeCloseTo(before.distanceM!, 3);
   });
 });
