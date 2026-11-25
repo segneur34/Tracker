@@ -2,7 +2,7 @@ import type { ImuRecording } from '../core/imuFile';
 import { centredMean, fileUsOf, verticalAcceleration, type ImuWindow } from '../core/imuVertical';
 import { capturedWindows } from '../core/pumping';
 import type { GyroTurnDetection } from '../core/sportProfiles';
-import { directionChanges, type DirectionChange } from './gpsTurns';
+import { directionChanges, rotationEnds, type DirectionChange, type TurnRules } from './gpsTurns';
 
 /**
  * Virages d'une vague mesurés par le gyroscope du téléphone fixé sur la
@@ -21,21 +21,30 @@ import { directionChanges, type DirectionChange } from './gpsTurns';
  * lente, même secouée par la rame ou le pumping (le buste oscille vite, mais
  * de peu), n'est pas un virage : la vitesse de pointe ne suffit pas (séance
  * témoin du 14/10, sup foil à plat : 60° en 5 à 20 s, pointes de 40 à 120°/s).
+ * Avec la règle de la glisse restante (`TurnRules`, `surfing/gpsTurns.ts`),
+ * un retournement qui s'achève trop près de la fin de glisse de la vague est
+ * la sortie, pas un virage. Le plancher de vitesse et la mise en vitesse du
+ * GPS ne valent pas ici : le cap du buste ne dépend pas de la vitesse.
  * Tout en SI (secondes, radians) sauf les seuils, en degrés comme ceux du GPS.
  */
 
 const DEG_PER_RAD = 180 / Math.PI;
 
-/** Une vague : ses heures de début et de fin, en ms. */
-export type TurnWave = { startMs: number; endMs: number };
+/**
+ * Une vague : ses heures de début et de fin, en ms, et sa fin de glisse
+ * (`SurfWave.turnRideEndMs`) ; absente, la fin de la vague.
+ */
+export type TurnWave = { startMs: number; endMs: number; turnRideEndMs?: number };
 
-/** Un retournement du cap du buste, compté ou écarté selon sa vitesse de rotation. */
+/** Un retournement du cap du buste, compté ou écarté selon sa vitesse de rotation et la glisse qui le suit. */
 export interface GyroTurn extends DirectionChange {
   /** Indice de l'extrême suivant, où le virage s'achève (le dernier pas si la vague finit avant). */
   until: number;
   /** Durée la plus courte où le buste a tourné de `minDeg` dans son sens, entre `from` et `until`, en secondes ; `null` : jamais en moins de `minDeg / minRateDegS`. */
   fastestS: number | null;
-  /** Vrai si `fastestS` existe : un virage. */
+  /** Glisse restante, en secondes, de la fin de la rotation (sa première pause, `rotationEnds`) à la fin de glisse de la vague. */
+  rideAfterS: number;
+  /** Vrai si `fastestS` existe et s'il reste assez de glisse après la rotation : un virage. */
   counted: boolean;
 }
 
@@ -79,10 +88,13 @@ const fastestSteps = (heading: Float64Array, from: number, until: number, direct
 
 /**
  * Cap du buste et retournements sur une vague ; `null` si la capture ne la
- * couvre pas en entier (`windows` : les fenêtres mesurées du fichier).
+ * couvre pas en entier (`windows` : les fenêtres mesurées du fichier ; la
+ * couverture se juge sur la vague entière, pas sur sa seule glisse). `rules` :
+ * la glisse minimale après un virage et la pause qui finit une rotation ; sans
+ * glisse minimale, seule la vitesse de rotation décide.
  */
 export const waveTurnTrace = (
-  rec: ImuRecording, d: GyroTurnDetection, wave: TurnWave, windows: readonly ImuWindow[] = capturedWindows(rec)
+  rec: ImuRecording, d: GyroTurnDetection, wave: TurnWave, windows: readonly ImuWindow[] = capturedWindows(rec), rules: TurnRules = {}
 ): WaveTurnTrace | null => {
   const fromUs = fileUsOf(rec, wave.startMs);
   const toUs = fileUsOf(rec, wave.endMs);
@@ -104,23 +116,32 @@ export const waveTurnTrace = (
   }
   const found = directionChanges(heading, d.minDeg);
   const maxSteps = Math.floor(d.minDeg / d.minRateDegS / v.dt + 1e-9);
+  const startMs = rec.header.clock.wallMs + (v.startUs + i0 * v.stepUs) / 1000;
+  const rideEndMs = wave.turnRideEndMs ?? wave.endMs;
+  const minRideAfterS = rules.minRideAfterS ?? 0;
+  // Fin de la rotation : sa première pause, comme au GPS ; `until`, l'extrême suivant, borne seulement la recherche de la rotation la plus vive.
+  const ends = rotationEnds(heading, (k) => k * v.dt * 1000, found, rules.pauseRateDegS ?? 0, rules.pauseWindowS ?? 0);
   const changes = found.map((c, j): GyroTurn => {
     const until = j + 1 < found.length ? found[j + 1].from : extremeAfter(heading, c.at, c.direction);
     const steps = fastestSteps(heading, c.from, until, c.direction, d.minDeg, maxSteps);
-    return { ...c, until, fastestS: steps === null ? null : steps * v.dt, counted: steps !== null };
+    const rideAfterS = (rideEndMs - startMs) / 1000 - ends[j] * v.dt;
+    return { ...c, until, fastestS: steps === null ? null : steps * v.dt, rideAfterS, counted: steps !== null && rideAfterS >= minRideAfterS };
   });
-  return { startMs: rec.header.clock.wallMs + (v.startUs + i0 * v.stepUs) / 1000, dt: v.dt, heading, rateDeg, changes };
+  return { startMs, dt: v.dt, heading, rateDeg, changes };
 };
 
 /**
  * Virages du gyroscope de chaque vague, dans l'ordre des vagues ; `null` pour
  * une vague que la capture ne couvre pas en entier (elle garde ses virages du
- * GPS).
+ * GPS). `rules` : voir `waveTurnTrace` ; la page passe celles du profil
+ * (`SurfProfile.turnRules`).
  */
-export const gyroWaveTurns = (rec: ImuRecording, d: GyroTurnDetection, waves: readonly TurnWave[]): (number | null)[] => {
+export const gyroWaveTurns = (
+  rec: ImuRecording, d: GyroTurnDetection, waves: readonly TurnWave[], rules: TurnRules = {}
+): (number | null)[] => {
   const windows = capturedWindows(rec);
   return waves.map((wave) => {
-    const trace = waveTurnTrace(rec, d, wave, windows);
+    const trace = waveTurnTrace(rec, d, wave, windows, rules);
     return trace ? trace.changes.filter((c) => c.counted).length : null;
   });
 };

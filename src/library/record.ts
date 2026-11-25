@@ -136,8 +136,15 @@ export const RECORD_VERSION = 1;
  * 23 (21 novembre 2026, lot 215) : premier et dernier point de la trace
  * (`start`, `end`), pour le lieu de la session et son nom calculé (les autres
  * chiffres ne bougent pas).
+ *
+ * 24 (25 novembre 2026, lot 233) : en surf, le début d'une vague ou d'un vol
+ * remonte à la détente basse du masque tant que la vitesse monte, et, sans
+ * foil, chaque vague compte son départ, la mise en vitesse depuis presque
+ * l'arrêt : vagues plus longues (durée, distance, plus longue vague), vagues
+ * molles comptées, rame plus courte, temps de vol un peu plus long sur foil ;
+ * la vitesse max ne change pas. Les virages ne sont pas dans le résumé.
  */
-export const SUMMARY_CALC_VERSION = 23;
+export const SUMMARY_CALC_VERSION = 24;
 
 export type SessionSource = 'enregistrement' | 'import';
 

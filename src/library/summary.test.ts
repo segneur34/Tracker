@@ -27,7 +27,8 @@ const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): Raw
 describe('summarizeSession', () => {
   it("range le départ et l'arrivée de la trace (version 23, lot 215), les mêmes à 1 Hz et à 5 Hz", () => {
     const [one, five] = [1, 5].map((hz) => summarizeSession(buildTrack([[300, 3], [300, 4]], hz), 'running'));
-    expect(one?.calcVersion).toBe(23);
+    // Version 23 ou au-delà : celle qui a ajouté le départ et l'arrivée.
+    expect(one?.calcVersion).toBeGreaterThanOrEqual(23);
     expect(one?.start).toEqual({ lat: ORIGIN.lat, lon: ORIGIN.lon });
     // 2,1 km vers l'est.
     expect(one?.end?.lat).toBe(ORIGIN.lat);

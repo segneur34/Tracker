@@ -491,6 +491,73 @@ export interface SurfProfile {
   turnMinDeg: number;
   /** Virages mesurés par le gyroscope du téléphone (`surfing/gyroTurns.ts`). */
   gyroTurns: GyroTurnDetection;
+  /** Début d'une glisse remonté jusqu'à la détente basse du masque, tant que la vitesse monte (`riseStartOf`). */
+  rise: SurfRise;
+  /** Départ d'une vague sans foil : la mise en vitesse depuis presque l'arrêt, comptée dans la vague (`departStartOf`). */
+  depart: SurfDepart;
+  /** Règles d'un virage, au GPS comme au gyroscope (`surfing/gpsTurns.ts`). */
+  turnRules: SurfTurnRules;
+}
+
+/**
+ * Recul du début d'une glisse (`surfing/surfAnalysis.ts`, `riseStartOf`) : le
+ * masque n'entre en glisse qu'à sa détente haute, et la mise en vitesse entre
+ * ses deux détentes resterait de la rame au départ, alors que la même plage de
+ * vitesse est de la glisse à la fin.
+ */
+export interface SurfRise {
+  /** Recul le plus long, en secondes : une mise en vitesse entre les deux détentes en dure quelques-unes. */
+  maxS: number;
+  /**
+   * Fenêtre de la montée, en secondes : la vitesse d'un point se compare à
+   * celle de la trace cette durée plus tôt. Assez longue pour qu'une mise en
+   * vitesse lente (planche à pagaie, de 8 à 11 km/h en 8 s) y gagne nettement
+   * plus que le bruit de la vitesse lissée sur une rame plate.
+   */
+  windowS: number;
+  /**
+   * Un point est dans la montée si la vitesse de la fenêtre d'avant ne dépasse
+   * pas cette part de la sienne (0,95 : au moins 5 % gagnés). Un rapport, pas
+   * une pente : la même règle à 8 km/h et à 20 km/h.
+   */
+  maxRatio: number;
+}
+
+/** Départ d'une vague (`surfing/surfAnalysis.ts`, `departStartOf`), remonté comme le début, jusqu'au plancher d'arrêt. */
+export interface SurfDepart {
+  /** Durée la plus longue du départ, en secondes, depuis le début compté : de 5 à 10 s sur une planche à pagaie. */
+  maxS: number;
+  /**
+   * Gain minimal sur la fenêtre de la montée, en m/s : deux fois le bruit de
+   * la vitesse lissée (± 0,15 m/s). À quelques km/h, le rapport seul se laisse
+   * tromper par le bruit d'une rame à allure constante ; ce gain l'arrête.
+   */
+  minGainMs: number;
+}
+
+/**
+ * Règles d'un virage du surf (`surfing/gpsTurns.ts`) : un virage relie deux
+ * glisses, et la sortie de la vague n'en est pas un.
+ */
+export interface SurfTurnRules {
+  /** Plancher de lecture du cap, en m/s : dessous, le cap saute de dizaines de degrés d'une seconde à l'autre. */
+  courseMinSpeedMs: number;
+  /** Glisse minimale après la fin de la rotation, en secondes, au GPS comme au gyroscope : sinon, c'est la sortie. */
+  minRideAfterS: number;
+  /** Mise en vitesse, en secondes : après le passage du plancher, le cap du GPS n'est pas encore lu. */
+  settleS: number;
+  /** Une rotation dure tant que le cap avance encore, dans son sens, d'au moins ce taux, en degrés par seconde… */
+  pauseRateDegS: number;
+  /** …sur cette fenêtre, en secondes ; dessous, c'est une pause, et la rotation est finie. */
+  pauseWindowS: number;
+  /**
+   * Corde du cap des positions, en secondes : sans cap de l'appareil, le cap
+   * d'un point est celui de la corde qui remonte d'à peu près cette durée. À
+   * 1 Hz, le pas lui-même ; à 5 Hz, cinq pas, sur lesquels le bruit de position
+   * pèse cinq fois moins (règle 2). Un peu moins d'une seconde, pour qu'un pas
+   * de 1 Hz qui arrive quelques millisecondes en avance reste un seul pas.
+   */
+  courseStrideS: number;
 }
 
 /**
@@ -863,6 +930,10 @@ const SURF_PROFILE: SportProfile = {
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
     // Valeurs provisoires, à régler sur une vraie sortie avec des vagues (essai 46).
     gyroTurns: { ...ATTITUDE, minDeg: 60, minRateDegS: 30, smoothingS: 0.3, leadS: 2 },
+    // Valeurs réglées avec l'utilisateur sur ses sessions de paddle (lot 233, reprises le 25/11).
+    rise: { maxS: 10, windowS: 4, maxRatio: 0.95 },
+    depart: { maxS: 15, minGainMs: 0.3 },
+    turnRules: { courseMinSpeedMs: 2, minRideAfterS: 3, settleS: 2, pauseRateDegS: 15, pauseWindowS: 1, courseStrideS: 0.9 },
   },
   pump: PUMP_DETECTION,
 };

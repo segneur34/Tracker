@@ -143,6 +143,15 @@ export const thresholdActivityMask = (track: TrackPoint[], profile: SportProfile
   return maskAtThreshold(track, profile, threshold > 0 ? threshold : profile.stillThreshold);
 };
 
+/**
+ * Détente basse, en m/s, du masque de `thresholdActivityMask` à ce seuil : la
+ * vitesse sous laquelle une suite d'activité finit ; 0 sans seuil (bateau).
+ */
+export const thresholdExitMs = (profile: SportProfile, threshold: number): number =>
+  hasActiveThreshold(profile)
+    ? fromDisplaySpeed(getActiveThresholds(profile, threshold > 0 ? threshold : profile.stillThreshold).exit, profile.thresholdUnit)
+    : 0;
+
 /** Masque d'activité au seuil `threshold` (unité du profil), avec l'hystérésis du profil. */
 const maskAtThreshold = (track: TrackPoint[], profile: SportProfile, threshold: number): boolean[] => {
   const { enter, exit } = getActiveThresholds(profile, threshold);

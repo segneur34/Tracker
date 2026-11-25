@@ -11,6 +11,10 @@
 //  4. une session de surf foil (un vol de trois vagues reliées en pompant, puis un vol court) : case Foil de la
 //     session, onglet « vols », plus long vol, ligne de la bibliothèque ;
 //  5. la vitesse max (lot 150) : celle de la page et celle de la fiche, une vague ; une rame sans vague n'en a pas (« — », 0 dans la fiche) ;
+//  5 bis. une vague molle (lot 233) : montée en marches depuis une rame à 1,2 m/s, début remonté à la borne basse, départ compris ;
+//  5 ter. le départ des vagues (sans foil, lot 233) : deux vagues à vraie mise en vitesse, l'une depuis 1 km/h, l'autre après une
+//     rame plate à 4 km/h ; durée et heure de début avec le départ, vitesse max et nombre de vagues inchangés, carte (vague
+//     montrée seule), courbe (bandes et série orange) et les deux phrases d'aide ;
 //  6. la page à 390 × 844, sans débordement.
 // Verdicts (lot 159) : les chiffres attendus par construction des phases (MORNING, FOIL) sont contrôlés (`check`), le
 // script finit par « Tout passe. » ou le nombre d'échecs, code 0 ou 1. Les heures des vagues (fuseau du poste) ne le sont pas.
@@ -58,6 +62,25 @@ const T_MORNING = Date.UTC(2026, 9, 10, 7, 0, 0);
 const T_FOIL = Date.UTC(2026, 9, 9, 15, 0, 0);
 const PADDLE = [[1800, 2.2], [20, 2.4]];
 const T_PADDLE = Date.UTC(2026, 9, 8, 15, 0, 0);
+const SOFT = [[60, 0], [58, 1.2], [2, 1.7], [2, 2.1], [2, 2.5], [2, 2.9], [6, 3], [60, 1]];
+// Deux secondes après la minute : l'heure affichée (à la minute) bascule entre t = 117 s et t = 118 s, dernier point de la rame
+// à 1,2 m/s et début de la vague molle avec son départ.
+const T_SOFT = Date.UTC(2026, 9, 7, 15, 0, 2);
+/** Montée en marches de 1 s, de `de` à `a` m/s en `s` secondes (au cap donné). */
+const rampe = (de, a, s, cap = 180) => Array.from({ length: s }, (_, k) => [1, Number((de + ((a - de) * (k + 1)) / s).toFixed(3)), cap]);
+// Deux vagues avec une vraie mise en vitesse, sans foil. Vague 1 : rame à 1 km/h (sous le plancher d'arrêt de 2 km/h), puis
+// 8 s de rampe de 0,28 à 1,9 m/s (le départ), 4 s jusqu'à 5 m/s, 8 s à 5 m/s, retour. Vague 2 : une rame plate à 4 km/h
+// pendant 30 s (qui ne doit pas être avalée), 8 s de rampe de 1,11 à 6 m/s, 8 s à 6 m/s, retour. Instants (points) : rampe 1 de
+// t = 96 à 103 s, vague 1 comptée dès t = 104 s (2,7 m/s : borne basse de 1,94 m/s franchie), plateau 108 à 115 s ; rame plate 2 de
+// 190 à 219 s, rampe 2 de 220 à 227 s (1,7 m/s à t = 220, 2,3 à 221), plateau 228 à 235 s.
+const DEPART = [
+  [65, 0], [30, 0.28],
+  ...rampe(0.28, 1.9, 8), ...rampe(1.9, 5, 4), [8, 5, 180], ...rampe(5, 1, 4), [40, 1], [30, 0.1],
+  [30, 1.11], ...rampe(1.11, 6, 8), [8, 6, 180], ...rampe(6, 1, 4), [40, 1], [30, 0.1],
+];
+// 35 s après la minute : le début de la vague 1 (t = 96 s) tombe à 2 min 11 s, celui de la vague 2 (t = 219 s) à 4 min 14 s ;
+// une rame plate de 15 s avalée avant la vague 2 la ferait partir à 3 min 59 s, minute d'avant.
+const T_DEPART = Date.UTC(2026, 9, 6, 15, 0, 35);
 
 // --- Protocole (lib/cdp.mjs) ---
 const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
@@ -270,6 +293,118 @@ await go(`/surf/analyse?session=${encodeURIComponent(paddle?.gpx ?? '')}`, 5000)
 await openTab('général');
 await wait(300);
 check('rame sans vague : « — » sur la page', (await panel('Général')).includes('Vitesse max / —'), (await panel('Général')).slice(0, 400));
+
+// 5 bis. Vague molle : montée en marches de 2 s, le début remonte jusqu'à la borne basse du seuil (9 km/h : sortie sous 7 km/h = 1,94 m/s).
+await go('/surf');
+console.log('import molle :', await importGpx(buildGpx('Molle', T_SOFT, SOFT), 'molle.gpx'));
+const soft = await waitFor(() => recordAt(T_SOFT), { timeout: 6000, label: 'fiche molle' });
+await settle({ max: 2000, label: 'import molle' });
+await go(`/surf/analyse?session=${encodeURIComponent(soft?.gpx ?? '')}`, 5000);
+await openTab('vagues');
+await wait(500);
+const vaguesMolle = await panel('Vagues');
+console.log('vague molle :', vaguesMolle);
+// Par construction (SOFT) : rame à 1,2 m/s jusqu'à t = 118 s ; 1,7 m/s en 119-120 s ; la montée franchit la borne basse (2,1 m/s ≥ 1,94)
+// en t = 121 s ; 2,1, 2,5, 2,9 m/s (2 s chacun) puis 3,0 m/s (6 s) : la vague compte 12 points (121 à 132 s), puis retour à 1 m/s.
+// Le départ ajoute la mise en vitesse à 1,7 m/s, de t = 118 s (dernier point de la rame, qui commence le pas qui gagne) à 120 s,
+// sans la rame à 1,2 m/s, plate : 14 s au lieu de 12.
+const rangMolle = vaguesMolle.match(/(^|\/ )1\t(\d\d):(\d\d)\t(\d+) s\t/);
+const heure = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+check('vague molle : une vague comptée', soft?.summary?.waveCount === 1 && rangMolle !== null, `${soft?.summary?.waveCount} / ${vaguesMolle.slice(0, 200)}`);
+check('vague molle : durée 14 s à une seconde près (départ à 1,7 m/s et montée depuis la borne basse comprises, rame à 1,2 m/s non avalée)', rangMolle !== null && Math.abs(Number(rangMolle[4]) - 14) <= 1, rangMolle?.[4]);
+check('vague molle : début au pied du départ (t = 118 s), pas une seconde plus tôt dans la rame à 1,2 m/s',
+  rangMolle !== null && `${rangMolle[2]}:${rangMolle[3]}` === heure(T_SOFT + 118_000), `${rangMolle?.[2]}:${rangMolle?.[3]} attendu ${heure(T_SOFT + 118_000)}`);
+
+// 5 ter. Départ des vagues : la mise en vitesse depuis presque l'arrêt compte dans la vague, en orange sur la courbe et, vague
+// montrée seule, sur la carte ; une rame plate à 4 km/h n'est pas avalée ; ni le nombre de vagues ni la vitesse max ne bougent.
+await go('/surf');
+console.log('import départ :', await importGpx(buildGpx('Départ', T_DEPART, DEPART), 'depart.gpx'));
+const depart = await waitFor(() => recordAt(T_DEPART), { timeout: 6000, label: 'fiche départ' });
+await settle({ max: 2000, label: 'import départ' });
+console.log('fiche départ :', depart ? `vagues ${depart.summary.waveCount}, plus longue ${Math.round(depart.summary.longestWaveM)} m, glisse ${Math.round(depart.summary.movingTimeS)} s, max ${depart.summary.maxSpeedMs}` : '(absente)');
+const departPath = `/surf/analyse?session=${encodeURIComponent(depart?.gpx ?? '')}`;
+await go(departPath, 5000);
+await openTab('vagues');
+await wait(500);
+const vaguesDepart = await panel('Vagues');
+console.log('vagues départ :', vaguesDepart);
+const ligne = (n) => vaguesDepart.match(new RegExp(`(^|/ )${n}\\t(\\d\\d):(\\d\\d)\\t(\\d+) s\\t(\\d+) m\\t([\\d,]+)\\t([\\d,]+)\\t`));
+const [l1, l2] = [ligne(1), ligne(2)];
+check('départ : deux vagues, comme les glisses (le départ ne fait pas compter une vague)', depart?.summary?.waveCount === 2 && l1 !== null && l2 !== null, `${depart?.summary?.waveCount} / ${vaguesDepart.slice(0, 200)}`);
+// Vague 1 : départ de 8 s (t = 96 à 104 s) puis 14 s de vague (104 à 118 s) : 22 s, 73 m dont 12 m de départ (somme des vitesses
+// des points 97 à 118 s), moyenne 12,0 km/h ; vague 2 : départ de 2 s (t = 219 à 221 s) puis 17 s (221 à 238 s) : 19 s, 89 m dont 4 m
+// de départ. Sans départ : 14 s et 62 m, 17 s et 85 m.
+check('départ, vague 1 : durée 22 s à une seconde près (départ de 8 s compris), 73 m à 2 m près (62 m sans le départ)',
+  l1 !== null && Math.abs(Number(l1[4]) - 22) <= 1 && Math.abs(Number(l1[5]) - 73) <= 2, `${l1?.[4]} s ${l1?.[5]} m`);
+check('départ, vague 2 : durée 19 s à une seconde près (départ de 2 s compris, rame plate à 4 km/h non avalée), 89 m à 2 m près',
+  l2 !== null && Math.abs(Number(l2[4]) - 19) <= 1 && Math.abs(Number(l2[5]) - 89) <= 2, `${l2?.[4]} s ${l2?.[5]} m`);
+check('départ : moyennes 12,0 et 16,9 km/h, distance sur durée avec le départ', l1?.[7] === '12,0' && l2?.[7] === '16,9', `${l1?.[7]} / ${l2?.[7]}`);
+check('départ, vague 1 : début dans la rampe (2 min 11 s : même minute que t = 96 s), pas dans la rame à 1 km/h',
+  l1 !== null && `${l1[2]}:${l1[3]}` === heure(T_DEPART + 96_000), `${l1?.[2]}:${l1?.[3]} attendu ${heure(T_DEPART + 96_000)}`);
+check('départ, vague 2 : début au pied de la rampe (4 min 14 s), pas 15 s plus tôt dans la rame plate à 4 km/h',
+  l2 !== null && `${l2[2]}:${l2[3]}` === heure(T_DEPART + 219_000), `${l2?.[2]}:${l2?.[3]} attendu ${heure(T_DEPART + 219_000)}`);
+// Vitesses de la vague, sur sa partie comptée seule : 5 m/s (18,0 km/h) et 6 m/s (21,6 km/h), comme sans départ.
+check('départ : vitesses max 18,0 et 21,6 km/h (celles de la partie comptée, pas du départ)', l1?.[6] === '18,0' && l2?.[6] === '21,6', `${l1?.[6]} / ${l2?.[6]}`);
+const generalDepart = await panel('Général');
+console.log('général départ :', generalDepart);
+contient('départ, général : 2 vagues', generalDepart, 'Vagues / 2 ');
+contient('départ, général : vitesse max 21,6 km/h', generalDepart, 'Vitesse max / 21,6 km/h');
+check('départ, fiche : 6 m/s, plus longue vague 89 m, glisse (départs compris) de 41 s (22 + 19)',
+  Math.abs((depart?.summary?.maxSpeedMs ?? 0) - 6) < 0.05 && Math.abs((depart?.summary?.longestWaveM ?? 0) - 89) <= 2 && Math.abs((depart?.summary?.movingTimeS ?? 0) - 41) <= 1, JSON.stringify(depart?.summary));
+// Carte : rien d'orange avant qu'une vague soit montrée ; une vague montrée seule a son début et son départ en orange, son reste en violet.
+const orangeCarte = () => evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#ff8f00"], .leaflet-overlay-pane path[fill="#ff8f00"]').length`);
+const violetCarte = () => evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#7b1fa2"]').length`);
+check('départ, carte : aucune vague montrée, aucun trait orange', (await orangeCarte()) === 0, await orangeCarte());
+const voirVague = (n) => evaluate(`(() => {
+  const row = [...document.querySelectorAll('.an-carte-panels tr')].find((r) => r.cells[0]?.innerText.trim() === ${JSON.stringify(String(n))});
+  const b = row?.querySelector('button'); if (!b) return 'absent'; b.click(); return 'ok';
+})()`);
+for (const n of [1, 2]) {
+  console.log(`Voir la vague ${n} :`, await voirVague(n));
+  await wait(500);
+  const [o, v] = [await orangeCarte(), await violetCarte()];
+  console.log(`vague ${n} montrée : orange`, o, ', violet', v);
+  // Le trait du départ et le point de son début en orange (2 tracés), le reste de la vague en violet.
+  check(`départ, carte, vague ${n} montrée seule : trait et point du départ en orange, reste en violet`, o >= 2 && v >= 1, `orange ${o}, violet ${v}`);
+}
+await shoot('surf-depart-vague');
+console.log('podium :', await clickText('Les 3 plus longues'));
+await wait(500);
+const orangePodium = await orangeCarte();
+console.log('podium : orange', orangePodium, '| traits', await evaluate(`['#d32f2f', '#f57c00', '#388e3c'].map((c) => document.querySelectorAll('.leaflet-overlay-pane path[stroke="' + c + '"]').length).join('/')`));
+check('départ, carte, podium : pas de départ orange, la vague entière à la couleur de sa marche', orangePodium === 0, orangePodium);
+// Aide des vagues : la phrase du départ.
+const aide = async (label) => {
+  const ouverte = await evaluate(`(() => {
+    const b = [...document.querySelectorAll('button.ui-help')].find((x) => x.getAttribute('aria-label') === ${JSON.stringify(`Aide : ${label}`)});
+    if (!b) return false; b.click(); return true;
+  })()`);
+  await wait(300);
+  return ouverte ? await evaluate(`[...document.querySelectorAll('.help-note')].map((n) => n.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')` ) : '(« ? » absent)';
+};
+const aideVagues = await aide('Vagues (2)');
+console.log('aide des vagues :', aideVagues);
+contient('départ, aide des vagues : la phrase « Départ : la mise en vitesse… »', aideVagues, 'Départ : la mise en vitesse qui précède la vague');
+await aide('Vagues (2)');
+// Courbe de vitesse : une bande orange avant chaque bande de vague (4 bandes : 2 orange, 2 de vague), la montée tracée en orange.
+console.log('fermer vagues :', await tab('vagues'), '| graphiques :', await openTab('graphiques'));
+await settle({ max: 1500 });
+const graphe = await evaluate(`(() => {
+  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim() === 'Vitesse');
+  const p = t?.closest('.an-carte-panels > *');
+  if (!p) return null;
+  const n = (sel) => p.querySelectorAll(sel).length;
+  return { bandes: n('.recharts-reference-area'), orange: n('.recharts-reference-area [fill="#ff8f00"]'), bleues: n('.recharts-reference-area [fill="#1e88e5"]'),
+    serieOrange: n('path.recharts-line-curve[stroke="#ff8f00"]') };
+})()`);
+console.log('graphe départ :', JSON.stringify(graphe));
+check('départ, courbe : 2 bandes orange (une par vague) et 2 bandes de vague', graphe?.orange === 2 && graphe?.bleues === 2 && graphe?.bandes === 4, JSON.stringify(graphe));
+check('départ, courbe : la montée en vitesse tracée en orange', (graphe?.serieOrange ?? 0) >= 1, JSON.stringify(graphe));
+const aideGraphe = await aide('Vitesse');
+console.log('aide des graphiques :', aideGraphe);
+contient('départ, aide des graphiques : « En bleu, les vagues ; en orange, leur départ. »', aideGraphe, 'En bleu, les vagues ; en orange, leur départ.');
+await shoot('surf-depart-courbe');
+
 
 // 6. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

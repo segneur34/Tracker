@@ -22,6 +22,13 @@ export const TACK_STARBOARD_COLOR = '#388e3c';
 /** Passage seul montré sur la carte (zone de pente, répétition, saut) : un violet, absent du dégradé de la trace. */
 export const HIGHLIGHT_SHOWN_COLOR = '#7b1fa2';
 
+/**
+ * Départ d'une vague de surf, sa mise en vitesse avant le début compté : sur la
+ * carte, pour une vague montrée seule, et sur la courbe de vitesse. Un orange
+ * que la trace n'a pas là, le départ restant sous la borne basse du dégradé.
+ */
+export const WAVE_DEPART_COLOR = '#ff8f00';
+
 /** Repère du bouton « Note » au repos, sur la carte et les graphes (`SessionMarks.tsx`) ; montré, il prend le violet. */
 export const MARK_FLAG_COLOR = '#37474f';
 

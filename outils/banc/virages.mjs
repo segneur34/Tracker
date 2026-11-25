@@ -1,10 +1,11 @@
 // Banc de test : virages du surf mesurés par le gyroscope (lot 40).
 // Usage : node virages.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page).
-// Le script fabrique lui-même, dans la page, une session de surf de deux vagues et ses capteurs (`.imu` synthétique,
-// `core/imuSynthetic.fixture.ts`) : la première vague (40 à 50 s, cap GPS constant) a trois virages du buste de 90° à
-// 120°/s, vus du seul gyroscope ; la capture s'arrête à 120 s, avant la seconde vague (130 à 140 s), dont le cap GPS
-// change. Il vérifie :
+// Le script fabrique lui-même, dans la page, une session de surf de trois vagues et ses capteurs (`.imu` synthétique,
+// `core/imuSynthetic.fixture.ts`) : la première vague (40 à 54 s, cap GPS constant) a trois virages du buste de 90° à
+// 120°/s, vus du seul gyroscope, chacun suivi d'au moins 3 s de glisse, et une rotation de sortie dans ses 2 dernières
+// secondes, qui ne compte pas ; la capture s'arrête à 120 s, avant la seconde vague (134 à 144 s), dont le cap GPS
+// change, et la troisième, dont le seul changement de cap tombe dans ses 2 dernières secondes (0 au GPS). Il vérifie :
 //  1. Réglages, cartes « Surf » et « Surf foil » : la ligne « Virages » (partie Onglet analyse), case « Mesurer les
 //     virages » cochée, marque « défaut » ; le résumé de la carte repliée dit « virages » ;
 //  2. l'import de la session avec ses capteurs, puis l'onglet « vagues » : en-tête « Virages » sans astérisque une fois
@@ -31,7 +32,7 @@ const openTab = (label) => evaluate(`(() => {
 /** Panneau « Vagues » (son titre peut porter le nombre de vagues). */
 const wavesPanel = `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => /^Vagues/i.test(h.textContent.trim()))?.closest('.an-carte-panels > *')`;
 /** En-têtes du tableau des vagues. */
-const waveHeads = () => evaluate(`[...(${wavesPanel}?.querySelectorAll('table th') ?? [])].map((h) => h.textContent).join(', ')`);
+const waveHeads = () => evaluate(`[...(${wavesPanel}?.querySelectorAll('table th') ?? [])].map((h) => (h.querySelector('.an-wave-long') ?? h).textContent).join(', ')`);
 /** Cellule « Virages » de chaque ligne, dans l'ordre du tableau (tri par heure d'office). */
 const turnCells = () => evaluate(`(() => {
   const table = ${wavesPanel}?.querySelector('table'); if (!table) return '(absent)';
@@ -89,7 +90,8 @@ const imported = await evaluate(`(async () => {
   const { synthImu, SYNTH_WALL_MS } = await import('/src/core/imuSynthetic.fixture.ts');
   const start = SYNTH_WALL_MS;
   // [durée en s, vitesse en m/s, cap GPS]
-  const phases = [[30, 0, 0], [10, 1.2, 0], [10, 5, 0], [30, 1.2, 180], [40, 0, 0], [10, 1.2, 0], [4, 6, 160], [2, 6, 250], [4, 6, 120], [30, 1.2, 180], [20, 0, 0]];
+  const phases = [[30, 0, 0], [10, 1.2, 0], [14, 5, 0], [30, 1.2, 180], [40, 0, 0], [10, 1.2, 0], [4, 6, 160], [2, 6, 250], [4, 6, 120], [30, 1.2, 180],
+    [10, 0, 0], [8, 6, 40], [2, 6, 130], [20, 1.2, 180], [20, 0, 0]];
   const pts = [];
   let lat = 43.4;
   let lon = 3.6;
@@ -106,8 +108,9 @@ const imported = await evaluate(`(async () => {
     }
   }
   const gpx = '<?xml version="1.0"?><gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Virages</name><type>surf</type><trkseg>' + pts.join('') + '</trkseg></trk></gpx>';
-  // Trois virages du buste de 90° à 120°/s, alternés, dans la première vague.
-  const turns = [[42, 90], [45, -90], [48, 90]];
+  // Trois virages du buste de 90° à 120°/s, alternés, dans la première vague (40 à 54 s), chacun suivi d'au moins 3 s de glisse ;
+  // un quatrième, la sortie de vague à 52,5 s, finit dans les 2 dernières secondes : il ne compte pas.
+  const turns = [[42, 90], [45, -90], [48, 90], [52.5, -90]];
   const yaw = (x) => turns.reduce((deg, [at, angle]) => deg + angle * Math.min(1, Math.max(0, (x - at) / 0.75)), 0) * Math.PI / 180;
   const rec = synthImu({ durationS: 120, az: () => 0, yaw });
   const imu = await encodeImu(rec.header, rec.series);
@@ -133,9 +136,10 @@ const heads = await waveHeads();
 check('en-tête « Virages » sans astérisque, capteurs lus', Boolean(read), heads);
 const cells = (await turnCells()) ?? '';
 console.log('virages des vagues :', cells);
-const [first, second] = cells.split(' | ');
-check('première vague : 3 virages du gyroscope', first === '3', first);
+const [first, second, third] = cells.split(' | ');
+check('première vague : 3 virages du gyroscope, la rotation de sortie (52,5 s) écartée', first === '3', first);
 check('seconde vague, hors capture : valeur du GPS marquée « * »', /^\d+\*$/.test(second ?? ''), second);
+check('troisième vague, hors capture : une rotation dans les 2 dernières secondes ne compte pas au GPS (0*)', third === '0*', third);
 // La note est sous le « ? » du panneau (aide fermée par défaut) : ouverte, lue, refermée.
 const note = await evaluate(`(() => {
   const panel = ${wavesPanel}; const help = panel?.querySelector('button.ui-help'); if (!help) return '(aide absente)';

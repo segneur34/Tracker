@@ -35,7 +35,7 @@ import TrackArrows from '../components/TrackArrows';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import TrackChart, { type TrackSeries } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR, WAVE_DEPART_COLOR } from '../components/highlightColors';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
@@ -142,13 +142,23 @@ const MemoTrackChart = memo(TrackChart) as typeof TrackChart;
 const MemoHeartRateChart = memo(HeartRateChart) as typeof HeartRateChart;
 const CHART_STYLE = chartBox(CHART_HEIGHT_PX);
 const FILL_STYLE: CSSProperties = { width: '100%', flex: 1, minHeight: 0 };
-const SPEED_SERIES: TrackSeries<ChartRow>[] = [{ kind: 'line', key: 'speed', name: 'Vitesse', color: SPEED_COLOR, width: 1.5, activeDotR: 4 }];
+/** Vitesse, puis sa montée pendant le départ de chaque vague, tracée par-dessus en orange. */
+const SPEED_SERIES: TrackSeries<ChartRow>[] = [
+  { kind: 'line', key: 'speed', name: 'Vitesse', color: SPEED_COLOR, width: 1.5, activeDotR: 4 },
+  { kind: 'line', key: 'depart', name: 'Départ', color: WAVE_DEPART_COLOR, width: 2.5, activeDotR: false },
+];
+
+/** Index de `extra` ajoutés aux index croissants `indices`, sans doublon, dans l'ordre. */
+const withIndices = (indices: number[], extra: number[]): number[] =>
+  extra.length === 0 ? indices : [...new Set([...indices, ...extra])].sort((a, b) => a - b);
 
 interface ChartRow {
   index: number;
   /** Temps écoulé depuis le départ, en minutes : l'axe et son zoom. */
   minutes: number;
   speed: number;
+  /** Vitesse affichée pendant le départ d'une vague, `null` ailleurs. */
+  depart: number | null;
   speedMs: number;
   /** FC lissée, `null` là où elle manque. */
   hr: number | null;
@@ -277,7 +287,10 @@ function SurfModule() {
   const gyroTurns = useMemo(() => {
     const byWave = new Map<SurfWave, number>();
     if (!sensors.recording || !surfProfile) return byWave;
-    const counts = gyroWaveTurns(sensors.recording, surfProfile.surf.gyroTurns, waves);
+    // Mêmes règles qu'au GPS, lues depuis le début compté : un virage ne compte que suivi d'assez de glisse, et le
+    // départ n'en ajoute aucun.
+    const counted = waves.map((w) => ({ startMs: w.rideStartMs, endMs: w.endMs, turnRideEndMs: w.turnRideEndMs }));
+    const counts = gyroWaveTurns(sensors.recording, surfProfile.surf.gyroTurns, counted, surfProfile.surf.turnRules);
     waves.forEach((w, i) => {
       const n = counts[i];
       if (n !== null) byWave.set(w, n);
@@ -312,7 +325,11 @@ function SurfModule() {
     }
     if (waveShown !== null) {
       const w = waves.find((x) => String(x.n) === waveShown);
-      return w ? [{ key: `vague-${w.n}`, start: w.start, end: w.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vague', w) }] : [];
+      // Vague montrée seule : son départ en orange. Pas dans le podium, dont la deuxième marche est déjà orange.
+      return w ? [{
+        key: `vague-${w.n}`, start: w.start, end: w.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vague', w),
+        ...(w.departS > 0 ? { lead: { end: w.rideStart, color: WAVE_DEPART_COLOR } } : {}),
+      }] : [];
     }
     // Onglets « vols » et « pumping » : un vol, une série de coups, ou l'un des deux podiums (`PumpingHighlightKey`).
     const flightOrSeries = flightShown ?? pumpingShown;
@@ -340,6 +357,17 @@ function SurfModule() {
   const timeChart = useTimeChartAxis(track, gpx.sessionKey);
   const { minutes: trackMinutes, zoom, cardioZoom } = timeChart;
   const speedSeries = useMemo(() => track.map((p) => p.smoothedSpeedMs), [track]);
+  /** Points des départs des vagues sur la courbe, et leurs bornes, gardées à l'échantillonnage. */
+  const departPoints = useMemo(() => {
+    const inDepart = new Uint8Array(track.length);
+    const bounds: number[] = [];
+    for (const w of waves) {
+      if (w.departS <= 0) continue;
+      inDepart.fill(1, w.start, w.rideStart + 1);
+      bounds.push(w.start, w.rideStart);
+    }
+    return { inDepart, bounds };
+  }, [track.length, waves]);
   /**
    * Lignes des graphes sur une plage, au plus `CHART_MAX_POINTS` : lues dans le bloc qui suit le zoom (`ZoomView`),
    * gardées pour la dernière plage (`lastByRange`) : le panneau et la carte en plein écran ne les refont pas.
@@ -347,15 +375,21 @@ function SurfModule() {
   const chartDataAt = useMemo(() => lastByRange((view): ChartRow[] => {
     if (track.length === 0 || !open.graphiques) return [];
     const [first, last] = visibleIndexRange(trackMinutes, view);
-    // Les extrêmes de la vitesse et de la FC restent : un pic bref de FC ne disparaît pas.
-    return sampledIndicesKeeping(first, last, CHART_MAX_POINTS, [speedSeries, heart.smoothed]).map((i): ChartRow => ({
-      index: i,
-      minutes: trackMinutes[i],
-      speed: parseFloat(toDisplaySpeed(track[i].smoothedSpeedMs, speedUnit).toFixed(2)),
-      speedMs: track[i].smoothedSpeedMs,
-      hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
-    }));
-  }), [track, open.graphiques, trackMinutes, speedUnit, heart.smoothed, speedSeries]);
+    // Les extrêmes de la vitesse et de la FC restent : un pic bref de FC ne disparaît pas ; les bornes des départs aussi.
+    const sampled = sampledIndicesKeeping(first, last, CHART_MAX_POINTS, [speedSeries, heart.smoothed]);
+    const indices = withIndices(sampled, departPoints.bounds.filter((i) => i >= first && i <= last));
+    return indices.map((i): ChartRow => {
+      const speed = parseFloat(toDisplaySpeed(track[i].smoothedSpeedMs, speedUnit).toFixed(2));
+      return {
+        index: i,
+        minutes: trackMinutes[i],
+        speed,
+        depart: departPoints.inDepart[i] ? speed : null,
+        speedMs: track[i].smoothedSpeedMs,
+        hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
+      };
+    });
+  }), [track, open.graphiques, trackMinutes, speedUnit, heart.smoothed, speedSeries, departPoints]);
   /**
    * Les graphes ont des lignes, quelle que soit la plage : au moins deux points, la plage zoomée en garde toujours deux
    * (`visibleIndexRange` prend un voisin de chaque côté). Lu hors du bloc du zoom : le panneau ne dépend pas de la plage.
@@ -401,9 +435,13 @@ function SurfModule() {
       ...(foil ? flights : []).map((f) => (
         <ReferenceArea key={`vol-${f.n}`} x1={minutes(f.startMs)} x2={minutes(f.endMs)} fill={FLIGHT_BAND_COLOR} fillOpacity={0.1} ifOverflow="hidden" />
       )),
-      ...waves.map((w) => (
-        <ReferenceArea key={`vague-${w.n}`} x1={minutes(w.startMs)} x2={minutes(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
-      )),
+      // Le départ d'une vague en orange, puis la vague depuis son début compté.
+      ...waves.flatMap((w) => [
+        ...(w.departS > 0 ? [
+          <ReferenceArea key={`depart-${w.n}`} x1={minutes(w.startMs)} x2={minutes(w.rideStartMs)} fill={WAVE_DEPART_COLOR} fillOpacity={0.18} ifOverflow="hidden" />,
+        ] : []),
+        <ReferenceArea key={`vague-${w.n}`} x1={minutes(w.rideStartMs)} x2={minutes(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />,
+      ]),
     ];
   }, [track, marks.located, shownMark, foil, flights, waves]);
   const heartOverlays = useMemo(() => {
@@ -563,6 +601,7 @@ function SurfModule() {
                   {foil
                     ? `Vague : un passage d'au moins ${surfProfile.surf.minWaveS} s au-dessus du seuil de vague en foil, pendant un vol.`
                     : `Vague : au moins ${surfProfile.surf.minWaveS} s et ${surfProfile.surf.minWaveM} m au-dessus du seuil de vague.`}
+                  {!foil && <>{' '}Départ : la mise en vitesse qui précède la vague, depuis presque l'arrêt, en orange sur la carte (vague montrée seule) et sur la courbe de vitesse. Il compte dans la durée, la distance et la moyenne de la vague, pas dans sa vitesse max.</>}
                   {gyroTurns.size > 0
                     ? <>{' '}Virages : comptés par le gyroscope du téléphone, chaque rotation du buste d'au moins {surfProfile.surf.gyroTurns.minDeg}°. * Vague sans capture : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) vus par le GPS, valeur expérimentale.</>
                     : <>{' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.</>}
@@ -739,6 +778,7 @@ function SurfModule() {
                         </div>
                         <HelpText helpKey="surf:graphiques" note>
                           Le survol déplace le repère sur la carte.
+                          {foil ? '' : ' En bleu, les vagues ; en orange, leur départ.'}
                           {folds ? ' Chaque graphe se replie par son nom.' : ''}
                           {` ${zoomHint(narrow)}`}
                         </HelpText>

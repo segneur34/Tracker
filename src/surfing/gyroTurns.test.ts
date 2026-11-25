@@ -113,6 +113,88 @@ describe('gyroWaveTurns', () => {
     expect(gyroWaveTurns(pruned, D, waves)).toEqual([null, null]);
   });
 
+  describe('glisse restante après le virage', () => {
+    const RULES = profile.surf.turnRules;
+    /** Fin de glisse de la vague de la séance, en secondes depuis le début de la capture. */
+    const rideEndS = (cadenceS: number) => (session(cadenceS)[0].turnRideEndMs - SYNTH_WALL_MS) / 1000;
+
+    it('la vague porte sa fin de glisse, à sa fin ou juste avant', () => {
+      for (const cadenceS of [1, 0.2]) {
+        const [wave] = session(cadenceS);
+        expect(wave.turnRideEndMs).toBeLessThanOrEqual(wave.endMs);
+        expect(rideEndS(cadenceS)).toBeGreaterThan(39);
+        expect(rideEndS(cadenceS)).toBeLessThan(42);
+      }
+    });
+
+    it('une rotation du buste de 90° dans la dernière seconde de la vague n\'est pas comptée', () => {
+      for (const cadenceS of [1, 0.2]) {
+        const waves = session(cadenceS);
+        // La rotation s'achève un quart de seconde avant la fin de glisse : la sortie de la vague.
+        const exit: [number, number, number] = [rideEndS(cadenceS) - 1, 90, 120];
+        expect(gyroWaveTurns(capture({ yaw: yawOf([exit]) }), D, waves, RULES)).toEqual([0]);
+        // Sans la règle, elle comptait.
+        expect(gyroWaveTurns(capture({ yaw: yawOf([exit]) }), D, waves)).toEqual([1]);
+        // Deux virages dans la vague, puis la sortie : deux.
+        const withExit = yawOf([[32, 90, 120], [34.5, -90, 120], exit]);
+        expect(gyroWaveTurns(capture({ yaw: withExit }), D, waves, RULES)).toEqual([2]);
+      }
+    });
+
+    it('trois virages finis loin de la fin de la vague comptent toujours, capture à 50 et 200 Hz, trace à 1 et 5 Hz', () => {
+      const early: [number, number, number][] = [[32, 90, 120], [33.5, -90, 120], [35, 90, 120]];
+      for (const rateHz of [50, 200]) {
+        const rec = capture({ yaw: yawOf(early), rateHz });
+        for (const cadenceS of [1, 0.2]) expect(gyroWaveTurns(rec, D, session(cadenceS), RULES)).toEqual([3]);
+      }
+    });
+
+    it('à la frontière des 3 s : rotation finie 2,5 s avant la fin de glisse, 0 ; 3,5 s avant, 1', () => {
+      for (const cadenceS of [1, 0.2]) {
+        const waves = session(cadenceS);
+        // 90° à 120°/s : la rotation dure 0,75 s.
+        const endingBefore = (s: number) => capture({ yaw: yawOf([[rideEndS(cadenceS) - s - 0.75, 90, 120]]) });
+        expect(gyroWaveTurns(endingBefore(2.5), D, waves, RULES)).toEqual([0]);
+        expect(gyroWaveTurns(endingBefore(3.5), D, waves, RULES)).toEqual([1]);
+        expect(gyroWaveTurns(endingBefore(2.5), D, waves, { ...RULES, minRideAfterS: 2 })).toEqual([1]);
+      }
+    });
+
+    it('un virage, de la glisse, puis une sortie dans le même sens : le virage compte', () => {
+      for (const cadenceS of [1, 0.2]) {
+        const waves = session(cadenceS);
+        const yaw = yawOf([[32, 90, 120], [rideEndS(cadenceS) - 1, 90, 120]]);
+        expect(gyroWaveTurns(capture({ yaw }), D, waves, RULES)).toEqual([1]);
+      }
+    });
+
+    it('un buste qui dérive de 3°/s dans le sens du dernier virage, ou qui tremble de ± 5°, ne le fait pas perdre', () => {
+      const waves = session(1);
+      // La dérive seule, sur toute la vague, ne fait pas un virage ; le virage, à 33 s, laisse plus de 5 s de glisse.
+      expect(gyroWaveTurns(capture({ yaw: yawOf([[33, 90, 120]], 3) }), D, waves, RULES)).toEqual([1]);
+      const shaking = (t: number) => yawOf([[33, 90, 120]])(t) + 5 * RAD * Math.sin(2 * Math.PI * 0.7 * t);
+      expect(gyroWaveTurns(capture({ yaw: shaking }), D, waves, RULES)).toEqual([1]);
+    });
+
+    it('trois virages enchaînés toutes les 2,5 s : tous comptent, sauf le dernier s\'il finit trop près de la fin', () => {
+      for (const cadenceS of [1, 0.2]) {
+        const waves = session(cadenceS);
+        const chained = (lastEndS: number): [number, number, number][] =>
+          [0, 1, 2].map((k) => [lastEndS - 0.75 - (2 - k) * 2.5, k % 2 === 0 ? 90 : -90, 120]);
+        expect(gyroWaveTurns(capture({ yaw: yawOf(chained(rideEndS(cadenceS) - 3.3)) }), D, waves, RULES)).toEqual([3]);
+        expect(gyroWaveTurns(capture({ yaw: yawOf(chained(rideEndS(cadenceS) - 0.8)) }), D, waves, RULES)).toEqual([2]);
+      }
+    });
+
+    it('sans fin de glisse, la glisse restante se mesure jusqu\'à la fin de la vague', () => {
+      const span = { startMs: SYNTH_WALL_MS + 30_000, endMs: SYNTH_WALL_MS + 40_000 };
+      expect(gyroWaveTurns(capture({ yaw: yawOf([[38.5, 90, 120]]) }), D, [span], RULES)).toEqual([0]);
+      expect(gyroWaveTurns(capture({ yaw: yawOf([[35.5, 90, 120]]) }), D, [span], RULES)).toEqual([1]);
+      // La fin de glisse donnée prime : avancée de 3 s, le même virage finit trop tard.
+      expect(gyroWaveTurns(capture({ yaw: yawOf([[35.5, 90, 120]]) }), D, [{ ...span, turnRideEndMs: span.endMs - 3000 }], RULES)).toEqual([0]);
+    });
+  });
+
   it('témoin à plat, sans vague : rien, et rien ne plante', () => {
     const rec = synthImu({ durationS: 60, az: () => 0, noise: 0.3 });
     expect(gyroWaveTurns(rec, D, [])).toEqual([]);

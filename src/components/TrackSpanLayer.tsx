@@ -9,6 +9,11 @@ export interface TrackSpanShown {
   color: string;
   /** Texte de la bulle du point de départ. */
   label: string;
+  /**
+   * Tête du passage dans une autre couleur, de `start` à l'index `end` de la
+   * trace (le départ d'une vague montrée seule) ; le point de départ la prend.
+   */
+  lead?: { end: number; color: string };
 }
 
 /**
@@ -28,8 +33,9 @@ function TrackSpanLayer({ track, spans }: {
         const path = track.slice(span.start, span.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
         const first = track[span.start];
         if (path.length < 2 || !first) return null;
+        const lead = span.lead && span.lead.end > span.start ? { end: span.lead.end - span.start, color: span.lead.color } : undefined;
         return (
-          <HighlightSpan key={span.key} path={path} start={[first.lat, first.lon]} color={span.color}>{span.label}</HighlightSpan>
+          <HighlightSpan key={span.key} path={path} start={[first.lat, first.lon]} color={span.color} lead={lead}>{span.label}</HighlightSpan>
         );
       })}
     </>

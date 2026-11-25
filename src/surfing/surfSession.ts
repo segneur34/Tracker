@@ -1,4 +1,4 @@
-import { thresholdActivityMask } from '../core/sessionStats';
+import { thresholdActivityMask, thresholdExitMs } from '../core/sessionStats';
 import type { SportProfile, SurfProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { fromDisplaySpeed } from '../core/units';
@@ -35,12 +35,16 @@ export const runSurfSession = (
 ): SurfSessionResult => {
   // Masques au seuil, comme partout (`thresholdActivityMask`) : un seuil à 0 tombe au plancher d'arrêt,
   // un trou de la trace (téléphone sous l'eau) n'est en glisse que s'il avance à la détente basse.
+  const waveThreshold = settings.foil ? effectiveWaveThreshold(profile.surf, settings.waveThreshold) : null;
   const rideMask = thresholdActivityMask(track, profile, settings.threshold);
-  const waveMask = settings.foil ? thresholdActivityMask(track, profile, effectiveWaveThreshold(profile.surf, settings.waveThreshold)) : null;
+  const waveMask = waveThreshold === null ? null : thresholdActivityMask(track, profile, waveThreshold);
   // Un seul plancher d'arrêt (Q43) : celui du profil, pour l'attente comme pour le masque.
   const stillMs = fromDisplaySpeed(profile.stillThreshold, profile.thresholdUnit);
+  // Détentes basses des masques : le début d'une glisse remonte jusqu'à celle où elle finit.
   const analysis = analyzeSurf(track, cum, rideMask, waveMask, {
     ...profile.surf, maxGapS: profile.maxGapS, maxSpeedWindowS: profile.maxSpeedWindowS, stillMs,
+    rideExitMs: thresholdExitMs(profile, settings.threshold),
+    waveExitMs: waveThreshold === null ? null : thresholdExitMs(profile, waveThreshold),
   });
   return { rideMask, analysis, summary: summarizeSurf(track, cum, analysis, stillMs) };
 };

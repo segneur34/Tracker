@@ -5,7 +5,7 @@ import { activeRuns, spanOfRun, type ActiveRun } from '../core/sessionStats';
 import { bestWindowSpeedMs } from '../core/topSegments';
 import type { SportProfile, SurfProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
-import { countDirectionChanges } from './gpsTurns';
+import { countDirectionChanges, rideEndMsOf } from './gpsTurns';
 
 /**
  * Analyse d'une session de surf (§10, point 97), en SI, sur la trace du noyau.
@@ -32,16 +32,32 @@ import { countDirectionChanges } from './gpsTurns';
  * relier plusieurs vagues en pompant entre elles. Les vagues d'un vol sont ses
  * passages au-dessus du seuil de vague en foil (`waveMask`) ; le reste du vol
  * est pompé. Sans foil, les glisses sont les vagues.
+ *
+ * Le masque n'entre en glisse qu'à sa détente haute et n'en sort qu'à sa
+ * détente basse : le début de chaque glisse retenue remonte donc à la détente
+ * basse tant que la vitesse monte (`riseStartOf`), comme sa fin. Sans foil,
+ * chaque vague a en plus son départ : la mise en vitesse qui précède son début
+ * compté, depuis presque l'arrêt (`departStartOf`). Il compte dans sa durée,
+ * sa distance et sa moyenne, et ses pas sont de la glisse ; il ne fait jamais
+ * compter une vague, et la vitesse max et les virages restent lus depuis le
+ * début compté (`rideStart`).
  */
 
 /**
  * Réglages de l'analyse : ceux du surf, le trou de la trace et la fenêtre de la
  * vitesse max du calcul, et `stillMs`, le plancher d'arrêt du profil
  * (`stillThreshold`) en m/s : un seul plancher pour le masque et l'attente (Q43).
+ * `rideExitMs` et `waveExitMs` : détentes basses, en m/s, du masque de la
+ * glisse et de celui des vagues sur foil (`null` sans foil), celles où une
+ * glisse finit ; le début d'une glisse remonte jusqu'à elles (`riseStartOf`).
  */
 export type SurfParams = Pick<
-  SurfProfile, 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'turnMinDeg'
-> & Pick<SportProfile, 'maxGapS' | 'maxSpeedWindowS'> & { stillMs: number };
+  SurfProfile, 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'turnMinDeg' | 'rise' | 'depart' | 'turnRules'
+> & Pick<SportProfile, 'maxGapS' | 'maxSpeedWindowS'> & {
+  stillMs: number;
+  rideExitMs: number;
+  waveExitMs: number | null;
+};
 
 /** Ce que fait le pratiquant sur un pas. */
 export type SurfPhase = 'glisse' | 'rame' | 'attente' | 'trou';
@@ -55,13 +71,32 @@ export interface SurfSpan extends FlightSpan {
 
 export interface SurfWave extends SurfSpan {
   /**
-   * Rame de départ : le mouvement continu qui précède la vague, au plus
-   * `takeoffSearchS`, en secondes ; `null` pour une vague prise en vol (foil).
+   * Début compté de la vague (au-dessus de la détente basse), point et instant.
+   * Sans foil, le passage (`start`, `startMs`) part plus tôt, au début de son
+   * départ : durée, distance et moyenne comptent le départ ; la vitesse max et
+   * les virages se lisent depuis le début compté. Sur foil, il n'y a pas de
+   * départ : égal à `start`.
+   */
+  rideStart: number;
+  rideStartMs: number;
+  /** Durée du départ, la mise en vitesse avant le début compté, en secondes ; 0 sur foil. */
+  departS: number;
+  /**
+   * Rame de départ : le mouvement continu qui précède la vague et son départ,
+   * au plus `takeoffSearchS`, en secondes ; `null` pour une vague prise en vol
+   * (foil).
    */
   takeoffS: number | null;
   takeoffSpeedMs: number | null;
   /** Grands changements de direction vus par le GPS (`gpsTurns.ts`). */
   turns: number;
+  /**
+   * Fin de glisse pour les virages, en ms : le dernier instant de la vague
+   * au-dessus du plancher de lecture du cap ; sur foil, la fin de la vague,
+   * qui s'achève en vol. Un virage ne compte que suivi d'assez de glisse
+   * jusqu'à elle, au GPS comme au gyroscope (`gyroTurns.ts`).
+   */
+  turnRideEndMs: number;
   /** Numéro du vol qui la porte, sur foil ; `null` sans foil. */
   flight: number | null;
 }
@@ -82,7 +117,7 @@ export interface SurfFlight extends SurfSpan {
 export interface SurfReturn {
   after: number;
   startMs: number;
-  /** Début de la glisse suivante, sinon fin de la session. */
+  /** Début de la glisse suivante (celui de son départ, sans foil), sinon fin de la session. */
   endMs: number;
   /** Retour au pic : jusqu'au début de la première attente, en secondes ; `null` sans attente (glisse enchaînée). */
   returnS: number | null;
@@ -121,6 +156,92 @@ const spanOf = (track: TrackPoint[], cum: CumulativeTrack, n: number, run: Activ
   const maxSpeedMs = bestWindowSpeedMs(track, cum, windowS, run.start, run.end) ?? avgSpeedMs;
   return { n, ...span, maxSpeedMs, avgSpeedMs };
 };
+
+/** Dernier point à `windowS` secondes ou plus avant le point `i`, le premier de la trace au plus tôt. */
+const pointBefore = (track: TrackPoint[], i: number, windowS: number): number => {
+  const atMs = track[i].timeMs - windowS * 1000;
+  let j = i - 1;
+  while (j > 0 && track[j].timeMs > atMs) j--;
+  return Math.max(0, j);
+};
+
+/** Bornes d'un recul du début (`climbStartOf`). */
+interface ClimbBounds {
+  maxGapS: number;
+  /** Recul le plus long, en secondes. */
+  maxS: number;
+  /** Fenêtre et rapport de la montée (`SurfRise`). */
+  windowS: number;
+  maxRatio: number;
+  /** Gain minimal sur la fenêtre, en m/s, en plus du rapport. */
+  minGainMs: number;
+}
+
+/**
+ * Recul du début d'un passage qui part du point `start`, d'un pas tant que :
+ * - le point d'arrivée de ce pas, comme dans `activeRuns`, a une vitesse lissée
+ *   au moins égale à `lowMs` ;
+ * - ce point est encore dans la montée : la vitesse de `windowS` secondes plus
+ *   tôt n'atteint pas `maxRatio` de la sienne, et la sienne la dépasse d'au
+ *   moins `minGainMs`. Jugée sur une fenêtre en secondes, pas d'un point au
+ *   suivant, la règle tient à toute cadence (règle 2), et une rame plate n'est
+ *   pas avalée ;
+ * - le recul ne dépasse pas `maxS` secondes ;
+ * - le pas n'est ni un trou de la trace (plus long que `maxGapS`) ni la reprise
+ *   d'une pause (`segmentStart`), et ne part pas avant le point `floor`.
+ * Un long pas (règle 10) se juge comme un autre, sur son point d'arrivée.
+ */
+const climbStartOf = (track: TrackPoint[], start: number, floor: number, lowMs: number, b: ClimbBounds): number => {
+  const startMs = track[start].timeMs;
+  let s = start;
+  while (s - 1 >= Math.max(0, floor)) {
+    const arrival = track[s];
+    if (arrival.segmentStart || stepS(track, s) > b.maxGapS) break;
+    if ((startMs - track[s - 1].timeMs) / 1000 > b.maxS) break;
+    const v = arrival.smoothedSpeedMs;
+    if (v < lowMs) break;
+    const before = track[pointBefore(track, s, b.windowS)].smoothedSpeedMs;
+    if (before > b.maxRatio * v || before > v - b.minGainMs) break;
+    s--;
+  }
+  return s;
+};
+
+/**
+ * Début remonté d'une glisse qui part du point `start`. Le masque n'entre en
+ * glisse qu'à sa détente haute et n'en sort qu'à sa détente basse : sans recul,
+ * la mise en vitesse entre les deux détentes resterait de la rame au départ,
+ * alors que la même plage de vitesse est de la glisse à la fin. Le début
+ * remonte donc tant que la vitesse reste au-dessus de la détente basse `lowMs`
+ * (la mise en vitesse dessous reste de la rame de départ) et monte encore, sur
+ * au plus `rise.maxS` (`climbStartOf`) ; jamais avant le point `floor` (la fin
+ * de la glisse précédente, ou le début du vol qui porte une vague).
+ */
+export const riseStartOf = (
+  track: TrackPoint[], start: number, floor: number, lowMs: number, p: Pick<SurfParams, 'maxGapS' | 'rise'>
+): number => climbStartOf(track, start, floor, lowMs, {
+  maxGapS: p.maxGapS, maxS: p.rise.maxS, windowS: p.rise.windowS, maxRatio: p.rise.maxRatio, minGainMs: 0,
+});
+
+/**
+ * Début du départ d'une vague comptée à partir du point `rideStart` : la mise
+ * en vitesse qui la précède, remontée comme le début compté (`riseStartOf`)
+ * mais jusqu'au plancher d'arrêt `stillMs` (presque l'arrêt), sur au plus
+ * `depart.maxS` secondes, et tant que la vitesse gagne aussi au moins
+ * `depart.minGainMs` sur la fenêtre : une rame à allure constante arrête le
+ * recul. Jamais avant le point `floor`, la fin de la vague d'avant ; ni à
+ * travers un trou ou la reprise d'une pause. Un long pas se juge sur son point
+ * d'arrivée : un seul pas de 1 à 8 km/h fait tout le départ.
+ */
+export const departStartOf = (
+  track: TrackPoint[], rideStart: number, floor: number, p: Pick<SurfParams, 'maxGapS' | 'stillMs' | 'rise' | 'depart'>
+): number => climbStartOf(track, rideStart, floor, p.stillMs, {
+  maxGapS: p.maxGapS, maxS: p.depart.maxS, windowS: p.rise.windowS, maxRatio: p.rise.maxRatio, minGainMs: p.depart.minGainMs,
+});
+
+/** Suites du masque dont le début est remonté (`riseStartOf`), chacune après la fin de la précédente et pas avant `floor`. */
+const risenRuns = (track: TrackPoint[], runs: ActiveRun[], floor: number, lowMs: number, p: SurfParams): ActiveRun[] =>
+  runs.map((r, k) => ({ start: riseStartOf(track, r.start, k > 0 ? runs[k - 1].end : floor, lowMs, p), end: r.end }));
 
 const keptRuns = (track: TrackPoint[], cum: CumulativeTrack, runs: ActiveRun[], p: SurfParams): ActiveRun[] =>
   runs.filter((r) => {
@@ -218,22 +339,43 @@ export const analyzeSurf = (
   track: TrackPoint[], cum: CumulativeTrack, rideMask: boolean[], waveMask: boolean[] | null, p: SurfParams
 ): SurfAnalysis => {
   if (track.length < 2) return { phases: track.map(() => 'trou'), waves: [], flights: [], returns: [] };
-  const rides = keptRuns(track, cum, activeRuns(track, rideMask), p);
-  const phases = stepPhases(track, rides, p);
+  // Début remonté avant le filtre de durée et de distance : une vague molle, rognée de sa mise en vitesse, était écartée.
+  const rides = keptRuns(track, cum, risenRuns(track, activeRuns(track, rideMask), 0, p.rideExitMs, p), p);
+  // Sans foil, le départ de chaque vague, après le filtre : il ne fait jamais compter une vague. Ses pas sont de la
+  // glisse ; la rame de départ, les remontées et la première sortie s'arrêtent à son début. Sur foil, aucun départ.
+  const departs = waveMask === null
+    ? rides.map((r, k) => departStartOf(track, r.start, k > 0 ? rides[k - 1].end : 0, p))
+    : rides.map((r) => r.start);
+  const phases = stepPhases(track, rides.map((r, k) => ({ start: departs[k], end: r.end })), p);
+
+  // Virages d'une vague, lus depuis son début compté, avec sa fin de glisse : un changement de direction ne compte
+  // que suivi d'assez de glisse.
+  const turnsOf = (w: ActiveRun, turnRideEndMs: number): Pick<SurfWave, 'turns' | 'turnRideEndMs'> => ({
+    turns: countDirectionChanges(track, w.start, w.end, p.turnMinDeg, { ...p.turnRules, rideEndMs: turnRideEndMs, maxGapS: p.maxGapS }),
+    turnRideEndMs,
+  });
 
   const waves: SurfWave[] = [];
   const flights: SurfFlight[] = [];
   if (waveMask === null) {
     rides.forEach((r, k) => {
+      // Durée, distance et moyenne du départ à la fin ; vitesse max sur la partie comptée, que le départ ne change pas.
+      const counted = spanOf(track, cum, k + 1, r, p.maxSpeedWindowS);
+      const span = spanOf(track, cum, k + 1, { start: departs[k], end: r.end }, p.maxSpeedWindowS);
       waves.push({
-        ...spanOf(track, cum, k + 1, r, p.maxSpeedWindowS), ...takeoffOf(track, cum, phases, r.start, p),
-        turns: countDirectionChanges(track, r.start, r.end, p.turnMinDeg), flight: null,
+        ...span, maxSpeedMs: counted.maxSpeedMs,
+        rideStart: r.start, rideStartMs: counted.startMs, departS: (counted.startMs - span.startMs) / 1000,
+        ...takeoffOf(track, cum, phases, departs[k], p),
+        ...turnsOf(r, rideEndMsOf(track, r.start, r.end, p.turnRules.courseMinSpeedMs, p.maxGapS)), flight: null,
       });
     });
   } else {
     rides.forEach((r, k) => {
       // Vagues du vol : les suites du masque de vague entre ses bornes, sans reparcourir la trace (27/10).
-      const flightWaves = keptRuns(track, cum, activeRuns(track, waveMask, r.start + 1, r.end), p);
+      // Leur début remonte comme celui des vols, à la détente basse des vagues, jamais avant le début du vol.
+      const flightWaves = keptRuns(
+        track, cum, risenRuns(track, activeRuns(track, waveMask, r.start + 1, r.end), r.start, p.waveExitMs ?? p.rideExitMs, p), p
+      );
       let waveS = 0;
       let waveDistanceM = 0;
       for (const w of flightWaves) {
@@ -241,8 +383,9 @@ export const analyzeSurf = (
         waveS += span.durationS;
         waveDistanceM += span.distanceM;
         waves.push({
-          ...span, takeoffS: null, takeoffSpeedMs: null,
-          turns: countDirectionChanges(track, w.start, w.end, p.turnMinDeg), flight: k + 1,
+          ...span, rideStart: w.start, rideStartMs: span.startMs, departS: 0, takeoffS: null, takeoffSpeedMs: null,
+          // Sur foil, la vague finit en vol, bien au-dessus du plancher : sa fin de glisse est sa fin.
+          ...turnsOf(w, track[w.end].timeMs), flight: k + 1,
         });
       }
       const span = spanOf(track, cum, k + 1, r, p.maxSpeedWindowS);
@@ -256,8 +399,8 @@ export const analyzeSurf = (
   }
 
   const returns: SurfReturn[] = [];
-  // Première sortie : du premier coup de rame à la première attente, avant la première glisse.
-  const firstRideStart = rides.length > 0 ? rides[0].start : track.length - 1;
+  // Première sortie : du premier coup de rame à la première attente, avant la première glisse (le début de son départ).
+  const firstRideStart = rides.length > 0 ? departs[0] : track.length - 1;
   let firstMove = -1;
   for (let i = 1; i <= firstRideStart && firstMove < 0; i++) if (isPaddling(track, phases, i, p.stillMs)) firstMove = i - 1;
   if (firstMove >= 0) {
@@ -265,7 +408,7 @@ export const analyzeSurf = (
     if (out.returnS !== null) returns.push(out);
   }
   for (let k = 0; k + 1 < rides.length; k++) {
-    returns.push(returnOf(track, cum, phases, p, k + 1, rides[k].end, rides[k + 1].start, rides[k].end));
+    returns.push(returnOf(track, cum, phases, p, k + 1, rides[k].end, departs[k + 1], rides[k].end));
   }
   return { phases, waves, flights, returns };
 };
