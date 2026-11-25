@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { divIcon, type Marker as LeafletMarker } from 'leaflet';
-import { trackBounds } from '../core/displayConfig';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { divIcon, latLngBounds, type Map as LeafletMap, type Marker as LeafletMarker } from 'leaflet';
+import { trackBounds, type TrackBounds } from '../core/displayConfig';
+import { zoomDeltaForAnyBearing } from '../core/screenRotation';
 import MapContainer from './map/MapContainer';
+import { rotationOf } from './map/rotation';
+import { useMapControl } from './map/useMapControl';
 import Marker from './map/Marker';
 import Pane from './map/Pane';
 import { Circle, CircleMarker, Polyline } from './map/paths';
 import { useMap, useMapEvents } from './map/mapContext';
 import { useCompassHeading } from '../hooks/useCompassHeading';
+import { useMapOrientation } from '../hooks/useMapOrientation';
+import { watchCompassHeading } from '../platform/compass';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
+import { MAP_BEARING_DEFAULTS, MAP_BEARING_START, stepMapBearing } from '../recording/mapBearing';
 import { liveTail } from '../recording/livePath';
 import type { CourseMark } from '../recording/markGuide';
 import type { SessionMark } from '../core/sessionMarks';
@@ -19,6 +26,7 @@ import { HoveredTrackMarker } from './HoverMarker';
 import { SessionMarksLayer } from './SessionMarks';
 import MapAutoResize from './MapAutoResize';
 import { divIconCache, haloStyle } from './mapStyles';
+import { IconCompass } from './icons';
 import Button from './ui/Button';
 
 interface LiveMapProps {
@@ -97,7 +105,8 @@ const markIcon = (label: string, state: CourseMark['state']) => markIcons(`${lab
     className: '',
     iconSize: [MARK_SIZE, MARK_SIZE],
     iconAnchor: [MARK_SIZE / 2, MARK_SIZE / 2],
-    html: `<span style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:${MARK_SIZE}px;height:${MARK_SIZE}px;`
+    // Chiffre gardé droit sur une carte orientée (`map-upright`, autour de son centre, l'ancre).
+    html: `<span class="map-upright" style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:${MARK_SIZE}px;height:${MARK_SIZE}px;`
       + `border-radius:50%;background:${fill};color:${ink};border:2px ${dashed ? 'dashed' : 'solid'} ${border};`
       + `font-weight:700;font-size:13px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${label}</span>`,
   };
@@ -153,6 +162,77 @@ function FollowPosition({ position, following, onUserMove }: {
   return null;
 }
 
+/** Marge du cadrage de la trace suivie, sans position, en pixels. */
+const GUIDE_FIT_PADDING_PX = 24;
+const GUIDE_FIT_OPTIONS = { padding: [GUIDE_FIT_PADDING_PX, GUIDE_FIT_PADDING_PX] as [number, number] };
+
+/**
+ * Recule le zoom pour que l'emprise de la trace suivie tienne dans la carte à tout angle (carte orientée) : cadrée
+ * droite, elle déborderait dans les coins dès que la carte tourne. Rien si elle tient déjà.
+ */
+function fitForAnyBearing(map: LeafletMap, bounds: TrackBounds): void {
+  const box = latLngBounds(bounds);
+  const zoom = map.getZoom();
+  const nw = map.project(box.getNorthWest(), zoom);
+  const se = map.project(box.getSouthEast(), zoom);
+  const size = map.getSize();
+  const delta = zoomDeltaForAnyBearing(Math.abs(se.x - nw.x), Math.abs(se.y - nw.y),
+    size.x - 2 * GUIDE_FIT_PADDING_PX, size.y - 2 * GUIDE_FIT_PADDING_PX);
+  if (!(delta < 0)) return;
+  const snap = map.options.zoomSnap ?? 1;
+  const target = snap > 0 ? Math.floor((zoom + delta) / snap) * snap : zoom + delta;
+  map.setView(box.getCenter(), target, { animate: false });
+}
+
+/**
+ * Carte orientée selon le téléphone : tant que `oriented`, la boussole (`platform/compass.ts`), lissée
+ * (`stepMapBearing`), tourne la carte (`map/rotation.ts`) pour mettre en haut la direction du téléphone. Sans état
+ * React : la boussole ne fait que régler l'angle du rotor. Sans boussole (ordinateur), la carte reste nord en haut ;
+ * sans rotation possible, aussi. `frame` : l'emprise de la trace suivie, quand la carte s'y cadre faute de position.
+ */
+function MapOrientation({ oriented, frame }: { oriented: boolean; frame: TrackBounds | null }) {
+  const map = useMap();
+  const latestFrame = useRef(frame);
+  useLayoutEffect(() => {
+    latestFrame.current = frame;
+  });
+  useEffect(() => {
+    const rotation = rotationOf(map);
+    if (!oriented || !rotation) return undefined;
+    let state = MAP_BEARING_START;
+    // Le mode orienté ne s'active qu'à la première mesure de la boussole : sans elle, rien ne change.
+    let started = false;
+    const stop = watchCompassHeading((headingDeg) => {
+      const step = stepMapBearing(state, headingDeg, Date.now(), MAP_BEARING_DEFAULTS);
+      state = step.state;
+      if (step.renderDeg === null) return;
+      if (!started) {
+        if (!rotation.setEnabled(true)) return;
+        started = true;
+        if (latestFrame.current) fitForAnyBearing(map, latestFrame.current);
+      }
+      rotation.setBearing(step.renderDeg);
+    });
+    return () => {
+      stop();
+      if (started) rotation.setEnabled(false);
+    };
+  }, [map, oriented]);
+  return null;
+}
+
+/** Bouton sous le choix du fond (Plan · Satellite) : carte orientée selon le téléphone, ou nord en haut. */
+function OrientationSwitch({ oriented, onChange }: { oriented: boolean; onChange: (oriented: boolean) => void }) {
+  const container = useMapControl('leaflet-bar map-orientation-switch');
+  return createPortal(
+    <button type="button" className="map-orientation-switch__button" aria-pressed={oriented} aria-label="Carte orientée"
+      title={oriented ? 'Carte orientée' : 'Nord en haut'} onClick={() => onChange(!oriented)}>
+      <IconCompass size={18} />
+    </button>,
+    container
+  );
+}
+
 /** Points d'un tracé, dans la forme de Leaflet. */
 const latLngs = (points: ReadonlyArray<{ lat: number; lon: number }>): [number, number][] => points.map((p) => [p.lat, p.lon]);
 
@@ -182,10 +262,13 @@ const segmentPath = (segment: LocationFix[]): [number, number][] => {
  * suivie s'il y en a une, la partie faite en gris, et sur un parcours ses balises
  * (la visée en orange, avec son cercle de validation et un pointillé depuis
  * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
- * suivie. Sans réseau, le fond manque mais traces et position restent.
+ * suivie. Sans réseau, le fond manque mais traces et position restent. Un bouton sous le choix du fond la
+ * tourne selon le téléphone, ou la remet nord en haut (`MapOrientation`), choix gardé sur l'appareil ; la flèche
+ * tourne avec la carte, chiffres des balises et fanions restent droits.
  */
 function LiveMap({ segments, position, positionSegment = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes, hoverPoints }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
+  const [oriented, setOriented] = useMapOrientation();
   const halo = useMapBase(family)[0] === 'satellite';
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
   // Leaflet ne reprend un tracé que si son tableau de points change : les segments fermés gardent le leur.
@@ -205,10 +288,12 @@ function LiveMap({ segments, position, positionSegment = null, color, family, he
   return (
     <div style={{ position: 'relative', height, borderRadius: 'var(--radius-m)', overflow: 'hidden', border: '1px solid var(--line-strong)', zIndex: 0 }}>
       <MapContainer
-        {...(start ? { center: [start.lat, start.lon] as [number, number], zoom: 16 } : { bounds: guideBounds!, boundsOptions: { padding: [24, 24] } })}
-        className="ui-fill">
+        {...(start ? { center: [start.lat, start.lon] as [number, number], zoom: 16 } : { bounds: guideBounds!, boundsOptions: GUIDE_FIT_OPTIONS })}
+        className="ui-fill" rotatable>
         <MapAutoResize />
         <BaseTileLayer family={family} />
+        <OrientationSwitch oriented={oriented} onChange={setOriented} />
+        <MapOrientation oriented={oriented} frame={guideBounds} />
         {halo && (
           <Pane {...GUIDE_HALO_PANE}>
             {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_HALO_STYLE} />}

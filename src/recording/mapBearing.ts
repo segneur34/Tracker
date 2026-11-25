@@ -1,0 +1,76 @@
+import { angleDiff, normalizeDeg, toDeg, toRad } from '../core/angles';
+
+/**
+ * Orientation de la carte du direct d'après la boussole (« carte orientée ») :
+ * le cap du téléphone, lissé, et le moment de le redonner à la carte. La
+ * boussole bouge sans cesse ; redessiner la carte à chaque mesure la ferait
+ * trembler et coûterait cher. Le cap est donc lissé sur une fenêtre en
+ * secondes (le même résultat à 1 et à 5 mesures par seconde), puis rendu
+ * seulement s'il a assez changé, et pas plus souvent qu'une cadence donnée.
+ *
+ * Le lissage se fait sur le vecteur unitaire du cap, pas sur l'angle : de
+ * 359° à 1°, la carte passe par 0°, sans faire le tour par 180°.
+ */
+
+export interface MapBearingOptions {
+  /** Constante de temps du lissage exponentiel, en secondes. */
+  tauS: number;
+  /** Écart au dernier cap rendu sous lequel rien n'est redessiné, en degrés. */
+  minChangeDeg: number;
+  /** Intervalle minimal entre deux rendus, en millisecondes. */
+  minIntervalMs: number;
+}
+
+export const MAP_BEARING_DEFAULTS: MapBearingOptions = {
+  tauS: 0.8,
+  minChangeDeg: 3,
+  minIntervalMs: 250,
+};
+
+export interface MapBearingState {
+  /** Vecteur lissé du cap (est, nord) ; nul avant la première mesure. */
+  x: number;
+  y: number;
+  /** Instant de la dernière mesure, en ms ; `null` avant la première. */
+  atMs: number | null;
+  /** Dernier cap rendu à la carte, en degrés ; `null` si rien n'a été rendu. */
+  shownDeg: number | null;
+  /** Instant du dernier rendu, en ms. */
+  shownAtMs: number;
+}
+
+export const MAP_BEARING_START: MapBearingState = { x: 0, y: 0, atMs: null, shownDeg: null, shownAtMs: 0 };
+
+/** Longueur du vecteur lissé sous laquelle il ne dit plus de direction (mesures opposées). */
+const MIN_NORM = 1e-6;
+
+/** Cap lissé, en degrés depuis le nord, sens horaire ; `null` avant la première mesure. */
+export const smoothedBearing = (state: MapBearingState): number | null =>
+  state.atMs === null || Math.hypot(state.x, state.y) < MIN_NORM ? null : normalizeDeg(toDeg(Math.atan2(state.x, state.y)));
+
+/**
+ * Prend une mesure de la boussole (`sampleDeg`, degrés depuis le nord, sens
+ * horaire ; `null` sans mesure) à l'instant `timeMs`. Rend l'état suivant et le
+ * cap à donner à la carte, ou `null` quand rien n'est à redessiner.
+ */
+export const stepMapBearing = (
+  state: MapBearingState,
+  sampleDeg: number | null,
+  timeMs: number,
+  options: MapBearingOptions = MAP_BEARING_DEFAULTS
+): { state: MapBearingState; renderDeg: number | null } => {
+  if (sampleDeg === null || !Number.isFinite(sampleDeg) || !Number.isFinite(timeMs)) return { state, renderDeg: null };
+  const dtS = state.atMs === null ? Infinity : Math.max(0, timeMs - state.atMs) / 1000;
+  // Part de la nouvelle mesure : toute la mesure au départ ou après un long trou, presque rien entre deux mesures serrées.
+  const weight = options.tauS > 0 ? 1 - Math.exp(-dtS / options.tauS) : 1;
+  const rad = toRad(sampleDeg);
+  const x = state.x + weight * (Math.sin(rad) - state.x);
+  const y = state.y + weight * (Math.cos(rad) - state.y);
+  const next: MapBearingState = { ...state, x, y, atMs: state.atMs === null ? timeMs : Math.max(state.atMs, timeMs) };
+  const bearing = smoothedBearing(next);
+  if (bearing === null) return { state: next, renderDeg: null };
+  const due = state.shownDeg === null
+    || (Math.abs(angleDiff(bearing, state.shownDeg)) >= options.minChangeDeg && timeMs - state.shownAtMs >= options.minIntervalMs);
+  if (!due) return { state: next, renderDeg: null };
+  return { state: { ...next, shownDeg: bearing, shownAtMs: timeMs }, renderDeg: bearing };
+};

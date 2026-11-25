@@ -11,6 +11,8 @@ import { onNetworkBack, resolveExactTile, resolveTile } from '../platform/mapTil
 import { isForeground, onForeground } from '../platform/screen';
 import { NARROW_QUERY } from '../hooks/useNarrowScreen';
 import { IconLayers } from './icons';
+import { coverSizeOf } from './map/rotation';
+import { useMapControl } from './map/useMapControl';
 // La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification) :
 // aucune page chargée à la demande ne peut l'oublier (27/10).
 import 'leaflet/dist/leaflet.css';
@@ -73,6 +75,10 @@ interface TileSlot {
 
 /** Vrai pour une image finie et sans contenu : jamais posée, en erreur, ou perdue. */
 const isBlank = (tile: HTMLImageElement): boolean => tile.complete && tile.naturalWidth === 0;
+
+/** Emprise des cases à charger chez Leaflet (`GridLayer`, champ interne de Leaflet 1.9.4), autour d'un centre. */
+type TiledPixelBounds = (this: L.GridLayer, center: L.LatLng) => L.Bounds;
+const leafletTiledPixelBounds = (L.GridLayer.prototype as unknown as { _getTiledPixelBounds: TiledPixelBounds })._getTiledPixelBounds;
 
 class CachedTileLayer extends L.TileLayer {
   private readonly base: MapBase;
@@ -170,6 +176,23 @@ class CachedTileLayer extends L.TileLayer {
     });
   }
 
+  /**
+   * Emprise des cases à charger : celle de Leaflet, élargie au carré de la diagonale sur une carte orientée
+   * (`map/rotation.ts`), pour qu'aucun coin ne reste vide quel que soit l'angle ; telle quelle sur les autres.
+   */
+  protected _getTiledPixelBounds(center: L.LatLng): L.Bounds {
+    const bounds = leafletTiledPixelBounds.call(this, center);
+    const map = (this as unknown as { _map?: L.Map })._map;
+    const cover = map ? coverSizeOf(map) : null;
+    if (!map || !cover) return bounds;
+    const size = map.getSize();
+    if (size.x <= 0 || size.y <= 0) return bounds;
+    const middle = bounds.getCenter();
+    const half = bounds.getSize().divideBy(2);
+    const grown = L.point((half.x * cover.x) / size.x, (half.y * cover.y) / size.y);
+    return L.bounds(middle.subtract(grown), middle.add(grown));
+  }
+
   override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     const tile = document.createElement('img');
     tile.alt = '';
@@ -194,12 +217,12 @@ class CachedTileLayer extends L.TileLayer {
     return slot.shows !== 'tuile' || isBlank(slot.tile);
   }
 
-  /** Cases que Leaflet montre pour cette carte, au même arrondi du zoom et du centre que lui. */
+  /** Cases que Leaflet montre pour cette carte, au même arrondi du zoom et du centre que lui (carré de la diagonale sur une carte orientée). */
   private viewOf(map: L.Map): TileView {
     const zoom = map.getZoom();
     const z = Math.round(zoom);
     const center = map.project(map.getCenter(), z).floor();
-    const half = map.getSize().divideBy(map.getZoomScale(zoom, z) * 2);
+    const half = (coverSizeOf(map) ?? map.getSize()).divideBy(map.getZoomScale(zoom, z) * 2);
     return tileViewOf(z, center.subtract(half), center.add(half), this.getTileSize().x);
   }
 
@@ -360,23 +383,9 @@ const BASE_CHOICES: ReadonlyArray<{ base: MapBase; label: string }> = [
  * Échap aussi, sans rien changer.
  */
 function BaseSwitch({ base, onChange }: { base: MapBase; onChange: (base: MapBase) => void }) {
-  const map = useMap();
   const [open, setOpen] = useState(false);
-  const [container] = useState(() => {
-    const element = L.DomUtil.create('div', 'leaflet-bar map-base-switch');
-    // Un toucher sur le bouton ou le menu ne va pas à la carte : ni plein écran, ni point posé.
-    L.DomEvent.disableClickPropagation(element);
-    L.DomEvent.disableScrollPropagation(element);
-    return element;
-  });
-  useEffect(() => {
-    const control = new L.Control({ position: 'topleft' });
-    control.onAdd = () => container;
-    control.addTo(map);
-    return () => {
-      control.remove();
-    };
-  }, [map, container]);
+  // Un toucher sur le bouton ou le menu ne va pas à la carte : ni plein écran, ni point posé.
+  const container = useMapControl('leaflet-bar map-base-switch');
   useCloseOnOutsideOrEscape(open, () => container, () => setOpen(false));
   return createPortal(
     <>

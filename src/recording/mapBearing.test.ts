@@ -1,0 +1,112 @@
+import { describe, expect, it } from 'vitest';
+import { angleDiff } from '../core/angles';
+import {
+  MAP_BEARING_DEFAULTS,
+  MAP_BEARING_START,
+  smoothedBearing,
+  stepMapBearing,
+  type MapBearingState,
+} from './mapBearing';
+
+/** Joue des mesures `[cap, instant en ms]` ; rend l'état final et les caps rendus. */
+const play = (samples: ReadonlyArray<readonly [number | null, number]>, start: MapBearingState = MAP_BEARING_START) => {
+  let state = start;
+  const renders: number[] = [];
+  for (const [deg, t] of samples) {
+    const step = stepMapBearing(state, deg, t);
+    state = step.state;
+    if (step.renderDeg !== null) renders.push(step.renderDeg);
+  }
+  return { state, renders };
+};
+
+/** Cap constant `deg` mesuré à `hz` mesures par seconde, de `fromMs` (exclu) à `toMs` (inclus). */
+const constant = (deg: number, hz: number, fromMs: number, toMs: number): Array<[number, number]> => {
+  const out: Array<[number, number]> = [];
+  const stepMs = 1000 / hz;
+  for (let t = fromMs + stepMs; t <= toMs + 1e-6; t += stepMs) out.push([deg, Math.round(t)]);
+  return out;
+};
+
+describe('stepMapBearing', () => {
+  it('rend la première mesure telle quelle', () => {
+    const step = stepMapBearing(MAP_BEARING_START, 42, 1000);
+    expect(step.renderDeg).toBeCloseTo(42, 9);
+    expect(smoothedBearing(step.state)).toBeCloseTo(42, 9);
+  });
+
+  it('sans mesure, rien ne change et rien ne se redessine', () => {
+    expect(smoothedBearing(MAP_BEARING_START)).toBeNull();
+    const first = stepMapBearing(MAP_BEARING_START, null, 1000);
+    expect(first.renderDeg).toBeNull();
+    expect(first.state).toBe(MAP_BEARING_START);
+    const started = stepMapBearing(MAP_BEARING_START, 10, 0).state;
+    const step = stepMapBearing(started, Number.NaN, 500);
+    expect(step.renderDeg).toBeNull();
+    expect(step.state).toBe(started);
+  });
+
+  it('donne le même cap lissé à 1 Hz et à 5 Hz (fenêtre en secondes)', () => {
+    const start = stepMapBearing(MAP_BEARING_START, 0, 0).state;
+    for (const atMs of [1000, 2000, 3000]) {
+      const slow = play(constant(90, 1, 0, atMs), start).state;
+      const fast = play(constant(90, 5, 0, atMs), start).state;
+      expect(smoothedBearing(fast)).toBeCloseTo(smoothedBearing(slow)!, 6);
+    }
+    // Et il rejoint la mesure au bout de quelques constantes de temps.
+    const settled = play(constant(90, 5, 0, 5000), start).state;
+    expect(Math.abs(angleDiff(smoothedBearing(settled)!, 90))).toBeLessThan(0.5);
+  });
+
+  it('passe de 359° à 0° sans faire le tour par 180°', () => {
+    const samples: Array<[number, number]> = [358, 359, 0, 1, 2].map((deg, i) => [deg, i * 200]);
+    let state = MAP_BEARING_START;
+    for (const [deg, t] of samples) {
+      state = stepMapBearing(state, deg, t).state;
+      expect(Math.abs(angleDiff(smoothedBearing(state)!, 0))).toBeLessThan(3);
+    }
+  });
+
+  it('ne redessine pas pour un bruit de ±2°', () => {
+    const noisy: Array<[number, number]> = [];
+    for (let i = 0; i < 50; i++) noisy.push([i % 2 === 0 ? 92 : 88, i * 200]);
+    const { renders } = play(noisy);
+    expect(renders).toHaveLength(1);
+    expect(renders[0]).toBeCloseTo(92, 9);
+  });
+
+  it('suit un saut de 90° en plusieurs rendus espacés, jusqu\'au nouveau cap', () => {
+    const start = play(constant(0, 5, -1000, 0)).state;
+    const samples = constant(90, 5, 0, 4000);
+    let state = start;
+    const renderTimes: number[] = [];
+    const renders: number[] = [];
+    for (const [deg, t] of samples) {
+      const step = stepMapBearing(state, deg, t);
+      state = step.state;
+      if (step.renderDeg !== null) {
+        renders.push(step.renderDeg);
+        renderTimes.push(t);
+      }
+    }
+    expect(renders.length).toBeGreaterThan(2);
+    for (let i = 1; i < renders.length; i++) {
+      expect(renders[i]).toBeGreaterThan(renders[i - 1]);
+      expect(renderTimes[i] - renderTimes[i - 1]).toBeGreaterThanOrEqual(MAP_BEARING_DEFAULTS.minIntervalMs);
+    }
+    expect(renders[renders.length - 1]).toBeGreaterThan(90 - MAP_BEARING_DEFAULTS.minChangeDeg);
+  });
+
+  it('après un long trou, reprend la nouvelle mesure presque entière', () => {
+    const before = play(constant(10, 5, 0, 2000)).state;
+    const step = stepMapBearing(before, 200, 2000 + 60_000);
+    expect(step.renderDeg).toBeCloseTo(200, 3);
+  });
+
+  it('respecte les options passées', () => {
+    const start = stepMapBearing(MAP_BEARING_START, 0, 0).state;
+    const sharp = { tauS: 0, minChangeDeg: 1, minIntervalMs: 0 };
+    expect(stepMapBearing(start, 5, 100, sharp).renderDeg).toBeCloseTo(5, 9);
+    expect(stepMapBearing(start, 5, 100, { ...sharp, minChangeDeg: 10 }).renderDeg).toBeNull();
+  });
+});

@@ -301,6 +301,15 @@ export const IconLayers = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+/** Boussole : la carte du direct orientée selon le téléphone, ou nord en haut. Pointe nord pleine. */
+export const IconCompass = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 5l3 7H9z" fill="currentColor" />
+    <path d="M9 12h6l-3 7z" />
+  </svg>
+);
+
 /** Fanion : le bouton « Note » de l'enregistrement, et les repères qu'il pose. */
 export const IconFlag = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

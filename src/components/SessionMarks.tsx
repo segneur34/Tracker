@@ -29,7 +29,8 @@ const flagIcon = (n: number, shown: boolean) => flagIcons(`${n}|${shown}`, () =>
     // Le pied du mât sur le point.
     iconAnchor: [1, FLAG_H],
     popupAnchor: [10, -FLAG_H],
-    html: `<div style="position:relative;width:${FLAG_W}px;height:${FLAG_H}px">`
+    // Gardé droit sur une carte orientée (`map-upright`), autour du pied du mât, l'ancre.
+    html: `<div class="map-upright" style="position:relative;width:${FLAG_W}px;height:${FLAG_H}px;transform-origin:1px ${FLAG_H}px">`
       + `<div style="position:absolute;left:0;top:0;min-width:${FLAG_W - 2}px;height:20px;box-sizing:border-box;padding:0 4px;`
       + `border-radius:4px 4px 4px 0;background:${color};color:#ffffff;border:2px solid #ffffff;font-weight:700;font-size:11px;`
       + `line-height:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${n}</div>`

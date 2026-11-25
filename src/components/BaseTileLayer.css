@@ -1,10 +1,12 @@
 /* Choix du fond de carte, plan ou satellite (`BaseTileLayer.tsx`) : un bouton sous le + et le − de Leaflet,
-   de leur taille, et son menu à sa droite. */
+   de leur taille, et son menu à sa droite. Le bouton de la carte orientée, dessous sur la carte du direct
+   (`LiveMap.tsx`), en reprend la forme. */
 .map-base-switch {
   position: relative;
 }
 
-.map-base-switch__button {
+.map-base-switch__button,
+.map-orientation-switch__button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -23,9 +25,17 @@
 }
 
 @media (hover: hover) {
-  .map-base-switch__button:hover {
+  .map-base-switch__button:hover,
+  .map-orientation-switch__button:hover {
     background: var(--surface-hover);
   }
+}
+
+/* Carte orientée : le bouton enfoncé, comme le fond choisi dans le menu. */
+.map-orientation-switch__button[aria-pressed='true'],
+.map-orientation-switch__button[aria-pressed='true']:hover {
+  background: var(--ink);
+  color: var(--surface);
 }
 
 .map-base-switch__menu {

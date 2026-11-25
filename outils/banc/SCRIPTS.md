@@ -4,7 +4,7 @@ Journal des scripts de `outils/banc/` : ce que chacun éprouve, ses arguments, s
 
 ## Verdict ou neutralité
 
-Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 59 des 85 scripts du registre rendent un verdict (`fc-nuit` depuis le lot 213, `surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151, `virages` depuis le lot 40).
+Un script **à verdict** contrôle lui-même des chiffres ou des états attendus (`check` de `lib/cdp.mjs`, lignes `ok` et `ÉCHEC`, fin par `finish` en code 0 ou 1) : il prouve quelque chose seul, sans commit d'avant. Les autres n'impriment qu'un relevé : ils ne prouvent qu'une **neutralité** (`passe.mjs --avant HEAD`, relevé identique). 60 des 86 scripts du registre rendent un verdict (`carte-orientee` depuis le lot 225, `fc-nuit` depuis le lot 213, `surf`, `bench` et `balises` depuis le lot 159, `tutoriels` depuis le lot 147, `apropos` depuis le lot 151, `virages` depuis le lot 40).
 
 | Sans verdict aujourd'hui | Scripts |
 |---|---|
@@ -27,6 +27,13 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - la carte réduite et ses grands chiffres ;
   - le rangement sous la nouvelle activité ;
   - la bascule course ↔ voile depuis l'analyse, avec confirmation quand un brouillon est ouvert.
+- `carte-orientee.mjs <port> <dossier de travail> [<dossier des captures>]` : la carte du direct orientée selon le téléphone (lot 225, rotation de l'application, `components/map/rotation.ts`), à verdict, sur un profil neuf, sans réseau (fausses tuiles), écran de téléphone 390 × 800 tactile, environ 1 min, `solo` (boussole simulée en temps réel : événements `deviceorientationabsolute` toutes les 260 ms, 3 s par cap). Sur l'aperçu avant départ d'un itinéraire écrit par le script, il vérifie :
+  - le bouton sous le choix du fond, relâché au départ, titre « Nord en haut » ; enfoncé, rien ne tourne avant la première mesure de la boussole ;
+  - à 45° : rotor tourné de −45° et sa variable `--map-bearing` ; +/−, fond, bouton et mention OSM immobiles, sans rotation, visibles ; tuiles aux coins et aux milieux des bords ; tracé de la trace suivie dans le rotor, dessiné sur le carré de la diagonale et tenu dans la carte ;
+  - gestes à 45° : glisser de 100 px vers la droite puis vers le bas (une tuile suit le doigt à 2 px près), « Recentrer » ensuite sans perdre l'orientation, toucher (le point lu par la carte est celui que l'écran montre), pincer sur le côté (le point entre les doigts reste fixe) ;
+  - de 350° à 10° par 0°, sans tour complet (angle affiché relevé pendant la transition) ;
+  - choix gardé après rechargement, la carte suit la boussole à 90° ; « Nord en haut » : rotor sans transformation, marge du tracé revenue, la boussole n'y fait plus rien ; aucune erreur de console.
+  - Piège : les tuiles de Leaflet ne prennent pas le toucher (`pointer-events: none`), `elementsFromPoint` ne les voit pas ; le relevé des coins pose le temps d'une lecture une feuille qui le leur rend. Les coins se lisent à 8 px du bord, arrondis par le cadre de la carte.
 - `trace-suivie.mjs <port> <dossier de travail> [<dossier des captures>]` : la trace suivie sur la carte du direct, à verdict, sur un profil neuf, sans réseau, environ 20 s. Le script écrit lui-même un itinéraire sans heure à deux branches distantes de 100 m et un rejeu à 5 m/s, hors-piste de 70 m vers la seconde compris. Il vérifie :
   - « Importer un itinéraire », « Partir », puis l'aperçu avant départ : le tracé seul, en pointillé ;
   - le rejeu à ×10 : « Fait » jamais au-delà de ce qui est couru (36 %, 77 % avec un saut sur la seconde branche) ;

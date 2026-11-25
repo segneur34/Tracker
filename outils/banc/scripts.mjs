@@ -46,6 +46,7 @@ export const SCRIPTS = [
   // requêtes de tuiles pendant les gestes, fausses tuiles servies en 400 ms (lot 74).
   // Carte du direct en pause manuelle, trous de position et page cachée (lot 104) ; relevés détaillés sur la sortie d'erreur.
   { nom: 'carte-direct', args: ['{port}', '{travail}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
+  { nom: 'carte-orientee', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'planification'], solo: true },
   { nom: 'carte-perf', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'bibliotheque'], sansCache: true, delaiMin: 15 },
   // Le fond de carte revient seul après une veille : tuiles coupées, cases en échec, page cachée puis gelée ; relevés détaillés sur la sortie d'erreur.
   { nom: 'carte-reveil', args: ['{port}', '{travail}'], pages: ['course'], solo: true },

@@ -1,0 +1,19 @@
+/* Rotation d'une carte (`rotation.ts`) : le rotor glissé entre le conteneur de Leaflet et son calque principal.
+   Nord en haut, il ne porte aucune transformation : la carte est celle de Leaflet. */
+.map-rotor {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
+/* Mode orienté : chaque changement d'angle est adouci, sur la durée de `ROTATION_TRANSITION_MS`. */
+.map-rotor--on {
+  transition: transform 250ms ease-out;
+}
+
+/* Ce qui reste droit à l'écran (chiffres des balises, fanions des notes), autour de son point d'ancrage : un élément
+   intérieur de l'icône, jamais celle que Leaflet place (sa transformation est la position). */
+.map-rotor--on .map-upright {
+  transform: rotate(calc(var(--map-bearing, 0deg) * -1));
+  transition: transform 250ms ease-out;
+}
