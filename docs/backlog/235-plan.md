@@ -92,3 +92,14 @@ Processeur ralenti six fois, médiane de trois essais :
 | Course, 2 h à 1 Hz | 0,9 s | 0,55 s | 0,77 s |
 
 Sans ralenti, la voile : 1,2 s, plus longue tâche 0,56 s. Décision de l'orchestrateur, d'après les seuils du plan (1 s de tâche, 1,5 s figé) : l'analyse en arrière-plan se code en voile (C1 à C3), pas en surf ni à pied et à vélo (C4 écarté). Le profil de la voile montre deux gros postes sur le fil de l'affichage : le calcul lui-même et la réception du message du calcul de fond (1,3 s ralenti) : le résultat renvoyé à la page doit rester petit.
+
+### M3, le direct après 2 h 55 de trace (26/11, poste au calme, version compilée, après la partie A)
+
+| Sortie | Fond de carte | Processeur | plus longue tâche | temps de tâche par position | part de Leaflet |
+|---|---|---|---|---|---|
+| Voile | plan | ralenti ×6 | 69 ms | 39 ms | 29 % |
+| Voile | satellite | ralenti ×6 | 82 ms | 51 ms | 37 % |
+| Course | plan | ralenti ×6 | 116 ms | 53 ms | 23 % |
+| Course | satellite | ralenti ×6 | 153 ms | 69 ms | 33 % |
+
+Sans ralenti : 7 à 12 ms par position, aucune tâche longue. La carte (Leaflet) coûte 11 à 23 ms par position à 3 h, processeur ralenti : sous le seuil de 30 ms de la partie B. Décision de l'orchestrateur : la carte par blocs ne se code pas maintenant ; son coût grandit avec la durée, elle redevient utile pour des sorties de plus de 5 h (petit lot, un commit). Près de la moitié du profil reste non classée (temps du navigateur hors de notre code).
