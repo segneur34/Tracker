@@ -80,3 +80,15 @@ Scripts écrits le 25/11, jamais lancés (poste chargé) : `set FLUIDITE_SCRIPT=
 | Voile, seuil changé toutes les 60 s, après | 0,2 / 0,8 | 0,7 / 1,8 | 0,8 / 2,0 | 3,3 s |
 
 Résultat strictement égal au calcul sans mémoire dans tous les cas. Ce qui reste : à pied et à vélo, le lissage de l'altitude et le dénivelé (un tiers), l'énergie (un quart) ; en voile, la cinématique (recopies, 55 % de 1,1 ms). Sous les seuils du plan : A3 et A4 ne se codent pas.
+
+### M4, ouverture d'une analyse (26/11, poste au calme, version compilée)
+
+Processeur ralenti six fois, médiane de trois essais :
+
+| Session | chiffres affichés après | plus longue tâche | temps figé en tout |
+|---|---|---|---|
+| Voile, 3 h à 5 Hz (54 750 points) | 6,3 s | 3,96 s | 5,6 s |
+| Surf, 2 h à 1 Hz | 0,6 s | 0,21 s | 0,34 s |
+| Course, 2 h à 1 Hz | 0,9 s | 0,55 s | 0,77 s |
+
+Sans ralenti, la voile : 1,2 s, plus longue tâche 0,56 s. Décision de l'orchestrateur, d'après les seuils du plan (1 s de tâche, 1,5 s figé) : l'analyse en arrière-plan se code en voile (C1 à C3), pas en surf ni à pied et à vélo (C4 écarté). Le profil de la voile montre deux gros postes sur le fil de l'affichage : le calcul lui-même et la réception du message du calcul de fond (1,3 s ralenti) : le résultat renvoyé à la page doit rester petit.
