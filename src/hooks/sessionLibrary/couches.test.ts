@@ -19,21 +19,21 @@ const SRC = new URL('../../', import.meta.url);
 /** Les couches, de la plus basse à la plus haute. */
 const LAYERS = [
   'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings', 'placeQueue',
-  'addSession', 'pending', 'importer', 'incoming', 'sessionRecords', 'lifecycle',
+  'addSession', 'pending', 'importer', 'phoneRecovery', 'incoming', 'sessionRecords', 'lifecycle',
 ] as const;
 
 /** Valeurs exportées par le point d'entrée, les mêmes qu'avant le découpage (et cinq types). */
 const ENTRY_VALUES = [
   'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'dismissIncomingNotice', 'dismissLibraryMessage',
-  'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
+  'dismissPhoneRecovery', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
-  'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'refreshLibrary',
+  'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'recoverFromPhone', 'refreshLibrary',
   'removeSession', 'renameDevice', 'reportStartupError', 'saveRecordedSession', 'settingsUpgraded', 'startIncomingFiles', 'startLibraryUi',
   'startPlaceSearch',
   'summarizeGpxText', 'switchToBrowserMemory', 'updateSessionRecord', 'useLibraryFields', 'useLibrarySelector',
-  'useLibrarySession', 'useSessionName',
+  'useLibrarySession', 'usePhoneRecovery', 'useSessionName',
 ];
-const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'SettingsFileInfo'];
+const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneRecoveryStep', 'SettingsFileInfo'];
 
 const isCode = (name: string): boolean => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.fixture\.ts$/.test(name);
 

@@ -6,6 +6,7 @@ import { ORIGINE } from './origine'
 import type { EvenementPont, Gestionnaire } from './pont'
 import { brancherCanaux, enReponse, expediteurAdmis, reussite, uneALaFois } from './pont'
 import { ErreurDisque } from './disque'
+import { CANAUX_TELEPHONE, gestionnairesTelephone } from './telephone'
 
 const page = { nom: 'contenu de la fenêtre principale' }
 const tete = { url: `${ORIGINE}/sessions`, parent: null }
@@ -95,12 +96,22 @@ describe('uneALaFois', () => {
 })
 
 describe('preload', () => {
-  it('expose exactement les canaux servis par la mémoire, une fonction chacun, sans ipcRenderer tel quel', () => {
+  it('nomme les canaux du téléphone comme ses gestionnaires', () => {
+    const servis = Object.keys(gestionnairesTelephone({ etat: async () => ({ etat: 'absent' }), lister: async () => [], lire: async () => undefined }, '.'))
+    expect(servis).toEqual(CANAUX_TELEPHONE.map((nom) => `telephone:${nom}`))
+  })
+
+  it('expose exactement les canaux servis par la mémoire et le téléphone (lecture seule), une fonction chacun, sans ipcRenderer tel quel', () => {
     const source = readFileSync(path.join(__dirname, 'preload.ts'), 'utf8')
     const canaux = [...source.matchAll(/'memoire:([A-Za-z]+)'/g)].map((m) => m[1])
     expect(canaux).toEqual([...CANAUX_MEMOIRE])
     for (const nom of CANAUX_MEMOIRE) expect(source).toMatch(new RegExp(`\\b${nom}: (sans|avec)\\('memoire:${nom}'\\)`))
-    // Les textes de la coquille restent en français, écrits dans `main.ts` : aucun canal hors de la mémoire.
+    const telephone = [...source.matchAll(/'telephone:([A-Za-z]+)'/g)].map((m) => m[1])
+    expect(telephone).toEqual([...CANAUX_TELEPHONE])
+    expect(telephone).toEqual(['etat', 'lister', 'lireOctets'])
+    for (const nom of CANAUX_TELEPHONE) expect(source).toMatch(new RegExp(`\\b${nom}: (sans|avec)\\('telephone:${nom}'\\)`))
+    expect(source).toMatch(/^\s+telephone,$/m)
+    // Les textes de la coquille restent en français, écrits dans `main.ts` : aucun canal de textes ; deux seuls appels à `invoke` (`sans`, `avec`).
     expect(source.match(/ipcRenderer\.invoke\(/g)).toHaveLength(2)
     // Seuls canaux de la coquille : la demande de vider les écritures avant la fermeture, et sa réponse (lot 232).
     expect([...new Set([...source.matchAll(/'(coquille:[A-Za-z]+)'/g)].map((m) => m[1]))].sort()).toEqual(['coquille:fermeture', 'coquille:fermeturePrete'])

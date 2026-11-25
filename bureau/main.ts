@@ -18,20 +18,28 @@
 //   TRACKER_BANC_QUITTER   réponse du mode d'essai à la question de fermeture : « oui » (défaut) ou « non »
 //   TRACKER_BANC_MONTRER   fenêtre du mode d'essai montrée sans prendre la main : « 1 », ou « transparente »
 //   TRACKER_MEMOIRE, TRACKER_DOCUMENTS, TRACKER_BANC_DOSSIER : en mode d'essai seulement, voir `memoire.ts`
+//   TRACKER_BANC_TELEPHONE, TRACKER_BANC_TELEPHONE_ETAT, TRACKER_BANC_TELEPHONE_COUPURE, TRACKER_BANC_RACINE_TELEPHONE :
+//                          en mode d'essai seulement, voir `telephone.ts` ; sans dossier local ni racine d'essai, le
+//                          mode d'essai ne lance jamais le vrai adb
 //
 // Le dossier mémoire (un vrai dossier du disque) est lu et écrit ici, la page y passant par les canaux `memoire:*`
 // du pont (`preload.ts`, `memoire.ts`) ; seule la page de la fenêtre principale y a accès (`expediteurAdmis`).
+// Le dossier `Documents/Tracker` du téléphone branché est lu ici aussi, en lecture seule, par les canaux
+// `telephone:*` (`telephone.ts`, et `adb.ts` pour le débogage USB), servis de la même façon.
 
 import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, screen, session, shell } from 'electron'
 import type { OpenDialogOptions, Rectangle, WebContents } from 'electron'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { dossierAdb, dossierAdbConseille } from './adb'
 import { creerMemoire, gestionnairesMemoire, optionsDepuisEnvironnement } from './memoire'
 import { ADRESSE_ACCUEIL, HOTE, estDeLApplication } from './origine'
 import { brancherCanaux, expediteurAdmis, uneALaFois } from './pont'
 import { CSP, reponseA } from './protocole'
 import { STATUT_REFUS, entetesSortants, estUnRefus } from './sortant'
+import type { DossierDistant } from './telephone'
+import { DOSSIER_LECTURES, dossierLocal, gestionnairesTelephone, telephoneDepuisEnvironnement, viderLectures } from './telephone'
 
 const BANC = process.env.TRACKER_BANC === '1'
 const QUITTER_EN_ESSAI = (process.env.TRACKER_BANC_QUITTER ?? 'oui') !== 'non'
@@ -362,19 +370,33 @@ const choisirParFenetre = uneALaFois(async ({ titre, depart }: { titre: string; 
   return canceled || filePaths.length === 0 ? null : filePaths[0]
 })
 
+/**
+ * Le téléphone, en lecture seule : en mode d'essai, le dossier local des variables d'essai, ou le vrai téléphone sur
+ * une racine d'essai seulement (`telephoneDepuisEnvironnement`) ; sinon le débogage USB, par l'adb trouvé sur le poste,
+ * sur `Documents/Tracker`.
+ */
+function creerTelephone(profil: string): DossierDistant {
+  const choix = telephoneDepuisEnvironnement(process.env, dossierAdbConseille(profil), journal)
+  if (choix.canal === 'local') return dossierLocal(choix.stockage, choix)
+  return dossierAdb({ env: process.env, profil, programme: path.dirname(process.execPath), nomRacine: choix.nomRacine, journal })
+}
+
 function brancherPont(): void {
+  const profil = app.getPath('userData')
   const memoire = creerMemoire(
-    optionsDepuisEnvironnement(
-      process.env,
-      { profil: app.getPath('userData'), documents: dossierWindows('documents'), maison: dossierWindows('home') },
-      choisirParFenetre,
-      journal,
-    ),
+    optionsDepuisEnvironnement(process.env, { profil, documents: dossierWindows('documents'), maison: dossierWindows('home') }, choisirParFenetre, journal),
   )
+  // Les lectures du téléphone passent par un dossier du profil, vidé au démarrage de ce qu'une coupure y aurait laissé.
+  const lectures = path.join(profil, DOSSIER_LECTURES)
+  void viderLectures(lectures)
+  const memoireRetenue = async (): Promise<string | null> => {
+    const ouverture = await memoire.ouvrir()
+    return ouverture.ok && ouverture.valeur.etat !== 'aucun' ? ouverture.valeur.chemin : null
+  }
   brancherCanaux(
     ipcMain,
     (evenement) => expediteurAdmis(evenement, fenetrePrincipale?.webContents ?? null),
-    gestionnairesMemoire(memoire),
+    { ...gestionnairesMemoire(memoire), ...gestionnairesTelephone(creerTelephone(profil), lectures, { memoire: memoireRetenue }) },
     journal,
   )
 }

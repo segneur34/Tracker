@@ -37,6 +37,16 @@ const memoire = Object.freeze({
 })
 
 /**
+ * Le dossier `Documents/Tracker` du téléphone branché, en lecture seule (noms gardés égaux à ceux de `telephone.ts`
+ * par un test) : `etat()`, `lister()`, et `lireOctets({ chemin })` d'un fichier du dernier listage seulement.
+ */
+const telephone = Object.freeze({
+  etat: sans('telephone:etat'),
+  lister: sans('telephone:lister'),
+  lireOctets: avec('telephone:lireOctets'),
+})
+
+/**
  * Avant de fermer la fenêtre, la coquille demande à la page de vider ses écritures en attente (`coquille:fermeture`,
  * lot 232) : chaque rappel inscrit par `surFermeture` est attendu, la promesse qu'il rend comprise, puis la réponse
  * part (`coquille:fermeturePrete`), même si un rappel a échoué. Sans rappel inscrit (page d'une version plus
@@ -52,6 +62,7 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     version: versionPassee(),
     memoire,
+    telephone,
     /** Inscrit un rappel attendu avant la fermeture de la fenêtre ; rend la fonction de désabonnement. */
     surFermeture: (rappel: () => unknown) => {
       rappelsFermeture.add(rappel)

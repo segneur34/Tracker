@@ -1,7 +1,7 @@
 // Registre des scripts du banc qui pilotent un Chrome sans fenêtre, lu par `passe.mjs`.
 // Hors registre : `make-gpx.mjs` (fabrique la trace), `charge-ts.mjs`, `direct-calcul.mjs` et `*-diagnostic.mjs` (sans navigateur),
-// `cdp.mjs` (WebView du téléphone), `shots.mjs` (chemins en arguments), `exe-fermeture.mjs` et `memoire-disque.mjs`
-// (lancent eux-mêmes le programme Windows : `node exe-fermeture.mjs <Tracker.exe>`).
+// `cdp.mjs` (WebView du téléphone), `shots.mjs` (chemins en arguments), `exe-fermeture.mjs`, `memoire-disque.mjs`
+// et `exe-recuperer.mjs` (lancent eux-mêmes le programme Windows : `node exe-fermeture.mjs <Tracker.exe>`).
 //
 // Champs d'une entrée :
 //  - `nom` : le fichier `<nom>.mjs` de `outils/banc/` ;

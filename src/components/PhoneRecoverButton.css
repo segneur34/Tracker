@@ -1,0 +1,39 @@
+/* « Récupérer les sessions du téléphone » (`PhoneRecoverButton.tsx`), dans Réglages › Mémoire du programme Windows :
+   le bouton suit « Mettre à jour » ; la progression et l'issue dessous, en petit texte comme le reste de la carte. */
+
+.phone-recover__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+
+.phone-recover__text {
+  margin: 0;
+  font-size: var(--text-s);
+  line-height: 1.5;
+}
+
+.phone-recover__count {
+  color: var(--muted);
+}
+
+/* Dossier à recopier : à part, sélectionnable, coupé n'importe où plutôt que de déborder. */
+.phone-recover__folder {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunken);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.phone-recover__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

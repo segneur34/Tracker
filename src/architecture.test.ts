@@ -289,4 +289,16 @@ describe('règle 12 : les API de l’appareil seulement dans platform/', () => {
   it('aucun usage hors de platform/', () => {
     expect(platformUses(outside)).toEqual([]);
   });
+
+  it('le pont du programme Windows ne se lit que dans desktopBridge.ts, son téléphone que dans phoneCable.ts (élément 217)', () => {
+    const uses = (re: RegExp) =>
+      files.filter((file) => withoutComments(fs.readFileSync(new URL(file, SRC), 'utf8')).split('\n').some((line) => re.test(line)));
+    expect(uses(/\btrackerBureau\b/)).toEqual(['platform/desktopBridge.ts']);
+    expect(uses(/\.telephone\b/)).toEqual(['platform/phoneCable.ts']);
+    // Le téléphone, en lecture seule : la page ne lui demande que son état, son listage et un fichier lu.
+    const cable = withoutComments(fs.readFileSync(new URL('platform/phoneCable.ts', SRC), 'utf8'));
+    expect([...new Set([...cable.matchAll(/\bphone\.([A-Za-z]+)\(/g)].map((m) => m[1]))].sort()).toEqual(['etat', 'lireOctets']);
+    expect(cable).toMatch(/requirePhone\(\)\.lister\(\)/);
+    expect(cable).not.toMatch(/\b(ecrire|effacer|ecrireOctets|ecrireTexte)\b/);
+  });
 });
