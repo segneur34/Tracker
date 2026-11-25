@@ -1,4 +1,5 @@
 import type { SessionMark } from '../../core/sessionMarks';
+import { isTrashPath } from '../../library/trash';
 import type { SportType } from '../../core/types';
 import { describeImport, type ImportReport } from '../../library/importReport';
 import { importRecordChoice } from '../../library/importEntry';
@@ -237,7 +238,11 @@ export const importEntries = async (
 
 /** Importe des fichiers choisis dans le navigateur (`importEntries`), ou le contenu d'un dossier (chemin relatif posé par le navigateur). */
 export const importFiles = (files: File[]): Promise<ImportReport> =>
-  importEntries(files.map(pickedEntry), { fromFolder: files.some((file) => file.webkitRelativePath !== '') });
+  importEntries(
+    // Le dossier mémoire choisi lui-même : sa corbeille (programme Windows) n'est pas réimportée (`isTrashPath`).
+    files.filter((file) => !isTrashPath(file.webkitRelativePath || '')).map(pickedEntry),
+    { fromFolder: files.some((file) => file.webkitRelativePath !== '') },
+  );
 
 /**
  * Sur le téléphone, ajoute les sessions d'un dossier que l'utilisateur désigne

@@ -1,0 +1,94 @@
+/* Corbeille du programme Windows (`TrashZone.tsx`), dans Réglages › Mémoire : une ligne qui se déplie sur la liste,
+   en petit texte comme le reste de la carte. */
+
+.trash-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trash-zone__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trash-zone__chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.trash-zone__chevron--open {
+  transform: rotate(90deg);
+}
+
+.trash-zone__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trash-zone__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+
+.trash-zone__what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.trash-zone__name {
+  font-size: var(--text-m);
+  overflow-wrap: anywhere;
+}
+
+.trash-zone__when {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.trash-zone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.trash-zone__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trash-zone__text {
+  margin: 0;
+  font-size: var(--text-s);
+  line-height: 1.5;
+}
+
+.trash-zone__text--muted {
+  color: var(--muted);
+}
+
+.trash-zone__text--failed {
+  color: var(--danger);
+}

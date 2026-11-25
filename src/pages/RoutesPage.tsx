@@ -16,6 +16,8 @@ import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, shownRoutes, s
 import { plainError } from '../platform/errorText';
 import { readPickedFile } from '../platform/files';
 import { isNativeApp } from '../platform/runtime';
+import { trashDeleteButton } from '../library/trash';
+import { useDeletesToTrash } from '../hooks/useTrash';
 import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
 
@@ -42,6 +44,8 @@ const readSort = (): RouteSort => {
 
 function RoutesPage() {
   const { routes: allRoutes, loaded, error, canSave, importGpx, shareFileOf, remove } = useRouteLibrary();
+  /** Programme Windows : l'itinéraire supprimé part à la corbeille, et le bouton le dit. */
+  const toTrash = useDeletesToTrash();
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const [imported, setImported] = useState<string | null>(null);
   const { activities, isShown } = useVisibility();
@@ -151,7 +155,7 @@ function RoutesPage() {
           <RouteList routes={shown} activities={activities} currentBase={imported}
             actions={(saved) => (confirmingDelete === saved.base ? (
               <span className="ui-row-s2 ui-wrap">
-                <Button size="s" variant="danger" onClick={() => void deleteRoute(saved)}>Supprimer définitivement</Button>
+                <Button size="s" variant="danger" onClick={() => void deleteRoute(saved)}>{trashDeleteButton(toTrash, 'Supprimer définitivement')}</Button>
                 <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
               </span>
             ) : (

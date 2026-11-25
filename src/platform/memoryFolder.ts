@@ -82,6 +82,11 @@ export interface MemoryFolder {
   writeBytes(path: string, bytes: Uint8Array): Promise<void>;
   /** Efface un fichier ; sans effet s'il n'existe pas. */
   remove(path: string): Promise<void>;
+  /**
+   * Efface un sous-dossier vide ; sans effet s'il n'existe pas, lève s'il contient encore quelque chose. Seul le
+   * dossier du disque du programme Windows le sait (sa corbeille) : ailleurs, absent.
+   */
+  removeDir?(path: string): Promise<void>;
 }
 
 export type MemoryAccess =
@@ -843,7 +848,7 @@ export const readOnlyFolder = (f: MemoryFolder): MemoryFolder => {
   const refuse = async (): Promise<void> => {
     throw new Error(READ_ONLY_MEMORY_MESSAGE);
   };
-  return { ...f, readOnly: true, writeText: refuse, writeBytes: refuse, remove: refuse };
+  return { ...f, readOnly: true, writeText: refuse, writeBytes: refuse, remove: refuse, ...(f.removeDir ? { removeDir: refuse } : {}) };
 };
 
 /**

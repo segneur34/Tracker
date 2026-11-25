@@ -83,5 +83,9 @@ export const createDiskFolder = (racine: DesktopRoot, { label, base = '' }: Disk
     remove: async (path) => {
       await callDiskMemory((m) => m.effacer(at(path)));
     },
+    removeDir: async (path) => {
+      // Coquille plus ancienne, qui n'efface pas les dossiers : le dossier vide reste, sans gêne.
+      await callDiskMemory((m) => (m.effacerDossier ? m.effacerDossier(at(path)) : Promise.resolve({ ok: true as const, valeur: null })));
+    },
   };
 };

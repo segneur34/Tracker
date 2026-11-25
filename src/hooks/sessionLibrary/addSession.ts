@@ -8,7 +8,7 @@ import type { SportType } from '../../core/types';
 import { sessionPath } from '../../library/folderLayout';
 import { uniqueSessionFileName } from '../../library/naming';
 import type { NewRecordOptions } from '../../library/newRecord';
-import type { KeptRecordText } from '../../library/recordText';
+import { isBlankRecordText, type KeptRecordText } from '../../library/recordText';
 import {
   completeRecord, imuFileName, isGpxFileName, recordFileName, serializeRecord, type RecordUnreadable,
   type SessionAnalysis, type SessionSource,
@@ -29,6 +29,7 @@ import {
 import { activityOfSession, activitySummarySettings, newRecord, recordFor, sessionSummarySettings } from './summarySettings';
 import { noteRecordEdits, resummarize, scheduleRecordWrite, writeRecordFile } from './recordWrites';
 import { queuePlaces } from './placeQueue';
+import { forgetTrashEntries, recordOptionsFromText, trashCopyOf } from './trash';
 
 /**
  * Entrée d'une session dans la mémoire (lot 113) : son GPX, sa fiche et ses capteurs, ou ce qui manque à une
@@ -80,6 +81,11 @@ export interface AddOptions extends NewRecordOptions {
   unreadable?: RecordUnreadable;
   /** Fiche qui accompagne le GPX mais qu'on ne sait pas réécrire : rangée telle quelle (`KeptRecordText`). */
   keepRecordText?: KeptRecordText;
+  /**
+   * Interne à `addGpx` : la corbeille du programme Windows a déjà été consultée pour cette session, et ce sont les
+   * entrées à en retirer une fois la session rangée (sa fiche ou ses capteurs en ont été repris).
+   */
+  fromTrash?: readonly string[];
 }
 
 /**
@@ -216,6 +222,31 @@ export const addGpx = async (text: string, source: SessionSource, options: AddOp
     return { status: 'pending', file: null };
   }
 
+  // Programme Windows (lot 217, 3a) : la session revient alors qu'elle est dans la corbeille de l'ordinateur. Arrivée
+  // sans sa fiche, elle reprend celle de son entrée la plus récente, comme une restauration ; sans ses capteurs, ceux
+  // de l'entrée. Ce n'est qu'une fois la session rangée que l'entrée quitte la corbeille : aucune fiche qui n'existait
+  // que là n'est perdue. Une fiche apportée par l'import prime : toutes ses entrées partent, comme avant.
+  let trashDrop: readonly string[] = options.fromTrash ?? [];
+  if (options.fromTrash === undefined) {
+    const copy = await trashCopyOf(startMs);
+    if (copy !== null && copy !== 'unreadable') {
+      const bringsRecord = options.record != null || kept !== undefined;
+      const takeRecord = !bringsRecord && copy.recordText !== null && !isBlankRecordText(copy.recordText);
+      const takeMotion = !options.motion && copy.motion !== null;
+      // Sans fiche apportée, seule l'entrée reprise part : une plus ancienne de la même session reste dans la corbeille.
+      const drop = bringsRecord ? copy.dirs : [copy.dir];
+      if (takeRecord || takeMotion) {
+        return addGpx(text, source, {
+          ...options,
+          ...(takeRecord ? recordOptionsFromText(copy.recordText) : {}),
+          ...(takeMotion && copy.motion ? { motion: copy.motion } : {}),
+          fromTrash: drop,
+        });
+      }
+      trashDrop = drop;
+    }
+  }
+
   const gpx = uniqueSessionFileName(name, lib.knownNames);
   // Fiche gardée telle quelle : la session la montre lue (version plus récente) ou sur une fiche neuve (illisible).
   const record = kept
@@ -243,5 +274,8 @@ export const addGpx = async (text: string, source: SessionSource, options: AddOp
   replaceSession({ file: gpx, record, readOnly: kept !== undefined, warning: kept?.warning ?? null });
   // Son lieu, cherché en fond (lot 215).
   queuePlaces();
+  // Revenue dans la mémoire, fiche et capteurs repris : ses entrées de corbeille (programme Windows) partent, pour ne
+  // pas la montrer deux fois.
+  void forgetTrashEntries(trashDrop);
   return { status: 'added', file: gpx };
 };

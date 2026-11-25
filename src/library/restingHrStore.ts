@@ -89,6 +89,15 @@ export const parseRestingHrFile = (text: string | null): StoredRestingResult[] |
   return readStoredRestingResults(file.results);
 };
 
+/**
+ * Vrai si le texte est un fichier `fc-repos.json` d'une version plus récente de l'application : la synchronisation
+ * ne le fond ni ne le réécrit (`syncExtras.ts`), ce qu'elle n'y comprend pas serait perdu.
+ */
+export const isNewerRestingHrFile = (text: string): boolean => {
+  const file = parseJson(text);
+  return isObject(file) && file.format === FILE_FORMAT && isFiniteNumber(file.version) && file.version > FILE_VERSION;
+};
+
 /** Résultat à garder : `null` si aucune fenêtre n'a pu être mesurée. */
 export const toStoredRestingResult = (result: RestingHrResult, startedAtMs: number, protocol: RestingHrProtocol): StoredRestingResult | null =>
   result.lowestBpm === null || result.fromS === null || result.toS === null

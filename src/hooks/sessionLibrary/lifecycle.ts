@@ -26,6 +26,7 @@ import { flushPending } from './pending';
 import { recordToCopy } from './sessionRecords';
 import { queuePlaces } from './placeQueue';
 import { sessionDraftStore } from '../sessionDraftStore';
+import { reloadTrash, startTrash } from './trash';
 
 /**
  * Ouverture de la mémoire (lot 113) : le dossier mis en service ou quitté, le lancement, le choix d'un autre
@@ -97,6 +98,8 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   const jobs = await scan(f, gen);
   if (gen !== lib.generation) return settingsChanged;
   setState({ status: 'ready' });
+  // Programme Windows : la corbeille perd ce qu'elle garde depuis plus de 30 jours ; sans effet ailleurs.
+  void startTrash(f);
   // `sessions/` lu en entier : les brouillons faits dans cette mémoire, dont elle ne porte plus la session, sont jetés
   // (lot 234). Jamais avant (une session pas encore lue n'est pas une session supprimée), jamais ceux d'une autre
   // mémoire (un dossier désigné à l'instant ne porte pas encore les sessions recopiées), et aucun si le dossier est vide.
@@ -140,6 +143,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
     settingsFiles: [],
     settingsOffer: null,
   });
+  void reloadTrash();
 };
 
 /**
@@ -347,6 +351,7 @@ export const refreshLibrary = (): Promise<void> => {
     const jobs = await scan(f, gen, editsBefore);
     if (gen !== lib.generation) return null;
     setState({ revision: libraryState().revision + 1 });
+    void reloadTrash();
     // Le balayage avant les sessions en attente, comme à l'ouverture (`attach`) ; son échec est dit plus bas.
     const completion = completeScan(f, gen, jobs);
     completion.catch(() => undefined);

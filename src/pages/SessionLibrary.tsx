@@ -40,6 +40,7 @@ import { useElementSize } from '../hooks/useElementSize';
 import { useNearViewport } from '../hooks/useNearViewport';
 import { useRetainedScroll } from '../hooks/useRetainedScroll';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
+import { useDeletesToTrash } from '../hooks/useTrash';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
 import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
 import { PLANNING_FAMILIES } from '../settings/activitySettings';
@@ -52,6 +53,7 @@ import { previewFingerprint, previewKey, roundPreviewPoints, type PreviewTrack }
 import { previewImageStore } from '../library/previewImageStore';
 import { previewImageKey } from '../library/previewImages';
 import { readRenameDraft, sessionDisplayName } from '../library/sessionName';
+import { trashDeleteButton } from '../library/trash';
 import bannerCourse from '../assets/bandeaux/course.webp';
 import bannerFractionne from '../assets/bandeaux/fractionne.webp';
 import bannerSurf from '../assets/bandeaux/surf.webp';
@@ -451,6 +453,8 @@ const SessionRow = memo(function SessionRow({
   onCancelDelete: () => void;
 }) {
   const openSession = useOpenSession();
+  /** Programme Windows : la session part à la corbeille, et le bouton de confirmation le dit. */
+  const toTrash = useDeletesToTrash();
   const shown = useThemedShade();
   const { record } = session;
   const { startMs } = record.summary;
@@ -536,7 +540,7 @@ const SessionRow = memo(function SessionRow({
             )}
             {!session.readOnly && (confirming ? (
               <>
-                <Button size="s" variant="danger" onClick={() => void removeSession(session.file)}>Confirmer</Button>
+                <Button size="s" variant="danger" onClick={() => void removeSession(session.file)}>{trashDeleteButton(toTrash, 'Confirmer')}</Button>
                 <Button size="s" variant="ghost" onClick={onCancelDelete}>Annuler</Button>
               </>
             ) : (

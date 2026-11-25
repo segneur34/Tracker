@@ -34,6 +34,7 @@ const memoire = Object.freeze({
   ecrireTexte: avec('memoire:ecrireTexte'),
   ecrireOctets: avec('memoire:ecrireOctets'),
   effacer: avec('memoire:effacer'),
+  effacerDossier: avec('memoire:effacerDossier'),
 })
 
 /**

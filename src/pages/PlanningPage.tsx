@@ -47,6 +47,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute, type ImportedElevationStatus } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorderStatus } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
+import { useDeletesToTrash } from '../hooks/useTrash';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide, effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, readStoredSettings, useVisibility,
@@ -54,6 +55,7 @@ import {
 import { PLANNING_FAMILIES, resolveTerrainStepM } from '../settings/activitySettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
+import { trashDeleteButton } from '../library/trash';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
 import { shownRoutes } from '../planning/routeShown';
 import { isAbortError } from '../planning/fetchJson';
@@ -367,6 +369,8 @@ function PlanningPage() {
   /** Mode des éditions : sur un parcours de balises, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
   const editMode: RouteMode = markCourse ? 'straight' : mode;
   const library = useRouteLibrary();
+  /** Programme Windows : l'itinéraire supprimé part à la corbeille, et les boutons de confirmation le disent. */
+  const toTrash = useDeletesToTrash();
   /** « Mes itinéraires » : sans ceux d'une activité cachée. */
   const listedRoutes = useMemo(() => shownRoutes(library.routes, activities, isShown), [library.routes, activities, isShown]);
   const { go, canGo } = useGoOnRoute();
@@ -776,7 +780,7 @@ function PlanningPage() {
         setCourseGuide(null);
         setSelected(null);
         zoom.reset();
-        setMessage('Itinéraire supprimé.');
+        setMessage(toTrash ? 'Itinéraire mis à la corbeille.' : 'Itinéraire supprimé.');
       }
     } catch (err) {
       setMessage(plainError(err, 'Suppression impossible.'));
@@ -1289,7 +1293,7 @@ function PlanningPage() {
               {(current !== null || route.waypoints.length > 0) && <Button variant="ghost" onClick={startNew}>Nouvel itinéraire</Button>}
               {current !== null && (confirmingDelete === current.base ? (
                 <>
-                  <Button variant="danger" onClick={() => void deleteSaved(current)}>Supprimer définitivement</Button>
+                  <Button variant="danger" onClick={() => void deleteSaved(current)}>{trashDeleteButton(toTrash, 'Supprimer définitivement')}</Button>
                   <Button variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
                 </>
               ) : (
@@ -1312,7 +1316,7 @@ function PlanningPage() {
                 go={false}
                 actions={(saved) => (confirmingDelete === saved.base ? (
                   <span className="plan-saved__confirm">
-                    <Button size="s" variant="danger" onClick={() => void deleteSaved(saved)}>Supprimer</Button>
+                    <Button size="s" variant="danger" onClick={() => void deleteSaved(saved)}>{trashDeleteButton(toTrash, 'Supprimer')}</Button>
                     <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
                   </span>
                 ) : (

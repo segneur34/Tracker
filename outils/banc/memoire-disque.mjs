@@ -3,7 +3,7 @@
 // Hors registre (`scripts.mjs`) : le script lance lui-même le programme plusieurs fois, en mode d'essai de la coquille
 // (`TRACKER_BANC=1`), sur des dossiers temporaires du dossier temporaire du système : jamais le vrai Documents, jamais
 // le profil du vrai programme, jamais un vrai OneDrive. Les GPX sont synthétiques (`lib/traces.mjs`). Le disque se lit
-// par Node : c'est lui qui prouve où la mémoire est rangée. Six cas :
+// par Node : c'est lui qui prouve où la mémoire est rangée. Sept cas :
 //  a. profil vide : la carte propose un dossier (rien n'existe sur le disque), « Utiliser ce dossier », import d'un GPX ;
 //     le disque porte le marqueur, le LISEZMOI, le fichier de réglages, le GPX et sa fiche, aucun temporaire, et le
 //     profil retient le dossier ; un second lancement sur le même profil montre la même liste ;
@@ -11,7 +11,14 @@
 //  c. une mémoire façon téléphone (un GPX sans fiche) désignée par « Choisir un autre dossier » : sa fiche est créée ;
 //  d. un temporaire de remplacement et un temporaire d'écriture neuve laissés par un arrêt brutal : réparés ;
 //  e. Documents sous OneDrive : le dossier proposé est hors de OneDrive, avec la phrase qui le dit ;
-//  f. « Choisir un autre dossier » sur le sous-dossier `sessions` d'une mémoire : refusé, rien d'écrit.
+//  f. « Choisir un autre dossier » sur le sous-dossier `sessions` d'une mémoire : refusé, rien d'écrit ;
+//  g. corbeille de 30 jours (élément 217, sous-lot 3a, d'après le lot 448 de Gtracker) : deux sessions importées, une
+//     supprimée depuis sa ligne (bouton « Mettre à la corbeille (30 jours) », `corbeille/` sur le disque, index à une
+//     entrée, GPX et fiche partis de `sessions/`), la ligne de Réglages › Mémoire et sa liste, « Restaurer » (session
+//     revenue octet pour octet, corbeille vide) ; les deux de nouveau à la corbeille, l'une vieillie à 31 jours
+//     programme fermé : relancé, elle et son sous-dossier disparaissent, l'autre et un dossier posé à la main restent ;
+//     un itinéraire supprimé (« Mettre à la corbeille (30 jours) ») ; « Supprimer définitivement » et « Vider la
+//     corbeille » confirmés dans la page, sans aucune fenêtre du navigateur.
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -300,6 +307,252 @@ try {
   check('rien n\'est écrit dans la mémoire désignée (arbre, tailles et heures inchangés)', empreinte(propose) === avantF);
   check('rien n\'est écrit dans le profil (pas de coquille.json)', lireCoquille(F.profil) === null);
   check('rien n\'est créé dans Documents', (arbre(F.documents) ?? []).length === 0, JSON.stringify(arbre(F.documents)));
+
+  // ---------- g. corbeille de 30 jours ----------
+  console.log('\n== g. Corbeille de 30 jours : mise à la corbeille, restauration, vieillissement, itinéraire, suppression définitive, vidage');
+  const G = { profil: dossier('g-profil'), documents: dossier('g-documents') };
+  const memG = join(G.documents, 'Tracker');
+  const corbeille = join(memG, 'corbeille');
+  const JOUR_MS = 86_400_000;
+  const STARTS = [Date.UTC(2026, 9, 3, 7, 0, 0), Date.UTC(2026, 9, 4, 7, 0, 0)];
+  const sansBom = (s) => s.replace(/^﻿/, '');
+  const indexG = () => { try { return JSON.parse(sansBom(readFileSync(join(corbeille, 'corbeille.json'), 'utf8'))); } catch { return null; } };
+  const sousDossiers = () => (existsSync(corbeille) ? readdirSync(corbeille, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []);
+  /** Ligne « Corbeille : … » de Réglages › Mémoire (`TrashZone`), `null` si elle n'est pas montrée. */
+  const ligneCorbeille = (b) => b.evaluate(`document.querySelector('.trash-zone__toggle')?.textContent.trim() ?? null`);
+  /**
+   * Réglages › Mémoire dépliée. Repliée, la carte garde sa ligne d'état et « Mettre à jour » : c'est la ligne
+   * « Emplacement : …, sur ce PC. », montrée carte ouverte seulement, qui dit qu'elle l'est (la carte garde son état
+   * d'une page à l'autre : on ne la referme pas).
+   */
+  const ouvrirMemoire = async (b) => {
+    await b.go('/parametres', 5000);
+    await b.waitFor(`[...document.querySelectorAll('[role=button]')].some((x) => x.textContent.trim() === 'Mémoire')`, { timeout: 8000, label: 'carte Mémoire' });
+    const ouverte = `/Emplacement : .*, sur ce PC\\./.test(document.body.innerText)`;
+    if (!(await b.evaluate(ouverte))) {
+      await b.click(`[...document.querySelectorAll('[role=button]')].find((x) => x.textContent.trim() === 'Mémoire')`);
+    }
+    await b.waitFor(ouverte, { timeout: 8000, label: 'carte Mémoire dépliée' });
+    await b.settle({ max: 1500 });
+  };
+  /** Déplie la ligne « Corbeille : … » (si elle est repliée) et rend les lignes de la liste (texte de chacune). */
+  const deplierCorbeille = async (b) => {
+    await b.evaluate(`(() => { const t = document.querySelector('.trash-zone__toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); })()`);
+    await b.wait(300);
+    return b.evaluate(`[...document.querySelectorAll('li.trash-zone__row')].map((li) => li.innerText.replace(/\\n+/g, ' / '))`);
+  };
+  /** Clique, dans la ligne de la corbeille qui contient `contenu`, le bouton de texte `texte`. */
+  const cliquerDansLigne = (b, contenu, texte) => b.evaluate(`(() => {
+    const li = [...document.querySelectorAll('li.trash-zone__row')].find((x) => x.textContent.includes(${JSON.stringify(contenu)}));
+    if (!li) return 'ligne absente';
+    const x = [...li.querySelectorAll('button')].find((y) => y.textContent.trim() === ${JSON.stringify(texte)});
+    if (!x) return 'bouton absent'; if (x.disabled) return 'désactivé'; x.click(); return 'ok';
+  })()`);
+  /** Supprime la première ligne de la bibliothèque de la voile ; rend les boutons de confirmation relevés sous la ligne. */
+  const supprimerPremiereLigne = async (b, quoi) => {
+    await pageSessions(b);
+    const r = await b.evaluate(`(() => {
+      const li = document.querySelector('.lib-row'); if (!li) return 'ligne absente';
+      const x = [...li.querySelectorAll('button')].find((y) => y.textContent.trim() === 'Supprimer');
+      if (!x) return 'bouton absent'; x.click(); return 'ok';
+    })()`);
+    check(`${quoi} : « Supprimer » de la ligne`, r === 'ok', r);
+    await b.waitFor(`[...document.querySelectorAll('.lib-row button')].some((x) => x.textContent.trim() === 'Annuler')`, { timeout: 4000, label: 'confirmation' });
+    const boutons = await b.evaluate(`[...document.querySelectorAll('.lib-row button')].map((x) => x.textContent.trim()).filter((s) => /corbeille|Confirmer|Annuler/.test(s))`);
+    console.log(`  confirmation (${quoi}) : ${JSON.stringify(boutons)}`);
+    check(`${quoi} : le bouton de confirmation dit « Mettre à la corbeille (30 jours) », plus « Confirmer »`,
+      boutons.includes('Mettre à la corbeille (30 jours)') && !boutons.includes('Confirmer'), JSON.stringify(boutons));
+    check(`${quoi} : clic « Mettre à la corbeille (30 jours) »`, (await b.clickText('Mettre à la corbeille (30 jours)')) === 'ok');
+  };
+  /** Fenêtres du navigateur (`confirm`, `alert`) ouvertes par la page : il n'en faut aucune. */
+  const fenetresG = [];
+  const gpxBytes = (nom) => readFileSync(join(memG, 'sessions', nom));
+
+  // Premier lancement : mémoire adoptée, deux sessions importées, une mise à la corbeille, restaurée, puis les deux mises à la corbeille.
+  let premierNom = '';
+  let octetsPremier = null;
+  await avecProgramme(G.profil, { TRACKER_DOCUMENTS: G.documents }, async (b) => {
+    b.onMessage((m) => { if (m.method === 'Page.javascriptDialogOpening') fenetresG.push(m.params.message); });
+    await b.go('/profil', 5000);
+    await attendre(b, /Dossier proposé/, 'carte');
+    check('clic « Utiliser ce dossier »', (await b.clickText('Utiliser ce dossier')) === 'ok');
+    await b.waitFor(() => existsSync(join(memG, FICHIER_MARQUEUR)), { timeout: 8000, label: 'marqueur' });
+    await b.settle({ max: 3000 });
+    await b.go('/voile', 5000);
+    check('import du premier GPX', (await b.importGpx(gpxSynthetique(3, 'Corbeille un'), 'corbeille-un.gpx')) === 'ok');
+    await b.waitFor(() => existsSync(join(memG, 'sessions')) && fiches(memG).length >= 1 && gpxs(memG).length >= 1, { timeout: 8000, label: 'première fiche' });
+    await b.wait(1500);
+    check('import du second GPX', (await b.importGpx(gpxSynthetique(4, 'Corbeille deux'), 'corbeille-deux.gpx')) === 'ok');
+    await b.waitFor(() => fiches(memG).length >= 2 && gpxs(memG).length >= 2, { timeout: 8000, label: 'seconde fiche' });
+    await b.wait(1500);
+    await b.settle({ max: 2000 });
+    check('avant toute suppression : deux GPX, deux fiches, aucun dossier corbeille/ sur le disque', gpxs(memG).length === 2 && fiches(memG).length === 2 && !existsSync(corbeille), JSON.stringify(arbre(memG)));
+    await ouvrirMemoire(b);
+    check('Réglages › Mémoire : pas de ligne « Corbeille » tant qu\'elle est vide', (await ligneCorbeille(b)) === null, String(await ligneCorbeille(b)));
+
+    // -- Première suppression, depuis la ligne.
+    const avantGpx = gpxs(memG);
+    const avantFiches = fiches(memG);
+    await supprimerPremiereLigne(b, 'g1');
+    await b.waitFor(() => gpxs(memG).length === 1 && Boolean(indexG()?.entries?.length), { timeout: 10000, label: 'session mise à la corbeille' });
+    await b.wait(800);
+    const retiree = avantGpx.find((n) => !gpxs(memG).includes(n));
+    premierNom = retiree ?? '';
+    const ficheRetiree = avantFiches.find((n) => !fiches(memG).includes(n));
+    console.log(`disque (${corbeille}) :\n  ${(arbre(corbeille) ?? []).join('\n  ')}`);
+    const idx1 = indexG();
+    const e1 = idx1?.entries?.[0];
+    const dossiers1 = sousDossiers();
+    check('g1 : le GPX a quitté sessions/ (un seul reste)', Boolean(retiree) && !gpxs(memG).includes(retiree), `${retiree} ${gpxs(memG).join(',')}`);
+    check('g1 : sa fiche a quitté sessions/ aussi', Boolean(ficheRetiree) && !fiches(memG).includes(ficheRetiree), `${ficheRetiree} ${fiches(memG).join(',')}`);
+    check('g1 : corbeille/ porte un seul sous-dossier « <13 chiffres>-… »', dossiers1.length === 1 && /^\d{13}-/.test(dossiers1[0]), dossiers1.join(','));
+    check('g1 : l\'index corbeille.json a une seule entrée (format tracker-corbeille, version 1)', Boolean(idx1) && idx1.entries.length === 1 && idx1.format === 'tracker-corbeille' && idx1.version === 1, JSON.stringify(idx1));
+    check('g1 : l\'entrée est une session de l\'ordinateur, supprimée à l\'instant', e1?.kind === 'session' && e1?.origin === 'ordinateur' && e1?.reason === 'supprimee' && Math.abs(Date.now() - e1.deletedAtMs) < 120000, JSON.stringify(e1));
+    check('g1 : l\'entrée dit le sous-dossier, le GPX principal et l\'instant de départ de la session', e1?.dir === dossiers1[0] && e1?.main === retiree && STARTS.includes(e1?.startMs) && dossiers1[0].endsWith(`-${e1?.startMs}`), JSON.stringify(e1));
+    check('g1 : l\'entrée porte le nom de la session (son activité), pas celui de son fichier, même importée sans activité', typeof e1?.name === 'string' && e1.name.length > 0 && !/\.gpx$/i.test(e1.name) && !e1.name.includes(retiree.replace(/\.gpx$/i, '')), JSON.stringify(e1?.name));
+    const dedans = existsSync(join(corbeille, dossiers1[0] ?? '-')) ? readdirSync(join(corbeille, dossiers1[0])).sort() : [];
+    check('g1 : le sous-dossier porte le GPX et la fiche sous leurs noms d\'origine', JSON.stringify(dedans) === JSON.stringify([ficheRetiree, retiree].sort()), dedans.join(','));
+    check('g1 : l\'index dit les tailles des fichiers recopiés', (e1?.files ?? []).length === dedans.length && (e1?.files ?? []).every((f) => existsSync(join(corbeille, dossiers1[0], f.name)) && statSync(join(corbeille, dossiers1[0], f.name)).size === f.size), JSON.stringify(e1?.files));
+    check('g1 : la session restée dans sessions/ est intacte (un GPX, une fiche)', gpxs(memG).length === 1 && fiches(memG).length === 1);
+    await pageSessions(b);
+    check('g1 : la bibliothèque ne montre plus qu\'une ligne', (await rangees(b)) === 1, String(await rangees(b)));
+    octetsPremier = existsSync(join(corbeille, dossiers1[0], retiree)) ? readFileSync(join(corbeille, dossiers1[0], retiree)) : null;
+
+    // -- Réglages › Mémoire : la ligne, dépliée, puis « Restaurer ».
+    await ouvrirMemoire(b);
+    const titre = await ligneCorbeille(b);
+    console.log(`  ligne de Réglages › Mémoire : « ${titre} »`);
+    check('Réglages › Mémoire : « Corbeille : 1 session, gardée 30 jours »', titre === 'Corbeille : 1 session, gardée 30 jours', String(titre));
+    const liste = await deplierCorbeille(b);
+    console.log(`  liste dépliée : ${JSON.stringify(liste)}`);
+    check('la liste dépliée montre la session (nom, date, « session supprimée le … »), « Restaurer » et « Supprimer définitivement »',
+      liste?.length === 1 && /session supprimée le/.test(liste[0]) && /restaurer/i.test(liste[0]) && /supprimer définitivement/i.test(liste[0]), JSON.stringify(liste));
+    check('la liste dépliée montre le nom de la session, pas celui de son fichier', liste?.length === 1 && !liste[0].includes(retiree.replace(/\.gpx$/i, '')), JSON.stringify(liste));
+    check('« Vider la corbeille » est offert', (await b.evaluate(`[...document.querySelectorAll('.trash-zone button')].some((x) => x.textContent.trim() === 'Vider la corbeille')`)) === true);
+    check('clic « Restaurer »', (await b.clickText('Restaurer')) === 'ok');
+    await b.waitFor(() => gpxs(memG).length === 2 && sousDossiers().length === 0 && indexG()?.entries?.length === 0, { timeout: 10000, label: 'session restaurée' });
+    await b.wait(1000);
+    const tout = await texte(b);
+    console.log(`  après « Restaurer » : ${ligne(tout, /revenue dans la mémoire|Restauration impossible/)}`);
+    check('« Restaurer » : la session revient sous son nom (GPX identique octet pour octet, fiche présente)', gpxs(memG).includes(premierNom) && fiches(memG).includes(ficheRetiree) && octetsPremier !== null && gpxBytes(premierNom).equals(octetsPremier), `${gpxs(memG).join(',')} ${fiches(memG).join(',')}`);
+    check('« Restaurer » : corbeille vide sur le disque (index sans entrée, aucun sous-dossier)', indexG()?.entries?.length === 0 && sousDossiers().length === 0, `${JSON.stringify(indexG())} ${sousDossiers().join(',')}`);
+    check('« Restaurer » : la phrase du compte rendu dit que la session est revenue', /est revenue dans la mémoire/.test(tout), ligne(tout, /revenue|impossible/));
+    check('« Restaurer » : la ligne « Corbeille : … » a disparu', (await ligneCorbeille(b)) === null, String(await ligneCorbeille(b)));
+    await pageSessions(b);
+    check('« Restaurer » : la bibliothèque montre de nouveau deux lignes', (await rangees(b)) === 2, String(await rangees(b)));
+    check('« Restaurer » : aucun temporaire sur le disque', temporaires(memG).length === 0, temporaires(memG).join(','));
+
+    // -- Supprimer de nouveau les deux sessions : deux entrées.
+    await supprimerPremiereLigne(b, 'g2a');
+    await b.waitFor(() => gpxs(memG).length === 1 && indexG()?.entries?.length === 1, { timeout: 10000, label: 'première remise à la corbeille' });
+    await b.wait(1100); // deux entrées de la même seconde garderaient le même instant : on les veut distinctes
+    await supprimerPremiereLigne(b, 'g2b');
+    await b.waitFor(() => gpxs(memG).length === 0 && indexG()?.entries?.length === 2, { timeout: 10000, label: 'seconde mise à la corbeille' });
+    await b.wait(800);
+    const dossiers2 = sousDossiers();
+    check('g2 : deux sous-dossiers « <13 chiffres>-… », deux entrées, sessions/ sans GPX', dossiers2.length === 2 && dossiers2.every((d) => /^\d{13}-/.test(d)) && indexG().entries.length === 2 && gpxs(memG).length === 0, dossiers2.join(','));
+    await ouvrirMemoire(b);
+    const titre2 = await ligneCorbeille(b);
+    console.log(`  ligne de Réglages › Mémoire : « ${titre2} »`);
+    check('Réglages › Mémoire : « Corbeille : 2 sessions, gardées 30 jours »', titre2 === 'Corbeille : 2 sessions, gardées 30 jours', String(titre2));
+    check('console de la page sans erreur (premier lancement)', b.logs.length === 0, b.logs.join(' | '));
+  });
+  const idxAvantVieillir = indexG();
+
+  // Programme fermé : l'entrée la plus ancienne vieillit à 31 jours, un dossier à la main est posé dans corbeille/.
+  const entreesTriees = [...(idxAvantVieillir?.entries ?? [])].sort((a, b) => a.deletedAtMs - b.deletedAtMs);
+  const vieille = entreesTriees[0];
+  const jeune = entreesTriees[1];
+  check('préparation : deux entrées à vieillir ou garder', Boolean(vieille) && Boolean(jeune));
+  if (vieille && jeune) {
+    idxAvantVieillir.entries = idxAvantVieillir.entries.map((e) => (e.dir === vieille.dir ? { ...e, deletedAtMs: Date.now() - 31 * JOUR_MS } : e));
+    writeFileSync(join(corbeille, 'corbeille.json'), `${JSON.stringify(idxAvantVieillir, null, 2)}\n`);
+    mkdirSync(join(corbeille, '2024-vacances'), { recursive: true });
+    writeFileSync(join(corbeille, '2024-vacances', 'photo.txt'), 'pose a la main');
+    check('préparation : une entrée vieillie à 31 jours, un dossier « 2024-vacances » posé à la main', indexG().entries.find((e) => e.dir === vieille.dir).deletedAtMs < Date.now() - 30 * JOUR_MS && existsSync(join(corbeille, '2024-vacances', 'photo.txt')));
+  }
+
+  // Second lancement : la purge de l'ouverture ; puis un itinéraire, la suppression définitive d'une entrée, le vidage.
+  await avecProgramme(G.profil, { TRACKER_DOCUMENTS: G.documents }, async (b) => {
+    b.onMessage((m) => { if (m.method === 'Page.javascriptDialogOpening') fenetresG.push(m.params.message); });
+    await b.go('/profil', 5000);
+    await attendre(b, /session/, 'mémoire prête');
+    await b.waitFor(() => indexG()?.entries?.length === 1, { timeout: 12000, label: 'purge à l\'ouverture' });
+    await b.wait(800);
+    const idx = indexG();
+    check('relance : l\'entrée de 31 jours a disparu de l\'index', Boolean(vieille) && !idx.entries.some((e) => e.dir === vieille.dir), JSON.stringify(idx.entries.map((e) => e.dir)));
+    check('relance : son sous-dossier a disparu du disque', Boolean(vieille) && !existsSync(join(corbeille, vieille.dir)), sousDossiers().join(','));
+    check('relance : l\'entrée récente est restée, avec son sous-dossier et ses fichiers', Boolean(jeune) && idx.entries.length === 1 && idx.entries[0].dir === jeune.dir && existsSync(join(corbeille, jeune.dir, jeune.main)), sousDossiers().join(','));
+    check('relance : le dossier posé à la main (« 2024-vacances ») est intact, fichier compris', existsSync(join(corbeille, '2024-vacances', 'photo.txt')) && readFileSync(join(corbeille, '2024-vacances', 'photo.txt'), 'utf8') === 'pose a la main', sousDossiers().join(','));
+    await ouvrirMemoire(b);
+    const titre3 = await ligneCorbeille(b);
+    console.log(`  ligne de Réglages › Mémoire : « ${titre3} »`);
+    check('Réglages › Mémoire : « Corbeille : 1 session, gardée 30 jours » après la purge', titre3 === 'Corbeille : 1 session, gardée 30 jours', String(titre3));
+
+    // -- Un itinéraire supprimé passe par la corbeille.
+    await b.go('/itineraires/liste', 5000);
+    check('import d\'un itinéraire (« Importer un itinéraire »)', (await b.importGpx(gpxSynthetique(5, 'Parcours corbeille'), 'parcours-corbeille.gpx')) === 'ok');
+    await b.waitFor(() => existsSync(join(memG, 'itineraires')) && readdirSync(join(memG, 'itineraires')).some((n) => n.endsWith('.json')) && readdirSync(join(memG, 'itineraires')).some((n) => n.endsWith('.gpx')), { timeout: 10000, label: 'itinéraire sur le disque' });
+    await b.wait(800);
+    const fichiersRoute = readdirSync(join(memG, 'itineraires')).sort();
+    console.log(`  itineraires/ : ${fichiersRoute.join(', ')}`);
+    await b.settle({ max: 1500 });
+    const menu = await b.evaluate(`(() => { const m = [...document.querySelectorAll('button[aria-label]')].find((x) => x.getAttribute('aria-label').startsWith("Plus d'actions sur ")); if (!m) return 'menu absent'; m.click(); return 'ok'; })()`);
+    check('« … » de la ligne de l\'itinéraire', menu === 'ok', menu);
+    await b.wait(150);
+    const sup = await b.evaluate(`(() => { const x = [...document.querySelectorAll('.ui-more__panel button')].find((y) => y.textContent.trim() === 'Supprimer'); if (!x) return 'absent'; x.click(); return 'ok'; })()`);
+    check('« Supprimer » du menu de l\'itinéraire', sup === 'ok', sup);
+    await b.waitFor(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Garder')`, { timeout: 4000, label: 'confirmation' });
+    const boutonsRoute = await b.evaluate(`JSON.stringify([...document.querySelectorAll('button.ui-btn--danger, button.ui-btn--ghost')].map((x) => x.textContent.trim()).filter((s) => /corbeille|définitivement|Garder/i.test(s)))`);
+    console.log(`  boutons de confirmation : ${boutonsRoute}`);
+    check('le bouton de confirmation dit « Mettre à la corbeille (30 jours) »', JSON.parse(boutonsRoute).includes('Mettre à la corbeille (30 jours)') && !JSON.parse(boutonsRoute).includes('Supprimer définitivement'), boutonsRoute);
+    check('clic « Mettre à la corbeille (30 jours) »', (await b.clickText('Mettre à la corbeille (30 jours)')) === 'ok');
+    await b.waitFor(() => readdirSync(join(memG, 'itineraires')).length === 0 && indexG()?.entries?.length === 2, { timeout: 10000, label: 'itinéraire à la corbeille' });
+    await b.wait(800);
+    const idxR = indexG();
+    const eR = idxR.entries.find((e) => e.kind === 'itineraire');
+    console.log(`disque (${corbeille}) :\n  ${(arbre(corbeille) ?? []).join('\n  ')}`);
+    check('itinéraire : fiche et GPX ont quitté itineraires/', readdirSync(join(memG, 'itineraires')).length === 0, readdirSync(join(memG, 'itineraires')).join(','));
+    check('itinéraire : une entrée « itineraire » de l\'ordinateur dans l\'index, avec sa base et sa création', Boolean(eR) && eR.origin === 'ordinateur' && eR.startMs === null && typeof eR.routeBase === 'string' && typeof eR.createdAt === 'string' && eR.main.endsWith('.json'), JSON.stringify(eR));
+    check('itinéraire : son sous-dossier « <13 chiffres>-<base> » porte sa fiche et son GPX', Boolean(eR) && /^\d{13}-/.test(eR.dir) && JSON.stringify(readdirSync(join(corbeille, eR.dir)).sort()) === JSON.stringify(fichiersRoute), eR ? readdirSync(join(corbeille, eR.dir)).join(',') : '');
+    await ouvrirMemoire(b);
+    const titre4 = await ligneCorbeille(b);
+    console.log(`  ligne de Réglages › Mémoire : « ${titre4} »`);
+    check('Réglages › Mémoire : « Corbeille : 1 session et 1 itinéraire, gardés 30 jours »', titre4 === 'Corbeille : 1 session et 1 itinéraire, gardés 30 jours', String(titre4));
+    const liste4 = await deplierCorbeille(b);
+    console.log(`  liste dépliée : ${JSON.stringify(liste4)}`);
+    check('la liste porte la session et l\'itinéraire (« itinéraire supprimé le … »)', liste4?.length === 2 && liste4.some((l) => /itinéraire supprimé le/.test(l)) && liste4.some((l) => /session supprimée le/.test(l)), JSON.stringify(liste4));
+
+    // -- « Supprimer définitivement » de l'itinéraire : confirmé dans la page.
+    check('« Supprimer définitivement » de l\'itinéraire', (await cliquerDansLigne(b, 'itinéraire supprimé le', 'Supprimer définitivement')) === 'ok');
+    await b.wait(300);
+    const confirmation = await b.evaluate(`[...document.querySelectorAll('li.trash-zone__row')].find((x) => x.textContent.includes('itinéraire supprimé le'))?.innerText.replace(/\\n+/g, ' / ') ?? null`);
+    console.log(`  ligne en attente de confirmation : ${JSON.stringify(confirmation)}`);
+    check('la ligne demande confirmation (« Supprimer définitivement » et « Garder »), rien n\'est encore effacé', /Garder/i.test(confirmation ?? '') && indexG().entries.length === 2, JSON.stringify(confirmation));
+    check('confirmation « Supprimer définitivement »', (await cliquerDansLigne(b, 'itinéraire supprimé le', 'Supprimer définitivement')) === 'ok');
+    await b.waitFor(() => indexG()?.entries?.length === 1, { timeout: 10000, label: 'itinéraire supprimé définitivement' });
+    await b.wait(800);
+    check('l\'entrée de l\'itinéraire et son sous-dossier ont disparu, la session reste', !existsSync(join(corbeille, eR.dir)) && indexG().entries.length === 1 && indexG().entries[0].kind === 'session', JSON.stringify(indexG().entries.map((e) => e.kind)));
+
+    // -- « Vider la corbeille » : confirmé dans la page.
+    await deplierCorbeille(b);
+    check('« Vider la corbeille »', (await b.clickText('Vider la corbeille')) === 'ok');
+    await b.wait(300);
+    const question = await b.evaluate(`document.querySelector('.trash-zone__confirm')?.innerText.replace(/\\n+/g, ' / ') ?? null`);
+    console.log(`  question : ${JSON.stringify(question)}`);
+    check('la question dans la page dit « Vider la corbeille ? … sans retour possible », rien n\'est encore effacé', /Vider la corbeille \?/.test(question ?? '') && /sans retour possible/.test(question ?? '') && indexG().entries.length === 1, JSON.stringify(question));
+    check('confirmation « Vider la corbeille »', (await b.clickText('Vider la corbeille', '.trash-zone__confirm button')) === 'ok');
+    await b.waitFor(() => indexG()?.entries?.length === 0, { timeout: 10000, label: 'corbeille vidée' });
+    await b.wait(800);
+    check('« Vider la corbeille » : l\'index est vide, plus aucun sous-dossier d\'entrée', indexG().entries.length === 0 && sousDossiers().every((d) => !/^\d{13}-/.test(d)), `${sousDossiers().join(',')}`);
+    check('« Vider la corbeille » : le dossier posé à la main reste, fichier compris', existsSync(join(corbeille, '2024-vacances', 'photo.txt')), sousDossiers().join(','));
+    const apres = await texte(b);
+    check('« Vider la corbeille » : la ligne « Corbeille : … » a disparu et « Corbeille vidée. » est dit', (await ligneCorbeille(b)) === null && /Corbeille vidée\./.test(apres), ligne(apres, /orbeille/));
+    console.log(`disque final (${corbeille}) :\n  ${(arbre(corbeille) ?? []).join('\n  ')}`);
+    check('console de la page sans erreur (second lancement)', b.logs.length === 0, b.logs.join(' | '));
+  });
+  check('aucune fenêtre du navigateur (confirm, alert) n\'a été ouverte', fenetresG.length === 0, JSON.stringify(fenetresG));
+  check('aucun temporaire dans la mémoire en fin de cas', temporaires(memG).length === 0, temporaires(memG).join(','));
 } catch (e) {
   check(`script interrompu : ${e.stack ?? e.message}`, false);
 } finally {

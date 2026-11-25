@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { librarySession, readLibraryState, removeSession } from '../hooks/useSessionLibrary';
+import { useDeletesToTrash } from '../hooks/useTrash';
 import { DISCARD_HOLD_MS, discardFailureMessage } from '../library/discardOutcome';
+import { sessionDiscardText, trashDeleteButton } from '../library/trash';
 import { plainError } from '../platform/errorText';
 import { IconTrash } from './icons';
 import Button from './ui/Button';
@@ -16,10 +18,12 @@ const getHoldMs = () => DISCARD_HOLD_MS;
  * suppression est celle de la bibliothèque (`removeSession` : GPX, fiche, capteurs, dossier mémoire compris).
  * Elle réussit : `onGone` abandonne le brouillon de la session (sans quoi l'alerte « modifications non
  * enregistrées » se lèverait), et l'on repart en `backTo` en remplaçant l'entrée d'historique, pour que le
- * retour d'Android ne rouvre pas l'analyse jetée. Elle échoue : la fenêtre le dit et la session reste.
+ * retour d'Android ne rouvre pas l'analyse jetée. Elle échoue : la fenêtre le dit et la session reste. Dans le
+ * programme Windows, la session part à la corbeille de l'ordinateur pour 30 jours, et la fenêtre le dit.
  */
 function SessionDiscardEntry({ file, backTo, onGone }: { file: string; backTo: string; onGone: () => void }) {
   const navigate = useNavigate();
+  const toTrash = useDeletesToTrash();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -60,11 +64,11 @@ function SessionDiscardEntry({ file, backTo, onGone }: { file: string; backTo: s
       {asking && (
         <Dialog title="Jeter cette session ?" onClose={close}>
           <p className="ui-hint">
-            Son fichier, sa fiche et ses mesures de capteurs seront supprimés de la mémoire, sans retour possible.
+            {sessionDiscardText(toTrash, 'Son fichier, sa fiche et ses mesures de capteurs seront supprimés de la mémoire, sans retour possible.')}
           </p>
           {failure && <div role="alert" className="ui-alert ui-alert--danger">{failure}</div>}
           <div className="ui-dialog__actions">
-            <Button variant="danger" disabled={busy} onClick={() => void discard()}>Jeter définitivement</Button>
+            <Button variant="danger" disabled={busy} onClick={() => void discard()}>{trashDeleteButton(toTrash, 'Jeter définitivement')}</Button>
             <Button variant="ghost" disabled={busy} onClick={close}>Garder</Button>
           </div>
         </Dialog>

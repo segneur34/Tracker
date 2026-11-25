@@ -12,7 +12,7 @@ import {
   type RouteRecord,
 } from '../planning/routeRecord';
 import { createLoadedListStore } from './loadedListStore';
-import { currentMemoryFolder } from './useSessionLibrary';
+import { currentMemoryFolder, stashRoute } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
 /**
@@ -98,10 +98,15 @@ export const saveRoute = async (
   return writeRoute(base, route, record);
 };
 
+/**
+ * Supprime un itinéraire : sa fiche, puis son GPX. Dans le programme Windows, une copie part d'abord à la corbeille
+ * (`stashRoute`) ; si elle échoue, rien n'est retiré et l'erreur remonte. Ailleurs, rien ne change.
+ */
 export const removeRoute = async (saved: SavedRoute): Promise<void> => {
   const folder = await requireFolder();
-  await folder.remove(routePath(`${saved.base}.json`));
-  await folder.remove(routePath(`${saved.base}.gpx`));
+  const paths = [routePath(`${saved.base}.json`), routePath(`${saved.base}.gpx`)];
+  await stashRoute(folder, { base: saved.base, name: saved.record.name, createdAt: saved.record.createdAt }, paths, paths[0]);
+  for (const path of paths) await folder.remove(path);
   routeStore.reload();
 };
 

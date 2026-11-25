@@ -22,7 +22,7 @@
 // racine elle-même peut être un lien (un dossier choisi par l'utilisateur) : la comparaison part de sa forme réelle.
 
 import type { Dirent } from 'node:fs'
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, stat, unlink } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, rmdir, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 /** Suffixe du fichier écrit à côté de celui qu'il remplace, le temps de l'échange. */
@@ -324,6 +324,12 @@ export interface DossierDisque {
   ecrireOctets(chemin: string, octets: Uint8Array): Promise<void>
   /** Efface un fichier ; sans effet s'il n'existe pas. Un dossier n'est jamais effacé. */
   effacer(chemin: string): Promise<void>
+  /**
+   * Efface un sous-dossier vide (jamais la racine) ; sans effet s'il n'existe pas. Un dossier qui contient encore
+   * quelque chose est refusé, rien n'y est touché : on vide d'abord ses fichiers un par un (`effacer`). Sert à la
+   * corbeille du programme Windows.
+   */
+  effacerDossier(chemin: string): Promise<void>
 }
 
 const RACINE_INTROUVABLE = 'Le dossier mémoire est introuvable'
@@ -564,6 +570,36 @@ export function dossierDisque(racine: string, { lectureSeule = false }: { lectur
       } catch (e) {
         if (codeDe(e) === 'NOT_FOUND') await exigerRacine()
         throw erreurDisque(e, 'Suppression impossible')
+      }
+    },
+
+    async effacerDossier(chemin) {
+      exigerEcriture()
+      const absolu = resoudre(base, chemin)
+      try {
+        await enFile(absolu, async () => {
+          await exigerSansLien(absolu)
+          let s = null
+          try {
+            s = await lstat(absolu)
+          } catch (e) {
+            if (codeDe(e) !== 'NOT_FOUND') throw e
+            await exigerRacine()
+          }
+          if (s === null) return
+          // Un lien ou une jonction n'est pas un dossier pour `lstat` : refusé comme un fichier.
+          if (!s.isDirectory()) throw new ErreurDisque('UNKNOWN', `Suppression refusée : « ${chemin} » n’est pas un dossier.`)
+          try {
+            await avecEssais(() => rmdir(absolu))
+          } catch (e) {
+            const code = codeNode(e)
+            if (code === 'ENOTEMPTY' || code === 'EEXIST') throw new ErreurDisque('UNKNOWN', `Suppression refusée : le dossier « ${chemin} » n’est pas vide.`)
+            if (codeDe(e) !== 'NOT_FOUND') throw e
+          }
+        })
+      } catch (e) {
+        if (codeDe(e) === 'NOT_FOUND') await exigerRacine()
+        throw erreurDisque(e, 'Suppression du dossier impossible')
       }
     },
   }

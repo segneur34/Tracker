@@ -72,6 +72,17 @@ describe('fiche changée sur le disque', () => {
     expect(newer.conflicts).toEqual(['notes.comment']);
   });
 
+  it('deux appareils (`datedByClock` faux) : même champ de notes, la mémoire l’emporte quelle que soit la date, et le bloc garde celle du disque', () => {
+    const mine = { ...read, notes: notes({ comment: 'ici', conditions: 'lu', savedAt: 150 }) };
+    const newerDisk = { ...read, notes: notes({ comment: 'là-bas', conditions: 'lu', savedAt: 300 }) };
+    const merged = mergeChangedRecord(newerDisk, mine, editsOf(read, mine), { datedByClock: false });
+    expect(merged.record.notes).toMatchObject({ comment: 'ici', savedAt: 300 });
+    expect(merged.conflicts).toEqual(['notes.comment']);
+    // Bloc né de ce côté seulement : il arrive sans date de l'autre appareil.
+    const noNotes = { ...read, notes: null };
+    expect(mergeChangedRecord(noNotes, mine, editsOf(noNotes, mine), { datedByClock: false }).record.notes?.savedAt).toBe(0);
+  });
+
   it('même valeur des deux côtés : pas de message', () => {
     const mine = { ...read, name: 'Pareil' };
     expect(mergeChangedRecord({ ...read, name: 'Pareil' }, mine, editsOf(read, mine)).conflicts).toEqual([]);

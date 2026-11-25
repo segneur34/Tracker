@@ -1062,7 +1062,7 @@ const withCarriedSettingsFixed = <T extends SessionRecord>(record: T): T =>
   record.summary.activitySettings ? record : { ...record, summary: { ...record.summary, activitySettings: carriedSettings(record) } };
 
 /** Fiche sans empreinte ni réglages portés : activité ou calcul changé, le résumé est à refaire avec ceux de l'appareil. */
-const withoutCarriedSettings = <T extends SessionRecord>(record: T): T => {
+export const withoutCarriedSettings = <T extends SessionRecord>(record: T): T => {
   if (record.summary.optionsKey === undefined && record.summary.activitySettings === undefined) return record;
   const { optionsKey: _key, activitySettings: _settings, ...summary } = record.summary;
   return { ...record, summary };

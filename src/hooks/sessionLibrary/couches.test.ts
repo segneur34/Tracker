@@ -19,12 +19,13 @@ const SRC = new URL('../../', import.meta.url);
 /** Les couches, de la plus basse à la plus haute. */
 const LAYERS = [
   'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings', 'placeQueue',
-  'addSession', 'pending', 'importer', 'phoneRecovery', 'incoming', 'sessionRecords', 'lifecycle',
+  'trash', 'addSession', 'pending', 'importer', 'phoneRecovery', 'incoming', 'sessionRecords', 'lifecycle', 'trashRestore',
 ] as const;
 
 /** Valeurs exportées par le point d'entrée, les mêmes qu'avant le découpage (et cinq types). */
 const ENTRY_VALUES = [
-  'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'dismissIncomingNotice', 'dismissLibraryMessage',
+  'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'deleteFromTrash', 'dismissIncomingNotice', 'dismissLibraryMessage',
+  'emptyWholeTrash', 'restoreFromTrash', 'stashRoute', 'trashStore',
   'dismissPhoneRecovery', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
   'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'recoverFromPhone', 'refreshLibrary',
@@ -33,7 +34,7 @@ const ENTRY_VALUES = [
   'summarizeGpxText', 'switchToBrowserMemory', 'updateSessionRecord', 'useLibraryFields', 'useLibrarySelector',
   'useLibrarySession', 'usePhoneRecovery', 'useSessionName',
 ];
-const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneRecoveryStep', 'SettingsFileInfo'];
+const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneRecoveryStep', 'SettingsFileInfo', 'TrashState'];
 
 const isCode = (name: string): boolean => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.fixture\.ts$/.test(name);
 

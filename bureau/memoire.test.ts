@@ -200,6 +200,7 @@ describe('dossier choisi', () => {
     expect(await m.ecrireTexte({ racine: 'candidat', chemin: 'Tracker/a.json', texte: '{}' })).toMatchObject({ ok: false, code: 'PERMISSION' })
     expect(await m.ecrireOctets({ racine: 'candidat', chemin: 'a.imu', octets: new Uint8Array(2) })).toMatchObject({ ok: false, code: 'PERMISSION' })
     expect(await m.effacer({ racine: 'candidat', chemin: 'notes.txt.tracker-new' })).toMatchObject({ ok: false })
+    expect(await m.effacerDossier({ racine: 'candidat', chemin: 'Tracker/sessions' })).toMatchObject({ ok: false, code: 'PERMISSION' })
     expect(await contenu(choisi)).toEqual(['Tracker', 'notes.txt.tracker-new'])
     expect(await contenu(path.join(choisi, 'Tracker'))).toEqual(['sessions', 'tracker.json'])
     expect(await contenu(profil)).toEqual([])

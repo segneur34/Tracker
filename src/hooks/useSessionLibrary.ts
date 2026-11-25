@@ -59,6 +59,9 @@ export {
   canChooseMemoryFolder, chooseFolder, currentMemoryFolder, flushBeforeExit, openLibrary, reconnectFolder, refreshLibrary,
   startLibraryUi, switchToBrowserMemory,
 } from './sessionLibrary/lifecycle';
+export { stashRoute, trashStore } from './sessionLibrary/trash';
+export type { TrashState } from './sessionLibrary/trash';
+export { deleteFromTrash, emptyWholeTrash, restoreFromTrash } from './sessionLibrary/trashRestore';
 export type { SettingsFileInfo } from '../library/settingsFile';
 
 /**

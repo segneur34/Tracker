@@ -15,6 +15,7 @@ import PanelTitle from './PanelTitle';
 import PhoneRecoverButton, { PhoneRecoverProgress } from './PhoneRecoverButton';
 import RefreshLibraryButton from './RefreshLibraryButton';
 import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
+import TrashZone from './TrashZone';
 import { HelpText, HelpToggle } from './Help';
 import { useInSettings } from './helpContext';
 import Button from './ui/Button';
@@ -42,7 +43,8 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  * Dans le programme Windows, la même carte dit le dossier du disque : proposé au
  * premier lancement (« Utiliser ce dossier », « Choisir un autre dossier »),
  * introuvable (« Réessayer »), dans OneDrive ; jamais la mémoire du navigateur. Dans Réglages, il y ajoute
- * « Récupérer les sessions du téléphone » (`PhoneRecoverButton`), qui lit le téléphone branché par câble.
+ * « Récupérer les sessions du téléphone » (`PhoneRecoverButton`), qui lit le téléphone branché par câble, et la
+ * corbeille de l'ordinateur (`TrashZone`) quand elle n'est pas vide.
  */
 
 
@@ -355,6 +357,7 @@ function MemoryStatus({
 
         <SettingsOfferBanner />
         {detailed && status === 'ready' && <SettingsFiles />}
+        {detailed && status === 'ready' && folderKind === 'disk' && <TrashZone />}
 
         {alert}
       </div>

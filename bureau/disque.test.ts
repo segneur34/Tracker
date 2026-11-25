@@ -144,6 +144,22 @@ describe('écriture et lecture', () => {
     expect((await stat(path.join(racine, 'sessions'))).isDirectory()).toBe(true)
   })
 
+  it('efface un sous-dossier vide, sans effet sur un absent, et refuse un dossier plein, un fichier et la racine', async () => {
+    const d = dossierDisque(racine)
+    await d.ecrireTexte('corbeille/1-a/a.gpx', 'trace')
+    expect(await codeLeve(d.effacerDossier('corbeille/1-a'))).toBe('UNKNOWN')
+    expect(await d.lireTexte('corbeille/1-a/a.gpx')).toBe('trace')
+    expect(await codeLeve(d.effacerDossier('corbeille/1-a/a.gpx'))).toBe('UNKNOWN')
+    expect(await codeLeve(d.effacerDossier(''))).toBe('UNKNOWN')
+    expect(await codeLeve(d.effacerDossier('corbeille/../..'))).toBe('UNKNOWN')
+    await d.effacer('corbeille/1-a/a.gpx')
+    await d.effacerDossier('corbeille/1-a')
+    expect(await readdir(path.join(racine, 'corbeille'))).toEqual([])
+    await d.effacerDossier('corbeille/1-a')
+    expect(await codeLeve(dossierDisque(racine, { lectureSeule: true }).effacerDossier('corbeille'))).toBe('PERMISSION')
+    expect((await stat(path.join(racine, 'corbeille'))).isDirectory()).toBe(true)
+  })
+
   it('efface avec le fichier ses temporaires, pour qu’une session effacée ne revienne pas au listage suivant', async () => {
     const d = dossierDisque(racine)
     await mkdir(path.join(racine, 'sessions'))
@@ -276,6 +292,7 @@ describe('liens et jonctions', () => {
     expect(await codeLeve(d.ecrireOctets('x/sous/dossier/a.imu', new Uint8Array([1])))).toBe('PERMISSION')
     expect(await codeLeve(d.effacer('x/f.json'))).toBe('PERMISSION')
     expect(await codeLeve(d.effacer('x'))).toBe('PERMISSION')
+    expect(await codeLeve(d.effacerDossier('x'))).toBe('PERMISSION')
     expect(await codeLeve(d.lister('x'))).toBe('PERMISSION')
     expect(await readdir(ailleurs)).toEqual(['f.json'])
     expect(await readFile(path.join(ailleurs, 'f.json'), 'utf8')).toBe('secret')

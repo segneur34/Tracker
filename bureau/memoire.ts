@@ -99,6 +99,8 @@ export interface Memoire {
   ecrireTexte(argument: unknown): Promise<Reponse<null>>
   ecrireOctets(argument: unknown): Promise<Reponse<null>>
   effacer(argument: unknown): Promise<Reponse<null>>
+  /** Efface un sous-dossier vide (corbeille du programme Windows) ; refusé s'il contient encore quelque chose. */
+  effacerDossier(argument: unknown): Promise<Reponse<null>>
 }
 
 /** Canaux servis, dans l'ordre de `Memoire` ; le pont de la page (`preload.ts`) porte les mêmes noms. */
@@ -115,6 +117,7 @@ export const CANAUX_MEMOIRE = [
   'ecrireTexte',
   'ecrireOctets',
   'effacer',
+  'effacerDossier',
 ] as const satisfies readonly (keyof Memoire)[]
 
 // ---------- arguments ----------
@@ -381,6 +384,13 @@ export function creerMemoire(options: OptionsMemoire): Memoire {
       enReponse(async () => {
         const { d, chemin } = await cible(argument)
         await d.effacer(chemin)
+        return null
+      }),
+
+    effacerDossier: (argument) =>
+      enReponse(async () => {
+        const { d, chemin } = await cible(argument)
+        await d.effacerDossier(chemin)
         return null
       }),
   }

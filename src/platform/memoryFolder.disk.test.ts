@@ -215,6 +215,17 @@ describe('mémoire du programme Windows', () => {
     expect(await folder.readText('bom.json')).toBe('{"a":1}');
   });
 
+  it('efface un sous-dossier vide, jamais un dossier qui contient encore un fichier', async () => {
+    const folder = await adoptProposed();
+    await folder.writeText('corbeille/1-a/a.gpx', 'trace');
+    await expect(folder.removeDir!('corbeille/1-a')).rejects.toThrow();
+    expect(await folder.readText('corbeille/1-a/a.gpx')).toBe('trace');
+    await folder.remove('corbeille/1-a/a.gpx');
+    await folder.removeDir!('corbeille/1-a');
+    await folder.removeDir!('corbeille/1-a');
+    expect(await fs.readdir(join(documents, 'Tracker', 'corbeille'))).toEqual([]);
+  });
+
   it('« oublier » : plus rien de retenu, le dossier lui-même n\'est pas touché', async () => {
     const folder = await adoptProposed();
     await folder.writeText(MARKER_FILE, '{}');
