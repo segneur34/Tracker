@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { journalBreakLine, journalFixLine, journalHeaderLine, journalPauseLine, journalResumeLine, journalStopLine, parseJournal } from './journal';
-import { NO_RECOVERY_SERVICES, continuedPause, rebuildRecordingStats, recoveryDecision, resumedPhase, type RecoveryFacts } from './resume';
-import { EMPTY_RECORDING_STATS, addFixAfterManualPause, addFixToStats, recordingDurationMs, displayedDurationMs, type RecordingStats } from './session';
+import { baseActivity } from '../core/activities';
+import {
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalNoteLine, journalPauseLine, journalResumeLine,
+  journalStopLine, parseJournal,
+} from './journal';
+import {
+  NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, journalExtras, rebuildRecordingStats, recoveryDecision, resumedPhase, sessionFromJournal,
+  type RecoveryFacts,
+} from './resume';
+import { EMPTY_RECORDING_STATS, addFixAfterManualPause, addFixToStats, recordingDurationMs, displayedDurationMs, sessionFileName, type RecordingStats } from './session';
 
 const T0 = Date.UTC(2026, 10, 4, 9, 0, 0);
 const OFFER_S = 600;
@@ -190,5 +197,74 @@ describe('journal rouvert', () => {
 
   it('sans aucune ligne datée : âge inconnu', () => {
     expect(parseJournal('pas du json\n').lastLineMs).toBeNull();
+  });
+});
+
+describe('session reconstruite d’un journal relu (lot 232)', () => {
+  /** Journal de `seconds` secondes à `hz` positions par seconde, coupé au milieu, avec un repère au début. */
+  const journalAt = (hz: number, seconds = 60, header = journalHeaderLine('kite', T0, { id: 'a-kite', name: 'Kite' })): string => {
+    const lines = [header];
+    for (let i = 0; i < seconds * hz; i++) {
+      const timeMs = T0 + (i * 1000) / hz;
+      if (i === (seconds / 2) * hz) lines.push(journalBreakLine(timeMs));
+      lines.push(journalFixLine({ timeMs, lat: 43 + i * 1e-5, lon: 3, speedMs: 4, accuracyM: 3 }));
+      if (i === hz) lines.push(journalNoteLine({ timeMs, lat: 43, lon: 3, label: null }));
+    }
+    return lines.join('');
+  };
+
+  it.each([1, 5])('à %i Hz : toutes les positions, deux segments, le repère, le nom et le calcul de l’activité', (hz) => {
+    const session = sessionFromJournal(parseJournal(journalAt(hz)), [], 1000)!;
+    expect(session.pointCount).toBe(60 * hz);
+    expect(session.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(session.content.match(/<trkpt/g)).toHaveLength(60 * hz);
+    expect(session.fileName).toBe(sessionFileName(T0, 'kite'));
+    expect(session.content).toContain('Kite, ');
+    expect(session.activity?.base).toBe('kite');
+    expect(session.marks.map((m) => m.timeMs)).toEqual([T0 + 1000]);
+    expect(session.intervals).toEqual([]);
+    expect(session.test).toBeNull();
+  });
+
+  it('une activité choisie en route prime sur celle du départ', () => {
+    const text = journalAt(1) + journalActivityLine('wingfoil', { id: 'a-wing', name: 'Wing' });
+    const session = sessionFromJournal(parseJournal(text), [{ ...baseActivity('wingfoil'), id: 'a-wing', name: 'Wing' }], 1000)!;
+    expect(session.activity?.id).toBe('a-wing');
+    expect(session.fileName).toBe(sessionFileName(T0, 'wingfoil'));
+  });
+
+  it('sans en-tête lisible : aucune activité devinée, rangée « à classer »', () => {
+    const session = sessionFromJournal(parseJournal(journalAt(1, 10, 'en-tête abîmé\n')), [], 1000)!;
+    expect(session.activity).toBeNull();
+    expect(session.pointCount).toBe(10);
+    expect(session.content).toContain('Session, ');
+  });
+
+  it('sous deux positions, ou illisible : aucune session', () => {
+    const header = journalHeaderLine('kite', T0);
+    expect(sessionFromJournal(parseJournal(header + journalFixLine({ timeMs: T0, lat: 43, lon: 3 })), [], 1000)).toBeNull();
+    expect(sessionFromJournal(parseJournal('\u0000\u0001 pas un journal'), [], 1000)).toBeNull();
+  });
+
+  it('muscu : les mesures de la ceinture, GPX sans position ; sans FC, au moins un intervalle du minuteur', () => {
+    const hr = (s: number, bpm?: number) => journalHeartRateLine(bpm === undefined ? { timeMs: T0 + s * 1000 } : { timeMs: T0 + s * 1000, heartRateBpm: bpm });
+    const muscu = sessionFromJournal(parseJournal(journalHeaderLine('muscu', T0) + hr(0, 90) + hr(1, 95) + hr(2, 100)), [], 1000)!;
+    expect(muscu.pointCount).toBe(3);
+    expect(muscu.content).not.toContain('lat=');
+    const clockOnly = journalHeaderLine('muscu', T0, undefined, { withoutBelt: true });
+    expect(sessionFromJournal(parseJournal(clockOnly + hr(0) + hr(0.5)), [], 1000)).toBeNull();
+    expect(sessionFromJournal(parseJournal(clockOnly + hr(0) + hr(1)), [], 1000)?.pointCount).toBe(0);
+  });
+
+  it('horloge du téléphone en avance sur l’heure du GPS : les repères du début restent', () => {
+    const parsed = parseJournal(journalAt(1, 60, journalHeaderLine('kite', T0 + 5000)));
+    expect(journalExtras(parsed, true).marks.map((m) => m.timeMs)).toEqual([T0 + 1000]);
+  });
+
+  it('heure de la coupure : le dernier point, rien après « Arrêter »', () => {
+    const text = journalAt(1, 20);
+    expect(interruptedAtMs(parseJournal(text))).toBe(T0 + 19_000);
+    expect(interruptedAtMs(parseJournal(text + journalStopLine(T0 + 25_000)))).toBeNull();
+    expect(interruptedAtMs(parseJournal(journalHeaderLine('kite', T0)))).toBe(T0);
   });
 });

@@ -19,6 +19,13 @@ describe('xml', () => {
     expect(escapeXmlAttr('a"b')).toBe('a&quot;b');
   });
 
+  it('retire les caractères interdits en XML, garde tabulation et sauts de ligne (lot 232)', () => {
+    expect(escapeXmlText('Wing\u0000\u0007\u000B\u000C\u001F foil￾￿')).toBe('Wing foil');
+    expect(escapeXmlText('a\tb\nc\rd')).toBe('a\tb\nc\rd');
+    expect(escapeXmlAttr('"x\u0001" & <y>')).toBe('&quot;x&quot; &amp; &lt;y&gt;');
+    expect(escapeXmlText('é ß €')).toBe('é ß €');
+  });
+
   it("refait l'enveloppe de l'enregistreur (une ligne par espace de noms)", () => {
     const old = [
       '<?xml version="1.0" encoding="UTF-8"?>',

@@ -9,12 +9,12 @@ import {
   reconnectMemoryFolder, type DesktopChoiceStart, type MemoryFolder,
 } from '../../platform/memoryFolder';
 import { isDesktopApp } from '../../platform/runtime';
-import { jsonStore, storageStartupFailure } from '../../platform/storage';
+import { jsonStore, settleStoredWrites, storageStartupFailure } from '../../platform/storage';
 import { errorMessage } from '../../core/basics';
 import { libraryState, reportError, setState } from './store';
 import { holdUnwritten, lib, publish, takeUnwritten, writableFolder } from './memory';
 import { noteSettingsGestures, readGestures, refreshFailed } from './summarySettings';
-import { carryUnwritten, recordEdits } from './recordWrites';
+import { carryUnwritten, recordEdits, settleRecordWrites } from './recordWrites';
 import { cancelCacheUpdate } from './cache';
 import { scan } from './scan';
 import { completeScan } from './summaryQueue';
@@ -366,6 +366,18 @@ export const refreshLibrary = (): Promise<void> => {
       setState({ refreshing: false });
     });
   return lib.refreshing;
+};
+
+/**
+ * Juste avant que l'application se ferme (touche retour, croix du programme Windows ; lot 232) : écrit tout de suite
+ * ce qui attendait son délai (fiches, réglages, cache), attend les écritures de fiche déjà en vol, puis celles du
+ * stockage de l'appareil. Les brouillons des analyses ne sont jamais écrits nulle part (`useSessionDraft`) : la
+ * question du brouillon les protège. Ne lève pas : un échec est déjà dit, et la fermeture continue.
+ */
+export const flushBeforeExit = async (): Promise<void> => {
+  await flushWrites().catch(() => undefined);
+  await settleRecordWrites();
+  await settleStoredWrites();
 };
 
 /**

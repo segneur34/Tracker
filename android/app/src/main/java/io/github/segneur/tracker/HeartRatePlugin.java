@@ -147,6 +147,8 @@ public class HeartRatePlugin extends Plugin {
     private final Runnable relocate = this::locate;
     private final Runnable lostRetry = this::retryLost;
     private final Runnable stall = this::stalled;
+    /** Garde-fou d'une ouverture tant que la ceinture n'a jamais été jointe (`OPEN_GUARD_MS`) ; en perte, c'est `lostRetry`. */
+    private final Runnable openGuard = this::openUnanswered;
     /** Bluetooth éteint ou rallumé : la ceinture voulue est lâchée, puis reprise. */
     private final BroadcastReceiver bluetoothState = new BroadcastReceiver() {
         @Override
@@ -431,6 +433,7 @@ public class HeartRatePlugin extends Plugin {
     private void disarm() {
         stopLocating();
         main.removeCallbacks(lostRetry);
+        main.removeCallbacks(openGuard);
         closeGatt();
     }
 
@@ -667,7 +670,8 @@ public class HeartRatePlugin extends Plugin {
      * Ouvre la connexion sur `device`. `autoConnect` faux, pour qu'elle soit
      * rapide ; vrai pour une ceinture perdue que la recherche ne voit pas,
      * restée liée au téléphone. Pendant une perte, la tentative suivante est
-     * armée (`retryLost`) : elle clôt une ouverture restée sans réponse.
+     * armée (`retryLost`) : elle clôt une ouverture restée sans réponse ; avant
+     * la première jonction, c'est le garde-fou `openGuard`, au même délai.
      */
     @SuppressLint("MissingPermission")
     private void open(boolean autoConnect) {
@@ -675,6 +679,7 @@ public class HeartRatePlugin extends Plugin {
         Log.d(TAG, "ouverture " + (autoConnect ? "en attente" : "directe") + ", adresse "
             + (located ? addressTypeText(device) : "non vérifiée"));
         if (lostMode()) retryLostIn(autoConnect ? lostDelay() : OPEN_GUARD_MS);
+        else if (wanted && !joined) main.postDelayed(openGuard, OPEN_GUARD_MS);
         try {
             gatt = device.connectGatt(getContext(), autoConnect, callback, BluetoothDevice.TRANSPORT_LE);
         } catch (SecurityException e) {
@@ -693,6 +698,7 @@ public class HeartRatePlugin extends Plugin {
     private void closeGatt() {
         linked = false;
         main.removeCallbacks(stall);
+        main.removeCallbacks(openGuard);
         if (gatt == null) return;
         try {
             gatt.disconnect();
@@ -741,6 +747,16 @@ public class HeartRatePlugin extends Plugin {
             long sinceConnectMs = SystemClock.elapsedRealtime() - connectedAt;
             main.postDelayed(relocate, sinceConnectMs < LOST_FAST_MS ? LOST_RETRY_MS : LOST_RETRY_SLOW_MS);
         }
+    }
+
+    /**
+     * Première ouverture restée `OPEN_GUARD_MS` sans réponse, la ceinture jamais jointe : sans ce garde-fou, l'état
+     * resterait sur « connexion » jusqu'à « Réessayer ». Close, puis recherchée de nouveau comme après une coupure.
+     */
+    private void openUnanswered() {
+        if (!wanted || joined || gatt == null || linked) return;
+        Log.d(TAG, "ouverture sans réponse depuis " + OPEN_GUARD_MS / 1000 + " s, pas encore jointe : abandonnée");
+        dropped();
     }
 
     /** Liaison établie restée sans trame `STALL_MS` : bloquée, close et relancée. */
@@ -794,6 +810,7 @@ public class HeartRatePlugin extends Plugin {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     linked = true;
                     main.removeCallbacks(lostRetry);
+                    main.removeCallbacks(openGuard);
                     // Garde-fou : sans trame d'ici `STALL_MS`, la liaison est tenue pour bloquée.
                     main.removeCallbacks(stall);
                     main.postDelayed(stall, STALL_MS);

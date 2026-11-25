@@ -576,6 +576,9 @@ describe('reprise silencieuse, cas limites', () => {
     const state = fresh.getRecorderState();
     expect(state.pending).toBeNull();
     expect(state.saved).toMatchObject({ recovered: true, rangedBy: 'recovery', pointCount: 11, libraryFile: 'rangee.gpx' });
+    // Arrêtée par « Arrêter » : l'utilisateur l'a vue finir, rien à dire (lot 232).
+    expect(state.saved?.interruptedAtMs).toBeNull();
+    expect(state.interruptions).toEqual([]);
     // Ni Enregistrer imposé, ni analyse ouverte : la carte attend qu'on y passe.
     expect(state.landOnRecording).toBe(false);
     expect(journal.text).toBeNull();
@@ -966,6 +969,9 @@ describe('« Continuer l\'enregistrement », application tuée puis rouverte', (
     expect(fresh.getRecorderState().pending).toBeNull();
     expect(fresh.getRecorderState().saved).toMatchObject({ recovered: true, rangedBy: 'recovery' });
     expect(fresh.getRecorderState().landOnRecording).toBe(false);
+    // Coupée par le téléphone (lot 232) : la carte de fin et l'analyse disent l'heure de la dernière position.
+    expect(fresh.getRecorderState().saved?.interruptedAtMs).toBe(T0 + 20_000);
+    expect(fresh.getRecorderState().interruptions).toEqual([{ file: 'rangee.gpx', atMs: T0 + 20_000 }]);
   });
 
   it('proposé : pas rangée tant qu’on peut continuer (elle passerait pour un doublon d’elle-même), journal gardé', async () => {

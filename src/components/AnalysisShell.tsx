@@ -15,6 +15,7 @@ import SessionNameEditor from './SessionNameEditor';
 import SessionSaveBar from './SessionSaveBar';
 import type { TrackSegment } from './TrackSegmentsLayer';
 import MotionLeftNotice from './MotionLeftNotice';
+import RecordingInterruptedNotice from './RecordingInterruptedNotice';
 import PageHeader from './ui/PageHeader';
 
 /** Carte de la page : les props d'`AnalysisMap` (l'ancre est posée ici), et le plan de sa rangée (la voile garde `zIndex: 0`). */
@@ -110,6 +111,8 @@ function AnalysisShell<K extends string>({
 
       {/* Capture des capteurs illisible à l'arrêt (lot 212) : le message et « Réessayer », pour cette session seulement. */}
       {file && <MotionLeftNotice file={file} />}
+      {/* Session coupée par le téléphone puis rangée d'office (lot 232) : l'heure où sa trace s'arrête. */}
+      {file && <RecordingInterruptedNotice file={file} />}
 
       {alerts}
 

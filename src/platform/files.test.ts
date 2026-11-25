@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryFile, filesystem, safeFileName, setAsideName } from './files';
+import { createMemoryFile, filesystem, isSetAsideNameOf, safeFileName, setAsideName, setAsideTimeMs } from './files';
 
 describe('fichier mis de côté (lot 143, 123a)', () => {
   const at = Date.UTC(2026, 10, 3, 14, 25, 1, 123);
@@ -16,6 +16,37 @@ describe('fichier mis de côté (lot 143, 123a)', () => {
     expect(await file.read()).toBeNull();
     await file.append('neuf');
     expect(await file.read()).toBe('neuf');
+  });
+
+  it('son nom dit quand il a été mis de côté (lot 232)', () => {
+    expect(setAsideTimeMs(setAsideName('recording-journal.jsonl', at))).toBe(at);
+    expect(setAsideTimeMs(setAsideName('dossier.v2/journal', at))).toBe(at);
+    expect(setAsideTimeMs('recording-journal.jsonl')).toBeNull();
+    expect(setAsideTimeMs('recording-journal-2026-13-45T99-00-00-000Z.jsonl')).toBeNull();
+  });
+
+  it('reconnu à son nom, à côté du fichier, jamais le fichier lui-même (lot 232)', () => {
+    const journal = 'recording-journal.jsonl';
+    expect(isSetAsideNameOf(journal, setAsideName(journal, at))).toBe(true);
+    expect(isSetAsideNameOf(journal, journal)).toBe(false);
+    expect(isSetAsideNameOf(journal, 'recording-journal-.jsonl')).toBe(false);
+    expect(isSetAsideNameOf(journal, 'recording-journal-2026.txt')).toBe(false);
+    expect(isSetAsideNameOf(journal, 'autre-journal-2026.jsonl')).toBe(false);
+    expect(isSetAsideNameOf('dossier/journal.jsonl', setAsideName('dossier/journal.jsonl', at))).toBe(true);
+    expect(isSetAsideNameOf('dossier/journal.jsonl', 'dossier/journal-x/y.jsonl')).toBe(false);
+  });
+
+  it('en mémoire : listé, relu puis effacé, le fichier courant à part (lot 232)', async () => {
+    const file = createMemoryFile('journal.jsonl');
+    await file.write('premier');
+    const first = await file.setAside();
+    await file.write('courant');
+    expect(await file.listAside()).toEqual([first]);
+    expect(await file.readAside(first)).toBe('premier');
+    await file.removeAside(first);
+    expect(await file.listAside()).toEqual([]);
+    expect(await file.readAside(first)).toBeNull();
+    expect(await file.read()).toBe('courant');
   });
 });
 

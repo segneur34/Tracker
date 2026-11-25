@@ -254,6 +254,23 @@ describe('temporaires laissés en attente par un plantage (lot 84, A)', () => {
   });
 });
 
+describe('temporaire complet mais illisible (lot 232)', () => {
+  it('est gardé en attente avec sa fiche, et dit, comme la même session sous son vrai nom', async () => {
+    const empty = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1"><trk><trkseg></trkseg></trk></gpx>\n';
+    pendingFiles.set('sanspoint.gpx.tmp', empty);
+    pendingFiles.set('sanspoint.json', '{}');
+    pendingFiles.set('nomme.gpx', empty);
+    const library = await openFresh();
+    await settle(library);
+    expect([...pendingFiles.keys()].sort()).toEqual(['nomme.gpx', 'sanspoint.gpx.tmp', 'sanspoint.json']);
+    expect(library.readLibraryState().sessions).toEqual([]);
+    const error = library.readLibraryState().error ?? '';
+    expect(error).toContain('sanspoint.gpx illisible, laissée en attente');
+    expect(error).toContain('nomme.gpx illisible, laissée en attente');
+    expect(error).not.toContain('effacée');
+  });
+});
+
 describe('capteurs en attente listés mais introuvables (lot 84, A)', () => {
   it('ne les efface pas quand leur lecture ne rend rien, la session étant rangée sans eux', async () => {
     // Le faux dossier en attente rend `null` à toute lecture d'octets : absents ; une lecture qui lève : `useSessionLibrary.perte.test.ts`.

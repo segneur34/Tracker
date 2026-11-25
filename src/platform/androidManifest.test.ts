@@ -74,6 +74,11 @@ describe('manifeste Android : ce qui reste', () => {
     expect(tag).not.toContain('tools:node');
   });
 
+  it("changer la taille ou la graisse du texte du téléphone ne recrée pas l'activité (enregistrement en cours, lot 232)", () => {
+    const changes = tagWithName(MANIFEST, 'activity', '.MainActivity')?.match(/android:configChanges="([^"]*)"/)?.[1].split('|') ?? [];
+    expect(changes).toEqual(expect.arrayContaining(['fontScale', 'fontWeightAdjustment', 'orientation', 'screenSize', 'uiMode', 'density']));
+  });
+
   it('ne retire pas le récepteur de géorepérage du greffon', () => {
     expect(MANIFEST).not.toContain('GeofenceBroadcastReceiver');
   });

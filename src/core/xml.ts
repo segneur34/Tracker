@@ -4,8 +4,20 @@
  * (`recording/gpxWriter.ts`) et les itinéraires (`planning/routeGpx.ts`). Pur.
  */
 
-/** Texte sûr dans un contenu XML : `&`, `<` et `>` échappés. */
-export const escapeXmlText = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/**
+ * Caractères interdits en XML 1.0 : un seul suffit pour que le lecteur (`core/gpxParser.ts`) et le
+ * navigateur refusent le fichier entier. Tabulation, saut de ligne et retour chariot restent permis.
+ */
+// eslint-disable-next-line no-control-regex
+export const INVALID_XML_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\u{FFFE}\u{FFFF}]/u;
+const INVALID_XML_CHARS_ALL = new RegExp(INVALID_XML_CHARS.source, 'gu');
+
+/**
+ * Texte sûr dans un contenu XML : `&`, `<` et `>` échappés, caractères interdits retirés (un nom collé
+ * avec un caractère invisible rendrait sinon le GPX illisible, par l'application elle-même comprise).
+ */
+export const escapeXmlText = (text: string): string =>
+  text.replace(INVALID_XML_CHARS_ALL, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Texte sûr dans un contenu ou un attribut XML : comme `escapeXmlText`, guillemets compris. */
 export const escapeXmlAttr = (text: string): string => escapeXmlText(text).replace(/"/g, '&quot;');

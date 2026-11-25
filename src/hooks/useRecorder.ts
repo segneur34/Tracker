@@ -1,7 +1,7 @@
 import { errorMessage } from '../core/basics';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { marksWithin, type SessionMark } from '../core/sessionMarks';
+import type { SessionMark } from '../core/sessionMarks';
 import { decodeImu } from '../core/imuFile';
 import { DEFAULT_RECORDING, getSportProfile, hasPositions, type RecordingProfile } from '../core/sportProfiles';
 import { cadenceSeries, joinCadence } from '../running/cadence';
@@ -23,8 +23,7 @@ import {
   adoptRunningService, deviceLocationSource, stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation,
 } from '../platform/location';
 import { readRecoveryServices, type RecoveryServices } from '../platform/recovery';
-import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
-import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
+import type { SessionTest } from '../recording/fitnessTest';
 import {
   START_GPS_WATCH, beltWatchSettings, gpsWatchOnExpired, gpsWatchOnFix, gpsWatchOnPause, gpsWatchOnResume, watchesGps, type GpsWatchState, type GpsWatchStep,
 } from '../recording/gpsWatch';
@@ -32,11 +31,12 @@ import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { runCommand as intervalCommand, seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivity, journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine,
-  journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, parseJournal, type ParsedJournal,
+  journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine,
+  journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, journalSessionActivity, parseJournal, type ParsedJournal,
 } from '../recording/journal';
 import {
-  NO_RECOVERY_SERVICES, continuedPause, rebuildRecordingStats, recoveryDecision, resumedPhase, type RecoveryJournal,
+  NO_RECOVERY_SERVICES, continuedPause, interruptedAtMs, journalExtras, rebuildRecordingStats, recordedSessionGpx, recordedWithPositions, recoveryDecision,
+  resumedPhase, type RecordedTrack, type RecoveryJournal,
 } from '../recording/resume';
 import {
   isAutoPause, isManualPause, receivedFixRole,
@@ -50,8 +50,6 @@ import {
   keepHeartRateSample,
   nothingToKeep,
   roundFix,
-  sessionFileName,
-  sessionTitle,
   shouldFlushJournal,
   segmentCount,
   splitIntoSegments,
@@ -60,6 +58,7 @@ import {
   type PauseClock,
   type RecordingStats,
 } from '../recording/session';
+import { JOURNALS_DIR } from '../library/folderLayout';
 import { saveRecordedSession } from './useSessionLibrary';
 import { createListeners } from './createStore';
 import { resetStopwatch } from './useStopwatch';
@@ -168,6 +167,11 @@ export interface PendingSession {
   test: SessionTest | null;
   /** Ce que l'arrêt a dit d'une capture incomplète (`motionCaptureWarning`), rendu à la session rangée, même après « Réessayer » ; `null` sinon. */
   warning: string | null;
+  /**
+   * Session interrompue rangée d'office (lot 232) : l'heure où la trace s'arrête, pour « Enregistrement interrompu
+   * à … » ; `null` sinon, et après « Arrêter », que l'utilisateur a vu finir.
+   */
+  interruptedAtMs: number | null;
 }
 
 /**
@@ -224,6 +228,19 @@ export interface SavedSession {
    * d'une session interrompue, au lancement, que l'analyse n'ouvre pas d'elle-même.
    */
   rangedBy: 'finish' | 'recovery';
+  /** Heure où s'arrête la trace d'une session interrompue rangée d'office (`PendingSession.interruptedAtMs`) ; `null` sinon. */
+  interruptedAtMs: number | null;
+}
+
+/**
+ * Session interrompue rangée d'office (lot 232), pour « Enregistrement interrompu à … » en tête de son analyse
+ * (`RecordingInterruptedNotice`). En mémoire seulement, comme `LeftCapture` : perdu si l'application redémarre.
+ */
+export interface InterruptedSession {
+  /** Nom de la session dans la mémoire. */
+  file: string;
+  /** Heure où s'arrête la trace. */
+  atMs: number;
 }
 
 export interface RecorderState {
@@ -255,6 +272,8 @@ export interface RecorderState {
   saved: SavedSession | null;
   /** Sessions rangées sans leur capture illisible, pour le message de leur analyse (`retryLeftCapture`). */
   leftCaptures: LeftCapture[];
+  /** Sessions interrompues rangées d'office pendant ce lancement, pour le message de leur analyse (lot 232). */
+  interruptions: InterruptedSession[];
   error: string | null;
   /** GPS perdu : plus de position depuis le délai du profil (lot 115) ; effacé à la position suivante. */
   gpsLost: boolean;
@@ -286,6 +305,7 @@ const INITIAL_STATE: RecorderState = {
   analyzing: false,
   saved: null,
   leftCaptures: [],
+  interruptions: [],
   error: null,
   gpsLost: false,
   beltLost: false,
@@ -294,7 +314,11 @@ const INITIAL_STATE: RecorderState = {
 };
 
 let state = INITIAL_STATE;
-const listeners = createListeners();
+/**
+ * Un abonné qui lève n'interrompt pas l'appelant (lot 232) : sans quoi l'arrêt resterait sur « stopping », GPS allumé,
+ * ou la position gardée sauterait l'écriture du journal.
+ */
+const listeners = createListeners({ safe: true });
 
 const setState = (patch: Partial<RecorderState>): void => {
   state = { ...state, ...patch };
@@ -681,12 +705,6 @@ const withMeasuredCadence = async (
   }
 };
 
-/** Ce qu'un enregistrement a gardé : ses positions, ou, sans position (muscu), les mesures de la ceinture. */
-interface RecordedTrack {
-  segments: LocationFix[][];
-  heart: HeartRateFix[][];
-}
-
 /**
  * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à ce
  * qu'il soit écrit (`rangePendingSession`). Rend `null`, journal effacé, s'il y a moins de
@@ -705,40 +723,21 @@ const buildPendingSession = async (
   test: SessionTest | null
 ): Promise<PendingSession | null> => {
   const sport = activity?.base ?? null;
-  // Sans calcul connu : des positions s'il y en a, sinon les mesures de la ceinture s'il y en a.
-  const withPositions = sport !== null ? hasPositions(sport) : recorded.segments.some((s) => s.length > 0) || !recorded.heart.some((s) => s.length > 0);
-  const titleName = activity?.name ?? 'Session';
-  if (!withPositions) {
-    // Sans ceinture, ou avec une seule mesure, la séance garde sa durée (lot 210) : tous les points comptent.
-    const points = recorded.heart.reduce((n, s) => n + s.length, 0);
-    // Mesures de la ceinture, pour le compte de la carte de fin : le point de l'arrêt, sans FC, n'en est pas une.
-    const measures = recorded.heart.reduce((n, s) => n + s.filter((f) => f.heartRateBpm !== undefined).length, 0);
-    // Sans aucune FC, au moins un intervalle du minuteur hors pauses : « Démarrer » puis « Finir » aussitôt ne garde rien.
-    const activeMs = recorded.heart.reduce((ms, s) => ms + (s.length > 1 ? s[s.length - 1].timeMs - s[0].timeMs : 0), 0);
-    const tickMs = (activity ? effectiveRecordingProfile(activity) : DEFAULT_RECORDING).intervalMs;
-    if (points < 2 || (measures === 0 && activeMs < tickMs)) {
-      await recordingJournal.remove();
-      return null;
-    }
-    const firstMs = recorded.heart.find((s) => s.length > 0)![0].timeMs;
-    const gpx = buildHeartRateGpx(recorded.heart, { name: sessionTitle(firstMs, titleName), sport });
-    return {
-      fileName: sessionFileName(firstMs, sport), content: gpx, sport, activity, pointCount: measures, recovered, canContinue: false, intervals, marks,
-      motion: null, motionBytes: null, test, warning: null,
-    };
-  }
-  const { segments } = recorded;
-  const pointCount = segments.reduce((n, s) => n + s.length, 0);
-  if (pointCount < 2) {
+  const withPositions = recordedWithPositions(sport, recorded);
+  const tickMs = (activity ? effectiveRecordingProfile(activity) : DEFAULT_RECORDING).intervalMs;
+  // La cadence ne se lit que s'il y a une trace à garder (`recordedSessionGpx` en décide de même, sur le même compte).
+  const enough = withPositions && recorded.segments.reduce((n, s) => n + s.length, 0) >= 2;
+  const measured = enough ? await withMeasuredCadence(recorded.segments, sport, motion) : { segments: recorded.segments, bytes: null };
+  const gpx = recordedSessionGpx(activity, { ...recorded, segments: measured.segments }, tickMs);
+  if (!gpx) {
     await recordingJournal.remove();
-    if (motion) await removeMotionCapture(motion.path);
+    if (withPositions && motion) await removeMotionCapture(motion.path);
     return null;
   }
-  const startMs = segments.find((s) => s.length > 0)![0].timeMs;
-  const fileName = sessionFileName(startMs, sport);
-  const measured = await withMeasuredCadence(segments, sport, motion);
-  const content = buildGpx(measured.segments, { name: sessionTitle(startMs, titleName), sport });
-  return { fileName, content, sport, activity, pointCount, recovered, canContinue: false, intervals, marks, motion, motionBytes: measured.bytes, test, warning: null };
+  return {
+    ...gpx, sport, activity, recovered, canContinue: false, intervals, marks,
+    motion: withPositions ? motion : null, motionBytes: measured.bytes, test, warning: null, interruptedAtMs: null,
+  };
 };
 
 /** Session rangée sans sa capture, par nom de fichier : de quoi la ranger de nouveau, capture comprise (`retryLeftCapture`). */
@@ -779,10 +778,15 @@ const rangePendingSession = async (
       fileName: file ?? pending.fileName, libraryFile: file, location, content: pending.content, sport: pending.sport, activity: pending.activity,
       pointCount: pending.pointCount, recovered: pending.recovered, intervals: pending.intervals, marks: pending.marks,
       motionLeft: unreadable === null ? null : { path: unreadable, file }, rangedBy, warning: pending.warning,
+      interruptedAtMs: pending.interruptedAtMs,
     };
     if (unreadable !== null && file !== null) {
       leftSessions.set(file, pending);
       setState({ leftCaptures: [...state.leftCaptures.filter((c) => c.file !== file), { file, path: unreadable, status: 'waiting', detail: null }] });
+    }
+    if (pending.interruptedAtMs !== null && file !== null) {
+      const atMs = pending.interruptedAtMs;
+      setState({ interruptions: [...state.interruptions.filter((c) => c.file !== file), { file, atMs }] });
     }
     setState({ pending: null, rangeFailed: false, saved, error: state.rangeFailed ? null : state.error });
     return saved;
@@ -948,13 +952,17 @@ export type JournalRecovery = 'free' | 'setAside' | 'blocked';
 /**
  * Met de côté le journal d'une session interrompue qui ne se reprend pas,
  * sous un autre nom dans le dossier privé de l'application, et le dit : un
- * nouvel enregistrement peut démarrer sans l'écraser. `why` : ce qui n'a pas
- * marché, en clair.
+ * nouvel enregistrement peut démarrer sans l'écraser. Il est retenté au
+ * lancement suivant (`hooks/setAsideJournals.ts`), ou copié dans le dossier
+ * mémoire s'il reste illisible. `why` : ce qui n'a pas marché, en clair.
  */
 const setJournalAside = async (why: string): Promise<JournalRecovery> => {
   try {
     const name = await recordingJournal.setAside();
-    setState({ error: `${why} : son journal est gardé de côté sur le téléphone (${name}), un nouvel enregistrement peut démarrer.` });
+    setState({
+      error: `${why} : son journal est mis de côté (${name}), un nouvel enregistrement peut démarrer. Il sera repris au prochain `
+        + `lancement de l'application, ou rendu dans le dossier mémoire (sous-dossier ${JOURNALS_DIR}) s'il reste illisible.`,
+    });
     return 'setAside';
   } catch (err) {
     setState({
@@ -965,11 +973,10 @@ const setJournalAside = async (why: string): Promise<JournalRecovery> => {
   }
 };
 
-/** Calcul et activité d'un journal relu : une activité choisie en cours de route prime sur celle du départ ; `null` sans calcul lisible. */
+/** Calcul et activité d'un journal relu (`journalSessionActivity`) ; `null` sans calcul lisible. */
 const journalSession = (parsed: ParsedJournal): { sport: SportType; activity: Activity } | null => {
-  const sport = parsed.activityChange?.sport ?? parsed.header?.sport ?? null;
-  if (sport === null) return null;
-  return { sport, activity: journalActivity(sport, parsed.activityChange?.activity ?? parsed.header?.activity, readStoredActivities()) };
+  const activity = journalSessionActivity(parsed, readStoredActivities());
+  return activity && { sport: activity.base, activity };
 };
 
 /** Ce que `recoveryDecision` lit d'un journal, et le délai de l'offre de « Continuer ». */
@@ -1226,27 +1233,18 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
   await stopOrphans();
   // Capture restée ouverte après un rechargement de la page : fermée, elle attend avec la session.
   const orphan = await stopMotionCapture().catch(() => null);
-  const { header, fixes: list, breaks } = parsed;
+  const { header } = parsed;
   try {
     // Ni en-tête ni changement lisibles : aucun calcul deviné, la session sera rangée « à classer ».
     const sport = session?.sport ?? null;
-    // Sans position (muscu), les mesures de la ceinture tiennent lieu de positions.
-    const withPositions = sport !== null ? hasPositions(sport) : list.length > 0 || parsed.heartFixes.length === 0;
-    const points: ReadonlyArray<{ timeMs: number }> = withPositions ? list : parsed.heartFixes;
-    // Séances du compteur : du démarrage à la dernière position gardée.
-    const fromMs = header?.startedAtMs ?? points[0]?.timeMs ?? 0;
-    const toMs = points[points.length - 1]?.timeMs ?? fromMs;
-    const intervals = seriesWithin(parsed.intervalRuns, fromMs, toMs);
-    // Une note posée en pause manuelle, après la dernière position, est gardée.
-    const recoveredMarks = marksWithin(parsed.marks, fromMs, Infinity);
+    const recorded: RecordedTrack = {
+      segments: splitIntoSegments(parsed.fixes, parsed.breaks),
+      heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks),
+    };
+    // Séances du compteur, repères (comptés depuis le plus tôt du départ et du premier point) et test coupé.
+    const { intervals, marks: recoveredMarks, test } = journalExtras(parsed, recordedWithPositions(sport, recorded));
     const motion = header ? (orphan?.path.endsWith(`/${header.startedAtMs}.imu`) ? orphan : await findMotionCapture(header.startedAtMs)) : null;
-    // Test coupé par l'arrêt : une rampe en cours finit à la dernière position.
-    const test = parsed.test ? closeSessionTest(parsed.test, toMs) : null;
-    const pending = await buildPendingSession(
-      session?.activity ?? null,
-      { segments: splitIntoSegments(list, breaks), heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks) },
-      true, intervals, recoveredMarks, motion, test
-    );
+    const pending = await buildPendingSession(session?.activity ?? null, recorded, true, intervals, recoveredMarks, motion, test);
     // Services arrêtés à présent : seul l'âge du journal décide, reprise échouée comprise.
     const canContinue = recoveryDecision({ ...facts, services: NO_RECOVERY_SERVICES, nowMs }) === 'offer';
     if (!pending) return 'free';
@@ -1257,8 +1255,10 @@ const recoverOnce = async (): Promise<JournalRecovery> => {
       return 'free';
     }
     // Trop ancienne pour continuer, ou arrêtée : rangée d'office, sans mener à Enregistrer ni ouvrir l'analyse (lot 212).
-    setState({ pending, rangeFailed: false, analyzing: true, saved: null, error: null, landOnRecording: false });
-    await startRanging(pending, 'recovery');
+    // Coupée par le téléphone (pas par « Arrêter ») : sa carte de fin et son analyse disent l'heure de la coupure.
+    const ranged = { ...pending, interruptedAtMs: interruptedAtMs(parsed) };
+    setState({ pending: ranged, rangeFailed: false, analyzing: true, saved: null, error: null, landOnRecording: false });
+    await startRanging(ranged, 'recovery');
     return 'free';
   } catch (err) {
     return setJournalAside(`Session interrompue non récupérée (${errorMessage(err, 'erreur inconnue')})`);

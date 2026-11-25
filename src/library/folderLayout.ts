@@ -17,10 +17,14 @@ import { isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basi
  *                        (`core/imuFile.ts`)
  *       itineraires/     une fiche JSON et son GPX par itinéraire planifié
  *                        (`planning/routeRecord.ts`)
+ *       journaux/        les journaux d'enregistrement restés illisibles, copiés
+ *                        tels quels pour l'utilisateur (`hooks/setAsideJournals.ts`)
  */
 
 export const SESSIONS_DIR = 'sessions';
 export const ROUTES_DIR = 'itineraires';
+/** Journaux d'enregistrement illisibles, rendus à l'utilisateur (lot 232) ; l'application ne les relit pas. */
+export const JOURNALS_DIR = 'journaux';
 export const MARKER_FILE = 'tracker.json';
 export const SETTINGS_DIR = 'reglages';
 /** Ancien fichier unique des réglages, à la racine : relu une fois, puis retiré. */
@@ -71,6 +75,8 @@ export const readmeText = (): string =>
     '  Réglages > Mémoire, « Mettre à jour » et « Reprendre ».',
     '- fc-repos.json : vos tests de FC repos. Chaque appareil y ajoute les siens et',
     '  reprend ceux des autres à l\'ouverture du dossier.',
+    `- ${JOURNALS_DIR}/ : n'existe que si un enregistrement interrompu n'a pas pu être`,
+    '  reconstruit : son journal y est copié tel quel, à garder ou à supprimer.',
     '- tracker.json : permet à l\'application de reconnaître ce dossier.',
     '',
     'Sauvegarder ou changer d\'appareil : copiez le dossier Tracker entier.',

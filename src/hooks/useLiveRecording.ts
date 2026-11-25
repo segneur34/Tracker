@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
+import { errorMessage } from '../core/basics';
 import { defaultActiveThresholdOf, getSportProfile, hasPositions, isSilentSport, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, msToKnots } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
@@ -171,17 +172,28 @@ const compute = () => {
   if (computedFor && computedFor.pointCount === stats.pointCount && computedFor.activity === activity && computedFor.trace === trace) return;
   computedFor = { pointCount: stats.pointCount, activity, trace };
   lastRunMs = Date.now();
-  if (!hasPositions(activity.base)) {
-    live = { segments: [], stats: heartOnlyLiveStats(getLiveHeartSegments(), getSportProfile(activity.base).heartRate), updatedMs: lastRunMs, progress: null };
-    publish();
+  let next: LiveRecording;
+  try {
+    if (!hasPositions(activity.base)) {
+      next = { segments: [], stats: heartOnlyLiveStats(getLiveHeartSegments(), getSportProfile(activity.base).heartRate), updatedMs: lastRunMs, progress: null };
+    } else {
+      const segments = getLiveSegments();
+      const options: LiveStatsOptions = { ...liveStatsOptionsFor(activity), activeThreshold: liveActiveThreshold(activity, segments) };
+      const computed = computeLiveStats(segments, getSportProfile(activity.base), options, memory);
+      const along = tracedAlong(trace, activity);
+      if (along && follow?.trace !== along) follow = { trace: along, cursor: createFollowCursor(along) };
+      next = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? follow!.cursor.progress(segments) : null };
+    }
+  } catch (err) {
+    // Appelé pendant la publication d'un état de l'enregistreur : une erreur ne remonte pas jusqu'à lui (lot 232). Les
+    // derniers chiffres restent affichés ; mémoire et curseur, peut-être à moitié mis à jour, repartent de zéro au
+    // calcul suivant.
+    console.warn(`[direct] calcul impossible, derniers chiffres gardés : ${errorMessage(err, 'erreur inconnue')}`);
+    memory = createLiveStatsMemory();
+    follow = null;
     return;
   }
-  const segments = getLiveSegments();
-  const options: LiveStatsOptions = { ...liveStatsOptionsFor(activity), activeThreshold: liveActiveThreshold(activity, segments) };
-  const computed = computeLiveStats(segments, getSportProfile(activity.base), options, memory);
-  const along = tracedAlong(trace, activity);
-  if (along && follow?.trace !== along) follow = { trace: along, cursor: createFollowCursor(along) };
-  live = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? follow!.cursor.progress(segments) : null };
+  live = next;
   publish();
 };
 

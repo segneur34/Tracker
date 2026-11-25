@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { parseGpx } from '../core/gpxParser';
+import { INVALID_XML_CHARS } from '../core/xml';
 import { buildGpx, buildHeartRateGpx } from './gpxWriter';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -13,6 +14,17 @@ describe('buildGpx', () => {
     ]],
     { name: 'Voile & vent <fort>', sport: 'windsurf' }
   );
+
+  it('un nom collé avec des caractères invisibles interdits en XML : retirés, le GPX se relit (lot 232)', () => {
+    const pasted = buildGpx([[
+      { timeMs: T0, lat: 43, lon: 3, speedMs: 3 },
+      { timeMs: T0 + 1000, lat: 43.0001, lon: 3, speedMs: 3 },
+    ]], { name: 'Wing\u0000 \u0007du\u001F matin￿', sport: 'wingfoil' });
+    expect(pasted).not.toMatch(INVALID_XML_CHARS);
+    const read = parseGpx(pasted);
+    expect(read.trackName).toBe('Wing du matin');
+    expect(read.rawPoints).toHaveLength(2);
+  });
 
   it('écrit un point par position, en GPX 1.1', () => {
     expect(gpx.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);

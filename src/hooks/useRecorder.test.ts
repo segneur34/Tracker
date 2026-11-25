@@ -612,6 +612,30 @@ describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
 });
 
 describe('prévenir quand ça rate (lot 115)', () => {
+  it("un abonné qui lève n'empêche ni l'écriture du journal ni l'arrêt complet (lot 232)", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    const off = recorder.subscribeToRecorder(() => {
+      throw new Error('abonné en panne');
+    });
+    try {
+      for (let s = 0; s <= 30; s++) {
+        source.emit(s);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      // Écrit par paquets pendant l'enregistrement, pas seulement à l'arrêt.
+      expect(parseJournal(journal.text ?? '').fixes.length).toBeGreaterThan(0);
+      await recorder.stopRecording();
+      expect(source.stops).toBe(1);
+      expect(source.active).toBe(false);
+      expect(recorder.getRecorderState().status).toBe('idle');
+      expect(recorder.getRecorderState().saved?.pointCount).toBe(31);
+      expect(parseJournal(library.journals[0] ?? '').fixes).toHaveLength(31);
+    } finally {
+      off();
+    }
+  });
+
   it("GPS perdu après 1 min sans position : alerte posée une fois, effacée à la position suivante ; muet en pause manuelle", async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(T0);
@@ -844,7 +868,7 @@ describe('journal illisible (lot 143, 123a)', () => {
     expect(await recorder.recoverInterruptedRecording()).toBe('setAside');
     expect(journal.aside).toEqual(['session perdue']);
     expect(recorder.getRecorderState().pending).toBeNull();
-    expect(recorder.getRecorderState().error).toMatch(/illisible .*gardé de côté/);
+    expect(recorder.getRecorderState().error).toMatch(/illisible .*mis de côté .*prochain lancement.*journaux/);
     await recorder.startRecording(activity, fakeSource());
     expect(recorder.getRecorderState().status).toBe('recording');
     expect(journal.headers).toBe(1);
@@ -858,7 +882,7 @@ describe('journal illisible (lot 143, 123a)', () => {
     expect(recorder.getRecorderState().status).toBe('recording');
     expect(journal.aside).toEqual(['session perdue']);
     expect(journal.headers).toBe(1);
-    expect(recorder.getRecorderState().error).toMatch(/gardé de côté/);
+    expect(recorder.getRecorderState().error).toMatch(/journal est mis de côté/);
   });
 
   it('mise de côté impossible : aucun départ, le journal reste intact', async () => {
@@ -880,7 +904,7 @@ describe('journal illisible (lot 143, 123a)', () => {
     sensors.findFails = true;
     expect(await recorder.recoverInterruptedRecording()).toBe('setAside');
     expect(journal.aside).toEqual([`${header}\n${fix}`]);
-    expect(recorder.getRecorderState().error).toMatch(/non récupérée \(stockage muet\).*gardé de côté/);
+    expect(recorder.getRecorderState().error).toMatch(/non récupérée \(stockage muet\).*mis de côté/);
   });
 
   it('journal absent : rien à faire, rien de dit', async () => {

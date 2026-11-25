@@ -1,4 +1,5 @@
 import type { RawTrackPoint, TimedTrackPoint } from './types';
+import { INVALID_XML_CHARS } from './xml';
 
 /**
  * Lecture d'un fichier GPX, sans dépendance externe ni `DOMParser` (lot 126) :
@@ -50,9 +51,11 @@ const malformed = (): never => {
   throw new Error(MALFORMED);
 };
 
-/** Caractères interdits en XML 1.0 : le navigateur refuse le fichier entier (un UTF-16 lu en UTF-8, par exemple). */
-// eslint-disable-next-line no-control-regex
-const INVALID_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\u{FFFE}\u{FFFF}]/u;
+/**
+ * Caractères interdits en XML 1.0 : le navigateur refuse le fichier entier (un UTF-16 lu en UTF-8, par exemple).
+ * Les mêmes que l'écriture retire (`escapeXmlText`).
+ */
+const INVALID_CHARS = INVALID_XML_CHARS;
 
 /** Code permis par XML 1.0 pour une référence numérique. */
 const isXmlChar = (code: number): boolean =>

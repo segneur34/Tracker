@@ -268,6 +268,72 @@ function questionDeFermeture(fenetre: BrowserWindow): void {
         }) === 0
     journal(`fermeture retenue par la page : ${quitter ? 'quitter' : 'rester'}`)
     if (quitter) evenement.preventDefault()
+    // La page reste : une prochaine fermeture videra de nouveau ses écritures.
+    else vidageFait = false
+  })
+}
+
+// ---------- écritures vidées avant de fermer la fenêtre ----------
+// La page diffère ses écritures (fiche d'une session, réglages, cache) de quelques centaines de millisecondes : avant
+// de fermer la fenêtre, la coquille lui demande de les vider (`coquille:fermeture`) et attend sa réponse
+// (`coquille:fermeturePrete`), jamais plus de `DELAI_VIDAGE_MS` : une page figée ne retient pas la fermeture (lot 232).
+// La question du brouillon (`questionDeFermeture`) vient ensuite, comme avant.
+
+/** Attente la plus longue de la réponse de la page, en millisecondes. */
+const DELAI_VIDAGE_MS = 5000
+
+/** Vrai une fois les écritures vidées pour une fermeture : la demande de fermeture suivante passe. */
+let vidageFait = false
+
+/** Vrai d'une fermeture retenue jusqu'à la fin du vidage : une seconde demande pendant ce temps est sans effet. */
+let fermetureDemandee = false
+
+/** Réponse attendue de la page, `null` quand rien n'est demandé. */
+let vidageAttendu: (() => void) | null = null
+
+/** Vrai quand la page peut répondre : fenêtre ouverte et processus de la page en vie. */
+function pageVivante(fenetre: BrowserWindow): boolean {
+  return !fenetre.isDestroyed() && !fenetre.webContents.isCrashed()
+}
+
+/** Demande à la page de vider ses écritures ; rend quand elle a répondu, au plus tard après `DELAI_VIDAGE_MS`. */
+function viderLesEcritures(fenetre: BrowserWindow): Promise<void> {
+  journal('vidage des écritures demandé à la page')
+  return new Promise((fin) => {
+    const finir = (ligne: string) => {
+      clearTimeout(plafond)
+      vidageAttendu = null
+      journal(ligne)
+      fin()
+    }
+    const plafond = setTimeout(() => finir(`écritures non confirmées après ${DELAI_VIDAGE_MS / 1000} s`), DELAI_VIDAGE_MS)
+    vidageAttendu = () => finir('écritures vidées')
+    fenetre.webContents.send('coquille:fermeture')
+  })
+}
+
+/**
+ * Retient la première demande de fermeture le temps de vider les écritures de la page, puis ferme ; la réponse n'est
+ * prise que de la page de cette fenêtre (`expediteurAdmis`). Une page tombée ferme sans attendre.
+ */
+function viderAvantFermeture(fenetre: BrowserWindow): void {
+  fenetre.webContents.ipc.on('coquille:fermeturePrete', (evenement) => {
+    if (expediteurAdmis(evenement, fenetre.webContents)) vidageAttendu?.()
+  })
+  fenetre.on('close', (evenement) => {
+    if (vidageFait) return
+    if (fermetureDemandee) {
+      evenement.preventDefault()
+      return
+    }
+    if (!pageVivante(fenetre)) return
+    evenement.preventDefault()
+    fermetureDemandee = true
+    void viderLesEcritures(fenetre).then(() => {
+      fermetureDemandee = false
+      vidageFait = true
+      if (!fenetre.isDestroyed()) fenetre.close()
+    })
   })
 }
 
@@ -344,6 +410,7 @@ function ouvrirFenetre(): void {
   fenetrePrincipale = fenetre
   raccourcis(fenetre)
   questionDeFermeture(fenetre)
+  viderAvantFermeture(fenetre)
   if (!BANC) {
     fenetre.once('ready-to-show', () => {
       if (retenue.agrandie) fenetre.maximize()

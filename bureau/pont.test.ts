@@ -102,7 +102,11 @@ describe('preload', () => {
     for (const nom of CANAUX_MEMOIRE) expect(source).toMatch(new RegExp(`\\b${nom}: (sans|avec)\\('memoire:${nom}'\\)`))
     // Les textes de la coquille restent en français, écrits dans `main.ts` : aucun canal hors de la mémoire.
     expect(source.match(/ipcRenderer\.invoke\(/g)).toHaveLength(2)
-    expect(source).not.toMatch(/'coquille:/)
+    // Seuls canaux de la coquille : la demande de vider les écritures avant la fermeture, et sa réponse (lot 232).
+    expect([...new Set([...source.matchAll(/'(coquille:[A-Za-z]+)'/g)].map((m) => m[1]))].sort()).toEqual(['coquille:fermeture', 'coquille:fermeturePrete'])
+    expect(source).toContain("ipcRenderer.on('coquille:fermeture',")
+    expect(source).toContain("ipcRenderer.send('coquille:fermeturePrete')")
+    expect(source).toMatch(/surFermeture: \(rappel/)
     expect(source).not.toMatch(/exposeInMainWorld\([^)]*ipcRenderer/)
     expect(source).not.toMatch(/from '\.\//)
   })

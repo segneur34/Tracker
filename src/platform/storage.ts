@@ -153,6 +153,34 @@ export const createMirroredBackend = (
   };
 };
 
+/**
+ * Suivi d'écritures lancées sans être attendues (lot 232) : `track` en retient une jusqu'à sa fin, réussie ou non ;
+ * `settle` attend toutes celles en cours, celles lancées pendant l'attente comprises. Ne lève jamais.
+ */
+export const createWriteTracker = (): { track: (write: Promise<unknown>) => void; settle: () => Promise<void> } => {
+  const inFlight = new Set<Promise<unknown>>();
+  return {
+    track: (write) => {
+      const settled = write.then(() => undefined, () => undefined);
+      inFlight.add(settled);
+      void settled.then(() => inFlight.delete(settled));
+    },
+    settle: async () => {
+      while (inFlight.size > 0) await Promise.all([...inFlight]);
+    },
+  };
+};
+
+/** Écritures des Preferences natives en cours, que la fermeture de l'application attend (`settleStoredWrites`). */
+const nativeWrites = createWriteTracker();
+
+/**
+ * Attend que les écritures du stockage natif déjà lancées soient finies, avant de fermer l'application (touche
+ * retour) : `createMirroredBackend` les lance sans les attendre. Sans effet dans le navigateur, dont le
+ * `localStorage` écrit tout de suite. Ne lève jamais.
+ */
+export const settleStoredWrites = (): Promise<void> => nativeWrites.settle();
+
 /** Stockage natif une fois chargé ; `null` dans le navigateur, qui garde `localStorage`. */
 let nativeBackend: StorageBackend | null = null;
 
@@ -242,6 +270,6 @@ export const initStorage = async (): Promise<void> => {
   nativeBackend = createMirroredBackend(load.initial, (key, value) => {
     if (unreadable.has(key)) return;
     // Écriture refusée : la valeur, déjà en mémoire, vaut pour la session en cours.
-    preferences.set({ key, value }).catch(() => jsonStore.reportFailure(key));
+    nativeWrites.track(preferences.set({ key, value }).catch(() => jsonStore.reportFailure(key)));
   });
 };

@@ -19,6 +19,19 @@ vi.mock('./useRecorder', () => ({
   },
 }));
 
+/** Calcul du direct qui lève à la demande, comme une erreur du calcul sur une trace inattendue. */
+const failing = vi.hoisted(() => ({ on: false }));
+vi.mock('../recording/liveStats', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../recording/liveStats')>();
+  return {
+    ...original,
+    computeLiveStats: (...args: Parameters<typeof original.computeLiveStats>) => {
+      if (failing.on) throw new Error('calcul en panne');
+      return original.computeLiveStats(...args);
+    },
+  };
+});
+
 // Une page qui lit le direct : sans rendu, seul son abonnement compte ici.
 vi.mock('react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react')>()),
@@ -106,5 +119,40 @@ describe('direct de la FC de nuit (lot 213)', () => {
     }
     // 2 min de mesures : au départ, puis à 30, 60 et 90 s (pas 120 recalculs, ni 60 au rythme de la page).
     expect(published).toBe(4);
+  });
+});
+
+describe('direct de l’enregistrement : calcul en erreur (lot 232)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    recorder.state.activity = baseActivity('running');
+    failing.on = false;
+  });
+  afterEach(() => {
+    failing.on = false;
+    vi.useRealTimers();
+  });
+
+  it("une erreur du calcul ne remonte pas jusqu'à l'enregistreur et garde les derniers chiffres", async () => {
+    const { getLiveRecording, startLiveRecording } = await loadLive();
+    startLiveRecording();
+    addFix(T0 + 200_000);
+    const before = getLiveRecording();
+    const beforeStats = JSON.stringify(before.stats);
+    expect(before.updatedMs).toBe(T0 + 200_000);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    failing.on = true;
+    try {
+      expect(() => addFix(T0 + 300_000)).not.toThrow();
+      expect(getLiveRecording()).toBe(before);
+      expect(JSON.stringify(getLiveRecording().stats)).toBe(beforeStats);
+    } finally {
+      failing.on = false;
+      warn.mockRestore();
+    }
+    addFix(T0 + 400_000);
+    expect(getLiveRecording().updatedMs).toBe(T0 + 400_000);
+    expect(JSON.stringify(getLiveRecording().stats)).not.toBe(beforeStats);
   });
 });

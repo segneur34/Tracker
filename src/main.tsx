@@ -16,13 +16,17 @@ import { startZoneAlertGuide } from './hooks/useZoneAlert';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { getRecorderState, isRecordingActive, recoverInterruptedRecording, subscribeToRecorder } from './hooks/useRecorder';
-import { openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi, startPlaceSearch } from './hooks/useSessionLibrary';
+import { retrySetAsideJournals } from './hooks/setAsideJournals';
+import {
+  flushBeforeExit, openLibrary, reportStartupError, settingsUpgraded, startIncomingFiles, startLibraryUi, startPlaceSearch,
+} from './hooks/useSessionLibrary';
 import { importRouteGpx } from './hooks/routeFiles';
 import { incomingFiles } from './platform/incomingFile';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { forgetFormerAnalysisTabs } from './hooks/useOpenSections';
 import { startTheme } from './hooks/useTheme';
 import { installBackButton } from './platform/backButton';
+import { onDesktopClose } from './platform/desktopBridge';
 import { isRecordingSession } from './recording/session';
 import { clearStaleScreenOn, resetOrientationLock } from './platform/screen';
 import { initStorage } from './platform/storage';
@@ -36,6 +40,9 @@ const LIBRARY_OPEN_WAIT_MS = 1500;
 // Thème posé tout de suite, sans attendre le stockage : dans le navigateur, le réglage est déjà lisible ; sur le
 // téléphone, « Auto » (le défaut) suit déjà le système. Reposé une fois le stockage natif chargé.
 startTheme();
+
+// Un journal mis de côté après cet instant attend le lancement suivant (`retrySetAsideJournals`).
+const launchedAtMs = Date.now();
 
 // Le stockage natif doit être en mémoire avant le premier rendu : les hooks
 // le lisent pendant le rendu (`platform/storage.ts`). La mémoire aussi, si
@@ -82,8 +89,11 @@ void initStorage()
       reportStartupError(`Réglages de l'appareil non mis à jour pour cette version : ${detail}`);
     }
     installLeaveGuard();
-    // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en arrière-plan.
-    void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave);
+    // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en
+    // arrière-plan ; sinon, elle la ferme une fois les écritures en attente sur le disque, comme la croix du programme
+    // Windows (lot 232).
+    void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave, flushBeforeExit);
+    onDesktopClose(flushBeforeExit);
     // Un enregistrement coupé reprend seul si son service a survécu à la page ; sinon il est rangé, ou attend « Continuer » s'il est frais.
     const recovered = recoverInterruptedRecording();
     // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
@@ -97,6 +107,9 @@ void initStorage()
       // Déjà à l'arrêt (« Arrêter » attendait la reprise) : sa séance s'arrête avec lui.
       startIntervalTimer(isRecordingSession(getRecorderState()));
       if (!isRecordingActive()) clearStaleScreenOn();
+      // Journaux mis de côté lors d'un lancement précédent : retentés, ou rendus dans le dossier mémoire ; jamais pendant
+      // un enregistrement. Celui que la reprise vient de mettre de côté attend le suivant, comme son message le dit.
+      void retrySetAsideJournals(isRecordingActive, launchedAtMs);
       // Fichiers reçus d'une autre application : rangés hors enregistrement, un enregistrement repris les fait attendre.
       // Un GPX d'itinéraire va dans les itinéraires (lot 194).
       void startIncomingFiles(isRecordingActive, subscribeToRecorder, incomingFiles, importRouteGpx);

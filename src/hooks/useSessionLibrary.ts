@@ -54,7 +54,7 @@ export {
   updateSessionRecord,
 } from './sessionLibrary/sessionRecords';
 export {
-  canChooseMemoryFolder, chooseFolder, currentMemoryFolder, openLibrary, reconnectFolder, refreshLibrary,
+  canChooseMemoryFolder, chooseFolder, currentMemoryFolder, flushBeforeExit, openLibrary, reconnectFolder, refreshLibrary,
   startLibraryUi, switchToBrowserMemory,
 } from './sessionLibrary/lifecycle';
 export type { SettingsFileInfo } from '../library/settingsFile';

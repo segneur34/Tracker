@@ -36,10 +36,28 @@ const memoire = Object.freeze({
   effacer: avec('memoire:effacer'),
 })
 
+/**
+ * Avant de fermer la fenêtre, la coquille demande à la page de vider ses écritures en attente (`coquille:fermeture`,
+ * lot 232) : chaque rappel inscrit par `surFermeture` est attendu, la promesse qu'il rend comprise, puis la réponse
+ * part (`coquille:fermeturePrete`), même si un rappel a échoué. Sans rappel inscrit (page d'une version plus
+ * ancienne), elle part aussitôt. La coquille n'attend la réponse que quelques secondes.
+ */
+const rappelsFermeture = new Set<() => unknown>()
+ipcRenderer.on('coquille:fermeture', () => {
+  void Promise.allSettled([...rappelsFermeture].map(async (rappel) => rappel())).then(() => ipcRenderer.send('coquille:fermeturePrete'))
+})
+
 contextBridge.exposeInMainWorld(
   'trackerBureau',
   Object.freeze({
     version: versionPassee(),
     memoire,
+    /** Inscrit un rappel attendu avant la fermeture de la fenêtre ; rend la fonction de désabonnement. */
+    surFermeture: (rappel: () => unknown) => {
+      rappelsFermeture.add(rappel)
+      return () => {
+        rappelsFermeture.delete(rappel)
+      }
+    },
   }),
 )

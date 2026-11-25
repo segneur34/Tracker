@@ -11,6 +11,7 @@ import { useGearGroups } from '../hooks/useSportSettings';
 import { DISCARD_HOLD_MS } from '../library/discardOutcome';
 import { canDownloadFiles, downloadTextFile } from '../platform/files';
 import { deviceLocationSource } from '../platform/location';
+import { interruptedNotice } from '../recording/resume';
 import SavedSessionShare from './SavedSessionShare';
 import { IconTrash } from './icons';
 import Button from './ui/Button';
@@ -189,6 +190,12 @@ export function SavedSessionCard({ saved, arrivedHere, activities, native }: {
       <p className="rec-saved-text">
         {activity?.name ?? 'À classer'}, {keptText(saved.sport, saved.pointCount)}.<br />
         <span className="ui-muted ui-text-s rec-break-all">Rangée dans : {saved.location}</span>
+        {saved.interruptedAtMs !== null && (
+          <>
+            <br />
+            <span className="ui-text-s" data-testid="rec-end-interrupted">{interruptedNotice(saved.interruptedAtMs)}</span>
+          </>
+        )}
         {saved.motionLeft && (
           <>
             <br />

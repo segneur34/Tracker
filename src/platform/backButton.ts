@@ -46,17 +46,58 @@ export const dispatchBack = (canLeave: () => boolean = () => true): BackOutcome 
 };
 
 /**
+ * Attente maximale des écritures avant de fermer l'application par la touche retour (lot 232) : un disque qui ne
+ * répond plus ne retient pas l'utilisateur au-delà. Les écritures d'une fiche tiennent en quelques centaines de
+ * millisecondes.
+ */
+export const EXIT_FLUSH_MAX_MS = 3000;
+
+/** Fermeture en cours (`exitAfter`) : une seconde touche retour pendant l'attente ne la double pas. */
+let exiting = false;
+
+/**
+ * Ferme l'application par `exit`, après `beforeExit` (écritures en attente vidées), au plus `maxMs` d'attente ; une
+ * tâche en échec n'empêche pas de fermer. Un second appel pendant l'attente est ignoré.
+ */
+export const exitAfter = async (
+  beforeExit: (() => Promise<void>) | undefined,
+  exit: () => unknown,
+  maxMs: number = EXIT_FLUSH_MAX_MS,
+): Promise<void> => {
+  if (exiting) return;
+  exiting = true;
+  try {
+    if (beforeExit) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const ceiling = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, maxMs);
+      });
+      await Promise.race([beforeExit().catch(() => undefined), ceiling]);
+      clearTimeout(timer);
+    }
+    await exit();
+  } finally {
+    exiting = false;
+  }
+};
+
+/**
  * Touche retour d'Android, et geste du bord de l'écran : elle ferme la vue
  * posée par-dessus la page (`pushBackLayer`), sinon renvoie à la page
  * au-dessus (`core/parentPage.ts`), pas à la page vue juste avant. À
  * l'accueil, elle fermerait l'activité, donc la WebView : un enregistrement en
  * cours perdrait alors ses positions, même si le service GPS continue de
  * tourner. Tant que `keepAlive` répond vrai, l'application passe en
- * arrière-plan au lieu de se fermer. `canLeave` peut retenir l'utilisateur sur
- * la page (modifications non enregistrées). Dans le navigateur, en
- * développement, `window.trackerBack()` fait le même retour (banc).
+ * arrière-plan au lieu de se fermer ; sinon elle se ferme après `beforeExit`
+ * (écritures en attente), attendue au plus `EXIT_FLUSH_MAX_MS`. `canLeave` peut
+ * retenir l'utilisateur sur la page (modifications non enregistrées). Dans le
+ * navigateur, en développement, `window.trackerBack()` fait le même retour (banc).
  */
-export const installBackButton = async (keepAlive: () => boolean, canLeave: () => boolean = () => true): Promise<void> => {
+export const installBackButton = async (
+  keepAlive: () => boolean,
+  canLeave: () => boolean = () => true,
+  beforeExit?: () => Promise<void>,
+): Promise<void> => {
   if (!isNativeApp()) {
     if (import.meta.env.DEV) (window as Window & { trackerBack?: () => BackOutcome }).trackerBack = () => dispatchBack(canLeave);
     return;
@@ -65,6 +106,6 @@ export const installBackButton = async (keepAlive: () => boolean, canLeave: () =
   await App.addListener('backButton', () => {
     if (dispatchBack(canLeave) !== 'none') return;
     if (keepAlive()) void App.minimizeApp();
-    else void App.exitApp();
+    else void exitAfter(beforeExit, () => App.exitApp());
   });
 };

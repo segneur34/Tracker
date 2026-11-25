@@ -572,6 +572,32 @@ describe('changement de dossier avec une fiche pas encore écrite (2, décision 
   });
 });
 
+describe('application fermée juste après une saisie (lot 232)', () => {
+  it('flushBeforeExit écrit la saisie qui attendait son délai, et attend celle déjà en vol', async () => {
+    files.set('sessions/sortie.gpx', gpxAt(0));
+    const library = await openFresh();
+    await settle(library);
+    // Saisie encore dans son délai : écrite tout de suite.
+    library.updateSessionRecord('sortie.gpx', { name: 'Matin' });
+    await library.flushBeforeExit();
+    expect(recordOf(files, 'sortie.gpx').name).toBe('Matin');
+
+    // Écriture partie, que le disque retient : la fermeture l'attend.
+    let release: () => void = () => undefined;
+    writeGate = new Promise((resolve) => { release = resolve; });
+    await afterWrites(() => library.updateSessionRecord('sortie.gpx', { name: 'Soir' }));
+    let closed = false;
+    const closing = library.flushBeforeExit().then(() => { closed = true; });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(closed).toBe(false);
+    expect(recordOf(files, 'sortie.gpx').name).toBe('Matin');
+    release();
+    writeGate = null;
+    await closing;
+    expect(recordOf(files, 'sortie.gpx').name).toBe('Soir');
+  });
+});
+
 describe('session en attente déjà rangée, en lecture seule (1, relecture)', () => {
   it('reste en attente avec sa fiche, et c’est dit, puis se range quand la fiche se relit', async () => {
     files.set('sessions/sortie.gpx', gpxAt(0));

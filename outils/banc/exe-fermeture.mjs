@@ -7,6 +7,9 @@
 //  B. avec un brouillon (vent saisi, « Enregistrer la session » attendu), `TRACKER_BANC_QUITTER=non` : la fenêtre reste,
 //     la page répond, le journal de la coquille dit que la question a été posée ;
 //  C. le même, `TRACKER_BANC_QUITTER=oui` : la question est répondue « Quitter », le programme se ferme.
+//  G. écritures vidées avant la fermeture (lot 232) : un nom de session saisi, la croix aussitôt ; la coquille attend
+//     que la page ait vidé ses écritures (`flushBeforeExit`, plafond de 5 s : le journal dit « écritures vidées »,
+//     jamais « non confirmées »), le nom est sur le disque, et il est montré à la réouverture sur le même profil.
 // Puis les trois mêmes après un rechargement fait par la page (`location.reload()`, comme la remise à zéro ou le
 // changement d'un réglage de l'appareil) : D sans brouillon, E « Rester », F « Quitter ». Pour eux la fenêtre est
 // montrée, transparente (`TRACKER_BANC_MONTRER=transparente`) : après un rechargement, Chromium ajoute au processus une
@@ -35,12 +38,13 @@ let echecs = 0;
 const check = (quoi, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${quoi}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) echecs++; };
 
 /** Une instance du programme sur un profil neuf ; rend le processus, le journal et l'adresse de la page. */
-async function lancerProgramme(quitter, montrer) {
-  const profil = mkdtempSync(join(tmpdir(), 'tracker-fermeture-'));
+async function lancerProgramme(quitter, montrer, reprise = null) {
+  // `reprise` : le profil d'une instance précédente (réouverture), mémoire comprise, sans l'effacer entre-temps.
+  const profil = reprise ?? mkdtempSync(join(tmpdir(), 'tracker-fermeture-'));
   // Une mémoire prête d'avance, comme le lanceur la donne (`passe.mjs --exe`) : sans elle, le premier lancement n'a pas
   // de dossier mémoire et refuse l'import. `records()` (lib/cdp.mjs) la lit par Node.
   const memoire = join(profil, 'memoire');
-  mkdirSync(memoire);
+  mkdirSync(memoire, { recursive: true });
   process.env.TRACKER_MEMOIRE = memoire;
   const env = { ...process.env, TRACKER_BANC: '1', TRACKER_PROFIL: profil, TRACKER_MEMOIRE: memoire, TRACKER_BANC_QUITTER: quitter };
   if (montrer) env.TRACKER_BANC_MONTRER = 'transparente';
@@ -157,6 +161,73 @@ async function quitter(titre, rechargement) {
 await sansBrouillon('A. Sans brouillon : fermeture demandée à la fenêtre', false);
 await rester('B. Brouillon, réponse du mode d\'essai « Rester » (TRACKER_BANC_QUITTER=non)', false);
 await quitter('C. Brouillon, réponse du mode d\'essai « Quitter » (TRACKER_BANC_QUITTER=oui)', false);
+const NOM_SAISI = 'Nom saisi avant la croix';
+
+/** Nom saisi dans l'en-tête de l'analyse, puis demande de fermeture sans attendre ; la réouverture relit le nom. */
+async function ecrituresVidees() {
+  console.log('\n== G. Nom de session saisi, fermeture aussitôt : écritures vidées, nom gardé à la réouverture');
+  const p = await lancerProgramme('non', false);
+  process.env.BANC_WS = p.ws;
+  const b = await connect({ port: PORT, base: ORIGINE, width: 1400, height: 1000 });
+  let ferme = false;
+  try {
+    const { evaluate, waitFor, wait, blockNetwork, importGpx, records } = b;
+    await blockNetwork();
+    const entrer = (adresse) => evaluate(`(() => { history.pushState({}, '', ${JSON.stringify(adresse)}); dispatchEvent(new PopStateEvent('popstate')); return 'ok'; })()`);
+    await entrer('/voile');
+    await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 8000, label: 'champ' });
+    await importGpx(traceDroite({ debutMs: Date.UTC(2026, 9, 1, 7, 0, 0), secondes: 600, vitesse: 4, type: 'wingfoil', nom: 'Vidage' }), 'vidage.gpx');
+    const fiche = await waitFor(async () => (await records())?.[0], { timeout: 6000, label: 'fiche' });
+    await wait(1500);
+    await entrer(`/voile/analyse?session=${encodeURIComponent(fiche?.gpx ?? '')}`);
+    await waitFor(`Boolean([...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer'))`, { timeout: 15000, label: 'Renommer' });
+    await b.settle({ max: 4000 });
+    for (let k = 0; k < 3 && !(await evaluate(`Boolean(document.querySelector('input[aria-label="Nom de la session"]'))`)); k++) {
+      await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer')?.click()`);
+      await wait(700);
+    }
+    await waitFor(`Boolean(document.querySelector('input[aria-label="Nom de la session"]'))`, { timeout: 4000, label: 'champ du nom' });
+    check('la fiche n\'a pas encore de nom avant la saisie', !(await records())?.[0]?.name);
+    await evaluate(`(() => { const i = document.querySelector('input[aria-label="Nom de la session"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(NOM_SAISI)}); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 'ok'; })()`);
+    const surDisqueAvant = (await records())?.[0]?.name === NOM_SAISI;
+    console.log(`nom déjà sur le disque à la demande de fermeture : ${surDisqueAvant ? 'oui (écriture déjà faite, l\'essai ne prouve rien de plus)' : 'non (écriture encore différée)'}`);
+    const debut = Date.now();
+    const k = fermerWindows(p.child.pid);
+    console.log(`demande de fermeture : ${k.status === 0 ? 'envoyée' : `refusée (${String(k.stdout).trim()} ${String(k.stderr).trim()})`}`);
+    ferme = await disparu(p.child.pid, 8000);
+    const duree = Date.now() - debut;
+    console.log(`fermeture en ${duree} ms`);
+    check('la croix ferme le programme', ferme);
+    check('la fermeture ne dépasse pas le plafond de 5 s du vidage', ferme && duree < 6500, `${duree} ms`);
+    await pause(1000); // le journal de la sortie arrive après la fin du processus
+    check('le journal dit « écritures vidées »', p.journal.some((l) => /écritures vidées/.test(l)), lignesFermeture(p) + ' | ' + p.journal.filter((l) => /vidage|écritures/.test(l)).join(' | '));
+    check('le journal ne dit pas « écritures non confirmées »', !p.journal.some((l) => /écritures non confirmées/.test(l)));
+    const apres = (await records())?.[0];
+    check('le nom saisi est sur le disque après la fermeture', apres?.name === NOM_SAISI, apres?.name);
+    try { await b.close(); } catch { /* page déjà fermée */ }
+    if (!ferme) { await nettoyer(p); return; }
+    // Réouverture sur le même profil, mémoire comprise.
+    const p2 = await lancerProgramme('non', false, p.profil);
+    process.env.BANC_WS = p2.ws;
+    const b2 = await connect({ port: PORT, base: ORIGINE, width: 1400, height: 1000 });
+    try {
+      await b2.blockNetwork();
+      await b2.evaluate(`(() => { history.pushState({}, '', '/voile'); dispatchEvent(new PopStateEvent('popstate')); return 'ok'; })()`);
+      const vu = await b2.waitFor(`document.body.innerText.includes(${JSON.stringify(NOM_SAISI)})`, { timeout: 10000, label: 'nom relu' });
+      check('à la réouverture, la liste montre le nom saisi', Boolean(vu));
+      check('la fiche relue garde le nom', (await b2.records())?.[0]?.name === NOM_SAISI);
+    } finally {
+      try { await b2.close(); } catch { /* page déjà fermée */ }
+      await nettoyer(p2);
+    }
+  } catch (e) {
+    check(`essai interrompu : ${e.message}`, false);
+    try { await b.close(); } catch { /* page déjà fermée */ }
+    await nettoyer(p);
+  }
+}
+
+await ecrituresVidees();
 await sansBrouillon('D. Page rechargée, sans brouillon : fermeture demandée à la fenêtre', true);
 await rester('E. Page rechargée, brouillon, réponse « Rester »', true);
 await quitter('F. Page rechargée, brouillon, réponse « Quitter »', true);

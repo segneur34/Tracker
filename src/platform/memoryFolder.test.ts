@@ -29,6 +29,7 @@ describe('isMemorySubfolder', () => {
     expect(isMemorySubfolder('sessions', new Set(['a.gpx', 'a.json']))).toBe(true);
     expect(isMemorySubfolder('Documents/Tracker/Sessions', new Set())).toBe(true);
     expect(isMemorySubfolder('itineraires', new Set(['Boucle.json']))).toBe(true);
+    expect(isMemorySubfolder('journaux', new Set(['recording-journal-2026.jsonl']))).toBe(true);
   });
 
   it('accepte un dossier marqué comme mémoire, quel que soit son nom, et tout autre dossier', () => {

@@ -258,11 +258,11 @@ export const shouldDescendIntoMemory = (pickedName: string, names: ReadonlySet<s
   names.has(MEMORY_FOLDER_NAME);
 
 /** Sous-dossiers d'une mémoire, qu'on ne prend jamais pour la mémoire elle-même. */
-const MEMORY_SUBFOLDERS = ['sessions', 'itineraires'];
+const MEMORY_SUBFOLDERS = ['sessions', 'itineraires', 'journaux'];
 
 /**
  * Le dossier désigné est-il un sous-dossier d'une mémoire (`sessions`,
- * `itineraires`) plutôt que la mémoire ? Le prendre pour la mémoire y
+ * `itineraires`, `journaux`) plutôt que la mémoire ? Le prendre pour la mémoire y
  * créerait une mémoire neuve, un niveau trop bas : les sessions copiées dans
  * `sessions/` n'apparaîtraient plus. Un dossier qui porte le marqueur
  * (`tracker.json`) est une mémoire, quel que soit son nom.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createJsonStore, createMirroredBackend, loadNativeEntries, type PreferencesReader, type StorageBackend } from './storage';
+import { createJsonStore, createMirroredBackend, createWriteTracker, loadNativeEntries, type PreferencesReader, type StorageBackend } from './storage';
 
 /** Preferences simulées du téléphone, pour `initStorage`. */
 const preferences = {
@@ -278,5 +278,27 @@ describe('chargement du stockage du téléphone (A3)', () => {
     await storage.initStorage();
     expect(storage.storageStartupFailure()).toBeNull();
     expect(storage.jsonStore.read('tracker.a')).toBe('un');
+  });
+});
+
+describe('écritures suivies avant la fermeture (lot 232)', () => {
+  it('attend celles en cours, celles lancées pendant l’attente comprises, échecs compris, sans lever', async () => {
+    const tracker = createWriteTracker();
+    await tracker.settle();
+    const done: string[] = [];
+    let first: () => void = () => undefined;
+    tracker.track(new Promise<void>((resolve) => { first = resolve; }).then(() => {
+      done.push('première');
+      // Une écriture lancée pendant l'attente : attendue aussi.
+      tracker.track(Promise.resolve().then(() => done.push('suivante')));
+    }));
+    tracker.track(Promise.reject(new Error('refusée')));
+    let settled = false;
+    const waiting = tracker.settle().then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    first();
+    await waiting;
+    expect(done).toEqual(['première', 'suivante']);
   });
 });

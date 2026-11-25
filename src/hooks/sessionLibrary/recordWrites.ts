@@ -194,6 +194,14 @@ export const writeRecordNow = (file: string): Promise<boolean> => {
   return run;
 };
 
+/**
+ * Attend la fin de toutes les écritures de fiche lancées, celles déjà en vol comprises, que `flushWrites`
+ * n'attend pas, et celles qui s'y enchaînent pendant l'attente (lot 232). Ne lève pas : un échec est déjà dit.
+ */
+export const settleRecordWrites = async (): Promise<void> => {
+  while (writeQueue.size > 0) await Promise.all([...writeQueue.values()].map((run) => run.catch(() => false)));
+};
+
 export const scheduleRecordWrite = (file: string): void => {
   const timer = recordTimers.get(file);
   if (timer !== undefined) clearTimeout(timer);

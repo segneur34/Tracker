@@ -31,13 +31,40 @@ export interface TextFile {
    * erreur si le fichier n'a pas pu être déplacé.
    */
   setAside(): Promise<string>;
+  /** Noms des fichiers mis de côté par `setAside` encore là, du plus ancien au plus récent (lot 232). */
+  listAside(): Promise<string[]>;
+  /** Contenu d'un fichier mis de côté, `null` s'il n'existe plus ; lève s'il est là mais ne se lit pas. */
+  readAside(name: string): Promise<string | null>;
+  /** Efface un fichier mis de côté ; lève si l'effacement échoue. */
+  removeAside(name: string): Promise<void>;
 }
+
+/**
+ * `name` est-il celui d'un fichier mis de côté depuis `path` (`setAsideName`) ? Même dossier, même début, même
+ * extension, jamais `path` lui-même.
+ */
+export const isSetAsideNameOf = (path: string, name: string): boolean => {
+  const slash = path.lastIndexOf('/');
+  const dot = path.lastIndexOf('.');
+  const stem = dot > slash ? path.slice(0, dot) : path;
+  const extension = dot > slash ? path.slice(dot) : '';
+  return name !== path && name.startsWith(`${stem}-`) && name.endsWith(extension) && name.length > stem.length + 1 + extension.length
+    && !name.slice(slash + 1).includes('/');
+};
 
 /** Nom d'un fichier mis de côté : `journal.jsonl` devient `journal-2026-11-03T14-25-01-123Z.jsonl`. */
 export const setAsideName = (path: string, nowMs: number): string => {
   const stamp = new Date(nowMs).toISOString().replace(/[:.]/g, '-');
   const dot = path.lastIndexOf('.');
   return dot > path.lastIndexOf('/') ? `${path.slice(0, dot)}-${stamp}${path.slice(dot)}` : `${path}-${stamp}`;
+};
+
+/** Instant de la mise de côté lu dans le nom (`setAsideName`), en ms ; `null` si le nom n'en porte pas. */
+export const setAsideTimeMs = (name: string): number | null => {
+  const m = /-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(\.[^./-]*)?$/.exec(name);
+  if (!m) return null;
+  const ms = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`);
+  return Number.isFinite(ms) ? ms : null;
 };
 
 /** Fichier en mémoire : perdu au rechargement de la page. Un fichier mis de côté y est gardé jusque-là. */
@@ -60,6 +87,11 @@ export const createMemoryFile = (name = 'fichier.txt'): TextFile => {
       if (content !== null) aside.set(to, content);
       content = null;
       return to;
+    },
+    listAside: async () => [...aside.keys()].sort(),
+    readAside: async (asideName) => aside.get(asideName) ?? null,
+    removeAside: async (asideName) => {
+      aside.delete(asideName);
     },
   };
 };
@@ -127,6 +159,27 @@ const createPrivateFile = (path: string): TextFile => ({
     const to = setAsideName(path, Date.now());
     await Filesystem.rename({ from: path, to, directory: Directory.Data, toDirectory: Directory.Data });
     return to;
+  },
+  listAside: async () => {
+    const { Filesystem, Directory } = await filesystem();
+    const slash = path.lastIndexOf('/');
+    const dir = slash < 0 ? '' : path.slice(0, slash);
+    const { files } = await Filesystem.readdir({ path: dir, directory: Directory.Data });
+    return files
+      .filter((file) => file.type === 'file')
+      .map((file) => (slash < 0 ? file.name : `${dir}/${file.name}`))
+      .filter((name) => isSetAsideNameOf(path, name))
+      // L'horodatage ISO du nom range du plus ancien au plus récent.
+      .sort();
+  },
+  readAside: (name) => createPrivateFile(name).read(),
+  removeAside: async (name) => {
+    const { Filesystem, Directory } = await filesystem();
+    try {
+      await Filesystem.deleteFile({ path: name, directory: Directory.Data });
+    } catch (err) {
+      if (!isMissingPrivateFile(err)) throw err;
+    }
   },
 });
 

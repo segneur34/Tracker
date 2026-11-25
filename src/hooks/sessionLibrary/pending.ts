@@ -82,9 +82,10 @@ const notCompleted = (result: AddResult): boolean => result.recordNotRead === tr
  * retiennent (`readPendingImu`). Mémoire en lecture seule : tout reste en
  * attente d'un dossier où ranger. Les temporaires d'une écriture
  * interrompue par un plantage (`planPendingTemps`) : un GPX complet est rangé
- * comme les autres, puis effacé ; un temporaire tronqué ou illisible est
- * effacé, et dit ; celui dont la cible est là, effacé sans rien dire, comme
- * une fiche restée sans GPX.
+ * comme les autres, puis effacé ; un temporaire vide ou tronqué est effacé,
+ * et dit ; un complet mais illisible reste en attente, et c'est dit, comme sous
+ * son vrai nom (lot 232) ; celui dont la cible est là, effacé sans rien dire,
+ * comme une fiche restée sans GPX.
  */
 export const flushPending = async (): Promise<void> => {
   const pending = pendingFolder();
@@ -187,7 +188,8 @@ export const flushPending = async (): Promise<void> => {
         await pending.remove(session.temp);
         if (fromTemp && session.imuTemp) await pending.remove(session.imuTemp);
       } else if (result.status === 'invalid') {
-        await drop(`illisible (${result.message ?? 'GPX illisible'})`);
+        // Comme sous son vrai nom : complète mais illisible, elle n'est pas effacée, et retentée à chaque ouverture.
+        reportError(`Session en attente ${session.gpx} illisible, laissée en attente : ${result.message ?? 'GPX illisible'}`);
       }
     } catch (err) {
       reportError(`Session en attente ${session.gpx} non rangée : ${errorMessage(err, 'erreur inconnue')}`);

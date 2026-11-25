@@ -330,6 +330,8 @@ export const parseJournal = (text: string): ParsedJournal => {
   let activityChange: JournalActivity | null = null;
   const runs = new Map<number, IntervalRun>();
   const marks: SessionMark[] = [];
+  const markTimes = new Set<number>();
+  const breakTimes = new Set<number>();
   let test: SessionTest | null = null;
   const manualBreaks: ManualBreak[] = [];
   let openPause: JournalPause | null = null;
@@ -352,12 +354,17 @@ export const parseJournal = (text: string): ParsedJournal => {
     const breakAt = toBreakMarker(value) ? timedMarker(value, 'break') : null;
     if (breakAt !== null) {
       lastLineMs = breakAt;
+      // Une coupure porte l'heure du point qui ouvre son segment : deux à la même heure, c'est un bloc réécrit après
+      // une écriture qui n'a pas abouti (`flushJournal`), dont le point a déjà été écarté ; la reprendre poserait la
+      // coupure plus loin.
+      const replayed = breakTimes.has(breakAt);
+      breakTimes.add(breakAt);
       const pause: JournalPause | null = resumedPause ?? openPause;
-      if (pause) manualBreaks.push({ fixIndex: fixes.length, heartIndex: heartFixes.length, autoPartMs: pause.autoPartMs });
+      if (pause && !replayed) manualBreaks.push({ fixIndex: fixes.length, heartIndex: heartFixes.length, autoPartMs: pause.autoPartMs });
       resumedPause = null;
       openPause = null;
-      if (fixes.length > 0) breaks.push(fixes.length);
-      if (heartFixes.length > 0) heartBreaks.push(heartFixes.length);
+      if (fixes.length > 0 && !replayed) breaks.push(fixes.length);
+      if (heartFixes.length > 0 && !replayed) heartBreaks.push(heartFixes.length);
       return;
     }
     const pauseAt = timedMarker(value, 'pause');
@@ -412,7 +419,9 @@ export const parseJournal = (text: string): ParsedJournal => {
     const note = toNoteMarker(value);
     if (note.marker) {
       if (note.mark) {
-        marks.push(note.mark);
+        // Un seul repère par instant : le même, relu deux fois, vient d'un bloc réécrit.
+        if (!markTimes.has(note.mark.timeMs)) marks.push(note.mark);
+        markTimes.add(note.mark.timeMs);
         lastLineMs = note.mark.timeMs;
       }
       return;
@@ -447,4 +456,13 @@ export const journalActivity = (sport: SportType, saved: { id: string; name: str
   if (!saved) return baseActivity(sport);
   const found = findActivity(activities, saved.id);
   return found && found.base === sport ? found : { id: saved.id, name: saved.name, base: sport, color: BASE_COLOR[sport] };
+};
+
+/**
+ * Activité de la session d'un journal relu (`journalActivity`) : une activité choisie en cours de route prime sur
+ * celle du départ ; `null` sans calcul lisible, la session sera rangée « à classer ».
+ */
+export const journalSessionActivity = (parsed: Pick<ParsedJournal, 'header' | 'activityChange'>, activities: Activity[]): Activity | null => {
+  const sport = parsed.activityChange?.sport ?? parsed.header?.sport ?? null;
+  return sport === null ? null : journalActivity(sport, parsed.activityChange?.activity ?? parsed.header?.activity, activities);
 };

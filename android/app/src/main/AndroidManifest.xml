@@ -14,8 +14,10 @@
         android:theme="@style/AppTheme"
         tools:targetApi="31">
 
+        <!-- configChanges : ni rotation, ni taille ou graisse du texte du téléphone (fontScale, fontWeightAdjustment) ne
+             recréent l'activité, qui couperait l'enregistrement en cours. -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density|fontScale|fontWeightAdjustment"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
