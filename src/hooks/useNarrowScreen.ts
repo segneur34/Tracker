@@ -29,6 +29,8 @@ export const SCREEN_BREAKPOINTS = {
   profileStacked: '(max-width: 599px)',
   /** Profil : très petit écran (`ProfilePage.css`). */
   profileTiny: '(max-width: 359px)',
+  /** Analyses, très petit écran : cadres du surf resserrés, une vague ou une remontée par cadre (`analysisMobile.css`). */
+  analysisCardsTight: '(max-width: 359.98px)',
   /** Enregistrement, petit téléphone tourné : la page s'empile comme droite (`RecordingPage.css`). */
   recordingNarrow: '(max-width: 699.98px)',
   /** Barre du haut resserrée sur un ordinateur étroit (`AppShell.css`). */

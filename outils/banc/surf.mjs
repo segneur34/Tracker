@@ -5,7 +5,8 @@
 //  1. la famille Surf sur l'accueil, dans la barre du haut, et ses deux activités dans Réglages (carte d'activité :
 //     « Seuil de vague », « Seuil de vol » pour Surf foil, ni pente ni terrain) ;
 //  2. une matinée (trois vagues, la troisième prise en remontant) : la ligne de la bibliothèque, puis l'analyse, onglets
-//     général, vagues (tableau, tri, « Voir », podium), rame (retours jusqu'à la zone du pic, première sortie), graphiques ;
+//     général, vagues (tableau, tri, « Voir », podium), rame (retours jusqu'à la zone du pic, première sortie ; zone du pic
+//     et sens des vagues dessinés sur la carte, sous la trace, flèche de 50 px à deux zooms, lot 233c), graphiques ;
 //  2 bis. le sens des vagues (lot 233) : la ligne des réglages, la boussole sur la carte (poignée tirée sur le cercle,
 //     « Inverser », angle tapé, « Terminé »), le brouillon, la fiche, « Calculé » et « Annuler » ;
 //  3. les réglages de la session : seuil de vague imposé (une vague en moins), enregistré dans la fiche, relu après
@@ -17,8 +18,9 @@
 //  5 ter. le départ des vagues (sans foil, lot 233) : deux vagues à vraie mise en vitesse, l'une depuis 1 km/h, l'autre après une
 //     rame plate à 4 km/h ; durée et heure de début avec le départ, vitesse max et nombre de vagues inchangés, carte (vague
 //     montrée seule), courbe (bandes et série orange) et les deux phrases d'aide ;
-//  6. la page à 390 × 844, sans débordement ; le sens des vagues en plein écran (boussole entière, poignée sous le
-//     bandeau et la barre « Non enregistré », passée dans la carte agrandie).
+//  6. la page à 390 × 844, sans débordement ; une vague ou une remontée par cadre (lot 233c) à 390, 360 et 320 px, et à
+//     390 px de nuit ; le sens des vagues en plein écran (boussole entière, zone et flèche dessinées pendant le réglage,
+//     poignée sous le bandeau et la barre « Non enregistré », passée dans la carte agrandie).
 // Verdicts (lot 159) : les chiffres attendus par construction des phases (MORNING, FOIL) sont contrôlés (`check`), le
 // script finit par « Tout passe. » ou le nombre d'échecs, code 0 ou 1. Les heures des vagues (fuseau du poste) ne le sont pas.
 import { connect } from './lib/cdp.mjs';
@@ -89,6 +91,63 @@ const T_DEPART = Date.UTC(2026, 9, 6, 15, 0, 35);
 const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, mouse, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 /** Contrôle qu'un texte relevé contient `attendu` (chaîne ou expression régulière). */
 const contient = (quoi, texte, attendu) => check(quoi, typeof attendu === 'string' ? String(texte).includes(attendu) : attendu.test(String(texte)), String(texte).slice(0, 300));
+/**
+ * Dessins du surf sur la carte (lot 233c) : zone du pic (`an-zone-pic`) et sens des vagues (`an-sens-vagues` : ligne de
+ * vague, tige et pointe de la flèche), dans leur calque sous la trace. Flèche : de l'origine de la tige à la pointe, en px.
+ */
+const dessins = () => evaluate(`(() => {
+  const zones = [...document.querySelectorAll('path.an-zone-pic')];
+  const sens = [...document.querySelectorAll('path.an-sens-vagues')];
+  const pane = zones[0]?.closest('.leaflet-pane');
+  const pts = (e) => (e?.getAttribute('d') ?? '').match(/-?[\\d.]+/g)?.map(Number) ?? [];
+  const tige = pts(sens.find((e) => e.getAttribute('stroke-width') === '2'));
+  const pointe = pts(sens.find((e) => e.getAttribute('fill-opacity') === '1'));
+  return {
+    zone: zones.length, sens: sens.length,
+    calque: pane ? pane.className.replace('leaflet-pane ', '') + ' ' + getComputedStyle(pane).zIndex : '',
+    tirets: zones[0]?.getAttribute('stroke-dasharray') ?? '',
+    fleche: tige.length >= 2 && pointe.length >= 2 ? Math.round(Math.hypot(pointe[0] - tige[0], pointe[1] - tige[1]) * 10) / 10 : null,
+  };
+})()`);
+/**
+ * Cadres du téléphone (lot 233c, dessin D) du panneau dont le titre commence par `titre` : unité au-dessus, en-tête
+ * caché, bord du cadre, écart entre deux, titres, intitulés et valeurs du premier, « Voir » en tête, et les cases qui
+ * débordent (de leur colonne, du cadre ou de l'écran).
+ */
+const cadres = (titre) => evaluate(`(() => {
+  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(titre)}));
+  const p = t?.closest('.an-carte-panels > *');
+  const table = p?.querySelector('table.an-cadres');
+  if (!table) return null;
+  const rows = [...table.querySelectorAll('tbody tr')];
+  const box = (e) => e.getBoundingClientRect();
+  const shown = (td) => getComputedStyle(td).display !== 'none';
+  const debordes = [];
+  for (const tr of rows) {
+    const r = box(tr);
+    const nom = tr.cells[0].innerText.trim();
+    if (r.left < -0.5 || r.right > innerWidth + 0.5) debordes.push(nom + ' (cadre)');
+    for (const td of [...tr.cells].filter(shown)) {
+      const c = box(td);
+      if (td.scrollWidth > td.clientWidth + 1 || c.right > r.right + 0.5 || c.left < r.left - 0.5) debordes.push(nom + ' / ' + (td.dataset.label ?? td.innerText.trim()) + ' (' + td.clientWidth + ' < ' + td.scrollWidth + ' px)');
+    }
+  }
+  const first = rows[0];
+  const cases = first ? [...first.cells].filter(shown) : [];
+  const style = first ? getComputedStyle(first) : null;
+  return {
+    unite: p.querySelector('.an-cadre-unite')?.innerText.trim() ?? '',
+    entete: getComputedStyle(table.querySelector('thead')).display,
+    bord: style ? style.borderTopStyle + ' ' + style.borderTopWidth + ' ' + style.borderTopColor : '',
+    ecart: rows.length > 1 ? Math.round(box(rows[1]).top - box(rows[0]).bottom) : null,
+    titres: rows.map((tr) => tr.cells[0].innerText.trim()),
+    intitules: cases.map((td) => getComputedStyle(td, '::before').content.replace(/^"|"$/g, '')).filter((x) => x && x !== 'none'),
+    valeurs: cases.slice(1, -1).map((td) => td.innerText.trim()),
+    cadre: first ? first.clientWidth + ' px, colonnes ' + getComputedStyle(first).gridTemplateColumns : '',
+    voirEnTete: first ? Math.abs(box(first.querySelector('.an-cadre__voir')).top - box(first.cells[0]).top) < 12 : false,
+    debordes,
+  };
+})()`);
 
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)})
@@ -173,11 +232,13 @@ console.log('vagues :', await openTab('vagues'));
 await wait(500);
 const vagues = await panel('Vagues');
 console.log('panneau :', vagues);
+const dessinsSansRame = await dessins();
+check('carte, onglet rame fermé : ni zone du pic ni sens des vagues', dessinsSansRame.zone === 0 && dessinsSansRame.sens === 0, JSON.stringify(dessinsSansRame));
 for (const [n, s, m, v] of [[1, 12, 60, '18,0'], [2, 20, 120, '21,6'], [3, 8, 36, '16,2']]) {
   contient(`matinée, vague ${n} : ${s} s, ${m} m, ${v} km/h`, vagues, new RegExp(`(^|/ )${n}\\t\\d\\d:\\d\\d\\t${s} s\\t${m} m\\t${v}\\t`));
 }
 console.log('Voir la vague 2 :', await evaluate(`(() => {
-  const row = [...document.querySelectorAll('.an-carte-panels tr')].find((r) => r.cells[0]?.textContent === '2');
+  const row = [...document.querySelectorAll('.an-carte-panels tr')].find((r) => r.cells[0]?.innerText.trim() === '2');
   const b = row?.querySelector('button'); if (!b) return 'absent'; b.click(); return 'ok';
 })()`));
 await wait(500);
@@ -193,7 +254,7 @@ console.log('tri par distance :', await evaluate(`(() => {
   return 'ok';
 })()`));
 await wait(300);
-const ordre = await evaluate(`[...document.querySelectorAll('.an-carte-panels tbody tr')].map((r) => r.cells[0].textContent + ':' + r.cells[3].textContent).join(' ')`);
+const ordre = await evaluate(`[...document.querySelectorAll('.an-carte-panels tbody tr')].map((r) => r.cells[0].innerText.trim() + ':' + r.cells[3].textContent).join(' ')`);
 console.log('ordre :', ordre);
 check('matinée, tri par distance : 2, 1, 3', ordre === '2:120 m 1:60 m 3:36 m', ordre);
 console.log('rame :', await openTab('rame'));
@@ -208,6 +269,24 @@ console.log('panneau :', rame);
 contient('matinée, retour au pic après la vague 1 : 27 s, 27 m', rame, /vague 1\t2[678] s\t2[678] m\t/);
 contient('matinée, retour au pic après la vague 2 : 29 s, 29 m', rame, /vague 2\t(?:29|30) s\t(?:29|30) m\t/);
 contient('matinée, « Vagues enchaînées 0 »', rame, 'Vagues enchaînées / 0 ');
+// Dessins (lot 233c) : onglet rame ouvert, la zone du pic (tirets) et le sens des vagues (ligne, tige, pointe), dans leur
+// calque sous la trace (385 < 390) ; la flèche garde 50 px à l'écran d'un zoom à l'autre (pixels arrondis par Leaflet).
+const dessinsRame = await dessins();
+console.log('dessins, onglet rame :', JSON.stringify(dessinsRame));
+check('carte, onglet rame : la zone du pic en tirets, une seule', dessinsRame.zone === 1 && dessinsRame.tirets === '7 6', JSON.stringify(dessinsRame));
+check('carte, onglet rame : le sens des vagues en trois traits (ligne, tige, pointe)', dessinsRame.sens === 3, JSON.stringify(dessinsRame));
+check('carte : zone et sens dans leur calque, sous la trace (385)', dessinsRame.calque === 'leaflet-surfZonePic-pane 385', dessinsRame.calque);
+check('carte : flèche du sens de 50 px à 1,5 px près', dessinsRame.fleche !== null && Math.abs(dessinsRame.fleche - 50) <= 1.5, dessinsRame.fleche);
+const zoomer = (sens) => evaluate(`(() => { const b = document.querySelector('.an-map-panel .leaflet-control-zoom-${sens}'); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
+// Un cran plus loin (la zone reste dans la vue, que Leaflet ne coupe pas), puis retour.
+console.log('zoom − :', await zoomer('out'));
+await wait(800);
+const dessinsZoom = await dessins();
+console.log('dessins, un cran plus loin :', JSON.stringify(dessinsZoom));
+check('carte, un cran plus loin : flèche toujours de 50 px', dessinsZoom.fleche !== null && Math.abs(dessinsZoom.fleche - 50) <= 1.5, dessinsZoom.fleche);
+console.log('zoom + :', await zoomer('in'));
+await wait(800);
+await shoot('surf-zone-du-pic');
 console.log('fermer vagues :', await tab('vagues'), '| surbrillance restante :', await evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#d32f2f"]').length`));
 console.log('graphiques :', await openTab('graphiques'));
 await settle({ max: 800 });
@@ -527,14 +606,68 @@ await shoot('surf-telephone');
 const largeur = await evaluate('document.documentElement.scrollWidth');
 console.log('largeur au téléphone :', largeur);
 check('téléphone : largeur 390, sans débordement', largeur === 390, largeur);
+// Cadres (lot 233c, dessin D) : une vague (foil : six valeurs, le cas le plus large) ou une remontée (session du départ, deux vagues : la
+// matinée garde à ce point le seuil de 20 km/h enregistré au 3, une seule vague) par cadre, à
+// 390, 360 et 320 px, et à 390 px de nuit. Rien ne déborde, ni de sa case, ni du cadre, ni de l'écran.
+const releveCadres = async (largeurPx, nuit = false) => {
+  const nom = `${largeurPx} px${nuit ? ', nuit' : ''}`;
+  await send('Emulation.setDeviceMetricsOverride', { width: largeurPx, height: 844, deviceScaleFactor: 2, mobile: true });
+  await go(foilPath, 5000);
+  if (nuit) check(`${nom} : thème sombre posé`, (await evaluate(`document.documentElement.dataset.theme`)) === 'dark');
+  await openTab('vagues');
+  await wait(500);
+  const v = await cadres('Vagues');
+  console.log(`cadres des vagues (${nom}) :`, JSON.stringify(v));
+  check(`${nom}, vagues : un cadre par vague, titre « Vague N · hh:mm »`, v !== null && v.titres.length === 4 && v.titres.every((t) => /^Vague \d+ · \d\d:\d\d$/.test(t)), JSON.stringify(v?.titres));
+  check(`${nom}, vagues : en-tête caché, unité dite au-dessus`, v?.entete === 'none' && v?.unite === 'Max et moy. en km/h', `${v?.entete} | ${v?.unite}`);
+  check(`${nom}, vagues : intitulés Durée, Dist., Max, Moy., Vir.*, Vol`, v?.intitules.join(',') === 'Durée,Dist.,Max,Moy.,Vir.*,Vol', v?.intitules.join(','));
+  check(`${nom}, vagues : cadre fin à l'encre, 8 px entre deux, « Voir » en tête`, /^solid 1px /.test(v?.bord ?? '') && v?.ecart === 8 && v?.voirEnTete, `${v?.bord} | ${v?.ecart} | ${v?.voirEnTete}`);
+  check(`${nom}, vagues : rien ne déborde`, v !== null && v.debordes.length === 0, v?.debordes.join(' ; '));
+  await shoot(`surf-cadres-vagues-${largeurPx}${nuit ? '-nuit' : ''}`);
+  await go(departPath, 5000);
+  await openTab('rame');
+  await wait(500);
+  const r = await cadres('Rame');
+  console.log(`cadres des remontées (${nom}) :`, JSON.stringify(r));
+  check(`${nom}, remontées : titres « Départ » ou « Après la vague N »`, r !== null && r.titres.length >= 1 && r.titres.every((t) => /^(Départ|Après la vague \d+)$/.test(t)), JSON.stringify(r?.titres));
+  check(`${nom}, remontées : unité au-dessus, intitulés Retour, Dist., Rem., Rame, Att., vitesses sans unité`,
+    r?.unite === 'Remontée et rame en km/h' && r?.intitules.join(',') === 'Retour,Dist.,Rem.,Rame,Att.' && r.valeurs.every((x) => !x.includes('km/h')), `${r?.unite} | ${r?.intitules.join(',')} | ${r?.valeurs.join(' ')}`);
+  check(`${nom}, remontées : rien ne déborde`, r !== null && r.debordes.length === 0, r?.debordes.join(' ; '));
+  const large = await evaluate('document.documentElement.scrollWidth');
+  check(`${nom} : page sans défilement de côté`, large === largeurPx, large);
+  await shoot(`surf-cadres-rame-${largeurPx}${nuit ? '-nuit' : ''}`);
+  return v?.bord ?? '';
+};
+const bordJour = await releveCadres(390);
+await releveCadres(360);
+await releveCadres(320);
+await evaluate(`localStorage.setItem('tracker.theme', JSON.stringify({ choice: 'sombre', eco: false }))`);
+const bordNuit = await releveCadres(390, true);
+check('390 px, nuit : le cadre suit l\'encre du thème', bordNuit !== '' && bordNuit !== bordJour, `${bordJour} | ${bordNuit}`);
+await evaluate(`localStorage.removeItem('tracker.theme')`);
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 // Sens des vagues au téléphone : « Régler » met la carte en plein écran avec la boussole, la fermer met fin au réglage.
 await go(morningPath, 5000);
 console.log('réglages (390) :', await openTab('réglages'));
 await wait(500);
 console.log('sens des vagues (390) :', await ligneSens());
+// La matinée se rouvre ici avec les onglets laissés ouverts plus haut (vagues, rame, graphiques, réglages) : rame est
+// refermé pour que la zone et le sens ne tiennent qu'au réglage.
+const ongletsOuverts = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab[aria-pressed=true]')].map((t) => t.textContent.trim()).join(', ')`);
+if ((await ongletsOuverts()).split(', ').includes('rame')) console.log('fermer rame (390) :', await tab('rame'));
+await wait(300);
+console.log('onglets ouverts (390) :', await ongletsOuverts());
+check('390 px : onglet rame fermé avant le réglage', !(await ongletsOuverts()).split(', ').includes('rame'), await ongletsOuverts());
 console.log('Régler (390) :', await boutonSens('.an-carte-panels', 'Régler'));
 await settle({ max: 1500 });
 check('390 px, sens des vagues : « Régler » ouvre la carte en plein écran avec la boussole', await evaluate(`Boolean(document.querySelector('.an-map-overlay .an-wind__dial'))`));
+// Pendant le réglage, la zone du pic et le sens se dessinent, onglet rame fermé compris (lot 233c).
+const dessinsReglage = await dessins();
+console.log('dessins, réglage (390) :', JSON.stringify(dessinsReglage));
+// La matinée n'a plus ici qu'une vague (seuil de 20 km/h enregistré au 3) : sans sens estimé, pas de flèche, la zone seule.
+const ligneReglage = await ligneSens();
+const sansSens = !/\d+°/.test(ligneReglage);
+check('390 px, réglage du sens, onglet rame fermé : zone du pic et sens dessinés', dessinsReglage.zone === 1 && dessinsReglage.sens === (sansSens ? 0 : 3), JSON.stringify(dessinsReglage) + ' | ' + ligneReglage);
 // Le cadran et le bandeau, mesurés eux-mêmes : leur conteneur n'a pas de boîte dans la carte agrandie (`display: contents`).
 const cadre = await evaluate(`(() => { const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom) }; }; return { cadran: box('.an-map-overlay .an-wind__dial'), bandeau: box('.an-map-overlay .an-wind__bar') }; })()`);
 console.log('boussole (390) :', JSON.stringify(cadre), await evaluate(`document.querySelector('.an-map-overlay .an-wind__bar')?.innerText.replace(/\\n+/g, ' ')`));
@@ -555,6 +688,8 @@ await shoot('surf-sens-390');
 console.log('fermer la carte :', await evaluate(`(() => { const b = document.querySelector('.an-map-overlay__close'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(600);
 check('390 px, sens des vagues : fermer le plein écran ferme la carte et la boussole', !(await evaluate(`Boolean(document.querySelector('.an-map-overlay') || document.querySelector('.an-wind'))`)));
+const dessinsFin = await dessins();
+check('390 px, réglage fini, onglet rame fermé : ni zone ni sens sur la carte', dessinsFin.zone === 0 && dessinsFin.sens === 0, JSON.stringify(dessinsFin));
 check('390 px, sens des vagues : une seule barre « Non enregistré », jamais deux', await evaluate(`document.querySelectorAll('.ui-savebar').length <= 1`));
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');

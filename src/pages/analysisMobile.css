@@ -346,6 +346,12 @@
   min-width: 0;
 }
 
+/* Vagues et remontées du surf : titres courts et ligne d'unité réservés aux cadres du téléphone. */
+.an-cadre-court,
+.an-cadre-unite {
+  display: none;
+}
+
 /* En-tête de la feuille : retour, titre, nom de la session. */
 .an-sheet__head {
   margin-bottom: var(--space-4);
@@ -604,6 +610,113 @@
     grid-column: 1 / -1;
     padding-bottom: 0 !important;
     font-weight: 600;
+  }
+
+  /* Vagues et remontées du surf (`an-cadres`) : un petit cadre fin à l'encre par ligne, 8 px entre deux. Le titre
+     (« Vague 3 · 09:05 », « Après la vague 3 ») et « Voir » à droite sur la première rangée ; dessous, les valeurs
+     en colonnes, chacune avec son petit intitulé (`data-label`) au-dessus, alignées d'un cadre à l'autre. Plus
+     d'en-tête : l'unité est dite une fois au-dessus (`an-cadre-unite`). */
+  .an-cadre-long {
+    display: none;
+  }
+
+  .an-cadre-court {
+    display: inline;
+  }
+
+  .an-cadre-unite {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  /* Colonnes des valeurs (hors titre et « Voir ») : Durée, Dist., Max, Moy., Vir., et Vol sur foil. La durée
+     (« 1 min 05 ») et la distance ont plus de place que les vitesses, le nombre de virages et le vol (un chiffre),
+     les mêmes d'un cadre à l'autre. Le texte se resserre avec la largeur de l'écran, 12 px au plus étroit. */
+  .an-cadres {
+    --an-cadre-cols: 1.4fr 1.1fr 1fr 1fr 0.8fr;
+    display: block;
+    width: 100%;
+    border: 0;
+    background: none;
+    font-size: clamp(12px, 3.4vw, var(--text-s));
+  }
+
+  .an-cadres--vol {
+    --an-cadre-cols: 1.4fr 1.1fr 1fr 1fr 0.8fr 0.7fr;
+  }
+
+  .an-cadres thead {
+    display: none;
+  }
+
+  .an-cadres tbody {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .an-cadres tbody tr {
+    display: grid;
+    grid-template-columns: var(--an-cadre-cols);
+    column-gap: 2px;
+    row-gap: 6px;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--ink);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+  }
+
+  /* Remontées : « enchaîné » (Retour) et « 1 min 00 » (Att.) sont plus longs que les autres valeurs, donc leurs
+     colonnes sont plus larges, les mêmes d'un cadre à l'autre ; « Rame », plus large que « Rem. », un peu plus. */
+  .an-cadres.an-cadres--rame tbody tr {
+    grid-template-columns: 1.5fr 1fr 0.95fr 1fr 1.35fr;
+    column-gap: var(--space-1);
+  }
+
+  .an-cadres tbody td {
+    display: block;
+    min-width: 0;
+    padding: 0 !important;
+    text-align: left !important;
+    white-space: nowrap;
+    font-weight: normal;
+    color: inherit;
+  }
+
+  .an-cadres tbody td[data-label]::before {
+    display: block;
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
+  }
+
+  /* « Voir » tient les deux dernières colonnes, les plus étroites : le bouton n'y déborde pas. */
+  .an-cadres tbody td.an-cadre__titre {
+    grid-column: 1 / -3;
+    font-size: var(--text-m);
+    font-weight: 700;
+  }
+
+  .an-cadres tbody td.an-cadre__voir {
+    grid-column: -3 / -1;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right !important;
+  }
+
+  .an-cadres tbody td.an-cadre__cache {
+    display: none;
+  }
+}
+
+/* Cadres du surf sous 360 px de large : le bord intérieur du cadre se resserre, les colonnes gardent la place des
+   intitulés (« Durée », « Rame »). */
+@media (max-width: 359.98px) {
+  .an-cadres tbody tr {
+    padding: var(--space-2);
   }
 }
 

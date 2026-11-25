@@ -24,6 +24,9 @@ import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SessionThresholdField from '../components/SessionThresholdField';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
+import PeakZoneLayer from '../components/PeakZoneLayer';
+import WaveSenseLayer from '../components/WaveSenseLayer';
+import Pane from '../components/map/Pane';
 import { pumpingHighlightSpans } from '../components/pumpingHighlight';
 import { FlightsPanel, PumpingPanel, type FlightColumn } from '../components/FlightPumpingPanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
@@ -116,6 +119,12 @@ const PHASE_LABELS: Record<SurfPhase, string> = { glisse: 'sur la vague', rame: 
 /** Bandes des vagues et des vols sur le graphe de vitesse. */
 const WAVE_BAND_COLOR = '#1e88e5';
 const FLIGHT_BAND_COLOR = '#7e57c2';
+
+/**
+ * Calque de la zone du pic et du sens des vagues, sous celui de la trace colorée (390, `TrackSegmentsLayer`) et
+ * celui des surbrillances (400) : ils restent dessous, même dessinés après elles (onglet rame ouvert plus tard).
+ */
+const PEAK_ZONE_PANE = { name: 'surfZonePic', style: { zIndex: 385 } };
 
 type WaveSort = 'ordre' | 'distance' | 'vitesse' | 'duree';
 const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'Ordre', distance: 'Distance', vitesse: 'Vitesse', duree: 'Durée' };
@@ -505,9 +514,20 @@ function SurfModule() {
     }
   };
 
+  /** Sens saisi lu dans le brouillon (à jour tout de suite) ; seul l'estimé vient de l'analyse, qui retarde pendant un recalcul. */
+  const { shownDeg: shownWaveDeg, manual: waveManual, reliable: waveReliable, autoDeg: autoWaveDeg } = waveSenseView(
+    draft.edits.waveDirectionDeg, analysis?.estimatedWaveSense ?? null, surfProfile?.surf.waveSense.minR ?? 0
+  );
+  /** La zone du pic et le sens des vagues se montrent avec l'onglet rame, et pendant le réglage du sens à la boussole. */
+  const shownPeakZone = open.rame || waveAdjust ? analysis?.peakZone ?? null : null;
+
   const mapLayers = (
     <AnalysisBaseLayers family="surf" file={sessionFile} track={track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
       zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
+      <Pane {...PEAK_ZONE_PANE}>
+        <PeakZoneLayer zone={shownPeakZone} />
+        <WaveSenseLayer zone={shownPeakZone} directionDeg={shownWaveDeg} />
+      </Pane>
       <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
       <TrackArrows track={track} />
       <TrackSpanLayer track={track} spans={shownSpans} />
@@ -528,10 +548,6 @@ function SurfModule() {
     // Le plein écran se ferme ici sans passer par `onExpandedChange`.
     zoomOnMap.closeCompanion();
   };
-  /** Sens saisi lu dans le brouillon (à jour tout de suite) ; seul l'estimé vient de l'analyse, qui retarde pendant un recalcul. */
-  const { shownDeg: shownWaveDeg, manual: waveManual, reliable: waveReliable, autoDeg: autoWaveDeg } = waveSenseView(
-    draft.edits.waveDirectionDeg, analysis?.estimatedWaveSense ?? null, surfProfile?.surf.waveSense.minR ?? 0
-  );
   const rideWord = foil ? 'vol' : 'vague';
   const measuredReturns = returns.filter((r) => r.after > 0);
   const firstOut = returns.find((r) => r.after === 0) ?? null;
@@ -653,8 +669,10 @@ function SurfModule() {
                     Aucune vague : rien n'a dépassé le seuil {foil ? 'de vague en foil' : 'de vague'} ({formatSpeed(fromDisplaySpeed(foil ? waveThreshold : threshold, profile.thresholdUnit), speedUnit)}) pendant {surfProfile.surf.minWaveS} s. Il se règle dans l'onglet réglages.
                   </div>
                 ) : (
+                  <>
+                  <div className="an-cadre-unite">Max et moy. en {unitLabel}</div>
                   <div className="ui-overflow-x">
-                    <table className="ui-table">
+                    <table className={`ui-table an-cadres${foil ? ' an-cadres--vol' : ''}`}>
                       <thead>
                         <tr className="ui-sunken">
                           <th style={thStyle}>N°</th>
@@ -675,15 +693,18 @@ function SurfModule() {
                           const shown = waveShown === String(w.n);
                           return (
                             <tr key={w.n} className="ui-table__row">
-                              <td className="ui-cell-tight ui-cell--bold">{w.n}</td>
-                              <td style={tdStyle}>{formatTimeOfDay(w.startMs).slice(0, 5)}</td>
-                              <td style={tdStyle}>{formatShortDuration(w.durationS)}</td>
-                              <td className="ui-cell-tight ui-cell--bold">{Math.round(w.distanceM)} m</td>
-                              <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.maxSpeedMs, speedUnit), speedUnit)}</td>
-                              <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.avgSpeedMs, speedUnit), speedUnit)}</td>
-                              <td style={tdStyle}>{gyroTurns.get(w) ?? (gyroTurns.size > 0 ? `${w.turns}*` : w.turns)}</td>
-                              {foil && <td style={tdStyle}>{w.flight ?? '—'}</td>}
-                              <td style={tdStyle}>
+                              <td className="ui-cell-tight ui-cell--bold an-cadre__titre">
+                                <span className="an-cadre-long">{w.n}</span>
+                                <span className="an-cadre-court">Vague {w.n} · {formatTimeOfDay(w.startMs).slice(0, 5)}</span>
+                              </td>
+                              <td style={tdStyle} className="an-cadre__cache">{formatTimeOfDay(w.startMs).slice(0, 5)}</td>
+                              <td style={tdStyle} data-label="Durée">{formatShortDuration(w.durationS)}</td>
+                              <td className="ui-cell-tight ui-cell--bold" data-label="Dist.">{Math.round(w.distanceM)} m</td>
+                              <td style={tdStyle} data-label="Max">{formatSpeedValue(toDisplaySpeed(w.maxSpeedMs, speedUnit), speedUnit)}</td>
+                              <td style={tdStyle} data-label="Moy.">{formatSpeedValue(toDisplaySpeed(w.avgSpeedMs, speedUnit), speedUnit)}</td>
+                              <td style={tdStyle} data-label={gyroTurns.size > 0 ? 'Vir.' : 'Vir.*'}>{gyroTurns.get(w) ?? (gyroTurns.size > 0 ? `${w.turns}*` : w.turns)}</td>
+                              {foil && <td style={tdStyle} data-label="Vol">{w.flight ?? '—'}</td>}
+                              <td style={tdStyle} className="an-cadre__voir">
                                 <ShowButton shown={shown} onClick={() => highlight.show('vagues', shown ? null : String(w.n))} />
                               </td>
                             </tr>
@@ -692,6 +713,7 @@ function SurfModule() {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </ResizablePanel>
             )}
@@ -717,8 +739,10 @@ function SurfModule() {
                   <StatTile label="Temps d'attente" value={formatShortDuration(summary.attenteS)} />
                 </div>
                 {(measuredReturns.length > 0 || firstOut) && (
+                  <>
+                  <div className="an-cadre-unite ui-mt-10">Remontée et rame en {unitLabel}</div>
                   <div className="ui-overflow-x ui-mt-10">
-                    <table className="ui-table">
+                    <table className="ui-table an-cadres an-cadres--rame">
                       <thead>
                         <tr className="ui-sunken">
                           <th style={thStyle}>Après</th>
@@ -735,13 +759,22 @@ function SurfModule() {
                           const shown = returnShown === String(r.after);
                           return (
                             <tr key={r.after} className="ui-table__row">
-                              <td className="ui-cell-tight ui-cell--bold">{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
-                              <td style={tdStyle}>{r.returnS === null ? 'enchaîné' : formatShortDuration(r.returnS)}</td>
-                              <td style={tdStyle}>{r.straightM === null ? '—' : `${Math.round(r.straightM)} m`}</td>
-                              <td style={tdStyle}>{orDash(r.returnSpeedMs, (v) => formatSpeed(v, speedUnit))}</td>
-                              <td style={tdStyle}>{orDash(r.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))}</td>
-                              <td style={tdStyle}>{formatShortDuration(r.waitS)}</td>
-                              <td style={tdStyle}>
+                              <td className="ui-cell-tight ui-cell--bold an-cadre__titre">
+                                <span className="an-cadre-long">{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</span>
+                                <span className="an-cadre-court">{r.after === 0 ? 'Départ' : `Après ${foil ? 'le vol' : 'la vague'} ${r.after}`}</span>
+                              </td>
+                              <td style={tdStyle} data-label="Retour">{r.returnS === null ? 'enchaîné' : formatShortDuration(r.returnS)}</td>
+                              <td style={tdStyle} data-label="Dist.">{r.straightM === null ? '—' : `${Math.round(r.straightM)} m`}</td>
+                              <td style={tdStyle} data-label="Rem.">
+                                <span className="an-cadre-long">{orDash(r.returnSpeedMs, (v) => formatSpeed(v, speedUnit))}</span>
+                                <span className="an-cadre-court">{speedCell(r.returnSpeedMs)}</span>
+                              </td>
+                              <td style={tdStyle} data-label="Rame">
+                                <span className="an-cadre-long">{orDash(r.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))}</span>
+                                <span className="an-cadre-court">{speedCell(r.paddleSpeedMs)}</span>
+                              </td>
+                              <td style={tdStyle} data-label="Att.">{formatShortDuration(r.waitS)}</td>
+                              <td style={tdStyle} className="an-cadre__voir">
                                 <ShowButton shown={shown} onClick={() => highlight.show('rame', shown ? null : String(r.after))} />
                               </td>
                             </tr>
@@ -750,6 +783,7 @@ function SurfModule() {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </ResizablePanel>
             )}

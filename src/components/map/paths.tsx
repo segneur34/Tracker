@@ -30,6 +30,19 @@ export function Polyline({ positions, pathOptions, eventHandlers, children }: {
   return children ? <LayerContext value={layer}>{children}</LayerContext> : null;
 }
 
+/** Surface fermée (contour et remplissage), sans bulle. */
+export function Polygon({ positions, pathOptions }: {
+  positions: L.LatLngExpression[];
+  pathOptions?: L.PathOptions;
+}) {
+  const pane = useContext(PaneContext);
+  const [layer] = useState(() => L.polygon(positions, pathLayerOptions(pathOptions, pane)));
+  useLayer(layer);
+  useOnChange(positions, (next) => layer.setLatLngs(next));
+  useOnChange(pathOptions, (next) => layer.setStyle(next ?? {}));
+  return null;
+}
+
 /** Rond de rayon `radius` en pixels, le même à tous les zooms. */
 export function CircleMarker({ center, radius, pathOptions, children }: {
   center: L.LatLngExpression;

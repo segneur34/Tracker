@@ -29,6 +29,13 @@ export const HIGHLIGHT_SHOWN_COLOR = '#7b1fa2';
  */
 export const WAVE_DEPART_COLOR = '#ff8f00';
 
+/**
+ * Zone du pic et sens des vagues sur la carte de l'analyse surf (`PeakZoneLayer`,
+ * `WaveSenseLayer`) : une encre noire, la même de jour et de nuit, la carte
+ * restant claire la nuit.
+ */
+export const SURF_MAP_INK_COLOR = '#000000';
+
 /** Repère du bouton « Note » au repos, sur la carte et les graphes (`SessionMarks.tsx`) ; montré, il prend le violet. */
 export const MARK_FLAG_COLOR = '#37474f';
 

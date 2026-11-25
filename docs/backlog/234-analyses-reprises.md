@@ -27,3 +27,7 @@ Cases virements et empannages : états `showTacksOnMap` et voisins, hors de `use
 - CLAUDE.md, pré-réglages repris du téléphone de l'utilisateur : le pumping passe coché d'office sur le calcul surf, sans effet hors foil (demandé ; `PRESET_RESETS` à regarder).
 - CLAUDE.md, « ne rien déplacer ni dupliquer sans redemander » : les tuiles de sauts et de pumping ajoutées à « général » sont demandées, dans l'ordre de Gtracker.
 - Espaces et carte bord à bord : `docs/MISE_EN_PAGE.md` à accorder, petite planche avant (le fond de page diffère).
+
+## À vérifier en passant (noté le 25/11 au lot 233c)
+
+Le script du banc `surf.mjs`, en rouvrant la session à 390 px, retrouve les onglets vagues, rame, graphiques et réglages encore ouverts, alors que la décision du 05/11 veut « général » seul à chaque ouverture d'une analyse. Déjà le cas avant le lot 233c (l'ancien relevé dit « réglages (390) : déjà ouvert »). À regarder : vraie réouverture, ou simple changement de largeur de la même page dans le script.
