@@ -17,6 +17,11 @@ export interface SurfSessionSettings {
   foil: boolean;
   /** Seuil de vague sur foil ; `null` : celui du profil. Ignoré sans foil. */
   waveThreshold: number | null;
+  /**
+   * Sens des vagues saisi, cap vers lequel elles vont, en degrés ; `null` ou
+   * absent : estimé sur la trace (le direct de l'enregistrement ne le donne pas).
+   */
+  waveDirectionDeg?: number | null;
 }
 
 export interface SurfSessionResult {
@@ -45,6 +50,7 @@ export const runSurfSession = (
     ...profile.surf, maxGapS: profile.maxGapS, maxSpeedWindowS: profile.maxSpeedWindowS, stillMs,
     rideExitMs: thresholdExitMs(profile, settings.threshold),
     waveExitMs: waveThreshold === null ? null : thresholdExitMs(profile, waveThreshold),
+    waveDirectionDeg: settings.waveDirectionDeg ?? null,
   });
   return { rideMask, analysis, summary: summarizeSurf(track, cum, analysis, stillMs) };
 };

@@ -193,7 +193,7 @@ describe('pumping : capture reprise après une coupure (lot 232)', () => {
     const rec = capture({ liftoffS: 40, pumpHz: 1 });
     const t = rec.series[0].t;
     expect(capturedWindows(rec, P)).toEqual([[t[0], t[t.length - 1]]]);
-    expect(capturedWindows(rec, P)).toEqual(capturedWindows(rec));
+    expect(capturedWindows(rec, P)).toEqual(capturedWindows(rec, { captureBreakS: Infinity }));
   });
 });
 

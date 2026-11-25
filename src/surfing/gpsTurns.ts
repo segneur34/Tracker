@@ -184,24 +184,20 @@ const chordHeading = (track: TrackPoint[], i: number, strideMs: number, maxGapS:
   return initialBearing(a.lat, a.lon, p.lat, p.lon);
 };
 
-/**
- * Marge, en ms, en deçà de la première corde possible, où les sauts de
- * position se cherchent aussi : un saut écarte le point qui le suit du test
- * suivant, et la recherche doit voir le même enchaînement que le noyau.
- */
-const SPIKE_SEARCH_MARGIN_MS = 2000;
-
 const NO_SPIKES: ReadonlySet<number> = new Set();
 
 /**
  * Indices des positions qui ont sauté puis sont revenues, autour des points
  * `start` à `end` : la règle du noyau (`detourSpikes`), avec ses valeurs par
  * défaut, celles du surf, qui n'accorde pas ses filtres à l'allure de la
- * session. Le noyau a réparé le cap de ces points (sauf vitesse Doppler).
+ * session. Le noyau a réparé le cap de ces points (sauf vitesse Doppler). Les
+ * sauts se cherchent aussi `marginMs` en deçà de la première corde possible
+ * (`SurfTurnRules.spikeSearchMarginS`) : la recherche voit le même
+ * enchaînement que le noyau.
  */
-const positionSpikes = (track: TrackPoint[], start: number, end: number, strideMs: number): Set<number> => {
+const positionSpikes = (track: TrackPoint[], start: number, end: number, strideMs: number, marginMs: number): Set<number> => {
   let lo = start;
-  while (lo > 0 && track[start].timeMs - track[lo - 1].timeMs <= strideMs + SPIKE_SEARCH_MARGIN_MS) lo--;
+  while (lo > 0 && track[start].timeMs - track[lo - 1].timeMs <= strideMs + marginMs) lo--;
   const hi = Math.min(track.length - 1, end + 1);
   const slice = track.slice(lo, hi + 1);
   return new Set(detourSpikes(slice, slice.map((p) => p.timeMs)).map((k) => k + lo));
@@ -295,7 +291,7 @@ export const gpsTurnsOf = (
   for (let i = start + 1; i <= end; i++) {
     const p = track[i];
     if (p.smoothedSpeedMs < floorMs || p.timeMs < readFromMs) continue;
-    if (p.courseDeg === undefined && strideMs > 0) spiked ??= positionSpikes(track, start, end, strideMs);
+    if (p.courseDeg === undefined && strideMs > 0) spiked ??= positionSpikes(track, start, end, strideMs, (o.spikeSearchMarginS ?? 0) * 1000);
     const read = p.courseDeg ?? (strideMs > 0 ? chordHeading(track, i, strideMs, maxGapS, spiked ?? NO_SPIKES) : p.bearing);
     heading.push(heading.length === 0 ? 0 : heading[heading.length - 1] + signedDeltaHalfOpen(lastRead, read));
     timeMs.push(p.timeMs);

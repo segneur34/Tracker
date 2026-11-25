@@ -194,12 +194,24 @@ describe('parseRecord et serializeRecord', () => {
 
 describe("réglages d'analyse de la fiche", () => {
   it("sont relus à l'identique", () => {
-    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 20 } });
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: 200, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 20 } });
     expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
   });
 
+  it('donnent un sens des vagues ramené dans le tour, nul dans une fiche écrite avant lui ou mal formé', () => {
+    const before = { ...record(), analysis: { windDeg: 90, activeThreshold: 4, referenceSpeedMs: null, speedRange: null, savedAt: START_MS } };
+    expect(parseRecord(JSON.stringify(before))?.analysis?.waveDirectionDeg).toBeNull();
+    const read = (waveDirectionDeg: unknown) =>
+      parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, waveDirectionDeg } }))?.analysis?.waveDirectionDeg;
+    expect(read(354)).toBe(354);
+    expect(read(-90)).toBe(270);
+    expect(read(720)).toBe(0);
+    expect(read('sud')).toBeNull();
+    expect(read(Infinity)).toBeNull();
+  });
+
   it('relisent le poids du vélo et la charge, et écartent les valeurs hors bornes', () => {
-    const base = { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 1 };
+    const base = { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: null, terrain: null, savedAt: 1 };
     const ok = record({ analysis: { ...base, bikeWeightKg: 14.5, loadKg: 0 } });
     expect(parseRecord(serializeRecord(ok))?.analysis).toMatchObject({ bikeWeightKg: 14.5, loadKg: 0 });
     const bad = record({ analysis: { ...base, bikeWeightKg: 1, loadKg: -3 } });
@@ -253,11 +265,11 @@ describe("réglages d'analyse de la fiche", () => {
   it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
     const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, referenceSpeedMs: 0, futur: true } };
     expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({
-      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0, futur: true,
+      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 0, futur: true,
     });
     const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8', referenceSpeedMs: '3', effortThresholdMs: '4' } };
     expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({
-      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0,
+      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 0,
     });
     const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
     expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
@@ -572,8 +584,18 @@ describe('dedupeSessions', () => {
 });
 
 describe('applyRecordPatch', () => {
-  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 1 };
+  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 1 };
   const withAnalysis = record({ analysis, notes: { ...record().notes, comment: 'Belle session', savedAt: 2 } as SessionRecord['notes'] });
+
+  it("le sens des vagues saisi reste d'une activité de surf à l'autre, s'efface dans une autre famille, et se résume", () => {
+    const surfing = record({ sport: 'surf', activityId: 'surf', analysis: { ...analysis, waveDirectionDeg: 200 } });
+    expect(applyRecordPatch(surfing, { activityId: 'a-surf-foil' }).record.analysis?.waveDirectionDeg).toBe(200);
+    expect(applyRecordPatch(surfing, { sport: 'wingfoil', activityId: 'wingfoil' }).record.analysis?.waveDirectionDeg).toBeNull();
+    // Saisi, changé ou effacé : le résumé se refait ; le même : rien.
+    expect(applyRecordPatch(withAnalysis, { analysis: { ...analysis, waveDirectionDeg: 10 } }).resummarize).toBe(true);
+    expect(applyRecordPatch(surfing, { analysis: { ...analysis, waveDirectionDeg: null } }).resummarize).toBe(true);
+    expect(applyRecordPatch(surfing, { analysis: { ...analysis, waveDirectionDeg: 200 } }).resummarize).toBe(false);
+  });
 
   it('rend la fiche telle quelle si rien ne change', () => {
     const r = record();
@@ -870,7 +892,7 @@ describe("fiche d'une version future relue puis réécrite (A1)", () => {
   };
   const analysis: SessionAnalysis = {
     windDeg: 40, activeThreshold: 8, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: true,
-    pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 5,
+    pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 5,
   };
   const valid = record({
     name: 'Sortie', analysis, surfaces, terrainElevation, elevationSource: 'gps', jumps, test,
@@ -958,6 +980,7 @@ const oldReadAnalysis = (raw: unknown): SessionAnalysis | null => {
     foil: typeof raw.foil === 'boolean' ? raw.foil : null,
     pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
     waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
+    waveDirectionDeg: isFiniteNumber(raw.waveDirectionDeg) ? normalizeDeg(raw.waveDirectionDeg) : null,
     bikeWeightKg: isValidBikeWeight(raw.bikeWeightKg) ? raw.bikeWeightKg : null,
     loadKg: isValidCarriedLoad(raw.loadKg) ? raw.loadKg : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
@@ -967,20 +990,20 @@ const oldReadAnalysis = (raw: unknown): SessionAnalysis | null => {
 describe('réglages relus par la table des champs (lot 80), comme avant', () => {
   const valid = {
     windDeg: 312.5, activeThreshold: 8, referenceSpeedMs: 6.2, speedRange: { minMs: 3, maxMs: 14.5 }, effortThresholdMs: 4.1, foil: true,
-    pumping: false, waveThreshold: 9.5, bikeWeightKg: 9.8, loadKg: 0, savedAt: 5,
+    pumping: false, waveThreshold: 9.5, waveDirectionDeg: null, bikeWeightKg: 9.8, loadKg: 0, savedAt: 5,
   };
   const cases: [string, unknown][] = [
     ['valides', valid],
-    ['nuls', { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 }],
+    ['nuls', { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 0 }],
     ['vides', {}],
     ['hors bornes', {
       windDeg: -30, activeThreshold: -1, referenceSpeedMs: 0, speedRange: { minMs: 5, maxMs: 2 }, effortThresholdMs: -2, foil: 0, pumping: 1,
-      waveThreshold: 0, bikeWeightKg: 2, loadKg: 51, savedAt: Number.NaN,
+      waveThreshold: 0, waveDirectionDeg: null, bikeWeightKg: 2, loadKg: 51, savedAt: Number.NaN,
     }],
     ['vent au-delà du tour', { ...valid, windDeg: 725 }],
     ['mauvais types', {
       windDeg: '40', activeThreshold: true, referenceSpeedMs: [3], speedRange: [1, 2], effortThresholdMs: { v: 1 }, foil: 'true', pumping: 'false',
-      waveThreshold: '9', bikeWeightKg: '10', loadKg: null, savedAt: '5',
+      waveThreshold: '9', waveDirectionDeg: null, bikeWeightKg: '10', loadKg: null, savedAt: '5',
     }],
     ['infinis', { ...valid, windDeg: Infinity, activeThreshold: Infinity, bikeWeightKg: -Infinity }],
     ['clés inconnues, en tête et au milieu', { futur: { a: [1, 2] }, windDeg: 10, autre: 'x', loadKg: 3, ['__proto__x']: 1 }],
@@ -1040,7 +1063,7 @@ describe('fiches compactes, une par famille (lot 80)', () => {
 
 describe('réglages portés par le résumé (Q57)', () => {
   const analysis = (activeThreshold: number | null, foil: boolean | null = null) =>
-    ({ windDeg: null, activeThreshold, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 1 });
+    ({ windDeg: null, activeThreshold, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil, pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 1 });
 
   it('le champ prime, composant absent : inconnu', () => {
     expect(carriedSettings(sessionRecord({}, { activitySettings: { threshold: 8 }, optionsKey: '[9,null,null,null]' }))).toEqual({ threshold: 8 });

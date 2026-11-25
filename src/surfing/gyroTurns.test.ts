@@ -113,6 +113,19 @@ describe('gyroWaveTurns', () => {
     expect(gyroWaveTurns(pruned, D, waves)).toEqual([null, null]);
   });
 
+  it('capture reprise après un trou de 10 min : une vague de chaque côté comptée à sa place, une vague à cheval non couverte', () => {
+    const at = (s: number) => SYNTH_WALL_MS + s * 1000;
+    // Trois virages dans la vague d'avant le trou (30 à 40 s), deux dans celle d'après (730 à 740 s).
+    const yaw = yawOf([...THREE, [732, 90, 120], [735, -90, 120]]);
+    for (const rateHz of [50, 100, 200]) {
+      const rec = synthImu({ durationS: 800, az: () => 0, tilt: () => 0, yaw, rateHz, gaps: [[100, 700]] });
+      const waves = [{ startMs: at(30), endMs: at(40) }, { startMs: at(730), endMs: at(740) }, { startMs: at(90), endMs: at(710) }];
+      expect(gyroWaveTurns(rec, D, waves)).toEqual([3, 2, null]);
+      // D'un seul morceau, la vague à cheval passait pour couverte.
+      expect(gyroWaveTurns(rec, { ...D, captureBreakS: Infinity }, waves.slice(2))[0]).not.toBeNull();
+    }
+  });
+
   describe('glisse restante après le virage', () => {
     const RULES = profile.surf.turnRules;
     /** Fin de glisse de la vague de la séance, en secondes depuis le début de la capture. */

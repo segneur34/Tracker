@@ -431,12 +431,10 @@ export const liftoffAt = (v: ImuVertical, around: number, p: PumpDetection, notB
 /**
  * Fenêtres mesurées d'un fichier : celles de l'élagage, sinon les morceaux de
  * la capture (`measuredPieces`), un seul sans trou ; aucun calcul ne traverse
- * le trou d'une capture reprise après une coupure. Sans `d`, la capture entière
- * d'un seul morceau, comme avant le lot 232 : réservé aux appelants pas encore
- * passés aux morceaux (`surfing/gyroTurns.ts`, `outils/banc/virages-diagnostic.mjs`).
+ * le trou d'une capture reprise après une coupure.
  */
-export const capturedWindows = (rec: ImuRecording, d?: Pick<AttitudeParams, 'captureBreakS'>): ImuWindow[] =>
-  rec.header.windows ?? measuredPieces(rec, d?.captureBreakS ?? Infinity);
+export const capturedWindows = (rec: ImuRecording, d: Pick<AttitudeParams, 'captureBreakS'>): ImuWindow[] =>
+  rec.header.windows ?? measuredPieces(rec, d.captureBreakS);
 
 /** Capture d'un vol, prête au compte des coups. */
 export interface FlightCapture {

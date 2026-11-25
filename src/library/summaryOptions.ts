@@ -95,9 +95,10 @@ export const summaryOptions = (
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     terrainElevation:
       isLandTreatment(sportTreatment(sport)) && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
-    // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil.
+    // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil ; son sens des vagues saisi.
     foil: analysis?.foil ?? activity.foil ?? undefined,
     waveThreshold: analysis?.waveThreshold ?? undefined,
+    waveDirectionDeg: getSportProfile(sport).surf ? analysis?.waveDirectionDeg ?? undefined : undefined,
     test: elevation?.test,
     ...(sportTreatment(sport) === 'velo' && activity.cycling
       ? {
@@ -115,7 +116,9 @@ export const summaryOptions = (
  * Empreinte des réglages qui changent le résumé, gardée dans le résumé (`SessionSummary.optionsKey`,
  * lot 37) : seuil, allure imposée, foil en surf (ailleurs il ne change pas le résumé) et seuil de
  * vague ; à vélo, depuis le lot 146, le type et le poids du vélo (cinquième place, absente ailleurs :
- * les empreintes des autres calculs ne changent pas). L'altitude du terrain et le test guidé n'y sont pas :
+ * les empreintes des autres calculs ne changent pas) ; en surf, depuis le lot 233, le sens des vagues
+ * saisi, en cinquième place seulement s'il l'est : l'empreinte d'une session sans sens saisi reste
+ * celle d'avant ce réglage. L'altitude du terrain et le test guidé n'y sont pas :
  * ils sont dans la fiche, et leur changement refait déjà le résumé (`applyRecordPatch`).
  */
 export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): string =>
@@ -125,6 +128,7 @@ export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): st
     getSportProfile(sport).surf ? options.foil ?? false : null,
     options.waveThreshold ?? null,
     ...(options.cyclingPower ? [[options.cyclingPower.bikeType, options.cyclingPower.bikeKg]] : []),
+    ...(options.waveDirectionDeg === undefined ? [] : [options.waveDirectionDeg]),
   ]);
 
 /**

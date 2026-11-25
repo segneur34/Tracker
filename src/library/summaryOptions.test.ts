@@ -42,12 +42,45 @@ describe('réglages du résumé (lot 72)', () => {
     expect(summaryOptions('running', null, { thresholdOverride: undefined, foil: null }).foil).toBeUndefined();
   });
 
+  it('le sens des vagues saisi, en surf seulement', () => {
+    expect(summaryOptions('surf', analysis({ waveDirectionDeg: 200 }), activity).waveDirectionDeg).toBe(200);
+    expect(summaryOptions('surf', analysis({ waveDirectionDeg: null }), activity).waveDirectionDeg).toBeUndefined();
+    expect(summaryOptions('surf', null, activity).waveDirectionDeg).toBeUndefined();
+    expect(summaryOptions('kite', analysis({ waveDirectionDeg: 200 }), activity).waveDirectionDeg).toBeUndefined();
+  });
+
   it("l'altitude du terrain à pied et à vélo, sauf si le GPS est gardé", () => {
     const terrainElevation = { stepM: 10, startMs: 0, samples: [] } as never;
     expect(summaryOptions('running', null, activity, { terrainElevation, elevationSource: 'terrain', test: undefined } as never).terrainElevation)
       .toBe(terrainElevation);
     expect(summaryOptions('running', null, activity, { terrainElevation, elevationSource: 'gps' } as never).terrainElevation).toBeUndefined();
     expect(summaryOptions('wingfoil', null, activity, { terrainElevation } as never).terrainElevation).toBeUndefined();
+  });
+});
+
+describe('empreinte du résumé et sens des vagues (lot 233)', () => {
+  const activity: ActivitySummarySettings = { thresholdOverride: undefined, foil: true };
+
+  it("sans sens saisi, l'empreinte d'avant ce réglage ; saisi, il s'y ajoute", () => {
+    expect(summaryOptionsKey('surf', summaryOptions('surf', analysis({ waveThreshold: 9 }), activity))).toBe('[null,null,true,9]');
+    expect(summaryOptionsKey('surf', summaryOptions('surf', null, activity))).toBe('[null,null,true,null]');
+    expect(summaryOptionsKey('kite', summaryOptions('kite', analysis({ activeThreshold: 8 }), activity))).toBe('[8,null,null,null]');
+    expect(summaryOptionsKey('surf', summaryOptions('surf', analysis({ waveDirectionDeg: 200 }), activity))).toBe('[null,null,true,null,200]');
+  });
+
+  it('un sens saisi, changé ou effacé rend le résumé de cette session périmé', () => {
+    const of = () => activity;
+    const keyedWith = (waveDirectionDeg: number | null): SessionRecord => {
+      const record = sessionRecord({ sport: 'surf', analysis: analysis({ waveDirectionDeg }) });
+      return { ...record, summary: { ...record.summary, optionsKey: summaryOptionsKey('surf', summaryOptions('surf', record.analysis, activity)) } };
+    };
+    const without = keyedWith(null);
+    const entered = keyedWith(200);
+    expect(isSummaryOutdated(without, of)).toBe(false);
+    expect(isSummaryOutdated(entered, of)).toBe(false);
+    expect(isSummaryOutdated({ ...without, analysis: analysis({ waveDirectionDeg: 200 }) }, of)).toBe(true);
+    expect(isSummaryOutdated({ ...entered, analysis: analysis({ waveDirectionDeg: 210 }) }, of)).toBe(true);
+    expect(isSummaryOutdated({ ...entered, analysis: analysis({ waveDirectionDeg: null }) }, of)).toBe(true);
   });
 });
 
@@ -151,6 +184,7 @@ describe('résumé à refaire quand les réglages changent (lot 37)', () => {
       ['kite', { thresholdOverride: 12, foil: false }, null, [[120, 1], [600, 9]]],
       ['surf', { thresholdOverride: undefined, foil: true }, { waveThreshold: 9 }, [[300, 0.8], [20, 6], [300, 0.8], [25, 7], [300, 0.5]]],
       ['surf', { thresholdOverride: undefined, foil: false }, null, [[300, 0.8], [20, 5], [300, 0.8]]],
+      ['surf', { thresholdOverride: undefined, foil: true }, { waveDirectionDeg: 180 }, [[300, 0.8], [20, 6], [300, 0.8], [25, 7], [300, 0.5]]],
     ];
     for (const hz of [1, 5]) {
       it.each(cases)(`%s (${hz} Hz)`, (sport, activity, own, phases) => {

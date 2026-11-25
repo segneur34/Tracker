@@ -497,6 +497,62 @@ export interface SurfProfile {
   depart: SurfDepart;
   /** Règles d'un virage, au GPS comme au gyroscope (`surfing/gpsTurns.ts`). */
   turnRules: SurfTurnRules;
+  /** Sens des vagues estimé sur la session (`surfing/waveSense.ts`). */
+  waveSense: SurfWaveSense;
+  /** Zone du pic, où se mesure le retour au pic (`surfing/peakZone.ts`). */
+  peakZone: SurfPeakZone;
+}
+
+/**
+ * Sens des vagues d'une session (`surfing/waveSense.ts`) : le cap vers lequel
+ * elles déferlent, moyenne vectorielle des descentes des vagues.
+ */
+export interface SurfWaveSense {
+  /** Fenêtre de la mesure, en secondes depuis le début de la glisse : la descente, avant que la vague ne tourne le long de la ligne de déferlement. */
+  windowS: number;
+  /** Nombre de mesures sous lequel le sens n'est pas jugé fiable : trois vagues ne disent pas où va la houle. */
+  minWaves: number;
+  /**
+   * Concentration (`R` de `circularMean`) sous laquelle le sens n'est pas jugé
+   * fiable : des vagues parties dans tous les sens. Des gauches et des droites à
+   * 50° de part et d'autre du sens donnent environ 0,64.
+   */
+  minR: number;
+  /**
+   * Écart au sens des vagues, en degrés, au-delà duquel une vague sur foil va
+   * contre lui : une remontée pompée vers le large. Large, pour qu'une vague
+   * prise très en biais reste une vague.
+   */
+  againstDeg: number;
+  /**
+   * Nombre minimal de départs gardés (ceux de la zone du pic) pour recaler le
+   * sens sur leur ligne : deux points font toujours une ligne parfaite sans rien
+   * prouver. La zone, elle, suit la ligne dès deux départs.
+   */
+  lineMinDepartures: number;
+}
+
+/**
+ * Zone du pic (`surfing/peakZone.ts`) : une ellipse mince qui contient les
+ * départs des glisses, allongée le long de la plage.
+ */
+export interface SurfPeakZone {
+  /** Marge ajoutée aux demi-axes, en mètres : une zone d'un seul départ n'est pas un point, ni un départ au bord hors zone pour le bruit du GPS. */
+  marginM: number;
+  /**
+   * Marge côté plage, en mètres, quand le sens des vagues dit où est la plage :
+   * une vague courte finit à quelques dizaines de mètres de son départ, et une
+   * marge pleine avalerait sa fin (retour au pic nul).
+   */
+  beachMarginM: number;
+  /** Rapport minimal du grand axe au petit : la zone reste oblongue, jamais ronde. */
+  minAspect: number;
+  /** Distance vers la plage, en mètres le long du sens des vagues, depuis la médiane des départs, au-delà de laquelle un départ est une vague de l'intérieur. */
+  insideM: number;
+  /** Étendue des départs le long de leur axe, en mètres, à partir de laquelle ils dessinent une ligne. */
+  lineMinM: number;
+  /** Écart maximal, en degrés, entre la ligne des départs et la perpendiculaire au sens des vagues pour que la zone la suive. */
+  maxTiltDeg: number;
 }
 
 /**
@@ -558,6 +614,12 @@ export interface SurfTurnRules {
    * de 1 Hz qui arrive quelques millisecondes en avance reste un seul pas.
    */
   courseStrideS: number;
+  /**
+   * Marge, en secondes, en deçà de la première corde possible, où les sauts de
+   * position se cherchent aussi : un saut écarte le point qui le suit du test
+   * suivant, et la recherche doit voir le même enchaînement que le noyau.
+   */
+  spikeSearchMarginS: number;
 }
 
 /**
@@ -933,7 +995,9 @@ const SURF_PROFILE: SportProfile = {
     // Valeurs réglées avec l'utilisateur sur ses sessions de paddle (lot 233, reprises le 25/11).
     rise: { maxS: 10, windowS: 4, maxRatio: 0.95 },
     depart: { maxS: 15, minGainMs: 0.3 },
-    turnRules: { courseMinSpeedMs: 2, minRideAfterS: 3, settleS: 2, pauseRateDegS: 15, pauseWindowS: 1, courseStrideS: 0.9 },
+    turnRules: { courseMinSpeedMs: 2, minRideAfterS: 3, settleS: 2, pauseRateDegS: 15, pauseWindowS: 1, courseStrideS: 0.9, spikeSearchMarginS: 2 },
+    waveSense: { windowS: 5, minWaves: 4, minR: 0.5, againstDeg: 120, lineMinDepartures: 3 },
+    peakZone: { marginM: 15, beachMarginM: 5, minAspect: 1.5, insideM: 40, lineMinM: 30, maxTiltDeg: 45 },
   },
   pump: PUMP_DETECTION,
 };

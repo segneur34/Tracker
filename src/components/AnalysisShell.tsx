@@ -6,6 +6,7 @@ import { shareableStats } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../core/parentPage';
 import { useScrollToTopOnMount } from '../hooks/useRetainedScroll';
+import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import type { useSessionDraft } from '../hooks/useSessionDraft';
 import AnalysisMap, { ANALYSIS_MAP_ANCHOR, type AnalysisMapProps } from './AnalysisMap';
 import CollapsibleSectionTabs from './CollapsibleSectionTabs';
@@ -62,9 +63,9 @@ interface AnalysisShellProps<K extends string> {
 }
 
 /** Rangée de la carte : un appel de fonction, pas un composant, pour ne rien ajouter à l'arbre de la page. */
-const mapRow = ({ rowZIndex, ...props }: ShellMap) => (
+const mapRow = ({ rowZIndex, ...props }: ShellMap, saveBar: ReactNode) => (
   <div className="an-map-row" style={{ marginTop: '10px', zIndex: rowZIndex }}>
-    <AnalysisMap {...props} anchorId={ANALYSIS_MAP_ANCHOR} />
+    <AnalysisMap {...props} saveBar={saveBar} anchorId={ANALYSIS_MAP_ANCHOR} />
   </div>
 );
 
@@ -83,6 +84,10 @@ function AnalysisShell<K extends string>({
   const [params] = useSearchParams();
   const back = libraryPath(family, params.get('activite') ?? undefined);
   useScrollToTopOnMount();
+  // Carte agrandie en plein écran : la barre du brouillon passe dans la carte (une seule barre à l'écran). En
+  // disposition large la vue agrandie est masquée : la barre reste alors dans la page.
+  const narrow = useNarrowScreen();
+  const saveBarInMap = map?.expanded === true && narrow;
   return (
     <div className="an-page ui-p-20">
       <div className="an-sheet">
@@ -95,7 +100,7 @@ function AnalysisShell<K extends string>({
         </div>
       </div>
 
-      {draft && <SessionSaveBar draft={draft} />}
+      {draft && !saveBarInMap && <SessionSaveBar draft={draft} />}
 
       {loadError && (
         <div className="ui-alert ui-alert--danger ui-mb-10 ui-max-520">
@@ -120,7 +125,7 @@ function AnalysisShell<K extends string>({
         </p>
       )}
 
-      {map && mapRow(map)}
+      {map && mapRow(map, saveBarInMap && draft ? <SessionSaveBar draft={draft} /> : undefined)}
 
       {tabs && (
         <div className="an-carte-col" style={map ? undefined : { marginTop: '10px' }}>

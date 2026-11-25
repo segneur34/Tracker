@@ -105,7 +105,7 @@ describe('fiche, compatibilité (e) aller-retour sur une fiche complète', () =>
     activityId: 'wingfoil', name: 'Sortie', notes: {
       foil: 'a', mast: 'b', wing: 'c', gear1: '', gear2: '', conditions: '', gear: null, windLevel: 'fort', waterState: 'plat', rating: 5, comment: 'x', savedAt: 3,
     },
-    analysis: { windDeg: 10, activeThreshold: 8, referenceSpeedMs: 5, speedRange: { minMs: 2, maxMs: 12 }, effortThresholdMs: null, foil: true, pumping: false, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 4 },
+    analysis: { windDeg: 10, activeThreshold: 8, referenceSpeedMs: 5, speedRange: { minMs: 2, maxMs: 12 }, effortThresholdMs: null, foil: true, pumping: false, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 4 },
     marks: [{ timeMs: 1790000100000, lat: 43.5, lon: 3.9, label: 'Bouée' }],
     jumps: { version: 2, computedAt: '2026-10-08T14:00:00.000Z', jumps: [] },
   }, { maneuverCount: 3, maneuverResults: { tackSuccess: 1, tackFail: 0, jibeSuccess: 2, jibeFail: 0 }, optionsKey: '[8,5,null,null]', inMotionS: 2900 });

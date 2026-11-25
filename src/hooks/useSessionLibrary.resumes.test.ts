@@ -69,7 +69,7 @@ const stored = new Map<string, string>();
 
 const analysis = (patch: Partial<SessionAnalysis>): SessionAnalysis => ({
   windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null,
-  pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 1, ...patch,
+  pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: 1, ...patch,
 });
 
 /** Course sans seuil propre, course au seuil propre, sortie à vélo. */

@@ -250,13 +250,18 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(260px, 70%, 62vh);
+  /* Le dessin déborde le cadran de 28 sur 200 de chaque côté (la poignée) : le cadran garde sa taille. */
+  width: calc(min(260px, 70%, 62vh) * 1.28);
   aspect-ratio: 1;
   transform: translate(-50%, -40%);
   touch-action: none;
   cursor: grab;
   pointer-events: auto;
   user-select: none;
+}
+
+.an-wind__handle {
+  cursor: grab;
 }
 
 .an-wind__dial:active {
@@ -326,6 +331,19 @@
     /* Ramenée à l'écran (« +carte »), elle s'arrête sous la barre du haut, qui colle. */
     scroll-margin-top: calc(var(--topbar-h) + var(--space-2));
   }
+}
+
+/* Mini-boussole du sens des vagues, dans l'onglet « général » du surf. */
+.an-sheet__wave {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+.an-sheet__wave-text {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* En-tête de la feuille : retour, titre, nom de la session. */
@@ -434,6 +452,36 @@
     background: var(--surface);
   }
 
+  /* Couche d'outils de la vue agrandie : une colonne sous le haut de l'écran, entre le zoom (56 px) et le × (60 px).
+     Le bandeau du réglage et la barre du brouillon s'y empilent, quelle que soit la hauteur du bandeau ;
+     la boussole et la polaire, absolues, se placent toujours sur toute la couche (`.an-wind` s'efface du flux). */
+  .an-map-overlay .an-map-tools {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    padding: var(--space-3) 60px 0 56px;
+    box-sizing: border-box;
+  }
+
+  .an-map-overlay .an-wind {
+    display: contents;
+  }
+
+  .an-map-overlay .an-wind__bar {
+    position: static;
+  }
+
+  .an-map-tools__save {
+    pointer-events: auto;
+  }
+
+  .an-map-tools__save .ui-savebar--dirty {
+    position: static;
+    margin-bottom: 0;
+    box-shadow: var(--shadow-float);
+  }
+
   .an-map-overlay__close {
     position: absolute;
     top: var(--space-4);
@@ -485,9 +533,11 @@
     padding: var(--space-2);
   }
 
+  /* La vue agrandie couvre tout l'écran, barre de navigation comprise : la polaire se pose au-dessus d'elle. */
   .an-wind__polar {
     width: 160px;
     height: 160px;
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + var(--space-3));
   }
 
   /* Colonne d'onglets de la carte (voile) : jamais plus large que l'écran, même quand un panneau

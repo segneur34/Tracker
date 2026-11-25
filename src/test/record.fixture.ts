@@ -87,7 +87,7 @@ export const surfStatSession = (startMs: number, over: Partial<StatSession> = {}
 export const familyRecords = (): Record<string, SessionRecord> => {
   const analysis = (patch: Partial<NonNullable<SessionRecord['analysis']>> = {}): NonNullable<SessionRecord['analysis']> => ({
     windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null,
-    pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 7_200_000, ...patch,
+    pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 7_200_000, ...patch,
   });
   const notes = { foil: '', mast: '', wing: '', gear1: '', gear2: '', conditions: 'Mistral [force 5]\net clapot', gear: null, windLevel: null, waterState: null, comment: 'Bien "tenu"', rating: 4 as const, savedAt: START_MS + 7_200_000 };
   const gear = [{ groupId: 'g1', groupName: 'Planche', itemId: 'i1', itemName: 'Foil 1 200 cm²' }];

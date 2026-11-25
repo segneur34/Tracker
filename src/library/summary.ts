@@ -73,6 +73,8 @@ export interface SummaryOptions {
   foil?: boolean;
   /** Seuil de vague en foil de la session, dans l'unité du profil (surf). */
   waveThreshold?: number;
+  /** Sens des vagues saisi pour la session, cap vers lequel elles vont, en degrés (surf). Absent : estimé sur la trace. */
+  waveDirectionDeg?: number;
   /** Test guidé de la fiche, dont le résumé garde la FC max et le dernier palier tenu. */
   test?: SessionTest;
   /**
@@ -116,6 +118,7 @@ export const surfRides = (
   const foil = options.foil ?? false;
   const { analysis } = runSurfSession(track, buildCumulativeTrack(track), surfProfile, {
     threshold: options.activeThreshold ?? defaultActiveThresholdOf(profile, foil), foil, waveThreshold: options.waveThreshold ?? null,
+    waveDirectionDeg: options.waveDirectionDeg ?? null,
   });
   return (foil ? analysis.flights : analysis.waves).map((r) => ({ startMs: r.startMs, endMs: r.endMs }));
 };
@@ -149,7 +152,7 @@ const analyze = (
   if (surfProfile) {
     const foil = options.foil ?? false;
     const { summary } = runSurfSession(track, buildCumulativeTrack(track), surfProfile, {
-      threshold, foil, waveThreshold: options.waveThreshold ?? null,
+      threshold, foil, waveThreshold: options.waveThreshold ?? null, waveDirectionDeg: options.waveDirectionDeg ?? null,
     });
     return {
       track,

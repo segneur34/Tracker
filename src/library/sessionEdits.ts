@@ -83,6 +83,7 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   foil: 'foil',
   pumping: 'pumping',
   vague: 'seuil de vague',
+  sensVagues: 'sens des vagues',
   charge: 'charge',
   notes: 'notes',
   reperes: 'repères',

@@ -89,7 +89,7 @@ if (imuPath) {
     process.exit(1);
   }
   stats = imuCaptureStats(rec);
-  windows = capturedWindows(rec);
+  windows = capturedWindows(rec, D);
   console.log(`Capture : ${imuPath} (${r1(statSync(imuPath).size / 1024 / 1024)} Mo), ${rec.header.setup.placement}, ${rec.header.setup.foil ? 'foil' : 'sans foil'}`);
   console.log(`  ${r1(stats.durationS / 60)} min de ${stats.startMs ? hhmmss(stats.startMs) : '?'}, ${windows.length} fenêtre(s) mesurée(s)${rec.header.windows ? ' (élaguée)' : ''}`);
   for (const s of stats.streams) console.log(`  ${s.kind} : ${s.count} mesures, ${r1(s.rateHz)} Hz, plus long trou ${r1(s.longestGapS)} s`);

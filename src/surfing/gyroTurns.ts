@@ -94,7 +94,7 @@ const fastestSteps = (heading: Float64Array, from: number, until: number, direct
  * glisse minimale, seule la vitesse de rotation décide.
  */
 export const waveTurnTrace = (
-  rec: ImuRecording, d: GyroTurnDetection, wave: TurnWave, windows: readonly ImuWindow[] = capturedWindows(rec), rules: TurnRules = {}
+  rec: ImuRecording, d: GyroTurnDetection, wave: TurnWave, windows: readonly ImuWindow[] = capturedWindows(rec, d), rules: TurnRules = {}
 ): WaveTurnTrace | null => {
   const fromUs = fileUsOf(rec, wave.startMs);
   const toUs = fileUsOf(rec, wave.endMs);
@@ -139,7 +139,7 @@ export const waveTurnTrace = (
 export const gyroWaveTurns = (
   rec: ImuRecording, d: GyroTurnDetection, waves: readonly TurnWave[], rules: TurnRules = {}
 ): (number | null)[] => {
-  const windows = capturedWindows(rec);
+  const windows = capturedWindows(rec, d);
   return waves.map((wave) => {
     const trace = waveTurnTrace(rec, d, wave, windows, rules);
     return trace ? trace.changes.filter((c) => c.counted).length : null;

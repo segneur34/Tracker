@@ -64,6 +64,10 @@ import { useSportSettings } from '../hooks/useSportSettings';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan, SurfWave } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import { gyroWaveTurns } from '../surfing/gyroTurns';
+import WaveSenseField from '../components/surf/WaveSenseField';
+import WaveSenseOverlay from '../components/surf/WaveSenseOverlay';
+import { waveSenseOrigin, waveSenseView } from '../components/surf/waveSenseView';
+import WindCompass from '../components/WindCompass';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
 import SegmentedControl from '../components/ui/SegmentedControl';
@@ -221,9 +225,11 @@ function SurfModule() {
   const hrZone = useHeartRateZoneHighlight(highlight, open.cardio, heart, hrZones, track, profile.heartRate.gapS);
   const result = useMemo(
     () => (surfProfile && track.length > 1
-      ? runSurfSession(track, cumulative, surfProfile, { threshold, foil, waveThreshold: draft.edits.waveThreshold })
+      ? runSurfSession(track, cumulative, surfProfile, {
+        threshold, foil, waveThreshold: draft.edits.waveThreshold, waveDirectionDeg: draft.edits.waveDirectionDeg,
+      })
       : null),
-    [surfProfile, track, cumulative, threshold, foil, draft.edits.waveThreshold]
+    [surfProfile, track, cumulative, threshold, foil, draft.edits.waveThreshold, draft.edits.waveDirectionDeg]
   );
   const summary = result?.summary ?? null;
   const analysis = result?.analysis ?? null;
@@ -256,7 +262,7 @@ function SurfModule() {
     { key: 'maxSpeed', label: 'Vitesse max', value: orDash(summary.maxWaveSpeedMs, (v) => formatSpeed(v, speedUnit)) },
     { key: 'waveSpeed', label: 'Moyenne sur la vague', value: orDash(summary.avgWaveSpeedMs, (v) => formatSpeed(v, speedUnit)) },
     { key: 'paddleSpeed', label: 'Vitesse de rame', value: orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit)), title: 'Moyenne en mouvement, arrêts courts exclus' },
-    { key: 'return', label: 'Retour au pic (moyen)', value: orDash(summary.avgReturnS, formatShortDuration), title: "De la fin d'une vague à la première attente" },
+    { key: 'return', label: 'Retour au pic (moyen)', value: orDash(summary.avgReturnS, formatShortDuration), title: "De la fin d'une vague à l'entrée dans la zone du pic" },
     ...(foil ? [
       { key: 'longestFlight', label: 'Plus long vol', value: orDash(summary.longestFlightS, formatShortDuration) },
       { key: 'flightTime', label: `Ratio de vol (${summary.totalS > 0 ? formatDecimal((summary.flightS / summary.totalS) * 100, 1) : '0'} %)`, value: formatShortDuration(summary.flightS) },
@@ -308,12 +314,9 @@ function SurfModule() {
     { header: `Vitesse hors vague (${SPEED_UNIT_LABEL[speedUnit]})`, cell: (f) => speedCell(f.pumpSpeedMs) },
   ];
 
-  /** Point d'arrivée d'une remontée sur la carte : le pic (début de l'attente), sinon la glisse suivante. */
+  /** Point d'arrivée d'une remontée sur la carte : l'entrée dans la zone du pic, sinon la glisse suivante. */
   const returnEnd = useCallback(
-    (r: SurfReturn): number => {
-      const targetMs = r.returnS !== null ? r.startMs + r.returnS * 1000 : r.endMs;
-      return nearestIndexAtTime(track, targetMs);
-    },
+    (r: SurfReturn): number => nearestIndexAtTime(track, r.entryMs ?? r.endMs),
     [track]
   );
   const shownSpans = useMemo((): TrackSpanShown[] => {
@@ -403,6 +406,8 @@ function SurfModule() {
   const readHeart = (z: ChartZoom) => (i: number): Readout | null => (timeChart.readable(z, i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
+  /** Réglage du sens des vagues ouvert sur la carte. */
+  const [waveAdjust, setWaveAdjust] = useState(false);
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
@@ -511,6 +516,22 @@ function SurfModule() {
   );
 
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
+  /** Ouvre le réglage du sens des vagues : carte en plein écran sur téléphone, ramenée à l'écran sinon. */
+  const startWaveAdjust = () => {
+    setWaveAdjust(true);
+    if (narrow) setMapExpanded(true);
+    else zoomOnMap.scrollToMap();
+  };
+  const endWaveAdjust = () => {
+    setWaveAdjust(false);
+    setMapExpanded(false);
+    // Le plein écran se ferme ici sans passer par `onExpandedChange`.
+    zoomOnMap.closeCompanion();
+  };
+  /** Sens saisi lu dans le brouillon (à jour tout de suite) ; seul l'estimé vient de l'analyse, qui retarde pendant un recalcul. */
+  const { shownDeg: shownWaveDeg, manual: waveManual, reliable: waveReliable, autoDeg: autoWaveDeg } = waveSenseView(
+    draft.edits.waveDirectionDeg, analysis?.estimatedWaveSense ?? null, surfProfile?.surf.waveSense.minR ?? 0
+  );
   const rideWord = foil ? 'vol' : 'vague';
   const measuredReturns = returns.filter((r) => r.after > 0);
   const firstOut = returns.find((r) => r.after === 0) ?? null;
@@ -526,7 +547,13 @@ function SurfModule() {
         onExpandedChange: (next) => {
           setMapExpanded(next);
           if (!next) zoomOnMap.closeCompanion();
+          // Fermer la carte agrandie termine le réglage commencé dedans.
+          if (!next) setWaveAdjust(false);
         },
+        overlay: waveAdjust && track.length > 0 ? (
+          <WaveSenseOverlay directionDeg={shownWaveDeg} autoDeg={autoWaveDeg} manual={waveManual} reliable={waveReliable}
+            onChange={(deg) => draft.update({ waveDirectionDeg: deg })} onClose={endWaveAdjust} />
+        ) : undefined,
         focus: zoomOnMap.focus,
         companion: companionCharts(zoomOnMap.companionPanel),
         sessionKey: gpx.sessionKey,
@@ -542,6 +569,21 @@ function SurfModule() {
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 <GeneralStats stats={overviewStats} />
+                {/* Mini-boussole du sens des vagues ; « Régler » ouvre la grande sur la carte. */}
+                {track.length > 0 && (
+                  <div className="an-sheet__wave">
+                    <WindCompass windAngle={shownWaveDeg} size={64} waves />
+                    <div className="an-sheet__wave-text">
+                      <strong className="ui-block ui-text-m">
+                        {shownWaveDeg !== null ? `Vagues ${shownWaveDeg}°` : 'Sens des vagues non estimé'}
+                      </strong>
+                      {shownWaveDeg !== null && (
+                        <span className="ui-muted ui-text-xs">{waveSenseOrigin({ manual: waveManual, reliable: waveReliable, autoDeg: autoWaveDeg })}</span>
+                      )}
+                    </div>
+                    <Button size="s" onClick={startWaveAdjust} disabled={waveAdjust}>Régler</Button>
+                  </div>
+                )}
                 {draft.edits.foil === null && (
                   <div className="ui-muted ui-text-xs ui-mt-8">
                     {foil ? 'Sur foil' : 'Sans foil'}, supposé d'après l'activité : la session ne le dit pas. Il se règle dans l'onglet réglages.
@@ -658,16 +700,19 @@ function SurfModule() {
               <ResizablePanel id={panelId('rame')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Rame et retour au pic" open={open.rame} onToggle={toggleOf('rame')} helpKey="surf:rame" />
                 <HelpText helpKey="surf:rame" note>
-                  Retour au pic : de la fin {foil ? "d'un vol" : "d'une vague"} au début de la première attente (immobile au moins {surfProfile.surf.minWaitS} s) ; un arrêt plus court (canard, série) compte dans la rame.
-                  {' '}Remontée : distance à vol d'oiseau jusqu'au pic, divisée par ce temps. Rame : vitesse en mouvement.
+                  {foil
+                    ? "Retour au pic : de la fin d'un vol à l'entrée dans la zone du pic, l'endroit d'où partent les vols, allongé en travers des vagues. Un vol pris sans être revenu dans cette zone est enchaîné."
+                    : "Retour au pic : de la fin d'une vague à l'entrée dans la zone du pic, l'endroit d'où partent les vagues, allongé en travers des vagues. Une vague prise sans être revenu dans cette zone (une vague de l'intérieur) est enchaînée."}
+                  {' '}Attente : immobile au moins {surfProfile.surf.minWaitS} s ; un arrêt plus court (canard, série) compte dans la rame.
+                  {' '}Remontée : distance à vol d'oiseau jusqu'à l'entrée dans la zone, divisée par ce temps. Rame : vitesse en mouvement.
                 </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <StatTile label="Vitesse de rame" value={orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Moyenne en mouvement, arrêts courts exclus" />
-                  <StatTile label="Vitesse de remontée" value={orDash(summary.avgReturnSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Distance à vol d'oiseau de la fin de la vague au pic, divisée par le temps du retour" />
+                  <StatTile label="Vitesse de remontée" value={orDash(summary.avgReturnSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Distance à vol d'oiseau de la fin de la vague à l'entrée dans la zone du pic, divisée par le temps du retour" />
                   <StatTile label="Retour au pic (moyen)" value={orDash(summary.avgReturnS, formatShortDuration)} />
                   <StatTile label="Meilleur retour" value={orDash(summary.bestReturnS, formatShortDuration)} />
-                  <StatTile label="Première sortie" value={orDash(summary.firstOutS, formatShortDuration)} title="Du premier mouvement à la première attente, marche sur la plage comprise" />
-                  <StatTile label={`${foil ? 'Vols' : 'Vagues'} enchaîné${foil ? 's' : 'es'}`} value={summary.chainedCount} title="Prise sans attente depuis la précédente : pas de retour au pic mesuré" />
+                  <StatTile label="Première sortie" value={orDash(summary.firstOutS, formatShortDuration)} title="Du premier mouvement à l'entrée dans la zone du pic, marche sur la plage comprise" />
+                  <StatTile label={`${foil ? 'Vols' : 'Vagues'} enchaîné${foil ? 's' : 'es'}`} value={summary.chainedCount} title="Prise sans être revenu dans la zone du pic depuis la précédente : pas de retour mesuré" />
                   <StatTile label="Temps de rame" value={formatShortDuration(summary.rameS)} />
                   <StatTile label="Temps d'attente" value={formatShortDuration(summary.attenteS)} />
                 </div>
@@ -857,6 +902,8 @@ function SurfModule() {
                       thresholdUnit={profile.thresholdUnit}
                       onChange={(next) => draft.update({ waveThreshold: next })} />
                   )}
+                  <WaveSenseField directionDeg={shownWaveDeg} autoDeg={autoWaveDeg} manual={waveManual} reliable={waveReliable}
+                    adjusting={waveAdjust} onAdjust={startWaveAdjust} />
                   {track.length > 0 && (
                     <SessionColorRangeField unit={speedUnit} range={range} isOverridden={draft.edits.speedRange !== null}
                       onChange={(next) => draft.update({ speedRange: next })} />

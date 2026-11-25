@@ -178,12 +178,33 @@ const dial = await evaluate(`(() => { const r = document.querySelector('.an-map-
 const windText = () => evaluate(`document.querySelector('.an-map-panel .an-wind__value')?.textContent ?? ''`);
 console.log('boussole :', JSON.stringify(dial), await windText());
 await shoot('general-vent');
-await mouse('mousePressed', dial.x, dial.y - dial.w * 0.35);
-await mouse('mouseMoved', dial.x + dial.w * 0.25, dial.y - dial.w * 0.25);
-await mouse('mouseMoved', dial.x + dial.w * 0.35, dial.y);
-await wait(200);
-check('la flèche suit le pointeur avant le lâcher', (await windText()) === 'Vent 90°', await windText());
-await mouse('mouseReleased', dial.x + dial.w * 0.35, dial.y);
+// La poignée elle-même (lot 233) : centre, rayon du cercle et recouvrement avec le bandeau et la barre « Non enregistré ».
+const poignee = (zone) => evaluate(`(() => {
+  const z = document.querySelector(${JSON.stringify(zone)});
+  const box = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+  const h = box(z.querySelector('.an-wind__handle')), c = box(z.querySelector('.an-wind__dial circle'));
+  const hx = (h.l + h.r) / 2, hy = (h.t + h.b) / 2, cx = (c.l + c.r) / 2, cy = (c.t + c.b) / 2, R = (c.r - c.l) / 2;
+  const bandeau = box(z.querySelector('.an-wind__bar')), save = box(document.querySelector('.ui-savebar'));
+  const plein = (b) => b !== null && b.r > b.l && b.b > b.t;
+  return { hx, hy, cx, cy, R, dist: Math.hypot(hx - cx, hy - cy), h, bandeau, save, valide: R > 50 && plein(h) && plein(bandeau) };
+})()`);
+const sePose = (a, b) => a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+const pleine = (b) => b !== null && b.r > b.l && b.b > b.t;
+/** Tire la poignée jusqu'à l'angle donné (degrés), sur le cercle, par trois positions. */
+const tirer = async (zone, deg) => {
+  const p = await poignee(zone);
+  const pt = (d) => [p.cx + p.R * Math.sin((d * Math.PI) / 180), p.cy - p.R * Math.cos((d * Math.PI) / 180)];
+  await mouse('mousePressed', p.hx, p.hy);
+  await mouse('mouseMoved', ...pt(deg / 2));
+  await mouse('mouseMoved', ...pt(deg));
+  await wait(200);
+  return pt(deg);
+};
+const p0 = await poignee('.an-map-panel');
+check('la poignée est sur le cercle (centre à ± 4 px du rayon)', p0.valide && Math.abs(p0.dist - p0.R) <= 4, JSON.stringify({ dist: p0.dist, R: p0.R }));
+const fin = await tirer('.an-map-panel', 90);
+check('la flèche suit la poignée avant le lâcher', (await windText()) === 'Vent 90°', await windText());
+await mouse('mouseReleased', ...fin);
 await settle({ max: 1500 });
 general = await panel('Général');
 check('lâchée : vent saisi à 90° dans le général', general.includes('Vent 90°') && general.includes('saisi'), general);
@@ -251,6 +272,26 @@ await clickButton(panelOf('Général'), 'Régler');
 await settle({ max: 1200 });
 check('390 px : « Régler » ouvre la carte en plein écran avec la boussole', await evaluate(`Boolean(document.querySelector('.an-map-overlay .an-wind__dial'))`));
 await shoot('general-vent-390');
+const cadre390 = await evaluate(`(() => { const r = document.querySelector('.an-map-overlay .an-wind__dial').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; })()`);
+check('390 px : la boussole est entière dans l’écran', cadre390.r > cadre390.l && cadre390.b > cadre390.t && cadre390.l >= 0 && cadre390.r <= 390 && cadre390.t >= 0 && cadre390.b <= 844, JSON.stringify(cadre390));
+// Brouillon en attente (poignée tirée), puis poignée à 0° : sous le bandeau et sous la barre « Non enregistré », passée dans la carte agrandie.
+const fin0 = await tirer('.an-map-overlay', 90);
+await mouse('mouseReleased', ...fin0);
+await settle({ max: 1200 });
+const fin00 = await tirer('.an-map-overlay', 0);
+const p390 = await poignee('.an-map-overlay');
+check('390 px : la poignée est sur le cercle', p390.valide && Math.abs(p390.dist - p390.R) <= 4, JSON.stringify({ dist: p390.dist, R: p390.R }));
+check('390 px : poignée à 0° sous le bandeau du réglage, sans recouvrement', p390.valide && !sePose(p390.h, p390.bandeau) && p390.h.t >= p390.bandeau.b - 1, JSON.stringify({ h: p390.h, bandeau: p390.bandeau }));
+check('390 px : poignée à 0° sans recouvrir la barre « Non enregistré »', pleine(p390.save) && !sePose(p390.h, p390.save), JSON.stringify({ h: p390.h, save: p390.save }));
+check('390 px : la barre « Non enregistré » est dans la carte agrandie, une seule à l’écran',
+  await evaluate(`document.querySelectorAll('.ui-savebar').length === 1 && Boolean(document.querySelector('.an-map-overlay .an-map-tools__save .ui-savebar'))`));
+await mouse('mouseReleased', ...fin00);
+await settle({ max: 1200 });
+await clickButton(`document.querySelector('.an-map-overlay .an-wind')`, 'Polaire');
+await settle({ max: 1200 });
+const pol = await evaluate(`(() => { const p = document.querySelector('.an-map-overlay .an-wind__polar')?.getBoundingClientRect(); const t = document.querySelector('.shell-tabbar')?.getBoundingClientRect(); return { polaireBas: p ? p.bottom : null, barreHaut: t ? t.top : null }; })()`);
+check('390 px : la polaire est entière au-dessus de la barre de navigation', pol.polaireBas !== null && pol.barreHaut !== null && pol.polaireBas <= pol.barreHaut, JSON.stringify(pol));
+await shoot('general-polaire-390');
 await clickButton(`document.querySelector('.an-map-overlay .an-wind')`, 'Terminé');
 await wait(500);
 check('390 px : « Terminé » ferme la carte agrandie', !(await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)));

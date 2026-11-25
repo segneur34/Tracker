@@ -49,6 +49,12 @@ export interface AnalysisMapProps {
   focus?: MapFocus | null;
   /** Graphes posés sous la carte agrandie (plein écran carte + graphes du téléphone) ; sinon, la carte seule. */
   companion?: ReactNode;
+  /**
+   * Barre du brouillon, posée dans la vue agrandie, sous le bandeau du réglage s'il y en a un (le
+   * flux de la couche d'outils les empile) : la barre de la page, collante, passerait sous la
+   * carte plein écran ou par-dessus la boussole. La page ne la rend alors plus elle-même.
+   */
+  saveBar?: ReactNode;
 }
 
 /** Marge et zoom maximal d'un cadrage, à l'ouverture comme à la demande. */
@@ -101,7 +107,7 @@ function MapCornerControl({ children }: { children: ReactNode }) {
  */
 function AnalysisMap({
   panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style, overlay, expanded: expandedProp, onExpandedChange,
-  focus = null, companion,
+  focus = null, companion, saveBar,
 }: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
   const [ownExpanded, setOwnExpanded] = useState(false);
@@ -126,6 +132,12 @@ function AnalysisMap({
   const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
   // Outils posés sur la carte : aux couleurs de la carte, qui reste claire en thème sombre (`tokens.css`).
   const tools = overlay && <div className="an-map-tools theme-light">{overlay}</div>;
+  const expandedTools = (overlay || saveBar) && (
+    <div className="an-map-tools theme-light">
+      {overlay}
+      {saveBar && <div className="an-map-tool an-map-tools__save">{saveBar}</div>}
+    </div>
+  );
   const focusControl = <MapFocusControl focus={focus} />;
 
   return (
@@ -162,7 +174,7 @@ function AnalysisMap({
               {layers}
               {legendControl}
             </MapContainer>
-            {tools}
+            {expandedTools}
           </div>
           {companion && (
             <div className="an-map-overlay__charts" onClick={(e) => e.stopPropagation()}>

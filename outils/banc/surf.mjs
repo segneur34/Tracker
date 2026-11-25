@@ -4,8 +4,10 @@
 // dans un `File`. Il vérifie :
 //  1. la famille Surf sur l'accueil, dans la barre du haut, et ses deux activités dans Réglages (carte d'activité :
 //     « Seuil de vague », « Seuil de vol » pour Surf foil, ni pente ni terrain) ;
-//  2. une matinée (trois vagues, la troisième enchaînée) : la ligne de la bibliothèque, puis l'analyse, onglets
-//     général, vagues (tableau, tri, « Voir », podium), rame (retours, première sortie), graphiques ;
+//  2. une matinée (trois vagues, la troisième prise en remontant) : la ligne de la bibliothèque, puis l'analyse, onglets
+//     général, vagues (tableau, tri, « Voir », podium), rame (retours jusqu'à la zone du pic, première sortie), graphiques ;
+//  2 bis. le sens des vagues (lot 233) : la ligne des réglages, la boussole sur la carte (poignée tirée sur le cercle,
+//     « Inverser », angle tapé, « Terminé »), le brouillon, la fiche, « Calculé » et « Annuler » ;
 //  3. les réglages de la session : seuil de vague imposé (une vague en moins), enregistré dans la fiche, relu après
 //     rechargement, puis « Défaut » et « Annuler » ;
 //  4. une session de surf foil (un vol de trois vagues reliées en pompant, puis un vol court) : case Foil de la
@@ -15,7 +17,8 @@
 //  5 ter. le départ des vagues (sans foil, lot 233) : deux vagues à vraie mise en vitesse, l'une depuis 1 km/h, l'autre après une
 //     rame plate à 4 km/h ; durée et heure de début avec le départ, vitesse max et nombre de vagues inchangés, carte (vague
 //     montrée seule), courbe (bandes et série orange) et les deux phrases d'aide ;
-//  6. la page à 390 × 844, sans débordement.
+//  6. la page à 390 × 844, sans débordement ; le sens des vagues en plein écran (boussole entière, poignée sous le
+//     bandeau et la barre « Non enregistré », passée dans la carte agrandie).
 // Verdicts (lot 159) : les chiffres attendus par construction des phases (MORNING, FOIL) sont contrôlés (`check`), le
 // script finit par « Tout passe. » ou le nombre d'échecs, code 0 ou 1. Les heures des vagues (fuseau du poste) ne le sont pas.
 import { connect } from './lib/cdp.mjs';
@@ -83,7 +86,7 @@ const DEPART = [
 const T_DEPART = Date.UTC(2026, 9, 6, 15, 0, 35);
 
 // --- Protocole (lib/cdp.mjs) ---
-const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, mouse, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 /** Contrôle qu'un texte relevé contient `attendu` (chaîne ou expression régulière). */
 const contient = (quoi, texte, attendu) => check(quoi, typeof attendu === 'string' ? String(texte).includes(attendu) : attendu.test(String(texte)), String(texte).slice(0, 300));
 
@@ -197,10 +200,14 @@ console.log('rame :', await openTab('rame'));
 await wait(500);
 const rame = await panel('Rame');
 console.log('panneau :', rame);
-// Après la vague 1 : 100 s de rame à 1 m/s jusqu'au pic ; la vague 3 part 40 s après la 2, sans attente : enchaînée.
-contient('matinée, retour au pic après la vague 1 : 1 min 40, 100 m', rame, /vague 1\t1 min 40\t100 m\t/);
-contient('matinée, vague 3 enchaînée après la 2', rame, /vague 2\tenchaîné\t/);
-contient('matinée, « Vagues enchaînées 1 »', rame, 'Vagues enchaînées / 1 ');
+// Retour au pic (lot 233) : jusqu'à l'entrée dans la zone du pic. Le sens des vagues oriente la zone dès la première
+// vague : mince, le long de la ligne des départs, 5 m de marge côté plage (le sens n'est seulement pas jugé fiable avec
+// trois vagues, il n'écarte donc aucune remontée pompée). Après la vague 1, rame à 1 m/s : la zone est atteinte vers
+// 27 s, 27 m ; la vague 3 part dans la zone, la remontée qui la précède y entre vers 29 s, 29 m, sans être enchaînée.
+// Avant le lot : 1 min 40 et 100 m (jusqu'à l'attente), vague 3 enchaînée.
+contient('matinée, retour au pic après la vague 1 : 27 s, 27 m', rame, /vague 1\t2[678] s\t2[678] m\t/);
+contient('matinée, retour au pic après la vague 2 : 29 s, 29 m', rame, /vague 2\t(?:29|30) s\t(?:29|30) m\t/);
+contient('matinée, « Vagues enchaînées 0 »', rame, 'Vagues enchaînées / 0 ');
 console.log('fermer vagues :', await tab('vagues'), '| surbrillance restante :', await evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#d32f2f"]').length`));
 console.log('graphiques :', await openTab('graphiques'));
 await settle({ max: 800 });
@@ -210,6 +217,111 @@ console.log('graphe :', await evaluate(`(() => {
   return p ? p.querySelectorAll('.recharts-surface').length + ' graphe, ' + p.querySelectorAll('.recharts-reference-area').length + ' bandes' : 'absent';
 })()`));
 await shoot('surf-onglets');
+
+// 2 bis. Sens des vagues : la ligne des réglages, la boussole sur la carte, le brouillon, la fiche.
+const ligneSens = () => evaluate(`(() => {
+  const s = [...document.querySelectorAll('.an-carte-panels strong')].find((x) => x.textContent.trim().startsWith('Sens des vagues'));
+  return s ? s.parentElement.innerText.replace(/\\n+/g, ' ') : '(absente)';
+})()`);
+const sensText = () => evaluate(`document.querySelector('.an-map-panel .an-wind__value')?.textContent ?? '(absent)'`);
+const sensBar = () => evaluate(`document.querySelector('.an-map-panel .an-wind__bar')?.innerText.replace(/\\n+/g, ' ') ?? '(absente)'`);
+const boutonSens = (scope, text) => evaluate(`(() => {
+  const b = [...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll('button') ?? [])].find((x) => x.textContent.trim() === ${JSON.stringify(text)});
+  if (!b) return false; b.click(); return true;
+})()`);
+const retours = async () => ((await panel('Rame')).match(/vague \d+\t[^\t]+\t[^\t]+\t/g) ?? []).join(' | ');
+console.log('réglages :', await openTab('réglages'));
+await wait(500);
+const retoursAvant = await retours();
+const sensAvant = await ligneSens();
+console.log('sens des vagues, avant :', sensAvant, '| retours :', retoursAvant);
+contient('sens des vagues : « Sens des vagues : » avec un cap, « calculé » ou « calculé · peu sûr », « Régler »', sensAvant, /^Sens des vagues : \d+° calculé( · peu sûr)? ?Régler/i);
+const sensCalcule = Number(sensAvant.match(/(\d+)°/)?.[1]);
+check('sens des vagues : « Régler » ouvre la boussole sur la carte', (await boutonSens('.an-carte-panels', 'Régler')) && (await settle({ max: 1200 }), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
+console.log('boussole :', await sensBar());
+await shoot('surf-sens-boussole');
+// La poignée elle-même : centre, rayon du cercle et recouvrement avec le bandeau et la barre « Non enregistré ».
+const poignee = (zone) => evaluate(`(() => {
+  const z = document.querySelector(${JSON.stringify(zone)});
+  const box = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+  const h = box(z.querySelector('.an-wind__handle')), c = box(z.querySelector('.an-wind__dial circle'));
+  const hx = (h.l + h.r) / 2, hy = (h.t + h.b) / 2, cx = (c.l + c.r) / 2, cy = (c.t + c.b) / 2, R = (c.r - c.l) / 2;
+  const bandeau = box(z.querySelector('.an-wind__bar')), save = box(document.querySelector('.ui-savebar'));
+  const plein = (b) => b !== null && b.r > b.l && b.b > b.t;
+  return { hx, hy, cx, cy, R, dist: Math.hypot(hx - cx, hy - cy), h, bandeau, save, valide: R > 50 && plein(h) && plein(bandeau) };
+})()`);
+const sePose = (a, b) => a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+const pleine = (b) => b !== null && b.r > b.l && b.b > b.t;
+/** Tire la poignée jusqu'à l'angle donné (degrés), sur le cercle, par trois positions. */
+const tirer = async (zone, deg) => {
+  const p = await poignee(zone);
+  const pt = (d) => [p.cx + p.R * Math.sin((d * Math.PI) / 180), p.cy - p.R * Math.cos((d * Math.PI) / 180)];
+  await mouse('mousePressed', p.hx, p.hy);
+  await mouse('mouseMoved', ...pt(deg / 2));
+  await mouse('mouseMoved', ...pt(deg));
+  await wait(200);
+  return pt(deg);
+};
+const p0 = await poignee('.an-map-panel');
+check('sens des vagues : la poignée est sur le cercle (centre à ± 4 px du rayon)', p0.valide && Math.abs(p0.dist - p0.R) <= 4, JSON.stringify({ dist: p0.dist, R: p0.R }));
+const fin = await tirer('.an-map-panel', 90);
+check('sens des vagues : la flèche suit la poignée (« Vagues 90° »)', (await sensText()) === 'Vagues 90°', await sensText());
+await mouse('mouseReleased', ...fin);
+await settle({ max: 1500 });
+const sens90 = await ligneSens();
+console.log('sens des vagues, tiré à 90° :', sens90, '|', await sensBar());
+contient('sens des vagues : « 90° saisi · calculé N° »', sens90, new RegExp(`^Sens des vagues : 90° saisi · calculé ${sensCalcule}° ?Régler`, 'i'));
+const retours90 = await retours();
+console.log('retours, sens à 90° :', retours90);
+check('sens des vagues : le brouillon propose « Enregistrer la session »', await evaluate(`document.body.textContent.includes('Enregistrer la session')`));
+check(`sens des vagues : les retours au pic changent avec le sens tourné (avant : ${retoursAvant} ; après : ${retours90})`, retours90 !== retoursAvant, retours90);
+await boutonSens('.an-map-panel .an-wind', 'Inverser');
+await settle({ max: 1200 });
+check('sens des vagues : « Inverser » donne 270°', (await sensText()) === 'Vagues 270°', await sensText());
+console.log('retours, sens à 270° :', await retours());
+console.log('champ angle 135 :', await setField('Sens des vagues en degrés', '135'));
+await evaluate(`(() => { const i = ${field('Sens des vagues en degrés')}; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+await settle({ max: 1200 });
+check('sens des vagues : angle tapé, Entrée : 135°', (await sensText()) === 'Vagues 135°' && (await ligneSens()).includes('135° saisi'), `${await sensText()} | ${await ligneSens()}`);
+await boutonSens('.an-map-panel .an-wind', 'Terminé');
+await wait(500);
+check('sens des vagues : « Terminé » ferme la boussole', !(await evaluate(`Boolean(document.querySelector('.an-wind'))`)));
+console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
+await waitFor(async () => (await recordAt(T_MORNING))?.analysis?.waveDirectionDeg !== undefined, { timeout: 2500, label: 'fiche sens' }).catch(() => null);
+const fSens = (await recordAt(T_MORNING))?.analysis;
+console.log('fiche, analyse :', JSON.stringify(fSens));
+await go(morningPath, 5000);
+await openTab('réglages');
+await wait(500);
+const sensRelu = await ligneSens();
+console.log('sens des vagues, après rechargement :', sensRelu, '| retours :', await retours());
+contient('sens des vagues : après rechargement, toujours « 135° saisi »', sensRelu, /^Sens des vagues : 135° saisi/);
+await boutonSens('.an-carte-panels', 'Régler');
+await settle({ max: 1200 });
+await boutonSens('.an-map-panel .an-wind', 'Calculé');
+await settle({ max: 1200 });
+const sensRevenu = await ligneSens();
+console.log('« Calculé » :', sensRevenu, '|', await sensBar());
+contient('sens des vagues : « Calculé » revient au sens calculé du départ', sensRevenu, new RegExp(`^Sens des vagues : ${sensCalcule}° calculé`));
+check('sens des vagues : les retours reviennent à ceux du départ', (await retours()) === retoursAvant, await retours());
+await boutonSens('.an-map-panel .an-wind', 'Terminé');
+await wait(400);
+console.log('Annuler :', await clickText('Annuler'));
+await wait(600);
+const sensAnnule = await ligneSens();
+console.log('sens des vagues, après « Annuler » :', sensAnnule);
+contient('sens des vagues : « Annuler » rend le sens saisi enregistré', sensAnnule, /^Sens des vagues : 135° saisi/);
+// Remise à zéro de la fiche : « Calculé » puis « Enregistrer la session ».
+await boutonSens('.an-carte-panels', 'Régler');
+await settle({ max: 1200 });
+await boutonSens('.an-map-panel .an-wind', 'Calculé');
+await boutonSens('.an-map-panel .an-wind', 'Terminé');
+await wait(400);
+console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
+await wait(800);
+console.log('sens des vagues, fiche remise :', await ligneSens());
+contient('sens des vagues : fiche remise sur le calculé', await ligneSens(), /^Sens des vagues : \d+° calculé/);
+
 
 // 3. Réglages de la session : seuil de vague.
 console.log('réglages :', await openTab('réglages'));
@@ -222,7 +334,7 @@ console.log('vagues :', vaguesA20, '| barre :', await evaluate(`document.body.in
 // À 20 km/h, seule la vague 2 (21,6 km/h) passe le seuil.
 check('seuil de vague 20 km/h : 1 vague', /^1 \(/.test(vaguesA20 ?? ''), vaguesA20);
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-await waitFor(async () => (await recordAt(T_MORNING))?.analysis?.activeThreshold !== undefined, { timeout: 2500, label: 'fiche seuil' });
+await waitFor(async () => (await recordAt(T_MORNING))?.analysis?.activeThreshold != null, { timeout: 2500, label: 'fiche seuil' });
 const saved = await recordAt(T_MORNING);
 console.log('fiche : seuil', saved?.analysis?.activeThreshold, '| vagues du résumé', saved?.summary?.waveCount);
 check('seuil 20 enregistré : fiche à 20, 1 vague au résumé', saved?.analysis?.activeThreshold === 20 && saved?.summary?.waveCount === 1, `${saved?.analysis?.activeThreshold} / ${saved?.summary?.waveCount}`);
@@ -415,6 +527,35 @@ await shoot('surf-telephone');
 const largeur = await evaluate('document.documentElement.scrollWidth');
 console.log('largeur au téléphone :', largeur);
 check('téléphone : largeur 390, sans débordement', largeur === 390, largeur);
+// Sens des vagues au téléphone : « Régler » met la carte en plein écran avec la boussole, la fermer met fin au réglage.
+await go(morningPath, 5000);
+console.log('réglages (390) :', await openTab('réglages'));
+await wait(500);
+console.log('sens des vagues (390) :', await ligneSens());
+console.log('Régler (390) :', await boutonSens('.an-carte-panels', 'Régler'));
+await settle({ max: 1500 });
+check('390 px, sens des vagues : « Régler » ouvre la carte en plein écran avec la boussole', await evaluate(`Boolean(document.querySelector('.an-map-overlay .an-wind__dial'))`));
+// Le cadran et le bandeau, mesurés eux-mêmes : leur conteneur n'a pas de boîte dans la carte agrandie (`display: contents`).
+const cadre = await evaluate(`(() => { const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom) }; }; return { cadran: box('.an-map-overlay .an-wind__dial'), bandeau: box('.an-map-overlay .an-wind__bar') }; })()`);
+console.log('boussole (390) :', JSON.stringify(cadre), await evaluate(`document.querySelector('.an-map-overlay .an-wind__bar')?.innerText.replace(/\\n+/g, ' ')`));
+const dansEcran = (c) => c.r > c.l && c.b > c.t && c.l >= 0 && c.r <= 390 && c.t >= 0 && c.b <= 844;
+check('390 px, sens des vagues : la boussole est entière dans l’écran', dansEcran(cadre.cadran) && dansEcran(cadre.bandeau) && cadre.bandeau.b <= cadre.cadran.t, JSON.stringify(cadre));
+// Brouillon en attente (poignée tirée), puis poignée à 0° : sous le bandeau et sous la barre « Non enregistré ».
+const fin90 = await tirer('.an-map-overlay', 90);
+await mouse('mouseReleased', ...fin90);
+await settle({ max: 1200 });
+const fin00 = await tirer('.an-map-overlay', 0);
+const p390 = await poignee('.an-map-overlay');
+check('390 px, sens des vagues : la poignée est sur le cercle', p390.valide && Math.abs(p390.dist - p390.R) <= 4, JSON.stringify({ dist: p390.dist, R: p390.R }));
+check('390 px, sens des vagues : poignée à 0° sous le bandeau du réglage, sans recouvrement', p390.valide && !sePose(p390.h, p390.bandeau) && p390.h.t >= p390.bandeau.b - 1, JSON.stringify({ h: p390.h, bandeau: p390.bandeau }));
+check('390 px, sens des vagues : poignée à 0° sans recouvrir la barre « Non enregistré »', pleine(p390.save) && !sePose(p390.h, p390.save), JSON.stringify({ h: p390.h, save: p390.save }));
+await mouse('mouseReleased', ...fin00);
+await settle({ max: 800 });
+await shoot('surf-sens-390');
+console.log('fermer la carte :', await evaluate(`(() => { const b = document.querySelector('.an-map-overlay__close'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await wait(600);
+check('390 px, sens des vagues : fermer le plein écran ferme la carte et la boussole', !(await evaluate(`Boolean(document.querySelector('.an-map-overlay') || document.querySelector('.an-wind'))`)));
+check('390 px, sens des vagues : une seule barre « Non enregistré », jamais deux', await evaluate(`document.querySelectorAll('.ui-savebar').length <= 1`));
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 await finish();
