@@ -6,4 +6,6 @@
     <string name="custom_url_scheme">io.github.segneur.tracker</string>
     <!-- Nom du canal de la notification de l'enregistrement (greffon @capgo/background-geolocation). -->
     <string name="capacitor_background_geolocation_notification_channel_name">Enregistrement</string>
+    <!-- Nom du même canal, créé par notre service d'enregistrement (RecordingService). -->
+    <string name="recording_notification_channel_name">Enregistrement</string>
 </resources>

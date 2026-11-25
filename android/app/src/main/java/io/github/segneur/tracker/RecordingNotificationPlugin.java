@@ -19,10 +19,13 @@ import org.json.JSONException;
  * Notification de l'enregistrement (src/platform/notification.ts,
  * src/hooks/recordingNotification.ts), lisible écran verrouillé.
  *
- * Elle appartient au service GPS du greffon @capgo/background-geolocation,
- * qui la pose au démarrage sans moyen de la changer ensuite. Ce greffon la
- * récrit sur le même numéro et le même canal : Android garde son lien avec le
- * service au premier plan. Hors pause manuelle, il ne la pose que si celle du
+ * Elle appartient au service GPS qui la pose à son démarrage : celui du
+ * greffon @capgo/background-geolocation, puis le nôtre (RecordingService),
+ * qui porte le même numéro et le même canal, pour qu'il n'y ait jamais deux
+ * notifications de l'enregistrement et que les réglages d'écran verrouillé
+ * de l'utilisateur, attachés au canal, restent. Ce greffon la récrit sur ce
+ * numéro et ce canal : Android garde son lien avec le service au premier
+ * plan. Hors pause manuelle, il ne la pose que si celle du
  * service est affichée, pour ne jamais laisser de notification orpheline
  * après l'arrêt du service. En pause manuelle (service arrêté), il la pose
  * seul ; la reprise rend la main au service, l'arrêt l'efface.
@@ -34,9 +37,12 @@ import org.json.JSONException;
 @CapacitorPlugin(name = "RecordingNotification")
 public class RecordingNotificationPlugin extends Plugin {
 
-    /** Numéro et canal de la notification du service GPS (BackgroundGeolocationService, constantes non publiques). */
-    static final int NOTIFICATION_ID = 28351;
-    static final String CHANNEL_ID = "com.capgo.capacitor_background_geolocation";
+    /**
+     * Numéro et canal de la notification de l'enregistrement : un seul propriétaire, le service (RecordingService),
+     * qui reprend ceux du greffon de position d'avant (BackgroundGeolocationService, constantes non publiques).
+     */
+    static final int NOTIFICATION_ID = RecordingService.NOTIFICATION_ID;
+    static final String CHANNEL_ID = RecordingService.CHANNEL_ID;
 
     private static volatile boolean shown = false;
 

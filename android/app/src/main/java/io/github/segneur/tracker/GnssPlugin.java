@@ -31,7 +31,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * satellites), qui hâtent une position. Le service GPS, la trace et la
  * notification ne sont pas touchés, et ces données ne sont jamais effacées
  * (delete_aiding_data ferait repartir le GPS de zéro). Permission normale
- * ACCESS_LOCATION_EXTRA_COMMANDS au manifeste, sans demande.
+ * ACCESS_LOCATION_EXTRA_COMMANDS au manifeste, sans demande. Tant qu'aucune
+ * position n'est arrivée depuis le départ, localisation allumée, notre
+ * service d'enregistrement refait aussi son inscription au GPS
+ * (RecordingService.retryGps, sans effet tant qu'il ne tourne pas) ; la
+ * trace et la notification ne sont pas touchées.
  */
 @CapacitorPlugin(name = "Gnss")
 public class GnssPlugin extends Plugin {
@@ -98,6 +102,7 @@ public class GnssPlugin extends Plugin {
         } else {
             Log.w(TAG, "données d'aide : service de localisation absent");
         }
+        RecordingService.retryGps();
         JSObject ret = new JSObject();
         ret.put("sent", sent);
         call.resolve(ret);

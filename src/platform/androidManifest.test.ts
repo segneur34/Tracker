@@ -63,6 +63,48 @@ describe('manifeste Android : retraits', () => {
   });
 });
 
+describe("manifeste Android : service de l'enregistrement (lot 232, étape 2)", () => {
+  const service = tagWithName(MANIFEST, 'service', '.RecordingService') ?? '';
+
+  it('déclaré chez nous, fermé aux autres applications, de type position', () => {
+    expect(service).toContain('android:exported="false"');
+    expect(service).toContain('android:foregroundServiceType="location"');
+  });
+
+  it("balayer l'application hors des applications récentes ne l'arrête pas", () => {
+    expect(service).toContain('android:stopWithTask="false"');
+  });
+
+  it('la classe déclarée existe, est un service, et Android ne la relance jamais seul', () => {
+    const java = repoFile('android/app/src/main/java/io/github/segneur/tracker/RecordingService.java');
+    expect(java).toContain('public class RecordingService extends Service');
+    expect(java).toContain('return START_NOT_STICKY;');
+    expect(java).not.toMatch(/return START_(STICKY|REDELIVER_INTENT);/);
+  });
+
+  it.each(['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION', 'WAKE_LOCK', 'POST_NOTIFICATIONS'])(
+    "déclare %s sans compter sur le manifeste d'un greffon",
+    (name) => {
+      const tag = tagWithName(MANIFEST, 'uses-permission', `android.permission.${name}`);
+      expect(tag).toBeDefined();
+      expect(tag).not.toContain('tools:node');
+    },
+  );
+
+  it('exige le GPS, comme le greffon de position d\'avant', () => {
+    expect(tagWithName(MANIFEST, 'uses-feature', 'android.hardware.location.gps')).toBeDefined();
+  });
+
+  it("ne demande jamais la position « toujours » : le service ne démarre que depuis l'application visible", () => {
+    expect(MANIFEST).not.toContain('ACCESS_BACKGROUND_LOCATION');
+  });
+
+  it('les services propres à Tracker gardent leur type : muscu sur la ceinture, compteur à part', () => {
+    expect(tagWithName(MANIFEST, 'service', '.HeartRateService')).toContain('android:foregroundServiceType="connectedDevice"');
+    expect(tagWithName(MANIFEST, 'service', '.IntervalTimerService')).toContain('android:foregroundServiceType="specialUse"');
+  });
+});
+
 describe('manifeste Android : ce qui reste', () => {
   it.each(['.IntervalTimerService', '.HeartRateService'])('garde le service %s', (name) => {
     expect(tagWithName(MANIFEST, 'service', name)).toBeDefined();

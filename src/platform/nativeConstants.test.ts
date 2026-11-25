@@ -6,8 +6,13 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  * le lire autrement que dans leur source : une mise à jour qui le changerait
  * casserait la sortie écran éteint sans erreur de compilation (lot 156).
  *
- * - `RecordingNotificationPlugin.java` recopie le numéro et le canal de la
- *   notification du service GPS, constantes privées du greffon.
+ * - `RecordingService.java` porte le numéro et le canal de la notification de
+ *   l'enregistrement, et `RecordingNotificationPlugin.java` les lit chez lui ;
+ *   ce sont ceux du service GPS du greffon, constantes privées, encore en
+ *   service : les réglages d'écran verrouillé de l'utilisateur tiennent au canal
+ *   (lot 232, étape 2).
+ * - Le journal des positions a deux auteurs : `FixLog.java` l'écrit au
+ *   téléphone, `recording/nativeLog.ts` le relit dans la page.
  * - La veille du GPS (`BeeperPlugin.java`) et la capture (`MotionPlugin.java`)
  *   n'ont pas de verrou de veille : elles comptent sur celui du service GPS,
  *   sans échéance, pris au démarrage, que le chien de garde ne rend pas.
@@ -54,6 +59,12 @@ const NATIVE_BRIDGE = packageSource('@capacitor/android/capacitor/src/main/asset
 const MAIN_ACTIVITY = appJava('MainActivity.java');
 const RECOVERY_PLUGIN = appJava('RecoveryPlugin.java');
 const INCOMING_PLUGIN = appJava('IncomingFilePlugin.java');
+const RECORDING_SERVICE = appJava('RecordingService.java');
+const RECORDING_PLUGIN = appJava('RecordingPlugin.java');
+const GNSS_PLUGIN = appJava('GnssPlugin.java');
+const HEART_RATE_SERVICE = appJava('HeartRateService.java');
+const FIX_LOG = appJava('FixLog.java');
+const FIX_LOG_TEST = fs.readFileSync(new URL('../../android/app/src/test/java/io/github/segneur/tracker/FixLogTest.java', import.meta.url), 'utf8');
 
 /** Première capture de `pattern` dans `text` ; échoue si le source a changé de forme. */
 const captured = (text: string, pattern: RegExp): string => {
@@ -71,16 +82,119 @@ const between = (text: string, from: string, to: string): string => {
   return text.slice(start, end);
 };
 
-describe('notification du service GPS, recopiée du greffon', () => {
-  it('même numéro', () => {
-    expect(captured(RECORDING_NOTIFICATION, /\bNOTIFICATION_ID = (\d+);/))
+describe("notification de l'enregistrement : un seul propriétaire, notre service, aux valeurs du greffon", () => {
+  it('même numéro que le service GPS du greffon', () => {
+    expect(captured(RECORDING_SERVICE, /\bNOTIFICATION_ID = (\d+);/)).toBe('28351');
+    expect(captured(RECORDING_SERVICE, /\bNOTIFICATION_ID = (\d+);/))
       .toBe(captured(GPS_SERVICE, /\bNOTIFICATION_ID = (\d+);/));
   });
 
   it('même canal : le greffon le nomme de son paquet, pas par un texte', () => {
     expect(GPS_SERVICE).toContain('NOTIFICATION_CHANNEL_ID = BackgroundGeolocationService.class.getPackage().getName();');
-    expect(captured(RECORDING_NOTIFICATION, /\bCHANNEL_ID = "([^"]+)";/))
+    expect(captured(RECORDING_SERVICE, /\bCHANNEL_ID = "([^"]+)";/))
       .toBe(captured(GPS_SERVICE, /^package ([\w.]+);/m));
+  });
+
+  it('le greffon qui la récrit lit les deux chez le service, sans les recopier', () => {
+    expect(RECORDING_NOTIFICATION).toContain('NOTIFICATION_ID = RecordingService.NOTIFICATION_ID;');
+    expect(RECORDING_NOTIFICATION).toContain('CHANNEL_ID = RecordingService.CHANNEL_ID;');
+    expect(RECORDING_NOTIFICATION).not.toMatch(/\b(NOTIFICATION_ID = \d|CHANNEL_ID = ")/);
+  });
+
+  it('la ceinture sans position (muscu, nuit) prend le même numéro et le même canal : jamais deux notifications', () => {
+    expect(HEART_RATE_SERVICE).toContain('startForeground(RecordingNotificationPlugin.NOTIFICATION_ID,');
+    expect(HEART_RATE_SERVICE).toContain('RecordingNotificationPlugin.CHANNEL_ID');
+  });
+
+  it("la notification laissée par la garde a son propre numéro : elle survit à l'arrêt du service", () => {
+    expect(captured(RECORDING_SERVICE, /\bSTOPPED_NOTIFICATION_ID = (\d+);/)).not.toBe(captured(RECORDING_SERVICE, /\bNOTIFICATION_ID = (\d+);/));
+  });
+
+  it('le nom du canal est une ressource du téléphone, déclarée', () => {
+    const name = captured(between(RECORDING_SERVICE, 'static void ensureChannel(', 'static void cancelStoppedNotification('), /R\.string\.(\w+)/);
+    const strings = fs.readFileSync(new URL('../../android/app/src/main/res/values/strings.xml', import.meta.url), 'utf8');
+    expect(strings).toContain(`<string name="${name}">`);
+  });
+});
+
+/** Méthodes que la page appellera sur le greffon `Recording` (`platform/location.ts`, lot 232 E3), et ses événements. */
+const RECORDING_METHODS = ['start', 'stop', 'state', 'setPaused', 'readLog', 'clearLog', 'currentPosition', 'checkPermissions', 'requestPermissions'];
+const RECORDING_EVENTS = ['fix', 'error', 'locationEnabled'];
+
+describe("service de l'enregistrement (lot 232, étape 2)", () => {
+  it('le greffon est déclaré, sous son nom', () => {
+    expect(MAIN_ACTIVITY).toContain('registerPlugin(RecordingPlugin.class);');
+    expect(RECORDING_PLUGIN).toMatch(/@CapacitorPlugin\(\s*name = "Recording",/);
+  });
+
+  it.each(RECORDING_METHODS)('le greffon porte la méthode %s', (method) => {
+    expect(RECORDING_PLUGIN).toMatch(new RegExp(String.raw`@PluginMethod\s+public void ${method}\(PluginCall call\)`));
+  });
+
+  it('ses événements portent les noms que la page écoutera', () => {
+    const events = [...RECORDING_PLUGIN.matchAll(/\bEVENT_\w+ = "(\w+)";/g)].map((m) => m[1]).sort();
+    expect(events).toEqual([...RECORDING_EVENTS].sort());
+  });
+
+  it("verrou de veille pris au départ, sans échéance, rendu à l'arrêt", () => {
+    expect(between(RECORDING_SERVICE, 'private void begin(Settings next)', 'private void end()')).toContain('acquireWakeLock();');
+    expect(between(RECORDING_SERVICE, 'private void acquireWakeLock()', 'private void releaseWakeLock()')).toContain('wakeLock.acquire();');
+    expect(between(RECORDING_SERVICE, 'private void end()', 'private void onLocation(')).toContain('releaseWakeLock();');
+  });
+
+  it('chaque position va au journal avant la page', () => {
+    const received = between(RECORDING_SERVICE, 'private void onLocation(', 'private boolean pause(');
+    expect(received.indexOf('append(line, now);')).toBeGreaterThanOrEqual(0);
+    expect(received.indexOf('append(line, now);')).toBeLessThan(received.indexOf('target.onFix(fix);'));
+  });
+
+  it('ni texte ni seuil de la page en dur : rien que la page ne donne au départ', () => {
+    const names = [
+      'session', 'intervalMs', 'distanceFilterM', 'title', 'text', 'closedText', 'gpsLostTitle', 'stoppedTitle', 'stoppedText',
+      'gpsLostDelayS', 'gpsLostRearmS', 'guardStillRadiusM', 'guardStillDelayS', 'guardMaxClosedS', 'guardMovingSpeedMs', 'guardMovingHoldS',
+    ];
+    const launch = between(RECORDING_PLUGIN, 'private void launch(PluginCall call)', 'public void stop(PluginCall call)');
+    for (const name of names) expect(launch, name).toContain(`"${name}"`);
+  });
+
+  it("le journal est dans le dossier privé que ni la sauvegarde ni le transfert n'emportent", () => {
+    expect(between(RECORDING_SERVICE, 'static File logFile(', 'static Snapshot snapshot()')).toContain('context.getNoBackupFilesDir()');
+  });
+
+  it('« Réessayer » du GPS refait aussi l\'inscription du service, sans effet tant qu\'il ne tourne pas', () => {
+    expect(between(GNSS_PLUGIN, 'public void refreshAssistance(PluginCall call)', 'private boolean extraCommand(')).toContain('RecordingService.retryGps();');
+    expect(between(RECORDING_SERVICE, 'static void retryGps()', 'static void setPage(')).toContain('if (service != null)');
+  });
+});
+
+/** Un texte tel que le source Java l'écrit entre guillemets. */
+const javaLiteral = (text: string): string => `"${text.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+
+describe('journal des positions : ce que le Java écrit, tel que la page le relira', () => {
+  // `recording/nativeLog.ts` (lot 232 E1) relit ce format : même nom, même version (contrôle croisé à poser à son arrivée).
+  it('nom de format et version', () => {
+    expect(captured(FIX_LOG, /\bFORMAT = "([^"]+)";/)).toBe('tracker-positions');
+    expect(captured(FIX_LOG, /\bVERSION = (\d+);/)).toBe('1');
+  });
+
+  it("raisons d'arrêt par la garde", () => {
+    expect(captured(FIX_LOG, /\bSTOP_STILL = "([^"]+)";/)).toBe('still');
+    expect(captured(FIX_LOG, /\bSTOP_TIMEOUT = "([^"]+)";/)).toBe('timeout');
+  });
+
+  it('les lignes que la page relira sont bien celles que le test Java attend de FixLog', () => {
+    const lines = [
+      '{"format":"tracker-positions","version":1,"session":1794819600000}\n',
+      '[1794819601000,48.123456789,-4.5,3.9,12.25,5.14,271.5]\n',
+      '[1000,48.0,-4.0,null,null,null,null]\n',
+      '[1,1.0E-5,0.0,1.0E10,-0.0,1.0E-4,0.0]\n',
+      '["pause",1794819700000]\n',
+      '["resume",1794819760000]\n',
+      '\n["start",1794819800000]\n',
+      '["stop",1794819900000,"still"]\n',
+      '["stop",1794819900000,"timeout"]\n',
+    ];
+    for (const line of lines) expect(FIX_LOG_TEST, line).toContain(javaLiteral(line));
   });
 });
 

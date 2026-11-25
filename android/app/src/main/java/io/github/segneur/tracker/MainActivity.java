@@ -54,6 +54,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareFilePlugin.class);
         registerPlugin(RecoveryPlugin.class);
         registerPlugin(IncomingFilePlugin.class);
+        registerPlugin(RecordingPlugin.class);
         // Sans écouteur qui réponde vrai, Android tue tout le processus avec le moteur de rendu, service GPS compris.
         bridgeBuilder.addWebViewListener(new WebViewListener() {
             @Override

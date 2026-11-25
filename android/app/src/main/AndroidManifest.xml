@@ -90,6 +90,14 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- Service de l'enregistrement (RecordingService) : au premier plan, de type position, démarré seulement par
+             l'application visible. stopWithTask="false" : balayer l'application hors des applications récentes ne l'arrête pas. -->
+        <service
+            android:name=".RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -116,6 +124,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Enregistrement : position du GPS, demandée à l'utilisateur, service au premier plan de type position
+         (RecordingService), déclarés ici sans compter sur le manifeste d'un greffon. Jamais la position « toujours » :
+         le service ne démarre que depuis l'application visible. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- L'application ne sert à rien sans GPS : même exigence que celle du greffon de position d'avant. -->
+    <uses-feature android:name="android.hardware.location.gps" />
     <!-- « Réessayer » du GPS (GnssPlugin, lot 232) : recharger les données d'aide au GPS, sans jamais les effacer ;
          permission normale, sans demande. -->
     <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
