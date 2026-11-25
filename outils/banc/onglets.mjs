@@ -204,10 +204,19 @@ console.log('Surf :', await pills('Surf'));
 await shoot('onglets-reglages');
 
 // --- 4. Analyses ---
+/** Tuile de « général » au libellé `label` : « BUTTON lien » si elle ouvre son onglet (lot 234), sinon sa balise. */
+const tuileDe = (label) => evaluate(`(() => {
+  const l = [...document.querySelectorAll('.an-sheet__stat-label')].find((x) => x.textContent.trim().toLowerCase() === ${JSON.stringify(label.toLowerCase())});
+  const s = l?.closest('.an-sheet__stat');
+  return s ? s.tagName + (s.classList.contains('an-sheet__stat--link') ? ' lien' : '') : null;
+})()`);
 await go(paths.surf, 6000);
 const surfTabs = await tabLabels();
 console.log('\nsurf, onglets :', surfTabs);
 check('surf : « tops » entre « rame » et « graphiques », sans « vagues »', /rame \| tops \| graphiques/.test(surfTabs) && !/vagues/.test(surfTabs));
+// Une tuile dont l'onglet est caché par l'activité reste un simple bloc (lot 234).
+const tuileVagues = await tuileDe('Vagues');
+check('surf : la tuile « Vagues » (onglet « vagues » caché) n\'est pas un bouton', tuileVagues !== null && !tuileVagues.startsWith('BUTTON'), String(tuileVagues));
 // Ouvert au relevé du point 1 : l'application ne le retient plus (05/11), le banc le rejoue (`lib/onglets.mjs`).
 const memorized = await evaluate(`JSON.parse(localStorage.getItem('banc.onglets') ?? '{}').surf?.vagues`);
 check(`« vagues » laissé ouvert (${memorized}), son panneau absent`, memorized === true && (await panel('Vagues')) === '(absent)');
@@ -239,6 +248,10 @@ const runTabs = await tabLabels();
 console.log('\ncourse, onglets :', runTabs);
 // « avancé » entre « général » et les autres onglets (22/10).
 check('course : « tops » juste après « général · avancé »', /^général \| avancé \| tops \|/.test(runTabs));
+// « tops » coché pour la Course : sa tuile « Meilleur 1 km » devient un bouton (lot 234) ; la distance reste un bloc.
+const tuileKm = await tuileDe('Meilleur 1 km');
+check('course : la tuile « Meilleur 1 km » (« tops » montré) est un bouton', tuileKm === 'BUTTON lien', String(tuileKm));
+check('course : la tuile « Distance » reste un bloc', (await tuileDe('Distance')) === 'DIV', String(await tuileDe('Distance')));
 console.log('tops :', await clickTab('tops'));
 await settle({ max: 1500 });
 const runTops = await panel('Meilleurs segments');

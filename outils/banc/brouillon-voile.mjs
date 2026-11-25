@@ -1,6 +1,7 @@
 // Banc du brouillon de voile entre deux sessions (lot 54, étape 9 ; remplace `session-save.mjs`, périmé) :
 // le vent saisi dans A n'apparaît pas dans B, y compris juste après le changement de session, et revient en A
 // une fois « Enregistrer la session » cliqué. La fiche de A porte le vent, celle de B non.
+// Étape 6 (lot 234) : un nouveau brouillon de A survit au rechargement de la page (clé `tracker.brouillons`), jusqu'à « Annuler ».
 // Usage : node brouillon-voile.mjs <port> <dossier de travail, chemin Windows>
 // Sur un profil neuf, sans réseau utile. Écrit deux GPX par `make-gpx.mjs` (décalages 48 et 72 h, hors des sessions de démonstration que sème le serveur de développement), avec type wingfoil.
 import { execFileSync } from 'node:child_process';
@@ -133,6 +134,54 @@ const ficheB = await fiche(B);
 console.log('fiche A :', ficheA, '| fiche B :', ficheB);
 check('fiche A porte le vent', ficheA.includes(`${WIND}`), ficheA);
 check('fiche B sans vent', !/"windDeg":\s*\d/.test(ficheB), ficheB);
+
+// 6. Page rechargée avec un brouillon en cours (lot 234, repris de Gtracker) : il est gardé sur l'appareil (clé
+// `tracker.brouillons`, écriture une seconde après la dernière saisie, aussitôt si la page est cachée) jusqu'à
+// « Enregistrer la session » ou « Annuler ». Contre un état d'avant ce lot, le brouillon se perd au rechargement : les
+// contrôles de cette étape échouent alors, sans faire échouer le script lui-même.
+console.log('--- 6. rechargement avec un brouillon ---');
+const DRAFTS_KEY = 'tracker.brouillons';
+const WIND2 = (WIND + 37) % 360;
+const brouillons = async () => {
+  try {
+    const doc = JSON.parse((await evaluate(`localStorage.getItem(${JSON.stringify(DRAFTS_KEY)})`)) ?? 'null');
+    return doc && typeof doc === 'object' ? doc : {};
+  } catch { return {}; }
+};
+/** Attend (5 s au plus) que la clé des brouillons porte, ou ne porte plus, une entrée pour A. */
+const attendreBrouillon = async (present) => {
+  for (let k = 0; k < 10; k++) { await wait(500); if ((A in (await brouillons())) === present) return; }
+};
+console.log('Régler :', await clickButton('Régler'));
+await settle({ max: 800 });
+await evaluate(`(() => { const el = document.querySelector('input[aria-label="Vent en degrés"]'); if (!el) return 'absent'; el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(String(WIND2))}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: String.fromCharCode(13) });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+await settle({ max: 800 });
+await clickButton('Terminé');
+await wait(500);
+check('brouillon : le vent saisi s\'affiche avant le rechargement', (await windText()) === `Vent ${WIND2}°`, await windText());
+await attendreBrouillon(true);
+await go(urlOf(A), 4000);
+await waitWind();
+console.log('A rechargée avec brouillon :', await windText(), '| barre', await bar());
+check('rechargée : le vent du brouillon est affiché', (await windText()) === `Vent ${WIND2}°`, await windText());
+check('rechargée : la barre « Non enregistré » est là', (await bar()) !== 'pas de barre' && /vent/i.test(await bar()), await bar());
+check('rechargée : la fiche de A n\'a pas changé', (await fiche(A)) === ficheA, await fiche(A));
+const gardes = await brouillons();
+const entree = gardes[A];
+console.log('brouillons gardés :', Object.keys(gardes).length, 'entrée(s), clés de l\'entrée de A :', entree && typeof entree === 'object' ? Object.keys(entree).sort().join(', ') : '(aucune)');
+check('clé des brouillons : une entrée pour A (base, edits, memory), aucune pour B', Boolean(entree) && typeof entree === 'object' && 'base' in entree && 'edits' in entree && 'memory' in entree && !(B in gardes));
+console.log('Annuler :', await evaluate(`(() => { const b = [...document.querySelectorAll('.ui-savebar button')].find((x) => x.textContent.trim() === 'Annuler'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+await settle({ max: 800 });
+await attendreBrouillon(false);
+await go(urlOf(A), 4000);
+await waitWind();
+console.log('A rechargée après Annuler :', await windText(), '| barre', await bar());
+check('après Annuler et rechargement : le vent enregistré est revenu', (await windText()) === `Vent ${WIND}°`, await windText());
+check('après Annuler et rechargement : plus de barre', (await bar()) === 'pas de barre', await bar());
+check('après Annuler : l\'entrée de A a quitté la clé', !(A in (await brouillons())));
+check('après Annuler : la fiche de A n\'a pas changé', (await fiche(A)) === ficheA, await fiche(A));
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'RÉSULTAT : ok' : `RÉSULTAT : ${failures} échec(s)`);

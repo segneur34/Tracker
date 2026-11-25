@@ -22,7 +22,6 @@ import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/Tra
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import HighlightPath from '../components/HighlightPath';
-import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
 import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
 import { HelpText } from '../components/Help';
@@ -33,7 +32,7 @@ import { gearFieldsFor } from '../components/gearFields';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { CADENCE_COLOR } from '../components/cadenceColors';
-import GeneralStats from '../components/GeneralStats';
+import GeneralStats, { type TileLink } from '../components/GeneralStats';
 import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
 import type { ShareStat } from '../core/shareImage';
 import SessionWeightField from '../components/SessionWeightField';
@@ -53,7 +52,7 @@ import { zoomHint } from '../components/zoomHint';
 import { inChartView } from '../components/chartHover';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
-import { LAND_TABS, tabDefaults, type LandTab } from '../core/analysisTabs';
+import { LAND_TABS, LAND_TILE_TABS, tabAnchorId, tabDefaults, tileTab, type LandTab } from '../core/analysisTabs';
 import { lastByRange, sampledIndices, visibleIndexRange, type XRange } from '../core/chartZoom';
 import { trackChartRows, type TrackChartRow } from '../land/chartRows';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
@@ -173,6 +172,11 @@ const ENERGY_FIGURES_DEFAULT = { chiffres: true, zones: true };
 
 /** Clés de surbrillance typées par onglet : une zone de pente, un revêtement. */
 type LandHighlightKeys = { zones: GradeZoneKey; surface: SurfaceCategory };
+/** Cases « Voir sur la carte » du revêtement et de la pente, rattachées à leur onglet (`useMapHighlight`, `toggled`). */
+const SURFACE_ON_MAP = 'revetement';
+const GRADE_ON_MAP = 'pente';
+/** Onglets dont le graphe d'altitude porte la case de la pente. */
+const GRADE_TABS = ['graphiques', 'zones'] as const;
 
 /**
  * Graphes de l'onglet « graphiques » dépliés, chacun replié à part pour ne
@@ -279,7 +283,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session. Une seule surbrillance
   // sur la carte : un top, une zone de pente, une répétition ou un revêtement ; choisir l'une retire les
   // autres, fermer son onglet l'efface.
-  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
+  const { open, toggle, toggleOf, closeAll, openAll, toggleFromGeneral, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
     tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
@@ -370,10 +374,28 @@ function LandModule({ family }: { family: LandFamily }) {
   /**
    * « Voir sur la carte » de l'onglet surface, et celui de la pente sous le
    * graphe d'altitude : la trace prend les couleurs du revêtement ou de la
-   * pente, tant que leur onglet est ouvert. Un seul à la fois : en allumer un
-   * éteint l'autre.
+   * pente. Un seul à la fois : en allumer un éteint l'autre. Cases rattachées
+   * à leur onglet (`useMapHighlight`) : fermer l'onglet les éteint, le rouvrir
+   * ne les rallume pas. La pente, montrée par « graphiques » et « zones de
+   * pente », est rattachée aux deux s'ils sont ouverts, et reste tant que l'un l'est.
    */
-  const { first: surfaceOnMap, second: gradeOnMap, toggleFirst: toggleSurfaceOnMap, toggleSecond: toggleGradeOnMap } = useExclusiveToggles();
+  const surfaceOnMap = highlight.toggled('surface', SURFACE_ON_MAP);
+  const gradeOnMap = GRADE_TABS.some((panel) => highlight.toggled(panel, GRADE_ON_MAP));
+  const clearGradeOnMap = () => {
+    for (const panel of GRADE_TABS) if (highlight.toggled(panel, GRADE_ON_MAP)) highlight.toggle(panel, GRADE_ON_MAP);
+  };
+  const toggleSurfaceOnMap = () => {
+    if (!surfaceOnMap) clearGradeOnMap();
+    highlight.toggle('surface', SURFACE_ON_MAP);
+  };
+  const toggleGradeOnMap = () => {
+    if (gradeOnMap) {
+      clearGradeOnMap();
+      return;
+    }
+    if (surfaceOnMap) highlight.toggle('surface', SURFACE_ON_MAP);
+    for (const panel of GRADE_TABS) if (open[panel]) highlight.toggle(panel, GRADE_ON_MAP);
+  };
   /** Graphes dépliés de l'onglet « graphiques », et celui de l'onglet « zones de pente ». */
   const graphFolds = useOpenSections(`${page.storageId}.graphes`, GRAPH_FOLDS_DEFAULT);
   const zonesFold = useOpenSections(`${page.storageId}.zones`, ZONES_FOLDS_DEFAULT);
@@ -741,6 +763,14 @@ function LandModule({ family }: { family: LandFamily }) {
     ...(cadenceAnalysis ? [{ key: 'cadence', label: 'Cadence moyenne', value: `${Math.round(cadenceAnalysis.averageSpm)} pas/min` }] : []),
     ...(energyTotal ? [{ key: 'energy', label: 'Dépense totale', value: energyTotal.value }] : []),
   ] : [];
+  /**
+   * Tuile de « général » reliée à son onglet (lot 234) : la toucher l'ouvre, la retoucher le ferme ; meilleurs
+   * segments, dénivelé, FC, cadence et dépense ; onglet non montré pour la session : un simple bloc.
+   */
+  const generalLinkOf = (statKey: string): TileLink | null => {
+    const tab = tileTab([LAND_TILE_TABS], statKey, sections);
+    return tab && { tabLabel: tab.label, open: open[tab.key], onToggle: () => toggleFromGeneral(tab.key) };
+  };
 
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
@@ -1110,7 +1140,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
-                <GeneralStats stats={overviewStats} />
+                <GeneralStats stats={overviewStats} linkOf={generalLinkOf} />
                 {profileShown && generalProfile('')}
                 {!stats.hasElevation && (
                   <div className="ui-danger-text ui-text-s">Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
@@ -1152,7 +1182,7 @@ function LandModule({ family }: { family: LandFamily }) {
             ))}
 
             {open.tops && tops && (
-              <ResizablePanel id={panelId('tops')} style={ANALYSIS_PANEL_STYLE}>
+              <ResizablePanel id={panelId('tops')} anchorId={tabAnchorId('tops')} style={ANALYSIS_PANEL_STYLE}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
                   accent={page.accent} open={open.tops} onToggle={toggleOf('tops')}>
                   {splits && <KilometerSplitsTable splits={splits} speedUnit={speedUnit} distanceUnit={distanceUnit} />}
@@ -1181,7 +1211,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cardio && heart.present && (
-              <CardioTab id={panelId('cardio')} track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={hrZones} runner={runner}
+              <CardioTab id={panelId('cardio')} anchorId={tabAnchorId('cardio')} track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={hrZones} runner={runner}
                 onRetainHrMax={retainSessionHrMax} zone={hrZone}
                 efficiency={heartEfficiency} zoneLines={zoneLinesChoice}
                 zoom={cardioZoom} onShowOnMap={showCardioOnMap}
@@ -1189,7 +1219,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cadence && cadenceAnalysis && (
-              <ResizablePanel id={panelId('cadence')} style={ANALYSIS_PANEL_STYLE}>
+              <ResizablePanel id={panelId('cadence')} anchorId={tabAnchorId('cadence')} style={ANALYSIS_PANEL_STYLE}>
                 <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} distanceUnit={distanceUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
                   storagePrefix={page.storageId} open={open.cadence} onToggle={toggleOf('cadence')} />
               </ResizablePanel>
@@ -1221,7 +1251,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.energie && energy && (
-              <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
+              <ResizablePanel id={panelId('energie')} anchorId={tabAnchorId('energie')} minHeight={320} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div className="an-panel-head an-panel-head--mb10">
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={toggleOf('energie')} helpKey="analyse:energie" />
@@ -1293,7 +1323,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.zones && zoneStats.length === 0 && stats && (
-              <EmptyTabPanel id={panelId('zones.vide')} label={model.zonesTitle} open={open.zones} onToggle={toggleOf('zones')}
+              <EmptyTabPanel id={panelId('zones.vide')} anchorId={tabAnchorId('zones')} label={model.zonesTitle} open={open.zones} onToggle={toggleOf('zones')}
                 action={!stats.hasElevation && terrainElevation.status === 'error'
                   ? <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>
                   : undefined}>
@@ -1301,7 +1331,7 @@ function LandModule({ family }: { family: LandFamily }) {
               </EmptyTabPanel>
             )}
             {open.zones && zoneStats.length > 0 && (
-              <ResizablePanel id={panelId('zones')} direction="vertical"
+              <ResizablePanel id={panelId('zones')} anchorId={tabAnchorId('zones')} direction="vertical"
                 style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div className="ui-mb-10">
                   <PanelTitle

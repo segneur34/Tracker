@@ -247,6 +247,16 @@ export const maskAdvancedTabs = <K extends string>(
   return masked ?? open;
 };
 
+/**
+ * Ce qu'un onglet fait montrer sur la carte (surbrillance, case cumulable),
+ * réduit à ses onglets ouverts : celles d'un onglet fermé partent, et rien ne
+ * les ramène à sa réouverture. Rend la liste reçue telle quelle quand rien ne change.
+ */
+export const keepOpenTabEntries = <K extends string, E extends { panel: K }>(
+  entries: readonly E[],
+  open: Readonly<Record<K, boolean>>
+): readonly E[] => (entries.every((entry) => open[entry.panel]) ? entries : entries.filter((entry) => open[entry.panel]));
+
 /** « général » après un toucher sur « avancé » : l'ouvrir ferme « général », le refermer le rouvre (23/10). */
 export const generalOpenAfterAdvanced = (advancedOpen: boolean): boolean => !advancedOpen;
 
@@ -285,6 +295,123 @@ export const tabsStateFor = <K extends string>(
   openOn: K | null = null
 ): AnalysisTabsState<K> =>
   key !== null && key !== state.key ? initialTabsState(defaults, key, openOn) : state;
+
+/**
+ * Onglet ouvert depuis ailleurs que sa pastille : la rangée « avancé » se déplie s'il en fait partie, ce qui ferme
+ * « général » comme le fait la pastille d'« avancé », et l'onglet s'ouvre. `keepPrimary` (tuile de « général »,
+ * lot 234) laisse les onglets de la première rangée comme ils sont : l'onglet s'ouvre en plus. Rend l'état reçu tel
+ * quel quand l'onglet est déjà ouvert à l'écran.
+ */
+export const revealTab = <K extends string>(
+  state: AnalysisTabsState<K>,
+  tabs: readonly AnalysisTab<K>[],
+  key: K,
+  options: { keepPrimary?: boolean } = {}
+): AnalysisTabsState<K> => {
+  const inAdvanced = tabs.find((tab) => tab.key === key)?.primary !== true;
+  if (state.open[key] && (!inAdvanced || state.advanced)) return state;
+  const open: Record<K, boolean> = { ...state.open, [key]: true };
+  if (inAdvanced && !state.advanced && options.keepPrimary !== true) {
+    for (const tab of tabs) if (tab.primary === true && tab.key !== key) open[tab.key] = generalOpenAfterAdvanced(true);
+  }
+  return { ...state, advanced: inAdvanced ? true : state.advanced, open };
+};
+
+/**
+ * L'onglet est-il ouvert à l'écran ? Ouvert dans l'état, et, s'il est rangé dans « avancé », la rangée dépliée
+ * (refermée, elle replie ses onglets sans les oublier, `maskAdvancedTabs`).
+ */
+export const isTabOpenOnScreen = <K extends string>(state: AnalysisTabsState<K>, tabs: readonly AnalysisTab<K>[], key: K): boolean =>
+  state.open[key] === true && (tabs.find((tab) => tab.key === key)?.primary === true || state.advanced);
+
+/**
+ * Tuile de « général » touchée (lot 234, repris de Gtracker) : son onglet fermé s'ouvre en plus de « général »
+ * (`revealTab` avec `keepPrimary`, « avancé » déplié s'il y est rangé) ; ouvert à l'écran, il se referme, seul :
+ * « général » et « avancé » restent comme ils sont.
+ */
+export const toggleTabFromTile = <K extends string>(state: AnalysisTabsState<K>, tabs: readonly AnalysisTab<K>[], key: K): AnalysisTabsState<K> =>
+  isTabOpenOnScreen(state, tabs, key)
+    ? { ...state, open: { ...state.open, [key]: false } }
+    : revealTab(state, tabs, key, { keepPrimary: true });
+
+/**
+ * Onglet que chaque tuile de « général » ouvre, par clé de chiffre (`ShareStat.key`), par module (lot 234). Une
+ * tuile absente n'en a pas (distances, temps, moyennes) : elle reste un simple bloc. Clés en chaînes : le code
+ * commun n'importe rien de la course ni du vélo (règle 13).
+ */
+export type TileTabs = Readonly<Record<string, string>>;
+
+export const SAILING_TILE_TABS: Readonly<Record<string, SailingTab>> = {
+  top2s: 'tops',
+  tacks: 'manoeuvres',
+  jibes: 'manoeuvres',
+  jumps: 'sauts',
+  highestJump: 'sauts',
+  pumpCadence: 'pumping',
+  pumpShare: 'pumping',
+  heartRate: 'cardio',
+};
+
+/**
+ * Voile sur foil : le premier bloc de « général » (distance, temps total, temps, ratio et moyenne en vol) ouvre
+ * l'onglet des vols, même si ses chiffres viennent du seuil de vitesse. Prime sur `SAILING_TILE_TABS`.
+ */
+export const FLIGHT_TILE_TABS: Readonly<Record<string, SailingTab>> = {
+  activeDistance: 'vols', totalTime: 'vols', activeTime: 'vols', activeRatio: 'vols', activeAverage: 'vols',
+};
+
+export const SURF_TILE_TABS: Readonly<Record<string, SurfTab>> = {
+  waves: 'vagues',
+  waveTime: 'vagues',
+  longestWave: 'vagues',
+  maxSpeed: 'vagues',
+  flightTime: 'vols',
+  longestFlight: 'vols',
+  pumpCadence: 'pumping',
+  pumpShare: 'pumping',
+  heartRate: 'cardio',
+};
+
+/**
+ * Course, vélo et fractionné : les meilleurs segments ouvrent « tops », le dénivelé les zones de pente, la FC le
+ * cardio, la cadence son onglet, la dépense l'énergie ; distance, temps et moyenne restent de simples blocs (25/11).
+ */
+export const LAND_TILE_TABS: Readonly<Record<string, LandTab>> = {
+  'top-d1km': 'tops',
+  'top-t5min': 'tops',
+  'top-d10km': 'tops',
+  elevationGain: 'zones',
+  heartRate: 'cardio',
+  cadence: 'cadence',
+  energy: 'energie',
+};
+
+/**
+ * Onglet qu'ouvre la tuile `statKey` de « général » : celui de la première table qui la connaît (`tables`, la plus
+ * précise d'abord), pris parmi les onglets montrés pour la session (`shown`, déjà filtrés par l'activité et les
+ * données) ; `null` si la tuile n'en a pas, que son onglet n'est pas montré, ou que c'est un onglet de la première rangée.
+ */
+export const tileTab = <K extends string>(tables: readonly TileTabs[], statKey: string, shown: readonly AnalysisTab<K>[]): AnalysisTab<K> | null => {
+  const table = tables.find((t) => Object.hasOwn(t, statKey));
+  if (!table) return null;
+  const target = table[statKey];
+  return shown.find((tab) => tab.key === target && tab.primary !== true) ?? null;
+};
+
+/** Ancre HTML du panneau d'un onglet (`ResizablePanel`, `anchorId`), où défile la page quand une tuile l'ouvre. */
+export const tabAnchorId = (key: string): string => `an-onglet-${key}`;
+
+/** Hauteur du haut d'un panneau qui doit paraître pour le dire à l'écran : son titre et une ligne. */
+export const PANEL_HEAD_VISIBLE_PX = 80;
+
+/**
+ * La page doit-elle défiler jusqu'au panneau ouvert ? Non si son haut est déjà à l'écran, sous ce qui colle en
+ * haut (`topInset` : barre du haut, bandeaux, barre « Non enregistré ») et au moins `PANEL_HEAD_VISIBLE_PX` au-dessus
+ * de ce qui colle en bas (`bottomInset` : barre du bas du téléphone, 0 sur ordinateur) ; oui s'il est caché
+ * dessous ou passé au-dessus.
+ */
+export const panelNeedsScroll = (top: number, topInset: number, viewportH: number, bottomInset = 0): boolean =>
+  top < topInset || top > viewportH - bottomInset - PANEL_HEAD_VISIBLE_PX;
 
 /** Clés de l'onglet du matériel : « matos et conditions » en voile, « matériel et notes » ailleurs. */
 const GEAR_TAB_KEYS: readonly string[] = ['matos', 'notes'];

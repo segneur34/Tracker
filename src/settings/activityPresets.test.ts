@@ -38,9 +38,16 @@ describe('presetOf', () => {
   });
 
   it('un calcul sans pré-réglage rend un objet vide, toujours le même', () => {
-    const a = presetOf({ id: 'a-surf-2', base: 'surf' });
+    const a = presetOf({ id: 'a-bateau-2', base: 'bateau' });
     expect(a).toEqual({});
-    expect(presetOf({ id: 'autre', base: 'surf' })).toBe(a);
+    expect(presetOf({ id: 'autre', base: 'bateau' })).toBe(a);
+  });
+
+  it("pumping coché d'office sur le calcul surf, Surf et Surf foil compris, nulle part ailleurs (lot 234)", () => {
+    expect(presetOf({ id: 'a-surf-2', base: 'surf' })).toEqual({ pumping: true });
+    expect(presetOf(SURF_ACTIVITY)).toEqual({ pumping: true, turns: true });
+    expect(presetOf(SURF_FOIL_ACTIVITY)).toEqual({ pumping: true, turns: true });
+    expect(DEFAULT_ACTIVITIES.filter((a) => presetOf(a).pumping).map((a) => a.id)).toEqual([SURF_ACTIVITY.id, SURF_FOIL_ACTIVITY.id]);
   });
 
   it("sauts mesurés d'office en voile (wing, planche, kite) et au VTT, pas ailleurs (05/11)", () => {

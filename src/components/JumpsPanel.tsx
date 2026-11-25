@@ -77,6 +77,8 @@ export interface JumpsPanelProps {
   accent?: string;
   /** Voile : l'aide parle de la planche et du foil. */
   sailing?: boolean;
+  /** Ancre du panneau, où défile la page quand une tuile de « général » ouvre l'onglet (`tabAnchorId`, lot 234). */
+  anchorId?: string;
 }
 
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
@@ -149,7 +151,7 @@ function JumpCurveChart({ first, second, numbers, trackIndexAt }: {
 function JumpsPanel({
   status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, open, onToggle,
   shownJump, onShowJump, podiumShown, onTogglePodium, trackIndexAt,
-  panelPrefix = 'sailing', accent = 'var(--voile)', sailing = true,
+  panelPrefix = 'sailing', accent = 'var(--voile)', sailing = true, anchorId,
 }: JumpsPanelProps) {
   /** Ancre de la courbe, pour « Détail ». */
   const curveAnchorId = `${panelPrefix}-jump-curve`;
@@ -169,7 +171,7 @@ function JumpsPanel({
         ? `Sauts indisponibles : ${error ?? 'calcul impossible'}.`
         : `Aucun saut d'au moins ${meters(minHeightM)} pris à ${thresholdLabel} ou plus.`;
     return (
-      <ResizablePanel id={`${panelPrefix}.sauts`} style={ANALYSIS_PANEL_STYLE}>
+      <ResizablePanel id={`${panelPrefix}.sauts`} anchorId={anchorId} style={ANALYSIS_PANEL_STYLE}>
         {heading('Sauts')}
         <div className="ui-muted">{text}</div>
         {status === 'ready' && hiddenNote && <div style={noteStyle}>{hiddenNote}</div>}
@@ -195,7 +197,7 @@ function JumpsPanel({
   };
 
   const jumpsPanel = (
-    <ResizablePanel id={`${panelPrefix}.sauts`} style={ANALYSIS_PANEL_STYLE}>
+    <ResizablePanel id={`${panelPrefix}.sauts`} anchorId={anchorId} style={ANALYSIS_PANEL_STYLE}>
       {heading('Sauts', 'analyse:sauts')}
       <HelpText helpKey="analyse:sauts" note>
           Hauteur gagnée par le téléphone, donc par le buste, au-dessus de son niveau au décollage, mesurée par

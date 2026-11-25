@@ -9,7 +9,8 @@
 //  3. réglage du vent sur la carte : la flèche tirée à l'est donne 90°, écrit dans le brouillon ; « Inverser »,
 //     « Polaire » (dessinée), « Terminé » ;
 //  4. course et vélo : chiffres du général, meilleurs segments, profil d'altitude compact ; surf : chiffres réduits ;
-//  5. à 390×844 : voile sans débordement, « Régler » ouvre la carte en plein écran avec la boussole, « Terminé » la ferme.
+//  5. à 390×844 : voile sans débordement, « Régler » ouvre la carte en plein écran avec la boussole, « Terminé » la ferme ;
+//  6. une tuile de « général » ouvre puis referme son onglet (lot 234) : voile, surf, course, vélo, et à 390 px brouillon ouvert.
 import { BLOCKED_URLS, connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -295,6 +296,117 @@ await shoot('general-polaire-390');
 await clickButton(`document.querySelector('.an-map-overlay .an-wind')`, 'Terminé');
 await wait(500);
 check('390 px : « Terminé » ferme la carte agrandie', !(await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)));
+
+// --- 6. Une tuile de « général » ouvre puis referme son onglet (lot 234, repris de Gtracker ; après le dernier relevé de texte) ---
+/**
+ * Tuile (bouton ou bloc) dont le libellé est `label`, ou `label` suivi d'une parenthèse (« Temps en vol (≥8 nds) »
+ * porte son seuil) : balise, classe de lien, nom lu par l'accessibilité.
+ */
+const tuile = (label) => evaluate(`(() => {
+  const voulu = ${JSON.stringify(label)};
+  const l = [...document.querySelectorAll('.an-sheet__stat-label')].find((x) => { const s = x.textContent.trim(); return s === voulu || s.startsWith(voulu + ' ('); });
+  const s = l?.closest('.an-sheet__stat');
+  return s ? { tag: s.tagName, lien: s.classList.contains('an-sheet__stat--link'), aria: s.getAttribute('aria-label'), expanded: s.getAttribute('aria-expanded') } : null;
+})()`);
+const clickTuile = (label) => evaluate(`(() => {
+  const l = [...document.querySelectorAll('.an-sheet__stat-label')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
+  const s = l?.closest('button.an-sheet__stat--link');
+  if (!s) return false;
+  s.click();
+  return true;
+})()`);
+/** Cadre du panneau d'onglet ancré `#an-onglet-<cle>`, ou null ; et ceux des barres collées. */
+const cadreOnglet = (cle) => evaluate(`(() => {
+  const e = document.getElementById('an-onglet-${cle}');
+  if (!e) return null;
+  const r = e.getBoundingClientRect();
+  const q = (sel) => { const b = document.querySelector(sel)?.getBoundingClientRect(); return b && b.height > 0 ? { t: b.top, b: b.bottom } : null; };
+  return { top: r.top, bottom: r.bottom, h: innerHeight, save: q('.ui-savebar--dirty'), tabbar: q('.shell-tabbar') };
+})()`);
+const relie = (t, onglet) => t?.tag === 'BUTTON' && t.lien && new RegExp(`Ouvrir l.onglet ${onglet}$`).test(t.aria ?? '');
+const bloc = (t) => t !== null && t.tag === 'DIV' && !t.lien;
+
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await go(paths.voile, 7000);
+const virements = await tuile('Virements réussis');
+check('tuile : voile, « Virements réussis » est un bouton relié aux manœuvres', relie(virements, 'manœuvres'), JSON.stringify(virements));
+// Session sur foil : les cinq tuiles du premier bloc ouvrent l'onglet vols.
+for (const label of ['Distance en vol', 'Temps total', 'Temps en vol', 'Ratio de vol', 'Moyenne en vol']) {
+  const t = await tuile(label);
+  check(`tuile : voile sur foil, « ${label} » est un bouton relié aux vols`, relie(t, 'vols'), JSON.stringify(t));
+}
+check('tuile : avant le toucher, ni panneau manœuvres ni « avancé » déplié', (await cadreOnglet('manoeuvres')) === null && !(await advancedOpen()));
+check('tuile : le clic sur « Virements réussis » trouve son bouton', await clickTuile('Virements réussis'));
+await settle({ max: 1500 });
+const cadreM = await cadreOnglet('manoeuvres');
+check('tuile : voile, le panneau #an-onglet-manoeuvres est là', cadreM !== null);
+check('tuile : voile, « avancé » est déplié', await advancedOpen());
+check('tuile : voile, « général » reste ouvert', (await panel('Général')) !== '(absent)');
+check('tuile : voile, le haut du panneau manœuvres est dans la fenêtre', cadreM !== null && cadreM.top >= 0 && cadreM.top < cadreM.h, JSON.stringify(cadreM));
+const ouvert = await tuile('Virements réussis');
+check('tuile : voile, après le premier toucher aria-expanded="true" et « Fermer l\'onglet manœuvres »', ouvert?.expanded === 'true' && /Fermer l.onglet manœuvres$/.test(ouvert.aria ?? ''), JSON.stringify(ouvert));
+// Second toucher : l'onglet se referme, « avancé » et « général » restent, la page ne bouge pas.
+const scrollAvant = await evaluate(`Math.round(scrollY)`);
+check('tuile : voile, le second toucher trouve son bouton', await clickTuile('Virements réussis'));
+await settle({ max: 1500 });
+const ferme = await tuile('Virements réussis');
+check('tuile : voile, second toucher : plus de #an-onglet-manoeuvres', (await cadreOnglet('manoeuvres')) === null);
+check('tuile : voile, second toucher : « avancé » toujours déplié', await advancedOpen());
+check('tuile : voile, second toucher : « général » toujours ouvert', (await panel('Général')) !== '(absent)');
+check('tuile : voile, second toucher : scrollY inchangé', Math.round(await evaluate(`scrollY`)) === scrollAvant, `${scrollAvant} -> ${await evaluate('scrollY')}`);
+check('tuile : voile, second toucher : aria-expanded="false"', ferme?.expanded === 'false', JSON.stringify(ferme));
+
+await go(paths.surf, 6000);
+const vagues = await tuile('Vagues');
+check('tuile : surf, « Vagues » est un bouton relié', relie(vagues, 'vagues'), JSON.stringify(vagues));
+check('tuile : surf, « Durée de la session » reste un bloc', bloc(await tuile('Durée de la session')), JSON.stringify(await tuile('Durée de la session')));
+check('tuile : surf, le clic sur « Vagues » trouve son bouton', await clickTuile('Vagues'));
+await settle({ max: 1500 });
+const cadreV = await cadreOnglet('vagues');
+check('tuile : surf, le panneau #an-onglet-vagues est là', cadreV !== null);
+check('tuile : surf, le haut du panneau vagues est dans la fenêtre', cadreV !== null && cadreV.top >= 0 && cadreV.top < cadreV.h, JSON.stringify(cadreV));
+
+// Course : le dénivelé ouvre les zones de pente ; distance, temps, moyenne et « Meilleur 1 km » (onglet « tops » caché à pied) restent des blocs.
+await go(paths.course, 8000);
+const denivele = await tuile('Dénivelé');
+check('tuile : course, « Dénivelé » est un bouton relié aux zones de pente', relie(denivele, 'zones de pente'), JSON.stringify(denivele));
+for (const label of ['Distance', 'Temps de parcours', 'Moyenne en mouvement', 'Meilleur 1 km']) {
+  check(`tuile : course, « ${label} » reste un bloc`, bloc(await tuile(label)), JSON.stringify(await tuile(label)));
+}
+check('tuile : course, le clic sur « Dénivelé » trouve son bouton', await clickTuile('Dénivelé'));
+await settle({ max: 1500 });
+check('tuile : course, le panneau #an-onglet-zones est là, « général » gardé', (await cadreOnglet('zones')) !== null && (await panel('Général')) !== '(absent)');
+check('tuile : course, second toucher : les zones se referment', (await clickTuile('Dénivelé')) && (await settle({ max: 1500 }), (await cadreOnglet('zones')) === null));
+
+// Vélo : les meilleurs segments ouvrent « tops » (natif à vélo).
+await go(paths.velo, 8000);
+const cinqMin = await tuile('Meilleures 5 min');
+check('tuile : vélo, « Meilleures 5 min » est un bouton relié aux tops', relie(cinqMin, 'tops'), JSON.stringify(cinqMin));
+check('tuile : vélo, « Distance » reste un bloc', bloc(await tuile('Distance')), JSON.stringify(await tuile('Distance')));
+check('tuile : vélo, le clic sur « Meilleures 5 min » trouve son bouton', await clickTuile('Meilleures 5 min'));
+await settle({ max: 1500 });
+check('tuile : vélo, le panneau #an-onglet-tops est là', (await cadreOnglet('tops')) !== null);
+
+// Téléphone, brouillon ouvert (vent tiré sur la carte) : la barre « Non enregistré » en haut, la barre du bas.
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await go(paths.voile, 7000);
+await clickButton(panelOf('Général'), 'Régler');
+await settle({ max: 1200 });
+const finT = await tirer('.an-map-overlay', 90);
+await mouse('mouseReleased', ...finT);
+await settle({ max: 1200 });
+await clickButton(`document.querySelector('.an-map-overlay .an-wind')`, 'Terminé');
+await wait(500);
+check('tuile : 390 px, le brouillon est ouvert (barre « Non enregistré »)', (await cadreOnglet('manoeuvres')) === null && await evaluate(`document.querySelector('.ui-savebar--dirty')?.getBoundingClientRect().height > 0`));
+check('tuile : 390 px, le clic sur « Virements réussis » trouve son bouton', await clickTuile('Virements réussis'));
+await settle({ max: 1500 });
+await wait(600);
+const cadreT = await cadreOnglet('manoeuvres');
+console.log('tuile, 390 px :', JSON.stringify(cadreT));
+check('tuile : 390 px, le panneau manœuvres est là', cadreT !== null);
+check('tuile : 390 px, haut du panneau sous la barre « Non enregistré »', cadreT !== null && cadreT.save !== null && cadreT.top >= cadreT.save.b - 1, JSON.stringify(cadreT));
+check('tuile : 390 px, haut du panneau au-dessus de la barre du bas', cadreT !== null && cadreT.tabbar !== null && cadreT.top < cadreT.tabbar.t, JSON.stringify(cadreT));
+await shoot('general-tuile-390');
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));

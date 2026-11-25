@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, activityTabs, analysisTabs, closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, isTabShown, openAllTabs, tabsBulkAction, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
+  FLIGHT_TILE_TABS, LAND_TABS, LAND_TILE_TABS, MUSCU_TABS, PANEL_HEAD_VISIBLE_PX, SAILING_TABS, SAILING_TILE_TABS, SURF_TABS, SURF_TILE_TABS, activityTabs,
+  isTabOpenOnScreen, panelNeedsScroll, revealTab, tabAnchorId, tileTab, toggleTabFromTile, analysisTabs, closeAllTabs, gearTabToOpen, generalOpenAfterAdvanced, initialTabsState, isTabShown, keepOpenTabEntries, openAllTabs, tabsBulkAction, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, tabsStateFor, toggleTabChoice,
   type TabChoices,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
@@ -278,6 +279,33 @@ describe('maskAdvancedTabs', () => {
   });
 });
 
+describe('keepOpenTabEntries : la carte ne garde que ce que demandent les onglets ouverts', () => {
+  const open = { ...tabDefaults(SAILING_TABS), manoeuvres: true, tops: true };
+  const entries = [
+    { panel: 'manoeuvres' as const, key: 'tack' },
+    { panel: 'tops' as const, key: 't2s' },
+    { panel: 'manoeuvres' as const, key: 'jibe' },
+  ];
+
+  it('rien de fermé : la même liste, sans copie', () => {
+    expect(keepOpenTabEntries(entries, open)).toBe(entries);
+  });
+
+  it('un onglet fermé : ses entrées partent, les autres restent dans leur ordre', () => {
+    expect(keepOpenTabEntries(entries, { ...open, manoeuvres: false })).toEqual([{ panel: 'tops', key: 't2s' }]);
+    expect(keepOpenTabEntries(entries, closeAllTabs(open))).toEqual([]);
+  });
+
+  it('« avancé » refermé : les entrées de ses onglets partent', () => {
+    expect(keepOpenTabEntries(entries, maskAdvancedTabs(open, SAILING_TABS, false))).toEqual([]);
+  });
+
+  it('liste vide : rendue telle quelle', () => {
+    const empty: { panel: 'tops'; key: string }[] = [];
+    expect(keepOpenTabEntries(empty, closeAllTabs(open))).toBe(empty);
+  });
+});
+
 describe('« avancé » et « général »', () => {
   it('ouvrir « avancé » ferme « général », le refermer le rouvre', () => {
     expect(generalOpenAfterAdvanced(true)).toBe(false);
@@ -400,5 +428,149 @@ describe('tabDefaults : onglets ouverts à la première visite', () => {
   it('course et vélo : l\'union des deux listes, « cadence » comprise', () => {
     expect(Object.hasOwn(tabDefaults(LAND_TABS.velo), 'cadence')).toBe(false);
     expect(tabDefaults(LAND_TABS.course, LAND_TABS.velo).cadence).toBe(false);
+  });
+});
+
+const openKeys = (open: Record<string, boolean>) => Object.entries(open).filter(([, v]) => v).map(([k]) => k);
+
+describe('revealTab : ouvrir un onglet depuis ailleurs que sa pastille (lot 234)', () => {
+  it('sans `keepPrimary` : « avancé » se déplie et ferme « général », comme sa pastille', () => {
+    const next = revealTab(initialTabsState(tabDefaults(SAILING_TABS), 'a|1'), SAILING_TABS, 'manoeuvres');
+    expect(next.advanced).toBe(true);
+    expect(openKeys(next.open)).toEqual(['manoeuvres']);
+  });
+
+  it("depuis une tuile (`keepPrimary`) : « avancé » se déplie, « général » reste ouvert, l'onglet s'ouvre en plus", () => {
+    const next = revealTab(initialTabsState(tabDefaults(SAILING_TABS), 'a|1'), SAILING_TABS, 'manoeuvres', { keepPrimary: true });
+    expect(next.advanced).toBe(true);
+    expect(openKeys(next.open)).toEqual(['general', 'manoeuvres']);
+    const surf = revealTab(initialTabsState(tabDefaults(SURF_TABS), 'a|1'), SURF_TABS, 'vagues', { keepPrimary: true });
+    expect(openKeys(surf.open)).toEqual(['general', 'vagues']);
+  });
+
+  it("« avancé » déjà ouvert : les onglets ouverts restent, l'onglet s'ajoute", () => {
+    const state = { key: 'a|1', open: { ...tabDefaults(SAILING_TABS), tops: true }, advanced: true };
+    const next = revealTab(state, SAILING_TABS, 'sauts', { keepPrimary: true });
+    expect(openKeys(next.open)).toEqual(['general', 'tops', 'sauts']);
+    expect(next.advanced).toBe(true);
+  });
+
+  it("l'onglet déjà ouvert à l'écran : l'état est rendu tel quel", () => {
+    const state = { key: 'a|1', open: { ...tabDefaults(SAILING_TABS), cardio: true }, advanced: true };
+    expect(revealTab(state, SAILING_TABS, 'cardio', { keepPrimary: true })).toBe(state);
+  });
+});
+
+describe('toggleTabFromTile : la tuile ouvre puis referme son onglet (lot 234)', () => {
+  it("fermé : il s'ouvre en plus de « général », « avancé » se déplie", () => {
+    const start = initialTabsState(tabDefaults(SAILING_TABS), 'a|1');
+    const next = toggleTabFromTile(start, SAILING_TABS, 'manoeuvres');
+    expect(next).toEqual(revealTab(start, SAILING_TABS, 'manoeuvres', { keepPrimary: true }));
+    expect(openKeys(next.open)).toEqual(['general', 'manoeuvres']);
+  });
+
+  it('ouvert : il se referme seul, « général », les autres onglets et « avancé » restent', () => {
+    const state = { key: 'a|1', open: { ...tabDefaults(SAILING_TABS), tops: true, manoeuvres: true }, advanced: true };
+    const next = toggleTabFromTile(state, SAILING_TABS, 'manoeuvres');
+    expect(openKeys(next.open)).toEqual(['general', 'tops']);
+    expect(next.advanced).toBe(true);
+    const defaults = tabDefaults(LAND_TABS.course, LAND_TABS.velo);
+    const land = toggleTabFromTile({ key: 'a|1', open: { ...defaults, zones: true }, advanced: true }, LAND_TABS.course, 'zones');
+    // Première rangée de la course et du vélo : « général », « fractionné », « test », ouverts d'office.
+    expect(openKeys(land.open)).toEqual(['general', 'fractionne', 'test']);
+  });
+
+  it("deux touchers rendent l'état de départ, « avancé » mis à part", () => {
+    const start = { key: 'a|1', open: tabDefaults(SAILING_TABS), advanced: true };
+    expect(toggleTabFromTile(toggleTabFromTile(start, SAILING_TABS, 'sauts'), SAILING_TABS, 'sauts')).toEqual(start);
+  });
+
+  it("ouvert dans l'état mais replié par « avancé » fermé : la tuile le montre, elle ne le ferme pas", () => {
+    const state = { key: 'a|1', open: { ...tabDefaults(SAILING_TABS), cardio: true }, advanced: false };
+    expect(isTabOpenOnScreen(state, SAILING_TABS, 'cardio')).toBe(false);
+    const next = toggleTabFromTile(state, SAILING_TABS, 'cardio');
+    expect(next.advanced).toBe(true);
+    expect(openKeys(next.open)).toEqual(['general', 'cardio']);
+  });
+
+  it('« tout fermer » puis une tuile : seul son onglet s’ouvre, « général » reste fermé', () => {
+    const closed = { key: 'a|1', open: closeAllTabs(tabDefaults(SAILING_TABS)), advanced: true };
+    expect(openKeys(toggleTabFromTile(closed, SAILING_TABS, 'tops').open)).toEqual(['tops']);
+  });
+});
+
+describe('tileTab : la tuile de « général » et son onglet (lot 234)', () => {
+  it('chaque cible est un onglet de son module, jamais de la première rangée', () => {
+    const cases: [Readonly<Record<string, string>>, readonly { key: string; primary?: true }[]][] = [
+      [SAILING_TILE_TABS, SAILING_TABS], [FLIGHT_TILE_TABS, SAILING_TABS], [SURF_TILE_TABS, SURF_TABS], [LAND_TILE_TABS, LAND_TABS.course],
+    ];
+    for (const [table, tabs] of cases) {
+      for (const target of Object.values(table)) {
+        const found = tabs.find((t) => t.key === target);
+        expect(found, target).toBeDefined();
+        expect(found?.primary, target).toBeUndefined();
+      }
+    }
+  });
+
+  it('onglet montré : la tuile le trouve, avec son libellé', () => {
+    expect(tileTab([SAILING_TILE_TABS], 'tacks', SAILING_TABS)?.key).toBe('manoeuvres');
+    expect(tileTab([SAILING_TILE_TABS], 'jumps', SAILING_TABS)?.label).toBe('sauts');
+    expect(tileTab([SURF_TILE_TABS], 'waves', SURF_TABS)?.key).toBe('vagues');
+    expect(tileTab([LAND_TILE_TABS], 'elevationGain', LAND_TABS.course)?.label).toBe('zones de pente');
+    expect(tileTab([LAND_TILE_TABS], 'top-t5min', LAND_TABS.velo)?.key).toBe('tops');
+    expect(tileTab([LAND_TILE_TABS], 'energy', LAND_TABS.velo)?.key).toBe('energie');
+  });
+
+  it('null : tuile sans onglet, clé inconnue ou héritée, onglet caché ou absent du module', () => {
+    expect(tileTab([SAILING_TILE_TABS], 'totalTime', SAILING_TABS)).toBeNull();
+    expect(tileTab([LAND_TILE_TABS], 'distance', LAND_TABS.course)).toBeNull();
+    expect(tileTab([LAND_TILE_TABS], 'movingAverage', LAND_TABS.course)).toBeNull();
+    expect(tileTab([SAILING_TILE_TABS], 'toString', SAILING_TABS)).toBeNull();
+    expect(tileTab([SAILING_TILE_TABS], 'jumps', SAILING_TABS.filter((t) => t.key !== 'sauts'))).toBeNull();
+    // À vélo, pas d'onglet « cadence » : la tuile reste un bloc.
+    expect(tileTab([LAND_TILE_TABS], 'cadence', LAND_TABS.velo)).toBeNull();
+    expect(tileTab([SURF_TILE_TABS], 'tacks', SURF_TABS)).toBeNull();
+  });
+
+  it("sur foil : le premier bloc ouvre « vols » s'il est montré ; sans foil, rien", () => {
+    for (const key of ['activeDistance', 'totalTime', 'activeTime', 'activeRatio', 'activeAverage']) {
+      expect(tileTab([FLIGHT_TILE_TABS, SAILING_TILE_TABS], key, SAILING_TABS)?.key, key).toBe('vols');
+      expect(tileTab([SAILING_TILE_TABS], key, SAILING_TABS), key).toBeNull();
+    }
+    expect(tileTab([FLIGHT_TILE_TABS, SAILING_TILE_TABS], 'activeTime', SAILING_TABS.filter((t) => t.key !== 'vols'))).toBeNull();
+    // Les autres tuiles gardent leur onglet.
+    expect(tileTab([FLIGHT_TILE_TABS, SAILING_TILE_TABS], 'tacks', SAILING_TABS)?.key).toBe('manoeuvres');
+  });
+
+  it('ancre du panneau : une par onglet', () => {
+    expect(tabAnchorId('manoeuvres')).toBe('an-onglet-manoeuvres');
+    expect(tabAnchorId('vagues')).not.toBe(tabAnchorId('vols'));
+  });
+});
+
+describe('panelNeedsScroll : défiler seulement si le haut du panneau est caché (lot 234)', () => {
+  const inset = 64;
+  const height = 800;
+
+  it("haut à l'écran, sous ce qui colle : pas de défilement", () => {
+    expect(panelNeedsScroll(inset, inset, height)).toBe(false);
+    expect(panelNeedsScroll(300, inset, height)).toBe(false);
+    expect(panelNeedsScroll(height - PANEL_HEAD_VISIBLE_PX, inset, height)).toBe(false);
+  });
+
+  it('haut sous la barre collée, passé au-dessus, ou trop bas pour paraître : défilement', () => {
+    expect(panelNeedsScroll(inset - 1, inset, height)).toBe(true);
+    expect(panelNeedsScroll(-500, inset, height)).toBe(true);
+    expect(panelNeedsScroll(height - PANEL_HEAD_VISIBLE_PX + 1, inset, height)).toBe(true);
+  });
+
+  it('barre du bas du téléphone : le haut du panneau doit paraître au-dessus d’elle', () => {
+    const phone = 844;
+    const bar = 64;
+    expect(panelNeedsScroll(770, inset, phone, bar)).toBe(true);
+    expect(panelNeedsScroll(phone - bar - PANEL_HEAD_VISIBLE_PX, inset, phone, bar)).toBe(false);
+    expect(panelNeedsScroll(phone - bar - PANEL_HEAD_VISIBLE_PX + 1, inset, phone, bar)).toBe(true);
+    expect(panelNeedsScroll(760, inset, phone)).toBe(false);
   });
 });

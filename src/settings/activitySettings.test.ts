@@ -10,7 +10,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   PER_ACTIVITY_KEYS, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange, defaultHeartRateOf,
   defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride, resolveTurns, defaultTurnsOf,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, isActivityOverridden, isValidAutoPause, nextBoundPair, nextSpeedRange, rangeFollowsPace, resetOverrides, resetStoredPresets, resolveJumps, resolveRecordingProfile, resolveThresholdOverride, resolveTurns, defaultTurnsOf, resolvePumping,
   SETTING_FIELDS, defaultTabsOf, effectiveHrZoneLines, settingsView, tabsAfterJumpsChange, thresholdFollowsPace, withSetting, type StoredSettings,
 } from './activitySettings';
 
@@ -503,6 +503,16 @@ describe("écriture d'un réglage par la table des champs (lot 72)", () => {
     expect(withSetting(base, run.id, 'pumping', true)).toBeNull();
     expect(withSetting(base, wing.id, 'pumping', true)?.pumping).toEqual({ [wing.id]: true });
     expect(withSetting(base, 'a-inconnue', 'liveFields', null)).toBeNull();
+  });
+
+  it("pumping : seul l'écart au défaut est rangé, coché d'office en surf (lot 234)", () => {
+    const surfFoil = DEFAULT_ACTIVITIES.find((a) => a.id === 'a-surf-foil')!;
+    expect(resolvePumping({}, surfFoil)).toBe(true);
+    expect(resolvePumping({}, wing)).toBe(false);
+    expect(withSetting(base, surfFoil.id, 'pumping', true)?.pumping).toEqual({});
+    expect(withSetting(base, surfFoil.id, 'pumping', false)?.pumping).toEqual({ [surfFoil.id]: false });
+    expect(resolvePumping({ pumping: { [surfFoil.id]: false } }, surfFoil)).toBe(false);
+    expect(withSetting(base, wing.id, 'pumping', false)?.pumping).toEqual({});
     expect(withSetting(base, 'a-inconnue', 'customFlatSpeedMs', 3)).toBeNull();
   });
 });

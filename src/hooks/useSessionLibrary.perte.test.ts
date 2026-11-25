@@ -598,6 +598,49 @@ describe('application fermée juste après une saisie (lot 232)', () => {
   });
 });
 
+describe("brouillon d'une analyse gardé sur l'appareil (lot 234)", () => {
+  const DRAFTS_KEY = 'tracker.brouillons';
+  const draftEntry = async (comment: string, memory: string) => {
+    const { savedEdits } = await import('../library/sessionEdits');
+    const base = savedEdits(null);
+    return { base, edits: { ...base, notes: { ...base.notes, comment } }, memory };
+  };
+
+  it('jeté quand la mémoire lue en entier ne porte plus sa session, ou quand la session est supprimée ; celui d’une autre mémoire reste', async () => {
+    files.set('sessions/garde.gpx', gpxAt(0));
+    files.set('sessions/efface.gpx', gpxAt(10));
+    stored.set(DRAFTS_KEY, JSON.stringify({
+      'garde.gpx': await draftEntry('A', 'picked:Tracker'),
+      'efface.gpx': await draftEntry('B', 'picked:Tracker'),
+      'parti.gpx': await draftEntry('C', 'picked:Tracker'),
+      'ailleurs.gpx': await draftEntry('D', 'browser:mémoire du navigateur'),
+    }));
+    const library = await openFresh();
+    await settle(library);
+    const { sessionDraftStore } = await import('./sessionDraftStore');
+    expect(['garde.gpx', 'efface.gpx', 'parti.gpx', 'ailleurs.gpx'].map((file) => sessionDraftStore.get(file)?.edits.notes.comment ?? null))
+      .toEqual(['A', 'B', null, 'D']);
+    await library.removeSession('efface.gpx');
+    expect(sessionDraftStore.get('efface.gpx')).toBeNull();
+    expect(sessionDraftStore.get('garde.gpx')?.edits.notes.comment).toBe('A');
+    await library.flushBeforeExit();
+    expect(Object.keys(JSON.parse(stored.get(DRAFTS_KEY) ?? '{}')).sort()).toEqual(['ailleurs.gpx', 'garde.gpx']);
+  });
+
+  it('écrit tout de suite par flushBeforeExit, sans attendre son délai', async () => {
+    files.set('sessions/sortie.gpx', gpxAt(0));
+    const library = await openFresh();
+    await settle(library);
+    const { sessionDraftStore } = await import('./sessionDraftStore');
+    sessionDraftStore.set('sortie.gpx', await draftEntry('Rafales', 'picked:Tracker'));
+    expect(stored.has(DRAFTS_KEY)).toBe(false);
+    await library.flushBeforeExit();
+    expect(JSON.parse(stored.get(DRAFTS_KEY) ?? '{}')['sortie.gpx']?.edits.notes.comment).toBe('Rafales');
+    // Noté dans la mémoire où la session a été vue.
+    expect(JSON.parse(stored.get(DRAFTS_KEY) ?? '{}')['sortie.gpx']?.memory).toBe('picked:Tracker');
+  });
+});
+
 describe('session en attente déjà rangée, en lecture seule (1, relecture)', () => {
   it('reste en attente avec sa fiche, et c’est dit, puis se range quand la fiche se relit', async () => {
     files.set('sessions/sortie.gpx', gpxAt(0));

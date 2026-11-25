@@ -25,6 +25,7 @@ import { addGpx, countPending } from './addSession';
 import { flushPending } from './pending';
 import { recordToCopy } from './sessionRecords';
 import { queuePlaces } from './placeQueue';
+import { sessionDraftStore } from '../sessionDraftStore';
 
 /**
  * Ouverture de la mémoire (lot 113) : le dossier mis en service ou quitté, le lancement, le choix d'un autre
@@ -65,6 +66,7 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   // Fiches pas écrites de l'ancien dossier : mises de côté, pour le report dans un dossier désigné (`carryUnwritten`).
   holdUnwritten();
   lib.folder = f;
+  sessionDraftStore.enterMemory(folderId(f));
   lib.all = [];
   lib.publishPending = false;
   lib.knownNames = new Set();
@@ -95,6 +97,10 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   const jobs = await scan(f, gen);
   if (gen !== lib.generation) return settingsChanged;
   setState({ status: 'ready' });
+  // `sessions/` lu en entier : les brouillons faits dans cette mémoire, dont elle ne porte plus la session, sont jetés
+  // (lot 234). Jamais avant (une session pas encore lue n'est pas une session supprimée), jamais ceux d'une autre
+  // mémoire (un dossier désigné à l'instant ne porte pas encore les sessions recopiées), et aucun si le dossier est vide.
+  if (lib.knownNames.size > 0) sessionDraftStore.keepOnly(folderId(f), lib.knownNames);
   // Le balayage d'abord : une session en attente déjà rangée, mais coupée avant sa fiche, est retrouvée
   // (`scanCompletion`, attendu par `addGpx`) au lieu d'être rangée une seconde fois sous un autre nom.
   // Le lieu des sessions, cherché en fond une fois les fiches faites (lot 215).
@@ -111,6 +117,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
   // Accès perdu (« needs-permission ») ou dossier inutilisable : les fiches pas écrites attendent le dossier désigné ensuite.
   holdUnwritten();
   lib.folder = null;
+  sessionDraftStore.enterMemory(null);
   lib.all = [];
   lib.publishPending = false;
   lib.knownNames = new Set();
@@ -370,11 +377,16 @@ export const refreshLibrary = (): Promise<void> => {
 
 /**
  * Juste avant que l'application se ferme (touche retour, croix du programme Windows ; lot 232) : écrit tout de suite
- * ce qui attendait son délai (fiches, réglages, cache), attend les écritures de fiche déjà en vol, puis celles du
- * stockage de l'appareil. Les brouillons des analyses ne sont jamais écrits nulle part (`useSessionDraft`) : la
- * question du brouillon les protège. Ne lève pas : un échec est déjà dit, et la fermeture continue.
+ * ce qui attendait son délai (fiches, réglages, cache, brouillons des analyses gardés sur l'appareil, lot 234),
+ * attend les écritures de fiche déjà en vol, puis celles du stockage de l'appareil. Ne lève pas : un échec est déjà
+ * dit, et la fermeture continue.
  */
 export const flushBeforeExit = async (): Promise<void> => {
+  try {
+    sessionDraftStore.flush();
+  } catch {
+    // Un brouillon non écrit ne retient pas la fermeture.
+  }
   await flushWrites().catch(() => undefined);
   await settleRecordWrites();
   await settleStoredWrites();

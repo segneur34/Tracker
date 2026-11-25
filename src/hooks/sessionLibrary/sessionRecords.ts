@@ -15,6 +15,7 @@ import { cancelRecordWrite, noteRecordEdits, recordEdits, resummarize, scheduleR
 import { scheduleCacheUpdate } from './cache';
 import type { AddOptions } from './addSession';
 import { spreadLearnedPlace } from './placeQueue';
+import { sessionDraftStore } from '../sessionDraftStore';
 
 /**
  * Une session de la mémoire (lot 113) : son GPX, sa fiche entière, ses capteurs, le changement de sa fiche et sa
@@ -129,6 +130,8 @@ export const removeSession = async (file: string): Promise<void> => {
       // Le GPX d'abord : il fait l'identité. Un échec ensuite laisse une fiche ou des capteurs orphelins,
       // ignorés, et non un GPX sans fiche qui reviendrait, sans ses notes, au lancement suivant.
       await f.remove(sessionPath(name));
+      // GPX effacé : la session ne reviendra pas, son brouillon gardé sur l'appareil ne servirait plus (lot 234). Un GPX resté le garde.
+      sessionDraftStore.forget([name]);
       await f.remove(sessionPath(recordFileName(name)));
       await f.remove(sessionPath(imuFileName(name)));
       rememberUnreadable(f, name, undefined);

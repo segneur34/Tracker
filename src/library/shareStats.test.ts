@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shareableStats } from '../core/shareImage';
 import type { SessionSummary } from './record';
-import { SHARE_EXTRA_KEYS, shareExtraStats, summaryShareStats } from './shareStats';
+import { SHARE_EXTRA_KEYS, shareExtraStats, summaryShareStats, jumpTiles, pumpingTiles } from './shareStats';
 
 const summary = (patch: Partial<SessionSummary> = {}): SessionSummary => ({
   calcVersion: 6,
@@ -145,5 +145,45 @@ describe('lignes ajoutées du partage (lot 145)', () => {
     const ride = values(summaryShareStats(summary({ best5minMs: 10, avgPowerW: 181.6 }), 'velo', km));
     expect(ride['top-t5min']).toBe('36,0 km/h');
     expect(ride.puissance).toBe('182 W');
+  });
+});
+
+describe('jumpTiles : tuiles des sauts de « général » (lot 234)', () => {
+  it('sauts inconnus : aucune tuile', () => {
+    expect(jumpTiles(null)).toEqual([]);
+  });
+
+  it('aucun saut : « 0 » et « — »', () => {
+    expect(jumpTiles([]).map((s) => [s.key, s.label, s.value])).toEqual([
+      ['jumps', 'Sauts', '0'],
+      ['highestJump', 'Plus haut saut', '—'],
+    ]);
+  });
+
+  it('nombre de sauts et plus haut, à deux décimales et virgule', () => {
+    expect(jumpTiles([{ heightM: 0.8 }, { heightM: 1.456 }, { heightM: 1.2 }]).map((s) => s.value)).toEqual(['3', '1,46 m']);
+  });
+});
+
+describe('pumpingTiles : tuiles du pumping de « général » (lot 234)', () => {
+  it('sans résumé ou sans vol mesuré : aucune tuile', () => {
+    expect(pumpingTiles(null)).toEqual([]);
+    expect(pumpingTiles({ strokesPerMin: 80, pumpShare: 0.3, measured: 0 })).toEqual([]);
+  });
+
+  it('cadence arrondie, part du vol en pourcent', () => {
+    expect(pumpingTiles({ strokesPerMin: 87.6, pumpShare: 0.234, measured: 2 }).map((s) => [s.key, s.label, s.value])).toEqual([
+      ['pumpCadence', 'Cadence de pumping', '88 /min'],
+      ['pumpShare', 'Part du vol pompée', '23 %'],
+    ]);
+  });
+
+  it('cadence sans coup : « — »', () => {
+    expect(pumpingTiles({ strokesPerMin: null, pumpShare: 0, measured: 1 }).map((s) => s.value)).toEqual(['—', '0 %']);
+  });
+
+  it("clés distinctes de la ligne de l'image de partage", () => {
+    const keys = pumpingTiles({ strokesPerMin: 80, pumpShare: 0.3, measured: 1 }).map((s) => s.key);
+    for (const key of keys) expect(Object.values(SHARE_EXTRA_KEYS).flat()).not.toContain(key);
   });
 });

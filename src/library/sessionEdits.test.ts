@@ -6,6 +6,7 @@ import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes'
 import { applyRecordPatch, parseRecordWithRaw, serializeRecord, type SessionRecord, type StoredSessionNotes } from './record';
 import { changedParts, editsPatch, rebaseDraft, savedEdits, type EditedPart, type EditsPatch, type SessionEdits } from './sessionEdits';
 import { familyRecords, sessionRecord } from '../test/record.fixture';
+import { parseSessionDrafts, sessionDraftsDocument } from './sessionDrafts';
 
 const START_MS = Date.UTC(2026, 8, 24, 10, 0, 0);
 
@@ -219,6 +220,30 @@ describe('rebaseDraft (E-B3)', () => {
 
   it('rend le brouillon tel quel quand la fiche ne change pas', () => {
     expect(rebaseDraft(before, before, draft)).toBe(draft);
+  });
+
+  it("brouillon gardé sur l'appareil, relu puis rebasé sur la fiche relue : garde ce qu'il avait changé, vidage compris (lot 234)", () => {
+    const wing = { groupId: 'g-aile', groupName: 'Aile', itemId: 'i-5', itemName: 'Duotone 5' };
+    const fiche = savedEdits(record({
+      analysis: {
+        windDeg: 240, activeThreshold: null, referenceSpeedMs: null, speedRange: { minMs: 3, maxMs: 12 }, effortThresholdMs: null, foil: null,
+        pumping: null, waveThreshold: null, waveDirectionDeg: null, bikeWeightKg: 12, loadKg: null, savedAt: START_MS,
+      },
+      notes: notes({ foil: 'Axis 900', gear: [wing] }),
+    }));
+    // Vent vidé exprès, seuil saisi, poids du vélo changé, commentaire écrit ; bornes et matériel hérités de la fiche.
+    const edited: SessionEdits = { ...fiche, windDeg: null, activeThreshold: 9, bikeWeightKg: 10.5, notes: { ...fiche.notes, comment: 'Rafales' } };
+    const kept = parseSessionDrafts(JSON.parse(JSON.stringify(sessionDraftsDocument(new Map([['a.gpx', { base: fiche, edits: edited, memory: null }]]))))).get('a.gpx');
+    expect(kept).toBeDefined();
+    expect(kept?.base).not.toBe(fiche);
+    const rebased = rebaseDraft(kept!.base, fiche, kept!.edits);
+    expect(changedParts(fiche, rebased)).toEqual(['vent', 'seuil', 'charge', 'notes']);
+    expect(rebased.windDeg).toBeNull();
+    expect(rebased.activeThreshold).toBe(9);
+    expect(rebased.bikeWeightKg).toBe(10.5);
+    expect(rebased.notes.comment).toBe('Rafales');
+    expect(rebased.notes.gear).toEqual([wing]);
+    expect(rebased.speedRange).toEqual({ minMs: 3, maxMs: 12 });
   });
 });
 

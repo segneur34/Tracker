@@ -10,8 +10,10 @@ import { PANEL_BLOCK_STYLE } from './styles';
  * L'onglet reste dans la barre : il se remplit quand la donnée arrive. L'`id`
  * est propre à cet état, pour ne pas toucher la taille retenue du vrai panneau.
  */
-function EmptyTabPanel({ id, label, open, onToggle, children, action }: {
+function EmptyTabPanel({ id, anchorId, label, open, onToggle, children, action }: {
   id: string;
+  /** Ancre du panneau, où défile la page quand une tuile de « général » ouvre l'onglet (`tabAnchorId`, lot 234). */
+  anchorId?: string;
   label: ReactNode;
   open: boolean;
   onToggle: () => void;
@@ -21,7 +23,7 @@ function EmptyTabPanel({ id, label, open, onToggle, children, action }: {
   action?: ReactNode;
 }) {
   return (
-    <ResizablePanel id={id} direction="vertical" style={PANEL_BLOCK_STYLE}>
+    <ResizablePanel id={id} anchorId={anchorId} direction="vertical" style={PANEL_BLOCK_STYLE}>
       <div style={{ marginBottom: 'var(--space-2)' }}>
         <PanelTitle label={label} open={open} onToggle={onToggle} />
       </div>

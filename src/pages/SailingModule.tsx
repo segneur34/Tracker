@@ -9,7 +9,7 @@ import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { shareExtraStats } from '../library/shareStats';
+import { jumpTiles, pumpingTiles, shareExtraStats } from '../library/shareStats';
 import { effectiveHrOffset, useSportSettings } from '../hooks/useSportSettings';
 import { useShownJumps } from '../hooks/useSessionJumps';
 import { useFlightPumping, useSessionPumping } from '../hooks/useSessionPumping';
@@ -18,7 +18,7 @@ import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysi
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { trackBounds } from '../core/displayConfig';
-import { SAILING_TABS, tabDefaults } from '../core/analysisTabs';
+import { FLIGHT_TILE_TABS, SAILING_TABS, SAILING_TILE_TABS, tabAnchorId, tabDefaults, tileTab } from '../core/analysisTabs';
 import { nearestIndexAtTime } from '../core/search';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useSailingChartRows } from '../hooks/useSailingChartRows';
@@ -51,7 +51,7 @@ import HighlightPath from '../components/HighlightPath';
 import type { GearField } from '../components/gearFields';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import { PanelHeading, SessionDate } from '../components/PanelTitle';
-import GeneralStats from '../components/GeneralStats';
+import GeneralStats, { type TileLink } from '../components/GeneralStats';
 import WindCompass from '../components/WindCompass';
 import WindAdjustOverlay from '../components/WindAdjustOverlay';
 import type { ShareStat } from '../core/shareImage';
@@ -88,6 +88,8 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  */
 
 const SAILING_PANEL_DEFAULTS = tabDefaults(SAILING_TABS);
+/** Tuiles de « général » gardées côte à côte : virements et empannages, les deux des sauts, les deux du pumping. */
+const GENERAL_PAIRS: ReadonlyArray<readonly [string, string]> = [['tacks', 'jibes'], ['jumps', 'highestJump'], ['pumpCadence', 'pumpShare']];
 
 function SailingModule() {
   /** Réglages de l'activité de voile, lus une fois ici et passés à `useSailingSession`. */
@@ -213,8 +215,8 @@ function SailingModule() {
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans « graphiques ». */
   const { runner, retainHr, heart, hrZones } = useAnalysisHeart(track, profile.heartRate, effectiveHrOffset(activity));
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session ; une seule surbrillance
-  // sur la carte, effacée quand son onglet se ferme (`useMapHighlight`).
-  const { open, toggle, toggleOf, closeAll, openAll, advanced, shown, highlight } = useAnalysisTabs({
+  // sur la carte et les cases cumulables des onglets, effacées quand leur onglet se ferme (`useMapHighlight`).
+  const { open, toggle, toggleOf, closeAll, openAll, toggleFromGeneral, advanced, shown, highlight } = useAnalysisTabs({
     tabs: SAILING_TABS, defaults: SAILING_PANEL_DEFAULTS, activity, sessionKey,
   });
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
@@ -231,7 +233,12 @@ function SailingModule() {
   const graphFolds = useOpenSections('sailing-graphes', SAILING_GRAPH_FOLDS_DEFAULT);
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
   // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché : une capture entière pèse plusieurs Mo.
-  const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && (open.vols || open.pumping));
+  // Lus aussi avec « général », pour ses tuiles de pumping, si l'activité montre l'onglet « pumping » (lot 234) : après
+  // le premier affichage (lecture asynchrone), les tuiles arrivant quand le calcul est prêt.
+  const pumpingTabChosen = useMemo(() => shown((p) => p.key === 'pumping').length > 0, [shown]);
+  const pumpSensors = useSessionPumping(
+    loadedFromMemory ? sessionFile : null, pumping && (open.vols || open.pumping || (open.general && pumpingTabChosen))
+  );
   /** Onglet « vols » : sur foil, pour un calcul qui mesure le pumping ; les vols viennent du GPS. */
   const flightsVisible = foil && profile.pump !== null;
   const flightsOpen = open.vols && flightsVisible;
@@ -281,26 +288,23 @@ function SailingModule() {
     sessionRange: edits.speedRange, activityRange: speedRange, suggested: suggestedSpeedRangeMs, fallback: settings.defaultSpeedRange,
   });
 
-  const [showTacksOnMap, setShowTacksOnMap] = useState<boolean>(false);
-  const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
-  const [showUndecidedOnMap, setShowUndecidedOnMap] = useState<boolean>(false);
+  // Cases « Carte » de l'onglet « manœuvres », cumulables : éteintes quand il se ferme, jamais ramenées (`useMapHighlight`).
+  const showTacksOnMap = highlight.toggled('manoeuvres', 'tack');
+  const showJibesOnMap = highlight.toggled('manoeuvres', 'jibe');
+  const showUndecidedOnMap = highlight.toggled('manoeuvres', 'undecided');
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
   /** Liste de toutes les manœuvres d'un type, sous « Détails » : repliée d'office, non mémorisée (05/11). */
   const [allManeuversOpen, setAllManeuversOpen] = useState<Record<'tack' | 'jibe', boolean>>({ tack: false, jibe: false });
   /** Genre montré dans le tableau par amure (note 135) : virements ou empannages. */
   const [tackTableType, setTackTableType] = useState<'tack' | 'jibe'>('tack');
-  /** Vues et cases de la carte de l'onglet « manœuvres », tenues ici : la carte les lit, et l'onglet rouvert les retrouve. */
+  /** Vues de l'onglet « manœuvres », tenues ici : elles ne dessinent rien sur la carte, et l'onglet rouvert les retrouve. */
   const maneuversView: ManeuversView = {
     details: showManeuverDetails, setDetails: setShowManeuverDetails, tackType: tackTableType, setTackType: setTackTableType,
     listOpen: allManeuversOpen, setListOpen: setAllManeuversOpen,
   };
   const maneuversOnMap: ManeuversOnMap = {
     tack: showTacksOnMap, jibe: showJibesOnMap, undecided: showUndecidedOnMap,
-    toggle: (type) => {
-      if (type === 'tack') setShowTacksOnMap(!showTacksOnMap);
-      else if (type === 'jibe') setShowJibesOnMap(!showJibesOnMap);
-      else setShowUndecidedOnMap(!showUndecidedOnMap);
-    },
+    toggle: (type) => highlight.toggle('manoeuvres', type),
   };
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
@@ -376,6 +380,15 @@ function SailingModule() {
   };
   const topValue = (top: TopSegment | undefined): string => (top && top.val !== '-' ? `${showKn(top.val)} ${speedSymbol}` : '—');
   /**
+   * Sauts et pumping dans « général » (lot 234, repris de Gtracker), si l'activité montre leur onglet et que la session
+   * porte la donnée : sauts calculés, pumping coché et mesuré sur au moins un vol. Décocher l'onglet retire ses tuiles.
+   */
+  const panelShown = (key: string): boolean => sailingPanels.some((p) => p.key === key);
+  const sportTiles: ShareStat[] = [
+    ...(panelShown('sauts') && jumps.status === 'ready' ? jumpTiles(jumps.jumps) : []),
+    ...(pumping && panelShown('pumping') ? pumpingTiles(pumpSummary) : []),
+  ];
+  /**
    * Chiffres de l'onglet « général » (22/10) : l'essentiel de la session, le détail restant dans
    * « avancé ». Sur foil, la distance, le ratio et la moyenne sont ceux du vol ; sans seuil (bateau),
    * toute la session compte. L'image de partage garde la liste entière (`generalStats`).
@@ -398,8 +411,18 @@ function SailingModule() {
     { key: 'top2s', label: 'Top 2 s', value: topValue(stats.tops.t2s[0]) },
     { key: 'tacks', label: 'Virements réussis', value: maneuverRate(maneuverSummary.tack) },
     { key: 'jibes', label: 'Empannages réussis', value: maneuverRate(maneuverSummary.jibe) },
+    ...sportTiles,
     ...heartRateStat,
   ] : [];
+  /**
+   * Tuile de « général » reliée à son onglet (lot 234) : la toucher l'ouvre, la retoucher le ferme. Sur foil, le premier
+   * bloc mène aux vols (`FLIGHT_TILE_TABS`) ; une tuile dont l'onglet n'est pas montré pour la session reste un bloc.
+   */
+  const tileTables = foil && hasActiveThreshold ? [FLIGHT_TILE_TABS, SAILING_TILE_TABS] : [SAILING_TILE_TABS];
+  const generalLinkOf = (statKey: string): TileLink | null => {
+    const tab = tileTab(tileTables, statKey, sailingPanels);
+    return tab && { tabLabel: tab.label, open: open[tab.key], onToggle: () => toggleFromGeneral(tab.key) };
+  };
   /** Podiums montrables sur la carte : les tops de vitesse, puis ceux de VMG (près, portant), par clé de cible. */
   const mapTops = useMemo(
     () => ({ ...stats?.tops, ...(vmgStats ? { vmgUpwind: vmgStats.topsUpwind, vmgDownwind: vmgStats.topsDownwind } : {}) }),
@@ -521,7 +544,7 @@ function SailingModule() {
    * l'onglet le dit, avec de quoi ouvrir « général » où on le saisit (demande du 19/10).
    */
   const renderEmptyPanel = (key: 'manoeuvres' | 'vmg' | 'vent', label: string, what: string, otherwise: string) => (
-    <EmptyTabPanel id={`sailing.carte.${key}.vide`} label={label} open={open[key]} onToggle={toggleOf(key)}
+    <EmptyTabPanel id={`sailing.carte.${key}.vide`} anchorId={tabAnchorId(key)} label={label} open={open[key]} onToggle={toggleOf(key)}
       action={windInputRequired && !windAdjust
         ? <Button size="s" onClick={startWindAdjust}>Régler le vent</Button>
         : undefined}>
@@ -610,7 +633,7 @@ function SailingModule() {
             {open.general && (
               <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
-                <GeneralStats stats={overviewStats} pairs={[['tacks', 'jibes']]} />
+                <GeneralStats stats={overviewStats} pairs={GENERAL_PAIRS} linkOf={generalLinkOf} />
                 {/* Mini-boussole du vent ; « Régler » ouvre la grande sur la carte (22/10). */}
                 <div className="an-sheet__wind" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
                   <WindCompass windAngle={currentWindValue ?? autoWind ?? 0} size={64} />
@@ -634,7 +657,7 @@ function SailingModule() {
             )}
 
             {open.tops && (
-              <ResizablePanel id="sailing.tops" style={PANEL_BLOCK_STYLE}>
+              <ResizablePanel id="sailing.tops" anchorId={tabAnchorId('tops')} style={PANEL_BLOCK_STYLE}>
                 <TopsPanel targets={profile.topTargets} tops={stats.tops} unit={speedUnit} selected={highlight.shownIn('tops')}
                   onSelect={(key) => highlight.show('tops', key)} accent={FAMILY_ACCENT.voile} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
@@ -642,7 +665,7 @@ function SailingModule() {
 
             {open.manoeuvres && trackData.length > 0 && (maneuverStats
               ? (
-                <ManeuversPanel stats={maneuverStats} summary={maneuverSummary} open={open.manoeuvres} onToggle={toggleOf('manoeuvres')}
+                <ManeuversPanel stats={maneuverStats} summary={maneuverSummary} open={open.manoeuvres} onToggle={toggleOf('manoeuvres')} anchorId={tabAnchorId('manoeuvres')}
                   showKn={showKn} showThreshold={showThreshold} speedSymbol={speedSymbol} activeThresholdKn={activeThresholdKn} foil={foil}
                   windWarning={windWarning} samplingS={samplingS} pointCount={pointCount} minEntrySpeedKn={maneuverThresholds.minEntrySpeedKn}
                   notesOf={maneuverNotes} onMap={maneuversOnMap} selectedTop={highlight.shownIn('manoeuvres')}
@@ -657,7 +680,7 @@ function SailingModule() {
             )}
 
             {open.cardio && heart.present && (
-              <CardioTab id="sailing.cardio" track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={hrZones} runner={runner}
+              <CardioTab id="sailing.cardio" anchorId={tabAnchorId('cardio')} track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} hrEnergy={profile.hrEnergy} zones={hrZones} runner={runner}
                 onRetainHrMax={retainSessionHrMax} zone={hrZone}
                 zoom={cardioZoom} onShowOnMap={showCardioOnMap}
                 open={open.cardio} onToggle={toggleOf('cardio')} />
@@ -683,6 +706,7 @@ function SailingModule() {
                 distanceUnit={distanceUnit}
                 open={open.sauts}
                 onToggle={toggleOf('sauts')}
+                anchorId={tabAnchorId('sauts')}
                 shownJump={jumps.shownJump}
                 onShowJump={jumps.showJump}
                 podiumShown={jumps.podiumShown}
@@ -692,7 +716,7 @@ function SailingModule() {
             )}
 
             {flightsOpen && (
-              <ResizablePanel id="sailing.vols" style={ANALYSIS_PANEL_STYLE}>
+              <ResizablePanel id="sailing.vols" anchorId={tabAnchorId('vols')} style={ANALYSIS_PANEL_STYLE}>
                 <FlightsPanel
                   helpKey="voile:vols"
                   open={open.vols} onToggle={toggleOf('vols')}
@@ -712,7 +736,7 @@ function SailingModule() {
             )}
 
             {pumpingOpen && (
-              <ResizablePanel id="sailing.pumping" style={ANALYSIS_PANEL_STYLE}>
+              <ResizablePanel id="sailing.pumping" anchorId={tabAnchorId('pumping')} style={ANALYSIS_PANEL_STYLE}>
                 <PumpingPanel
                   helpKey="voile:pumping"
                   open={open.pumping} onToggle={toggleOf('pumping')}

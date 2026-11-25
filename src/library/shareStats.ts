@@ -1,6 +1,7 @@
+import type { PumpingSummary } from '../core/pumping';
 import type { ShareStat } from '../core/shareImage';
 import { FOIL_RATIO_LABEL, type Treatment } from '../core/sportProfiles';
-import { commaDecimal, formatDistance, formatDuration, formatSessionDate, formatShortDuration, formatLandSpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { commaDecimal, formatDecimal, formatDistance, formatDuration, formatSessionDate, formatShortDuration, formatLandSpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { downloadBaseName } from './naming';
 import { RATINGS, WIND_LEVELS, type Rating, type WindLevel } from './notes';
 import type { SessionSummary } from './record';
@@ -57,6 +58,40 @@ export const windShareValue = (deg: number | null | undefined, level: WindLevel 
 /** « 83 % (10/12) » : la réussite des manœuvres, « — » sans manœuvre classée. */
 export const maneuverSuccessValue = (m: { success: number; total: number } | null | undefined): string =>
   m && m.total > 0 ? `${Math.round((m.success / m.total) * 100)} % (${m.success}/${m.total})` : DASH;
+
+/**
+ * Tuiles des sauts de « général » (voile), hors image de partage (lot 234, repris de Gtracker) : nombre de sauts
+ * et plus haut saut, à deux décimales comme dans l'onglet « sauts » ; `null` : sauts inconnus (pas de capture,
+ * calcul en cours ou impossible), aucune tuile. Aucun saut : « 0 » et « — ». L'appelant décide si l'onglet « sauts » est montré.
+ */
+export const jumpTiles = (jumps: ReadonlyArray<{ heightM: number }> | null): ShareStat[] => {
+  if (jumps === null) return [];
+  const highest = jumps.length > 0 ? Math.max(...jumps.map((j) => j.heightM)) : null;
+  return [
+    { key: 'jumps', label: 'Sauts', value: String(jumps.length) },
+    { key: 'highestJump', label: 'Plus haut saut', value: highest === null ? DASH : `${formatDecimal(highest, 2)} m` },
+  ];
+};
+
+/**
+ * Tuiles du pumping de « général » (voile et surf sur foil), hors image de partage (lot 234) : cadence de pumping
+ * et part du vol pompée, comme dans l'onglet « pumping » ; rien sans résumé ou si la capture ne couvre aucun vol.
+ * Cadence sans coup : « — ». Clés distinctes de `pumpingShare`, la ligne de l'image de partage. L'appelant décide
+ * si l'onglet « pumping » est montré.
+ */
+export const pumpingTiles = (summary: Pick<PumpingSummary, 'strokesPerMin' | 'pumpShare' | 'measured'> | null): ShareStat[] => {
+  if (summary === null || summary.measured <= 0) return [];
+  return [
+    {
+      key: 'pumpCadence', label: 'Cadence de pumping', title: 'Coups par minute, sur les séries',
+      value: summary.strokesPerMin === null ? DASH : `${Math.round(summary.strokesPerMin)} /min`,
+    },
+    {
+      key: 'pumpShare', label: 'Part du vol pompée', title: 'Temps pompé sur le temps de vol couvert par les capteurs',
+      value: `${Math.round(summary.pumpShare * 100)} %`,
+    },
+  ];
+};
 
 /**
  * Lignes ajoutées de l'image de partage (`SHARE_EXTRA_KEYS`), dans leur ordre ;

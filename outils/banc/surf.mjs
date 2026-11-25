@@ -651,8 +651,9 @@ await go(morningPath, 5000);
 console.log('réglages (390) :', await openTab('réglages'));
 await wait(500);
 console.log('sens des vagues (390) :', await ligneSens());
-// La matinée se rouvre ici avec les onglets laissés ouverts plus haut (vagues, rame, graphiques, réglages) : rame est
-// refermé pour que la zone et le sens ne tiennent qu'au réglage.
+// La matinée se rouvre ici avec les onglets laissés ouverts plus haut (vagues, rame, graphiques, réglages), rejoués par
+// `lib/onglets.mjs`, qui retient les onglets cliqués par le script et les reclique à chaque analyse montée ; l'application,
+// elle, rouvre « général » seul (05/11, vérifié au lot 234). Rame est refermé pour que la zone et le sens ne tiennent qu'au réglage.
 const ongletsOuverts = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab[aria-pressed=true]')].map((t) => t.textContent.trim()).join(', ')`);
 if ((await ongletsOuverts()).split(', ').includes('rame')) console.log('fermer rame (390) :', await tab('rame'));
 await wait(300);

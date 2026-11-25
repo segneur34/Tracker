@@ -6,6 +6,7 @@
 //  2. importe une course en côte : énergie avec la charge de l'activité (note), puis 12 kg dans l'onglet réglages,
 //     énergie recalculée, partie « charge » dans la barre, « Enregistrer la session », fiche relue, rechargement ;
 //  3. importe une sortie à vélo en côte : poids du vélo et des bagages à 20 kg, puissance recalculée, fiche relue ;
+//     puis 25 kg sans enregistrer : le brouillon revient après rechargement (lot 234), « Annuler » le retire ;
 //  4. à 390×844 : pas de débordement.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
@@ -118,6 +119,21 @@ console.log('Enregistrer la session :', await clickText('Enregistrer la session'
 await waitFor(async () => (await records())?.find((r) => r.summary?.startMs === bikeStart)?.analysis?.bikeWeightKg !== undefined, { timeout: 1500, label: 'fiche vélo' });
 console.log('fiche :', JSON.stringify((await records()).find((r) => r.summary?.startMs === bikeStart)?.analysis?.bikeWeightKg));
 await shoot('charge-velo');
+
+// --- 3 bis. Brouillon gardé sur l'appareil (lot 234) : un poids saisi survit au rechargement, jusqu'à « Annuler » ---
+console.log('\nsession à 25 kg, sans enregistrer :', await typeInto(byLabel('Poids du vélo et des bagages'), '25'));
+await settle({ max: 1000 });
+// Écrit une seconde après la dernière saisie (`sessionDraftStore`).
+await waitFor(async () => (await evaluate(`localStorage.getItem('tracker.brouillons') ?? ''`)).includes(bike?.gpx ?? '(aucun)'), { timeout: 3000, label: 'brouillon gardé' });
+await go(bikePath, 6000);
+await openTab('énergie'); await openTab('réglages'); await settle({ max: 1000 });
+console.log('après rechargement : champ', await evaluate(`${byLabel('Poids du vélo et des bagages')}?.value`), '| barre :', await saveBar(), '| fiche :', JSON.stringify((await records()).find((r) => r.summary?.startMs === bikeStart)?.analysis?.bikeWeightKg));
+console.log('Annuler :', await clickText('Annuler'));
+await settle({ max: 800 });
+await waitFor(async () => !(await evaluate(`localStorage.getItem('tracker.brouillons') ?? ''`)).includes(bike?.gpx ?? '(aucun)'), { timeout: 3000, label: 'brouillon retiré' });
+await go(bikePath, 6000);
+await openTab('énergie'); await openTab('réglages'); await settle({ max: 1000 });
+console.log('après Annuler et rechargement : champ', await evaluate(`${byLabel('Poids du vélo et des bagages')}?.value`), '| barre :', await saveBar());
 
 // --- 4. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });

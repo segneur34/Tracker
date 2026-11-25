@@ -68,16 +68,18 @@ interface ManeuversPanelProps {
   selectedTop: string | null;
   onSelectTop: (key: string | null) => void;
   view: ManeuversView;
+  /** Ancre du panneau, où défile la page quand une tuile de « général » ouvre l'onglet (`tabAnchorId`, lot 234). */
+  anchorId?: string;
 }
 
 export default function ManeuversPanel({
   stats: m, summary: maneuverSummary, open, onToggle, showKn, showThreshold, speedSymbol, activeThresholdKn, foil, windWarning,
-  samplingS, pointCount, minEntrySpeedKn, notesOf: maneuverNotes, onMap, selectedTop: selectedManeuverTop, onSelectTop, view,
+  samplingS, pointCount, minEntrySpeedKn, notesOf: maneuverNotes, onMap, selectedTop: selectedManeuverTop, onSelectTop, view, anchorId,
 }: ManeuversPanelProps) {
   /** Explications repliées derrière le « ? » : enregistrement, virages écartés, lecture des podiums. */
   const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
   return (
-    <ResizablePanel id={view.details ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, ...(view.details ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
+    <ResizablePanel id={view.details ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} anchorId={anchorId} style={{ ...CARD_STYLE, ...(view.details ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <PanelTitle label="Manœuvres" open={open} onToggle={onToggle} helpKey="voile:manoeuvres" />
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>ratée si moins de {showThreshold(activeThresholdKn)} {speedSymbol} pendant au moins {MANEUVER_LOST_FLIGHT_S} s</span>

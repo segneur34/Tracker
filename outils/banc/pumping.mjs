@@ -4,7 +4,7 @@
 // Le script fabrique lui-même, dans la page, une session de surf foil de quatre vols et ses capteurs
 // (`.imu` synthétique, `core/imuSynthetic.fixture.ts` : chocs de l'eau hors des vols ; pumping à 1,5 Hz sur une partie
 // des vols seulement : deux séries dans le vol 1, une dans le vol 2, aucune dans le vol 3, une dans le vol 4), et vérifie :
-//  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée, puis le résumé de la carte ;
+//  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée d'office (lot 234), puis le résumé de la carte ;
 //     carte « Surf » (sans foil) : pas de case ;
 //  2. l'import de la session avec ses capteurs, puis l'analyse : Foil et Pumping cochés pour la session (onglet
 //     réglages), onglet « pumping » : titre « Pumping (4 séries) », tuiles (cadence vers 90 /min, séries, temps pompé,
@@ -12,9 +12,11 @@
 //     part depuis le 31/10 : tuiles, 3 plus longs, « Tous les vols (4) » replié puis déplié ; « Voir » d'une série
 //     puis d'un vol : une seule surbrillance sur la carte ;
 //  3. Pumping décoché pour la session : les vols seuls, colonnes du GPS « Hors vague », l'onglet « pumping » sans
-//     séries ; « Enregistrer la session » range `analysis.pumping` ;
+//     séries ; « Enregistrer la session » range le foil, pas le pumping, égal à celui de son activité (lot 234) ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer le pumping » (téléphone seulement) ;
-//  5. la page à 390 × 844, sans débordement.
+//  5. la page à 390 × 844, sans débordement ;
+//  6. « général » (lot 234, repris de Gtracker) : après « Plus long vol », la cadence de pumping (vers 90 /min) puis la
+//     part du vol pompée ; l'onglet « pumping » relâché pour l'activité de la session, les deux tuiles partent.
 import { connect } from './lib/cdp.mjs';
 import { ONGLETS } from './lib/onglets.mjs';
 
@@ -138,10 +140,12 @@ console.log('aide du seuil de vol :', await evaluate(`(() => {
   help.click();
   return new Promise((ok) => setTimeout(() => { const text = row.querySelector('.settings-help')?.textContent ?? '(absente)'; help.click(); ok(text); }, 100));
 })()`));
-console.log('cocher Pumping foil :', await evaluate(`(() => {
+// Le pumping est coché d'office sur le calcul du surf (lot 234) : aucun clic, la case est déjà cochée.
+const foilPumpingBox = await evaluate(`(() => {
   const row = [...(${card('Surf foil')}?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent === 'Pumping');
-  const box = row?.querySelector('input[type=checkbox]'); if (!box) return 'absente'; box.click(); return box.checked ? 'cochée' : 'décochée';
-})()`));
+  const box = row?.querySelector('input[type=checkbox]'); if (!box) return 'absente'; return box.checked ? 'cochée' : 'décochée';
+})()`);
+check('Pumping coché d’office sur Surf foil', foilPumpingBox === 'cochée', foilPumpingBox);
 await wait(300);
 await go('/parametres', 3000);
 await openActivities();
@@ -256,6 +260,17 @@ await wait(500);
 const flightPaths = await violetPaths();
 check('le vol remplace la série : une seule surbrillance', flightPaths === seriesPaths, `${seriesPaths} puis ${flightPaths}`);
 
+// « Général » (surf foil, lot 234) : après « Plus long vol », la cadence de pumping puis la part du vol pompée.
+const generalText = await panel('Général');
+console.log('général :', generalText);
+const generalTokens = (generalText ?? '').split(' / ');
+const generalTile = (label) => { const i = generalTokens.indexOf(label); return i < 0 ? undefined : generalTokens[i + 1]; };
+check('général : cadence de pumping vers 90 /min', Math.abs(Number(/^(\d+) \/min$/.exec(generalTile('Cadence de pumping') ?? '')?.[1]) - 90) <= 5, generalTile('Cadence de pumping'));
+check('général : part du vol pompée entre 30 et 60 %', (() => { const v = Number(/^(\d+) %$/.exec(generalTile('Part du vol pompée') ?? '')?.[1]); return v >= 30 && v <= 60; })(), generalTile('Part du vol pompée'));
+check('général : « Plus long vol », puis les deux tuiles de pumping', generalTokens.indexOf('Plus long vol') >= 0
+  && generalTokens.indexOf('Plus long vol') < generalTokens.indexOf('Cadence de pumping')
+  && generalTokens.indexOf('Cadence de pumping') < generalTokens.indexOf('Part du vol pompée'), generalTokens.join(' | '));
+
 // --- 3. Pumping décoché pour la session, puis enregistré ---
 console.log('Pumping :', await sessionBox('Pumping'));
 await settle({ max: 800 });
@@ -267,10 +282,10 @@ check('les vols seuls, colonnes du GPS « Hors vague »', /Vagues, Hors vague, V
 console.log('Pumping :', await sessionBox('Pumping'));
 await settle({ max: 800 });
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-await waitFor(async () => (await recordAt(startMs))?.analysis?.pumping === true, { timeout: 2500, label: 'fiche enregistrée' });
+await waitFor(async () => (await recordAt(startMs))?.analysis?.foil === true, { timeout: 2500, label: 'fiche enregistrée' });
 const saved = await recordAt(startMs);
-// Pumping coché pour Surf foil en 1 ; la session, sous Surf, n'a pas le pumping de son activité : le sien est rangé.
-check('foil et pumping rangés dans la fiche', saved?.analysis?.foil === true && saved?.analysis?.pumping === true, JSON.stringify({ foil: saved?.analysis?.foil, pumping: saved?.analysis?.pumping }));
+// Le pumping est coché d'office sur le calcul du surf (lot 234) : la session, qui le garde coché comme son activité, ne range que son foil.
+check('foil rangé dans la fiche, pumping non rangé (comme son activité)', saved?.analysis?.foil === true && saved?.analysis?.pumping !== false, JSON.stringify({ foil: saved?.analysis?.foil, pumping: saved?.analysis?.pumping }));
 
 // --- 4. Enregistrer ---
 await go('/enregistrer', 3000);
@@ -298,6 +313,25 @@ console.log('carte d’une série au téléphone :', await evaluate(`(() => {
 await shoot('pumping-telephone');
 const width = await evaluate('document.documentElement.scrollWidth');
 check('pas de débordement à 390 px', width <= 390, String(width));
+
+// --- 6. Onglet « pumping » relâché pour l'activité de la session : les deux tuiles du général partent (lot 234) ---
+// Choix d'onglets rangé comme Réglages le range (`tabs`, par activité).
+await send('Emulation.clearDeviceMetricsOverride');
+await go('/parametres', 3000);
+const sessionActivity = record?.activityId ?? 'surf';
+console.log(`onglet « pumping » relâché pour ${sessionActivity} :`, await evaluate(`(() => {
+  const stored = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
+  const id = ${JSON.stringify(sessionActivity)};
+  stored.tabs = { ...stored.tabs, [id]: { ...stored.tabs?.[id], pumping: false } };
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(stored));
+  return JSON.stringify(stored.tabs);
+})()`));
+await go(path, 5000);
+await settle({ max: 2000 });
+await wait(1500);
+const generalOff = await panel('Général');
+console.log('général sans pumping :', generalOff);
+check('général : plus de tuiles de pumping, « Plus long vol » resté', !/Cadence de pumping|Part du vol pompée/.test(generalOff ?? '') && /Plus long vol/.test(generalOff ?? ''), generalOff);
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'Tout passe.' : `${failures} échec(s).`);

@@ -13,12 +13,14 @@ type PanelProps = ComponentProps<typeof HeartRatePanel>;
  * `hrEnergy` (`SportProfile.hrEnergy`) passe tel quel au panneau : la tuile
  * « Énergie estimée » en voile et en surf, rien à pied, à vélo ni en muscu.
  */
-export default function CardioTab({ id, runner, zone, ...panel }: Omit<PanelProps, 'profileHrMax' | 'selectedZone' | 'onSelectZone'> & {
+export default function CardioTab({ id, anchorId, runner, zone, ...panel }: Omit<PanelProps, 'profileHrMax' | 'selectedZone' | 'onSelectZone'> & {
   id: string;
+  /** Ancre du panneau, où défile la page quand une tuile de « général » ouvre l'onglet (`tabAnchorId`, lot 234). */
+  anchorId?: string;
   zone?: { selectedZone: number | null; select: (zone: number | null) => void };
 }) {
   return (
-    <ResizablePanel id={id} style={ANALYSIS_PANEL_STYLE}>
+    <ResizablePanel id={id} anchorId={anchorId} style={ANALYSIS_PANEL_STYLE}>
       <HeartRatePanel {...panel} runner={runner} profileHrMax={runner.hrMax}
         selectedZone={zone?.selectedZone ?? null} onSelectZone={zone?.select ?? NO_SELECTION} />
     </ResizablePanel>

@@ -32,6 +32,8 @@ export interface ActivityPreset {
   jumps?: JumpSettings;
   /** Virages du surf mesurés par le gyroscope (case « Mesurer les virages »). */
   turns?: boolean;
+  /** Mesure du pumping cochée d'office (calcul surf, lot 234 : sans effet tant que le foil n'est pas coché). */
+  pumping?: boolean;
   heartRate?: boolean;
   bikeType?: BikeType;
   bikeKg?: number;
@@ -108,6 +110,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
   windsurf: WING,
   // Sauts mesurés d'office en voile (05/11), à la hauteur du calcul ; le reste du kite suit son calcul.
   kite: { jumps: { enabled: true, placement: 'poitrine', minHeightM: 1 } },
+  // Pumping mesuré d'office en surf, montré sur foil seulement (lot 234, repris de Gtracker) : Surf foil, et toute activité du surf passée sur foil.
+  surf: { pumping: true },
   running: {
     threshold: 0,
     speedUnit: 'kmh',
@@ -148,8 +152,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
 /** Par activité de départ (`core/activities.ts`) : remplace en entier celui de son calcul. */
 const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
   // Virages mesurés d'office en surf (lot 40) ; le paddle, le kayak, le downwind, créés sur le même calcul, non.
-  surf: { turns: true },
-  'a-surf-foil': { turns: true },
+  surf: { ...BASE_PRESETS.surf, turns: true },
+  'a-surf-foil': { ...BASE_PRESETS.surf, turns: true },
   'a-marche': {
     // Aucun seuil (28/10) : le plancher d'arrêt ôte déjà les arrêts complets, comme en course.
     threshold: 0,

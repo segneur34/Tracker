@@ -234,6 +234,19 @@ await shoot('sauts-analyse');
 
 // --- 3 bis. Onglet « sauts » ---
 await go(analysePath, 6000);
+// « Général » (lot 234, repris de Gtracker) : après « Empannages réussis », « Sauts » puis « Plus haut saut » (la capture
+// est lue après le premier affichage).
+const generalTiles = () => evaluate(`(() => {
+  const h = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((x) => x.textContent.trim().startsWith('Général'));
+  return h ? h.closest('.an-carte-panels > *').innerText.split('\\n').map((s) => s.trim()).filter(Boolean) : [];
+})()`);
+await waitFor(async () => (await generalTiles()).includes('Plus haut saut'), { timeout: 8000, label: 'tuiles de sauts du général' });
+let general = await generalTiles();
+const afterJibes = general.indexOf('Empannages réussis');
+const tileAfter = (label) => { const i = general.indexOf(label); return i < 0 ? undefined : general[i + 1]; };
+console.log('général :', general.join(' / '));
+check('général : « Sauts » puis « Plus haut saut » après les empannages', afterJibes >= 0 && general.indexOf('Sauts') > afterJibes && general.indexOf('Plus haut saut') > general.indexOf('Sauts'), general.join(' | '));
+check('général : 2 sauts, le plus haut vers 2,07 m', tileAfter('Sauts') === '2' && /^2,0\d m$/.test(tileAfter('Plus haut saut') ?? ''), `${tileAfter('Sauts')} · ${tileAfter('Plus haut saut')}`);
 console.log('onglet sauts :', await openTab('sauts'));
 await settle({ max: 800 });
 text = await pageText();
@@ -310,6 +323,28 @@ await wait(500);
 check('390 px : pas de défilement horizontal', await evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'));
 await shoot('sauts-onglet-telephone');
 await send('Emulation.clearDeviceMetricsOverride');
+
+// --- 3 ter. Onglet « sauts » relâché pour l'activité : les deux tuiles du général partent (lot 234), puis remis ---
+const toggleJumpsTab = () => evaluate(`(() => {
+  const row = [...(${voileCard}).querySelectorAll('.settings-row')].find((r) => r.querySelector('.settings-row__label')?.textContent.trim() === 'Onglets');
+  const b = [...(row?.querySelectorAll('.ui-tab') ?? [])].find((x) => x.textContent.trim() === 'sauts');
+  if (!b) return 'absent'; b.click(); return 'ok';
+})()`);
+await go('/parametres', 4000);
+await openVoile();
+await wait(500);
+console.log('relâcher l’onglet « sauts » :', await toggleJumpsTab());
+await wait(300);
+await go(analysePath, 6000);
+await settle({ max: 2000 });
+await wait(1500);
+general = await generalTiles();
+check('sauts décochés : plus de tuiles de sauts dans « général »', general.length > 0 && !general.includes('Sauts') && !general.includes('Plus haut saut'), general.join(' | '));
+await go('/parametres', 4000);
+await openVoile();
+await wait(500);
+console.log('remettre l’onglet « sauts » :', await toggleJumpsTab());
+await wait(300);
 
 // --- 4. Enregistrer, dans le navigateur ---
 await go('/enregistrer', 3000);

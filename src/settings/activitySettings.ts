@@ -106,6 +106,9 @@ export const defaultMarkGuideOf = (activity: Activity): MarkGuideSettings => pre
 /** Virages du surf mesurés par le gyroscope à défaut de réglage (lot 40) : cochés pour Surf et Surf foil. */
 export const defaultTurnsOf = (activity: Activity): boolean => presetOf(activity).turns ?? false;
 
+/** Pumping d'une activité sans réglage : celui de son pré-réglage (coché sur le calcul surf, montré sur foil seulement, lot 234), sinon non. */
+export const defaultPumpingOf = (activity: Activity): boolean => presetOf(activity).pumping ?? false;
+
 /** Ceinture cardio à défaut de réglage. */
 export const defaultHeartRateOf = (activity: Activity): boolean => presetOf(activity).heartRate ?? false;
 
@@ -399,8 +402,9 @@ const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys
   { version: 1, bases: ['bateau'], keys: ['speedRanges', 'autoPause', 'liveFields', 'notificationFields', 'thresholds'] },
   {
     version: 2,
-    // Calculs pré-réglés au 21/10 : le kite, pré-réglé au 05/11 pour ses sauts seulement, n'y entre pas.
-    bases: PRESET_BASES.filter((base) => base !== 'kite'),
+    // Calculs pré-réglés au 21/10 : le kite, pré-réglé au 05/11 pour ses sauts seulement, n'y entre pas, ni le surf,
+    // pré-réglé au lot 234 pour son pumping seulement (rien d'effacé : les anciens réglages ne rangeaient que « oui »).
+    bases: PRESET_BASES.filter((base) => base !== 'kite' && base !== 'surf'),
     keys: [
       'thresholds', 'speedUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'liveFields', 'notificationFields', 'markGuide', 'jumps',
       'heartRate', 'bikeTypes', 'bikeWeights', 'wayTypes', 'terrainSteps', 'tabs', 'paceLevels', 'customFlatSpeeds',
@@ -509,10 +513,11 @@ export const resolveFoil = (stored: StoredSettings, activity: Activity): boolean
   return typeof foil === 'boolean' ? foil : defaultFoil(activity);
 };
 
-/** Pumping foil d'une activité : celui réglé, sinon non ; `null` si son calcul ne le mesure pas (bateau, à pied, à vélo). */
+/** Pumping foil d'une activité : celui réglé, sinon son défaut (`defaultPumpingOf`) ; `null` si son calcul ne le mesure pas (bateau, à pied, à vélo). */
 export const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | null => {
   if (getSportProfile(activity.base).pump === null) return null;
-  return stored.pumping?.[activity.id] === true;
+  const own = stored.pumping?.[activity.id];
+  return typeof own === 'boolean' ? own : defaultPumpingOf(activity);
 };
 
 /** Virages mesurés par le gyroscope : ceux réglés, sinon le défaut de l'activité ; `null` hors surf. */
@@ -888,11 +893,11 @@ export const SETTING_FIELDS: Record<SettingField, SettingFieldRule> = {
   },
   pumping: {
     key: 'pumping',
-    // Seul « oui » est rangé.
+    // Seul l'écart à son défaut est rangé : décocher le pumping pré-réglé du surf range « non » (lot 234).
     normalize: (v, activity, stored) => {
       if (!activity || resolvePumping(stored, activity) === null) return undefined;
       const on = booleanOrNull(v);
-      return on === undefined ? undefined : on === true ? true : null;
+      return on === undefined ? undefined : on === null || on === defaultPumpingOf(activity) ? null : on;
     },
   },
   turns: {
@@ -1004,7 +1009,7 @@ export const isActivityOverridden = (s: SportSettingsView): boolean => {
     s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
     s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
     s.paceLevel !== pace.level || s.customFlatSpeedMs !== pace.customFlatSpeedMs || s.isWayTypesOverridden ||
-    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isTurnsOverridden || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false || s.hrZoneLines
+    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || (s.pumping !== null && s.pumping !== defaultPumpingOf(activity)) || s.isTurnsOverridden || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false || s.hrZoneLines
   );
 };
 

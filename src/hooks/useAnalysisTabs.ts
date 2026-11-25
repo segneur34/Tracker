@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Activity } from '../core/activities';
 import {
-  closeAllTabs, gearTabToOpen, openAllTabs, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, shownTabs, tabsStateFor,
+  closeAllTabs, gearTabToOpen, openAllTabs, generalOpenAfterAdvanced, initialTabsState, maskAdvancedTabs, maskHiddenTabs, panelNeedsScroll, shownTabs,
+  tabAnchorId, tabsStateFor, toggleTabFromTile,
   type AnalysisTab, type AnalysisTabsState,
 } from '../core/analysisTabs';
 import { useResetChartHover } from './useChartHover';
@@ -90,5 +91,54 @@ export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = R
     [tabs, tabChoices]
   );
 
-  return { open, toggle, toggleOf, set, closeAll, openAll, tabChoices, advanced, shown, highlight };
+  /** Panneau où défiler après l'ouverture par une tuile : un objet neuf à chaque ouverture. */
+  const [scrollTarget, setScrollTarget] = useState<{ key: K } | null>(null);
+  /**
+   * Tuile de « général » touchée (lot 234, `toggleTabFromTile`) : son onglet fermé s'ouvre en plus de « général »
+   * (« avancé » se déplie s'il y est rangé), puis la page défile jusqu'à son panneau s'il n'est pas à l'écran ;
+   * ouvert, il se referme, seul, sans défiler (ce qu'il montrait sur la carte s'efface, `useMapHighlight`).
+   */
+  const toggleFromGeneral = useCallback((key: K) => {
+    const opening = !open[key];
+    change((s) => toggleTabFromTile(s, tabs, key));
+    if (opening) setScrollTarget({ key });
+  }, [change, tabs, open]);
+  useEffect(() => {
+    if (scrollTarget === null) return undefined;
+    // Deux images plus tard : le panneau est monté, et les panneaux d'ordinateur ont été remis à leur place ;
+    // un défilement plus tôt viserait l'ancienne position.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => scrollToTabPanel(scrollTarget.key));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [scrollTarget]);
+
+  return { open, toggle, toggleOf, set, closeAll, openAll, toggleFromGeneral, tabChoices, advanced, shown, highlight };
+};
+
+/** Barre « Non enregistré » d'une session en brouillon, collée en haut de la page (`SessionSaveBar`). */
+const STUCK_SAVE_BAR_SELECTOR = '.ui-savebar--dirty';
+/** Barre du bas du téléphone, collée (`AppShell.css`) ; cachée sur ordinateur, en rail à gauche sur téléphone tourné. */
+const STUCK_TAB_BAR_SELECTOR = '.shell-tabbar';
+
+/**
+ * Amène le haut du panneau de l'onglet sous ce qui colle en haut : sa marge de défilement (barre du haut et
+ * bandeaux, `analysisMobile.css`) et la barre « Non enregistré » quand elle est là ; rien s'il est déjà à l'écran,
+ * au-dessus de la barre du bas.
+ */
+const scrollToTabPanel = (key: string): void => {
+  const panel = document.getElementById(tabAnchorId(key));
+  if (!panel) return;
+  const saveBar = document.querySelector<HTMLElement>(STUCK_SAVE_BAR_SELECTOR);
+  const topInset = (parseFloat(getComputedStyle(panel).scrollMarginTop) || 0) + (saveBar?.offsetHeight ?? 0);
+  // Barre du bas comptée seulement couchée en bas de l'écran : en rail à gauche (téléphone tourné), elle ne cache rien dessous.
+  const bar = document.querySelector<HTMLElement>(STUCK_TAB_BAR_SELECTOR)?.getBoundingClientRect();
+  const bottomInset = bar && bar.width > bar.height ? Math.max(0, window.innerHeight - bar.top) : 0;
+  const { top } = panel.getBoundingClientRect();
+  if (!panelNeedsScroll(top, topInset, window.innerHeight, bottomInset)) return;
+  window.scrollBy({ top: top - topInset, behavior: 'smooth' });
 };

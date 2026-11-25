@@ -134,4 +134,29 @@ check('manœuvres rouvertes : détails, empannages par amure et liste des vireme
   /replier les virements/i.test(texteDetails) && /^(Tribord|Bâbord)\t\d+ \/ \d+\t11,7\t/m.test(texteDetails),
   texteDetails.match(/^(Tribord|Bâbord)\t[^\n]*/gm)?.join(' | '));
 check('carte : un clic sur un rond de manœuvre ouvre sa bulle (« Réussi » ou « Raté »)', /Réussi|Raté/.test(bulle ?? ''), bulle ?? '(aucune bulle)');
+
+// Ce que l'onglet « manœuvres » fait dessiner sur la carte s'efface quand il se ferme et n'est pas ramené à sa réouverture
+// (lot 234, repris de Gtracker) : onglet fermé puis rouvert, puis « avancé » refermé puis rouvert (virements allumés au départ).
+const ronds = () => evaluate(`document.querySelectorAll('.an-map-frame path.leaflet-interactive[stroke="#c62828"], .an-map-frame path.leaflet-interactive[stroke="#2e7d32"]').length`);
+const boutonVirements = () => evaluate(`document.querySelector('button[title="Afficher les virements sur la carte"]')?.textContent.trim() ?? '(absent)'`);
+const basculerAvance = () => evaluate(`(() => { const b = document.querySelector('.an-tabs-advanced-toggle'); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
+await evaluate(`document.querySelector('.leaflet-popup-close-button')?.click(); 'ok'`);
+await settle({ max: 1000 });
+const rondsAllumes = await ronds();
+check('carte : virements allumés, des ronds de manœuvre sont dessinés', rondsAllumes > 0, String(rondsAllumes));
+await onglet('manoeuvres');
+await settle({ max: 1000 });
+check('onglet manœuvres fermé : 0 rond de manœuvre sur la carte', (await ronds()) === 0, String(await ronds()));
+await onglet('manoeuvres');
+await settle({ max: 1500 });
+check('onglet manœuvres rouvert : toujours 0 rond, le bouton redit « Voir »', (await ronds()) === 0 && (await boutonVirements()) === 'Voir', `${await ronds()} · ${await boutonVirements()}`);
+await evaluate(`document.querySelector('button[title="Afficher les virements sur la carte"]')?.click(); 'ok'`);
+await settle({ max: 1000 });
+check('virements rallumés : des ronds reviennent', (await ronds()) > 0, String(await ronds()));
+await basculerAvance();
+await settle({ max: 1000 });
+check('« avancé » refermé : 0 rond de manœuvre sur la carte', (await ronds()) === 0, String(await ronds()));
+await basculerAvance();
+await settle({ max: 1500 });
+check('« avancé » rouvert : toujours 0 rond, le bouton redit « Voir »', (await ronds()) === 0 && (await boutonVirements()) === 'Voir', `${await ronds()} · ${await boutonVirements()}`);
 await finish();
