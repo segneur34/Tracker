@@ -90,6 +90,28 @@ describe('cadenceSeries : pas par minute sur la capture', () => {
     expect(medianBetween(s.spm, 50, 75)).toBeCloseTo(172, 0);
   });
 
+  it.each([1, 5])('capture reprise après une coupure de 10 min (lot 232), positions à %i Hz : chaque côté à sa cadence, rien dans le trou', (hz) => {
+    // Course à 168 pas/min, coupure de 60 à 660 s, puis reprise à 180 pas/min dans le même fichier.
+    const before = impacts(168, 18);
+    const after = impacts(180, 20);
+    const s = cadenceSeries(synthImu({ durationS: 720, az: (t) => (t < 60 ? before(t) : after(t)), gaps: [[60, 660]] }), P)!;
+    expect(s.startMs).toBe(SYNTH_WALL_MS);
+    expect(medianBetween(s.spm, 5, 55)).toBeCloseTo(168, 0);
+    expect(medianBetween(s.spm, 665, 715)).toBeCloseTo(180, 0);
+    expect(shareMeasured(s.spm, 665, 715)).toBeGreaterThan(0.95);
+    expect(s.spm.slice(64, 656).every((x) => x === null)).toBe(true);
+    // Les positions de la trace, qui continue pendant la coupure : cadence de son côté, aucune dans le trou.
+    const fixes = Array.from({ length: 720 * hz }, (_, k) => ({ timeMs: SYNTH_WALL_MS + (k * 1000) / hz, lat: 0, lon: 0 }));
+    const joined = joinCadence(fixes, s);
+    const at = (t: number) => joined[t * hz].cadenceSpm;
+    expect(at(30)).toBeCloseTo(168, 0);
+    expect(at(690)).toBeCloseTo(180, 0);
+    expect(joined.slice(64 * hz, 656 * hz).every((f) => f.cadenceSpm === undefined)).toBe(true);
+    // Sans coupure, la même course mesurée de bout en bout.
+    const whole = cadenceSeries(synthImu({ durationS: 720, az: (t) => (t < 60 ? before(t) : after(t)) }), P)!;
+    expect(medianBetween(whole.spm, 665, 715)).toBe(medianBetween(s.spm, 665, 715));
+  });
+
   it('une marche puis une course : chaque allure à sa cadence', () => {
     const walk = impacts(112, 6);
     const run = impacts(176, 18);

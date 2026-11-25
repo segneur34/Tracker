@@ -5,16 +5,19 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.zip.Deflater;
 
 /**
  * Écrit un fichier des capteurs (`.imu`) au format décrit en tête de
  * src/core/imuFile.ts, seule description qui fasse foi : marque, en-tête
  * JSON, puis des paquets indépendants compressés en deflate brut, un par
- * appel à `flushChunk` (environ une seconde de mesures).
+ * appel à `flushChunk` (environ une seconde de mesures). Une capture reprise
+ * après une coupure complète le même fichier (second constructeur).
  *
  * Java pur, sans Android : il se compile et s'éprouve sur le PC contre le
  * lecteur TypeScript. Pas sûr entre fils : `MotionPlugin` l'appelle toujours
@@ -65,10 +68,26 @@ final class ImuWriter implements Closeable {
         }
     }
 
+    /** Ce qu'un fichier déjà écrit garde : le texte de son en-tête, et la fin de son dernier paquet entier. */
+    static final class Existing {
+        final String headerJson;
+        /** Octets à garder : marque, en-tête et paquets entiers ; un paquet coupé par un arrêt brutal commence au-delà. */
+        final long end;
+        /** Vrai s'il garde au moins un paquet entier, donc des mesures. */
+        final boolean hasPackets;
+
+        Existing(String headerJson, long end, boolean hasPackets) {
+            this.headerJson = headerJson;
+            this.end = end;
+            this.hasPackets = hasPackets;
+        }
+    }
+
     private final FileOutputStream out;
     private final Stream[] streams;
     private long bytes = 0;
 
+    /** Nouveau fichier : `file` est remplacé, marque et en-tête écrits d'abord. */
     ImuWriter(File file, String headerJson, Stream[] streams) throws IOException {
         this.streams = streams;
         out = new FileOutputStream(file);
@@ -77,6 +96,48 @@ final class ImuWriter implements Closeable {
         write(uint32(header.length));
         write(header);
         out.flush();
+    }
+
+    /**
+     * Reprise d'un fichier déjà écrit, relu par `readExisting` : il est coupé à la fin de son dernier paquet
+     * entier, puis complété, sans nouvel en-tête. Sans cette coupe, un paquet tronqué par l'arrêt brutal
+     * décalerait la lecture de tout ce qui suit. Les instants à venir gardent la base de temps de l'en-tête.
+     */
+    ImuWriter(File file, Existing existing, Stream[] streams) throws IOException {
+        this.streams = streams;
+        try (RandomAccessFile cut = new RandomAccessFile(file, "rw")) {
+            cut.setLength(existing.end);
+        }
+        out = new FileOutputStream(file, true);
+        bytes = existing.end;
+    }
+
+    /**
+     * Lit la marque et l'en-tête d'un fichier déjà écrit, puis parcourt les longueurs de ses paquets jusqu'au
+     * dernier entier. Lève une erreur si la marque ou l'en-tête ne se lisent pas : le fichier n'est alors pas à
+     * reprendre, et rien n'y est touché.
+     */
+    static Existing readExisting(File file) throws IOException {
+        try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
+            long size = in.length();
+            if (size < MAGIC.length + 4) throw new IOException("fichier trop court pour son en-tête");
+            byte[] magic = new byte[MAGIC.length];
+            in.readFully(magic);
+            if (!Arrays.equals(magic, MAGIC)) throw new IOException("marque inconnue");
+            long headerLength = readUint32(in);
+            long end = MAGIC.length + 4 + headerLength;
+            if (end > size) throw new IOException("en-tête coupé");
+            byte[] header = new byte[(int) headerLength];
+            in.readFully(header);
+            long headerEnd = end;
+            while (end + 4 <= size) {
+                in.seek(end);
+                long next = end + 4 + readUint32(in);
+                if (next > size) break;
+                end = next;
+            }
+            return new Existing(new String(header, StandardCharsets.UTF_8), end, end > headerEnd);
+        }
     }
 
     /** Ajoute une mesure au flux `id`, à l'instant donné en µs depuis le départ ; un numéro inconnu est ignoré. */
@@ -116,7 +177,7 @@ final class ImuWriter implements Closeable {
         }
     }
 
-    /** Octets écrits jusqu'ici. */
+    /** Taille du fichier jusqu'ici, ce qu'il gardait avant une reprise compris. */
     long bytes() {
         return bytes;
     }
@@ -175,5 +236,11 @@ final class ImuWriter implements Closeable {
 
     private static byte[] uint32(int value) {
         return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array();
+    }
+
+    private static long readUint32(RandomAccessFile in) throws IOException {
+        byte[] b = new byte[4];
+        in.readFully(b);
+        return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).getInt() & 0xFFFFFFFFL;
     }
 }

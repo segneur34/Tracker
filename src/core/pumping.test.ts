@@ -138,6 +138,65 @@ describe('pumping : capture partielle', () => {
   });
 });
 
+describe('pumping : capture reprise après une coupure (lot 232)', () => {
+  /**
+   * Deux sorties de 120 s comme `capture`, séparées par un trou de la capture
+   * de `holeS` (reprise dans le même fichier) : pumping à 1 Hz, puis à 1,5 Hz,
+   * téléphone penché autrement à la reprise. La trace GPS, elle, continue.
+   */
+  const resumed = (holeS: number) => {
+    const off = 120 + holeS;
+    const local = (t: number) => (t < off ? t : t - off);
+    const pumping = (t: number) => {
+      const u = local(t);
+      return u >= 45 && u < 95 ? Math.sin(2 * Math.PI * (t < off ? 1 : 1.5) * (u - 45)) : 0;
+    };
+    const rec = synthImu({
+      durationS: off + 120, gaps: [[120, off]],
+      az: (t) => (local(t) < 40 ? water(t) : chop(t) + 0.3 * G * pumping(t)),
+      ay: (t) => 0.1 * G * pumping(t),
+      tilt: (t) => (t < off ? Math.PI / 6 : -Math.PI / 4) + 0.2 * Math.sin(2 * Math.PI * 0.1 * t) + 0.1 * pumping(t),
+    });
+    const track = (hz: number): TrackPoint[] =>
+      Array.from({ length: (off + 120) * hz + 1 }, (_, k) => {
+        const t = k / hz;
+        const timeMs = W + t * 1000;
+        return { lat: 43.4, lon: 3.6, time: new Date(timeMs), timeMs, speedMs: speedAt(local(t)), smoothedSpeedMs: speedAt(local(t)), bearing: 0, speedSource: 'doppler' };
+      });
+    return { rec, off, track };
+  };
+
+  it.each([1, 5])('trace à %i Hz : un vol de part et d\'autre d\'un trou de 10 min, chacun compté et décollé à sa place', (hz) => {
+    const { rec, off, track: trackOf } = resumed(600);
+    const track = trackOf(hz);
+    const [before, after] = measureFlightPumping(rec, P, track, buildCumulativeTrack(track), [flightSpan(track, 41, 100), flightSpan(track, off + 41, off + 100, 2)]);
+    expect(before?.covered).toBe(true);
+    expect(after?.covered).toBe(true);
+    expect(Math.abs(before!.strokes - 50)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after!.strokes - 75)).toBeLessThanOrEqual(1);
+    expect(Math.abs(before!.liftoffMs! - (W + 40_000))).toBeLessThan(500);
+    expect(Math.abs(after!.liftoffMs! - (W + (off + 40) * 1000))).toBeLessThan(500);
+  });
+
+  it('un vol GPS qui franchit le trou n\'est pas couvert : la capture n\'est pas calculée à travers', () => {
+    const { rec, off, track: trackOf } = resumed(20);
+    const track = trackOf(1);
+    const across = [flightSpan(track, 41, off + 100)];
+    const [measured] = measureFlightPumping(rec, P, track, buildCumulativeTrack(track), across);
+    expect(measured?.covered).toBe(false);
+    // Sans la coupure, le trou passait pour mesuré.
+    const [whole] = measureFlightPumping(rec, { ...P, captureBreakS: Infinity }, track, buildCumulativeTrack(track), across);
+    expect(whole?.covered).toBe(true);
+  });
+
+  it('sans trou, les fenêtres mesurées sont la capture entière, comme avant', () => {
+    const rec = capture({ liftoffS: 40, pumpHz: 1 });
+    const t = rec.series[0].t;
+    expect(capturedWindows(rec, P)).toEqual([[t[0], t[t.length - 1]]]);
+    expect(capturedWindows(rec, P)).toEqual(capturedWindows(rec));
+  });
+});
+
 describe('pumping en voile sur foil', () => {
   const S = SPORT_PROFILES.wingfoil.pump!;
 
@@ -207,7 +266,7 @@ const measureFlights = (rec: ImuRecording, track: TrackPoint[], vols: [number, n
 
 /** Séries de l'ancien calcul, sans la cadence : tous les coups du vol, groupés par leur seul écart. */
 const seriesWithoutCadence = (rec: ImuRecording, track: TrackPoint[], fromS: number, toS: number, p: PumpDetection = P) => {
-  const c = flightCapture(rec, p, capturedWindows(rec), flightSpan(track, fromS, toS));
+  const c = flightCapture(rec, p, capturedWindows(rec, p), flightSpan(track, fromS, toS));
   expect(c).not.toBeNull();
   return pumpSeries(pumpStrokes(c!.v, c!.from, c!.v.n, p).map((i) => i * c!.v.dt), p);
 };
@@ -433,7 +492,7 @@ describe('pumping en voile sur foil : réglage du 06/11 (n° 27)', () => {
     const track = trackWith(1, 120, (t) => (t < 34 ? 5 : t < 36 ? 5 - (t - 34) * 2 : t < 40 ? 1 + (t - 36) : 5));
     const flight = flightSpan(track, 40, 100);
     expect(liftoffFloorMs(track, flight, S)).toBe(W + 36_000);
-    const without = flightCapture(rec, S, capturedWindows(rec), flight);
+    const without = flightCapture(rec, S, capturedWindows(rec, S), flight);
     expect(Math.abs(without!.liftoff! * without!.v.dt - (32 - (40 - S.liftoffSearchBeforeS)))).toBeLessThan(1);
     expect(measureFlightPumping(rec, S, track, buildCumulativeTrack(track), [flight])[0]!.liftoffMs).toBeNull();
   });

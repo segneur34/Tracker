@@ -29,6 +29,11 @@ export interface AttitudeParams {
   gridStepS: number;
   /** Écart entre deux mesures au-delà duquel la capture a un trou, en secondes. */
   maxGapS: number;
+  /**
+   * Silence de tous les flux au-delà duquel la capture est coupée en morceaux
+   * calculés chacun à part (`measuredPieces`), en secondes.
+   */
+  captureBreakS: number;
   /** Moment calme : force mesurée à moins de cette part de g… */
   calmForceFraction: number;
   /** …et rotation sous ce seuil, en rad/s (échelle de l'accéléromètre). */
@@ -257,6 +262,40 @@ export const captureBounds = (rec: ImuRecording): ImuWindow | null => {
     last = Math.max(last, s.t[s.t.length - 1]);
   }
   return first <= last ? [first, last] : null;
+};
+
+/**
+ * Morceaux mesurés de la capture, triés : du premier au dernier instant,
+ * coupés là où aucun flux ne mesure rien pendant plus de `breakS` secondes.
+ * Une capture reprise après une coupure de l'application s'ajoute au même
+ * fichier, et le trou entre les deux morceaux dure le temps de la coupure :
+ * l'attitude du téléphone, la pesanteur et la moyenne de référence ne se
+ * calculent pas à travers. Sans trou, un seul morceau, celui de
+ * `captureBounds` ; un flux seul qui se tait ne coupe rien tant qu'un autre
+ * mesure.
+ */
+export const measuredPieces = (rec: ImuRecording, breakS: number): ImuWindow[] => {
+  const breakUs = breakS * 1e6;
+  const runs: ImuWindow[] = [];
+  for (const s of rec.series) {
+    const t = s.t;
+    if (t.length === 0) continue;
+    let from = t[0];
+    for (let i = 1; i < t.length; i++) {
+      if (t[i] - t[i - 1] <= breakUs) continue;
+      runs.push([from, t[i - 1]]);
+      from = t[i];
+    }
+    runs.push([from, t[t.length - 1]]);
+  }
+  runs.sort((a, b) => a[0] - b[0]);
+  const pieces: ImuWindow[] = [];
+  for (const [a, b] of runs) {
+    const last = pieces[pieces.length - 1];
+    if (last && a - last[1] <= breakUs) last[1] = Math.max(last[1], b);
+    else pieces.push([a, b]);
+  }
+  return pieces;
 };
 
 /** Fenêtres triées, celles qui se touchent fusionnées. */

@@ -44,6 +44,11 @@ export interface MotionCapture {
   longestGapS: number;
   /** Dernière erreur d'écriture, s'il y en a eu une. */
   error: string | null;
+  /**
+   * Capture reprise après une coupure (`continueMotionCapture`) sur un fichier qui gardait déjà des mesures : durée,
+   * nombre et trou ne comptent alors que depuis la relance, ce qui précède reste dans le fichier. Absent : faux.
+   */
+  earlierMeasures?: boolean;
 }
 
 /** Dossier des captures, dans le dossier privé de l'application. */
@@ -55,10 +60,14 @@ export const motionCapturePath = (startedAtMs: number): string => `${MOTION_DIR}
 /** Plugin maison, `android/app/src/main/java/io/github/segneur/tracker/MotionPlugin.java`. */
 interface MotionPlugin {
   capabilities(): Promise<{ accelerometer: boolean; gyroscope: boolean; barometer: boolean; accelMaxRange?: number }>;
-  start(options: { startedAtMs: number; placement: JumpPlacement; foil: boolean; jumps: boolean; cadence: boolean }): Promise<{ path: string }>;
+  start(options: {
+    startedAtMs: number; placement: JumpPlacement; foil: boolean; jumps: boolean; cadence: boolean; append?: boolean;
+  }): Promise<{ path: string; appended?: boolean }>;
   pause(): Promise<void>;
   resume(): Promise<void>;
-  stop(): Promise<{ path: string | null; bytes?: number; durationS?: number; samples?: number; longestGapS?: number; error?: string }>;
+  stop(): Promise<{
+    path: string | null; bytes?: number; durationS?: number; samples?: number; longestGapS?: number; error?: string; earlierMeasures?: boolean;
+  }>;
   status(): Promise<{ path: string | null; listening?: boolean; placement?: JumpPlacement; foil?: boolean; jumps?: boolean; cadence?: boolean }>;
 }
 
@@ -94,6 +103,17 @@ export const startMotionCapture = async (startedAtMs: number, setup: MotionSetup
   await plugin.start({ startedAtMs, placement: setup.placement, foil: setup.foil, jumps: setup.jumps, cadence: setup.cadence });
 };
 
+/**
+ * Relance la capture d'un enregistrement repris après une coupure (« Continuer », ou reprise seule quand elle ne
+ * tourne plus) : son fichier, s'il existe, est complété, avec la même base de temps ; le trou entre les deux parties
+ * est voulu, les calculs ne le franchissent pas (`measuredPieces`). Fichier absent : départ neuf. Lève une erreur si
+ * le téléphone ne le permet pas ou si le fichier est illisible, laissé alors tel quel.
+ */
+export const continueMotionCapture = async (startedAtMs: number, setup: MotionSetup): Promise<void> => {
+  if (!isNativeApp()) throw new Error(UNAVAILABLE.reason ?? 'Capteurs indisponibles.');
+  await plugin.start({ startedAtMs, placement: setup.placement, foil: setup.foil, jumps: setup.jumps, cadence: setup.cadence, append: true });
+};
+
 export const pauseMotionCapture = async (): Promise<void> => {
   if (isNativeApp()) await plugin.pause();
 };
@@ -118,6 +138,7 @@ export const stopMotionCapture = async (): Promise<MotionCapture | null> => {
     samples: r.samples ?? 0,
     longestGapS: r.longestGapS ?? 0,
     error: r.error ?? null,
+    earlierMeasures: r.earlierMeasures === true,
   };
 };
 
@@ -129,8 +150,9 @@ export interface RunningMotionCapture {
 }
 
 /**
- * Capture restée ouverte après une chute du moteur de la page, sans y toucher : la reprise la suit, jamais de nouveau
- * `start`, qui tronquerait son fichier (`ImuWriter.java`). `null` si rien ne tourne.
+ * Capture restée ouverte après une chute du moteur de la page, sans y toucher : la reprise la suit telle qu'elle
+ * tourne. Une capture qui ne tourne plus (activité détruite) est relancée par `continueMotionCapture`, qui s'ajoute
+ * au même fichier ; jamais par `startMotionCapture`, qui le tronquerait (`ImuWriter.java`). `null` si rien ne tourne.
  */
 export const runningMotionCapture = async (): Promise<RunningMotionCapture | null> => {
   if (!isNativeApp()) return null;

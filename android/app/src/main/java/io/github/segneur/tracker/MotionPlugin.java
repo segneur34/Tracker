@@ -32,7 +32,9 @@ import org.json.JSONObject;
  * celui du GPS en tient lieu, comme pour les bips des balises, et son verrou
  * partiel garde le processeur éveillé, pour que les mesures ne débordent pas
  * des tampons des capteurs. La capture suit la pause manuelle (le GPS, lui,
- * reste allumé) ; un arrêt brutal ne perd que le dernier paquet.
+ * reste allumé) ; un arrêt brutal ne perd que le dernier paquet. La capture se
+ * ferme avec l'activité ; un enregistrement repris la relance en ajout au même
+ * fichier (`start`, `append`).
  */
 @CapacitorPlugin(name = "Motion")
 public class MotionPlugin extends Plugin implements SensorEventListener {
@@ -48,6 +50,16 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     /** Écriture d'un paquet du fichier, en millisecondes. */
     private static final long FLUSH_MS = 1000;
     static final String DIR = "capteurs";
+    /**
+     * Seul format repris par `start` en ajout : celui que `header` écrit, en toutes lettres, pour que
+     * src/core/imuFile.reference.test.ts le relise dans cette source.
+     */
+    private static final String FORMAT = "tracker-capteurs";
+    /**
+     * Écart toléré, en millisecondes, entre le temps écoulé et l'heure depuis le départ d'une capture reprise :
+     * au-delà, le téléphone a redémarré entre-temps (ou son heure a été changée), et la base se déduit de l'heure.
+     */
+    private static final long SAME_BOOT_TOLERANCE_MS = 5_000;
 
     private static final int ACCEL = 0;
     private static final int GYRO = 1;
@@ -67,6 +79,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     private long firstNs = 0;
     private long longestGapNs = 0;
     private String writeError = null;
+    /** Capture reprise sur un fichier qui gardait déjà des mesures : compteurs et durée ne disent que la suite. */
+    private boolean earlierMeasures = false;
     // Réglages de la capture en cours, rendus par `status`.
     private String placement = "poitrine";
     private boolean foil = false;
@@ -122,6 +136,13 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
      * nomme le fichier), `placement` et `foil` (réglages des sauts, gardés dans
      * l'en-tête), `jumps` et `cadence` (ce que la capture mesure, gardé dans
      * l'en-tête). Une capture déjà en cours est d'abord close.
+     *
+     * `append` (reprise d'un enregistrement après une coupure) : un fichier déjà
+     * là est complété, avec ses flux et sa base de temps (`resumedStartNs`) ; le
+     * trou entre les deux parties est laissé tel quel aux lecteurs, qui ne le
+     * franchissent pas (`measuredPieces`). Fichier absent : départ neuf. En-tête
+     * illisible : refus, sans toucher au fichier. Rend `appended` vrai si le
+     * fichier a été complété.
      */
     @PluginMethod
     public void start(PluginCall call) {
@@ -136,6 +157,7 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
         boolean foil = Boolean.TRUE.equals(call.getBoolean("foil", false));
         boolean jumps = !Boolean.FALSE.equals(call.getBoolean("jumps", true));
         boolean cadence = Boolean.TRUE.equals(call.getBoolean("cadence", false));
+        boolean append = Boolean.TRUE.equals(call.getBoolean("append", false));
         handler().post(() -> {
             closeCapture();
             SensorManager sm = sensors();
@@ -146,18 +168,41 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
                 call.reject("ce téléphone n'a pas d'accéléromètre ou de gyroscope");
                 return;
             }
+            boolean appended = false;
+            earlierMeasures = false;
             try {
                 File dir = new File(getContext().getFilesDir(), DIR);
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new Exception("dossier " + DIR + " impossible à créer");
                 relativePath = DIR + "/" + startedAtMs + ".imu";
                 file = new File(dir, startedAtMs + ".imu");
                 // Les deux horloges lues d'un coup : elles relient les instants des capteurs à l'heure.
-                startNs = SystemClock.elapsedRealtimeNanos();
+                long nowNs = SystemClock.elapsedRealtimeNanos();
                 long wallMs = System.currentTimeMillis();
-                ImuWriter.Stream[] streams = pressure != null
-                    ? new ImuWriter.Stream[] { accelStream(), gyroStream(), pressureStream() }
-                    : new ImuWriter.Stream[] { accelStream(), gyroStream() };
-                writer = new ImuWriter(file, header(startedAtMs, startNs, wallMs, placement, foil, jumps, cadence, accel, gyro, pressure).toString(), streams);
+                if (append && file.isFile()) {
+                    ImuWriter.Existing existing;
+                    ImuWriter.Stream[] streams;
+                    try {
+                        existing = ImuWriter.readExisting(file);
+                        JSONObject header = new JSONObject(existing.headerJson);
+                        if (!FORMAT.equals(header.optString("format"))) throw new JSONException("format inconnu");
+                        streams = streamsOf(header.getJSONArray("streams"));
+                        startNs = resumedStartNs(header.getJSONObject("clock"), nowNs, wallMs);
+                    } catch (Exception e) {
+                        Log.w(TAG, "Capture à reprendre illisible, laissée telle quelle : " + relativePath, e);
+                        call.reject("fichier de mesures illisible, la mesure ne reprend pas");
+                        return;
+                    }
+                    writer = new ImuWriter(file, existing, streams);
+                    appended = true;
+                    earlierMeasures = existing.hasPackets;
+                    Log.i(TAG, "Capture : reprise en ajout de " + relativePath + " (" + existing.end + " octets gardés)");
+                } else {
+                    startNs = nowNs;
+                    ImuWriter.Stream[] streams = pressure != null
+                        ? new ImuWriter.Stream[] { accelStream(), gyroStream(), pressureStream() }
+                        : new ImuWriter.Stream[] { accelStream(), gyroStream() };
+                    writer = new ImuWriter(file, header(startedAtMs, startNs, wallMs, placement, foil, jumps, cadence, accel, gyro, pressure).toString(), streams);
+                }
                 accelCount = 0;
                 lastAccelNs = 0;
                 firstNs = 0;
@@ -177,6 +222,7 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
             }
             JSObject ret = new JSObject();
             ret.put("path", relativePath);
+            ret.put("appended", appended);
             call.resolve(ret);
         });
     }
@@ -210,6 +256,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
      * Arrête la capture et ferme le fichier. Rend son chemin relatif au dossier
      * privé, sa taille, la durée mesurée, le nombre de mesures de
      * l'accéléromètre et son plus long trou ; `path` nul si rien ne tournait.
+     * Capture reprise en ajout : durée, nombre et trou ne comptent que depuis la
+     * relance, et `earlierMeasures` dit si le fichier gardait des mesures d'avant.
      */
     @PluginMethod
     public void stop(PluginCall call) {
@@ -225,12 +273,14 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
             double durationS = count > 1 ? (lastAccelNs - firstNs) / 1e9 : 0;
             double longestGapS = longestGapNs / 1e9;
             String error = writeError;
+            boolean earlier = earlierMeasures;
             closeCapture();
             ret.put("path", path);
             ret.put("bytes", file != null ? file.length() : 0);
             ret.put("durationS", durationS);
             ret.put("samples", count);
             ret.put("longestGapS", longestGapS);
+            ret.put("earlierMeasures", earlier);
             if (error != null) ret.put("error", error);
             call.resolve(ret);
         });
@@ -238,8 +288,9 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
 
     /**
      * État de la capture, sans y toucher : la page reprise après une chute du moteur de
-     * rendu la suit ainsi, jamais par `start`, qui tronquerait son fichier (ImuWriter).
-     * `path` nul si rien ne tourne ; `listening` faux pendant une pause.
+     * rendu la suit ainsi tant qu'elle tourne ; `start` en ajout ne sert qu'à celle qui
+     * s'est arrêtée (activité détruite). `path` nul si rien ne tourne ; `listening` faux
+     * pendant une pause.
      */
     @PluginMethod
     public void status(PluginCall call) {
@@ -349,6 +400,35 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
 
     private static ImuWriter.Stream pressureStream() {
         return new ImuWriter.Stream(PRESSURE, 1, 0.01, 1000);
+    }
+
+    /** Flux d'un fichier repris, tels que son en-tête les décrit : les mesures ajoutées s'écrivent dans la même échelle. */
+    private static ImuWriter.Stream[] streamsOf(JSONArray list) throws JSONException {
+        if (list.length() == 0) throw new JSONException("aucun flux");
+        ImuWriter.Stream[] streams = new ImuWriter.Stream[list.length()];
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject info = list.getJSONObject(i);
+            int axes = info.getInt("axes");
+            double unit = info.getDouble("unit");
+            if (axes < 1 || !(unit > 0)) throw new JSONException("flux " + i + " mal décrit");
+            streams[i] = new ImuWriter.Stream(info.getInt("id"), axes, unit, info.getDouble("offset"));
+        }
+        return streams;
+    }
+
+    /**
+     * Base de temps d'une capture reprise, en nanosecondes du temps écoulé du système. Téléphone non redémarré
+     * (temps écoulé et heure ont avancé d'autant depuis le départ, à `SAME_BOOT_TOLERANCE_MS` près) : celle de
+     * l'en-tête. Sinon, le temps écoulé étant reparti de zéro, elle se déduit de l'heure.
+     */
+    private static long resumedStartNs(JSONObject clock, long nowNs, long wallMs) throws JSONException {
+        long elapsedUs = clock.getLong("elapsedUs");
+        long sinceByWallMs = wallMs - clock.getLong("wallMs");
+        long sinceByElapsedMs = nowNs / 1_000_000 - elapsedUs / 1000;
+        if (sinceByElapsedMs >= 0 && Math.abs(sinceByElapsedMs - sinceByWallMs) <= SAME_BOOT_TOLERANCE_MS) {
+            return elapsedUs * 1000;
+        }
+        return nowNs - sinceByWallMs * 1_000_000;
     }
 
     private static JSONObject streamInfo(int id, String kind, int axes, double unit, double offset, Sensor sensor) throws JSONException {

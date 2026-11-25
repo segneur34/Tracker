@@ -112,7 +112,7 @@ if (!rec) {
   process.exit(1);
 }
 const stats = imuCaptureStats(rec);
-const windows = capturedWindows(rec);
+const windows = capturedWindows(rec, P);
 const keptS = windows.reduce((s, [a, b]) => s + (b - a) / 1e6, 0);
 console.log(`\nCapteurs : ${imuPath} (${r2(statSync(imuPath).size / 1024 / 1024)} Mo)`);
 console.log(`Réglages : ${rec.header.setup.placement}, ${rec.header.setup.foil ? 'foil' : 'sans foil'}, sauts ${rec.header.setup.jumps === false ? 'non' : 'oui'}${rec.header.windows ? `, élaguée (${rec.header.windows.length} fenêtres)` : ', entière'}`);

@@ -172,6 +172,8 @@ describe('référence du format des capteurs, écrite par le téléphone', () =>
     // Numéros, axes, unités et décalages ne vivent qu'en constantes privées de `MotionPlugin`, lié à Android : relus dans sa source.
     const plugin = fs.readFileSync(new URL('../../android/app/src/main/java/io/github/segneur/tracker/MotionPlugin.java', import.meta.url), 'utf8');
     expect(plugin).toContain(`header.put("format", "${IMU_FORMAT}")`);
+    // Le seul format qu'une capture reprise en ajout accepte de compléter (lot 232).
+    expect(plugin).toContain(`private static final String FORMAT = "${IMU_FORMAT}";`);
     expect(plugin).toContain(`header.put("version", ${IMU_VERSION})`);
     for (const { id, kind, axes, unit, offset } of PHONE_STREAMS) {
       const name = kind.toUpperCase();

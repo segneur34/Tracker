@@ -11,8 +11,8 @@ import { recordingJournal } from '../platform/files';
 import { armBeltWatch, armGpsWatch, disarmBeltWatch, disarmGpsWatch, getBeeper, onBeltLost, onGpsLost } from '../platform/beeper';
 import { readPermissions } from '../platform/permissions';
 import {
-  findMotionCapture, motionCapturePath, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture, runningMotionCapture,
-  startMotionCapture, stopMotionCapture, type MotionCapture, type MotionSetup,
+  continueMotionCapture, findMotionCapture, motionCapturePath, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture,
+  runningMotionCapture, startMotionCapture, stopMotionCapture, type MotionCapture, type MotionSetup,
 } from '../platform/motion';
 import {
   RECORDING_BELT_HOLDER, adoptBelt, beltState, holdBelt, keepBeltAlive, latestHeartRate, releaseOrphanedBelt, savedBelt, stopBeltKeepAlive, subscribeBeltState,
@@ -32,8 +32,8 @@ import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { runCommand as intervalCommand, seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivity, journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine,
-  journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, parseJournal, type ParsedJournal,
+  journalActivity, journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine,
+  journalNoteLine, journalPauseLine, journalResumeLine, journalStopLine, journalTestLine, parseJournal, type ParsedJournal,
 } from '../recording/journal';
 import {
   NO_RECOVERY_SERVICES, continuedPause, rebuildRecordingStats, recoveryDecision, resumedPhase, type RecoveryJournal,
@@ -110,13 +110,17 @@ import { resetStopwatch } from './useStopwatch';
  *
  * Veille de la ceinture (lot 177) : la même machine, passé `beltLostDelayS` sans
  * mesure lisible d'une ceinture qui en donnait, hors pause manuelle (`beltLost`,
- * alerte `BELT_LOST_ERROR`, son et notification), une fois par perte.
+ * alerte `BELT_LOST_ERROR`, son et notification), une fois par perte. Une
+ * ceinture redemandée après une coupure, qui mesurait avant, est veillée dès
+ * la reprise (`watchResumedBelt`), sans attendre sa première mesure.
  *
  * Reprise (lot 156, `recording/resume.ts`) : si le moteur de la page tombe, seule la page repart (`MainActivity.java`).
  * Le service GPS encore vivant, la session reprend seule (`resumeSilently`) : mémoire refaite depuis le journal, jamais
  * d'en-tête de plus, service jamais relancé, un segment neuf à la position suivante. Application tuée et rouverte peu
  * après : la session attend, non rangée, avec « Continuer l'enregistrement » (`continuePendingSession`) ou « Finir »
- * (`savePendingSession`) ; plus tard, elle est rangée d'office.
+ * (`savePendingSession`) ; plus tard, elle est rangée d'office. L'en-tête du journal garde la ceinture et les
+ * réglages de la capture du départ (lot 232) : les deux reprises les redemandent, la capture complétant son fichier
+ * (`continueCapture`).
  *
  * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
  * source GPS ; avec la ceinture, chaque mesure (une par seconde au plus,
@@ -401,7 +405,10 @@ export const GPS_LOST_ERROR = "GPS perdu : plus aucune position. L'enregistremen
 const SENSORS_PAUSE_ERROR = 'Capteurs : pause impossible, la mesure continue pendant la pause';
 /** Échec de la reprise de la capture des capteurs. */
 const SENSORS_RESUME_ERROR = 'Capteurs : reprise impossible, sauts et cadence arrêtés';
-/** « Continuer » après une capture des capteurs : elle ne reprend pas, ce qu'elle a mesuré reste. */
+/**
+ * Session reprise après une coupure, capture qui ne repart pas (relance refusée, ou journal d'avant le lot 232, qui
+ * n'en gardait pas les réglages) : ce qu'elle a mesuré avant reste dans son fichier.
+ */
 const CAPTURE_NOT_RESUMED = 'Capteurs : la mesure ne reprend pas ; ce qu\'ils ont mesuré avant la coupure est gardé.';
 /** Notifications refusées au départ d'un enregistrement : ajouté une fois à l'alerte. */
 const NOTIFICATIONS_OFF_WARNING = "Notifications refusées : rien ne s'affichera sur l'écran verrouillé pendant l'enregistrement (Réglages › Autorisations).";
@@ -1056,9 +1063,54 @@ const restoreFromJournal = (parsed: ParsedJournal, activity: Activity, source: L
 };
 
 /**
- * Reprise silencieuse : le service a survécu à la chute du moteur de la page. Rien n'est relancé ni récrit : capture,
- * ceinture et GPS sont rebranchés tels qu'ils tournent, la session reprend où le journal l'a laissée (pause manuelle
- * comprise), et le point suivant ouvre un segment. Faux, enregistreur au repos et journal intact, si un maillon manque.
+ * Relance la capture d'une session reprise après une coupure, quand elle ne tourne plus : son fichier est complété
+ * (`continueMotionCapture`). `paused` : la session est en pause manuelle, la capture aussi. Un échec est ajouté aux
+ * messages déjà là, et la reprise continue sans elle ; ce qu'elle a mesuré avant reste dans son fichier, retrouvé à
+ * l'arrêt (`resumedSession`).
+ */
+const continueCapture = async (setup: MotionSetup, paused: boolean): Promise<void> => {
+  try {
+    await continueMotionCapture(startedAtMs, setup);
+  } catch (err) {
+    const kept = await findMotionCapture(startedAtMs).catch(() => null);
+    const why = kept ? CAPTURE_NOT_RESUMED
+      : `Mesure des capteurs impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.`;
+    setState({ error: joinMessages(state.error, why) });
+    return;
+  }
+  setState({ measuringMotion: true, motionSetup: setup });
+  if (paused) await pauseMotionCapture().catch(() => setState({ error: joinMessages(state.error, SENSORS_PAUSE_ERROR) }));
+};
+
+/**
+ * Vrai si la ceinture mesurait avant la coupure : des positions du journal portent sa FC, et l'utilisateur n'a pas
+ * cessé de la chercher en route.
+ */
+const beltMeasuredBeforeCut = (parsed: ParsedJournal): boolean =>
+  !parsed.beltStopped && parsed.fixes.some((fix) => fix.heartRateBpm !== undefined);
+
+/**
+ * Veille d'une ceinture redemandée après une coupure, juste après `takeBeltOrWarn`. Si elle mesurait avant la
+ * coupure, elle est veillée comme déjà jointe : sans mesure pendant `beltLostDelayS`, l'alerte de FC perdue part, son
+ * compris, et l'enregistrement continue. Sinon, la règle d'un départ : rien avant sa première mesure. `paused` : la
+ * session est en pause manuelle, la veille attend la reprise manuelle.
+ */
+const watchResumedBelt = (parsed: ParsedJournal, paused: boolean): void => {
+  if (!beltWatchOn || currentProfile === null) return;
+  if (beltMeasuredBeforeCut(parsed)) {
+    const armed = gpsWatchOnFix(beltWatch, Date.now(), beltWatchSettings(currentProfile));
+    applyBeltWatch(paused ? gpsWatchOnPause(armed.state) : armed);
+  } else if (paused) {
+    applyBeltWatch(gpsWatchOnPause(beltWatch));
+  }
+};
+
+/**
+ * Reprise silencieuse : le service a survécu à la chute du moteur de la page. Rien n'est récrit : capture, ceinture et
+ * GPS sont rebranchés tels qu'ils tournent (une ceinture que le téléphone ne tient plus est redemandée, une capture
+ * qui ne tourne plus est relancée en complétant son fichier), la session reprend où le journal l'a laissée (pause
+ * manuelle comprise), et le point suivant ouvre un segment. Faux, enregistreur au repos et journal intact, si un
+ * maillon manque.
  */
 const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promise<boolean> => {
   const sport = activity.base;
@@ -1070,24 +1122,39 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
     manualBreakAutoPartMs = phase.manualBreakAutoPartMs;
     // Capteurs et ceinture ne valent pas la trace : leur lecture en échec ne fait pas renoncer à la reprise.
     const capture = await runningMotionCapture().catch(() => null);
+    const ours = capture?.path === motionCapturePath(startedAtMs) ? capture : null;
     // Celle d'une autre session n'a rien à faire là.
-    if (capture && capture.path !== motionCapturePath(startedAtMs)) await stopMotionCapture().catch(() => null);
-    else if (capture) {
-      setState({ measuringMotion: true, motionSetup: capture.setup });
+    if (capture && !ours) await stopMotionCapture().catch(() => null);
+    else if (ours) {
+      setState({ measuringMotion: true, motionSetup: ours.setup });
       // Un ordre de pause ou de reprise perdu avec la page : la capture suit la session.
-      if (phase.pauseClock !== null && capture.listening) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
-      if (phase.pauseClock === null && !capture.listening) await resumeMotionCapture().catch(() => setState({ error: SENSORS_RESUME_ERROR }));
+      if (phase.pauseClock !== null && ours.listening) await pauseMotionCapture().catch(() => setState({ error: SENSORS_PAUSE_ERROR }));
+      if (phase.pauseClock === null && !ours.listening) await resumeMotionCapture().catch(() => setState({ error: SENSORS_RESUME_ERROR }));
     }
+    const beltMaxAgeS = getSportProfile(sport).heartRate.maxAgeS;
+    // Ceinture reprise telle quelle (liaison tenue par le téléphone), ou prise d'office en muscu : sa veille repart
+    // comme avant la chute. Sinon, une ceinture redemandée est veillée selon ce qu'elle mesurait (`watchResumedBelt`).
+    let beltRewired = false;
     // Muscu partie sans la ceinture (lot 210) : aucune à reprendre, le minuteur repart plus bas.
     if (!withoutBelt) {
       const release = await adoptBelt(RECORDING_BELT_HOLDER).catch(() => null);
-      if (release) wireBelt(release, getSportProfile(sport).heartRate.maxAgeS);
-      else if (!withPositions) {
+      if (release) {
+        wireBelt(release, beltMaxAgeS);
+        beltRewired = true;
+      } else if (!withPositions) {
         const belt = savedBelt();
         if (belt === null) throw new Error('ceinture introuvable');
-        await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
+        await takeBelt(belt, beltMaxAgeS);
+        beltRewired = true;
+      } else if (parsed.header?.belt && !parsed.beltStopped) {
+        // Le téléphone ne tient plus la liaison (greffon neuf) : la ceinture du départ est redemandée, sauf si
+        // l'utilisateur a cessé de la chercher en route. Un refus est dit, et la reprise continue sans elle.
+        await takeBeltOrWarn(parsed.header.belt, beltMaxAgeS);
       }
     }
+    // La capture du départ ne tourne plus (fermée avec l'activité) : relancée en complétant son fichier, après la
+    // ceinture, dont le refus remplace les messages. Un journal d'avant, qui ne la porte pas, la laisse arrêtée.
+    if (!ours && parsed.header?.motion) await continueCapture(parsed.header.motion, phase.pauseClock !== null);
     // Sans attente jusqu'au passage en enregistrement : aucune position ne peut arriver d'ici là, ni être mal jugée.
     if (withPositions) stopSource = adoptRunningService(receiveFix, onSourceError);
     setState({
@@ -1101,10 +1168,14 @@ const resumeSilently = async (parsed: ParsedJournal, activity: Activity): Promis
       const armedStep = gpsWatchOnFix(START_GPS_WATCH, Date.now(), currentProfile);
       applyGpsWatch(phase.pauseClock ? gpsWatchOnPause(armedStep.state) : armedStep);
     }
-    if (beltWatchOn && currentProfile) {
+    if (beltRewired && beltWatchOn && currentProfile) {
       // Comme le GPS : le minuteur de la page tombée est repris par une veille qui saura lire son échéance.
       const armedBelt = gpsWatchOnFix(START_GPS_WATCH, Date.now(), beltWatchSettings(currentProfile));
       applyBeltWatch(phase.pauseClock ? gpsWatchOnPause(armedBelt.state) : armedBelt);
+    } else {
+      // Une ceinture redemandée est veillée dès maintenant si elle mesurait avant la coupure, sinon dès sa première
+      // mesure ; jamais pendant la pause manuelle : sa veille l'attend, et la reprise manuelle la rend.
+      watchResumedBelt(parsed, phase.pauseClock !== null);
     }
     console.info(`[reprise] enregistrement repris seul après une chute du moteur : ${fixes.length || heartFixes.length} points relus`);
     return true;
@@ -1221,6 +1292,19 @@ const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => 
   wireBelt(await holdBelt(RECORDING_BELT_HOLDER, belt), maxAgeS);
 };
 
+/**
+ * Prend la ceinture comme `takeBelt`, sans jamais lever : si elle ne répond pas, elle est rendue, la tuile BPM
+ * retirée, et l'alerte le dit. L'enregistrement, départ ou reprise, continue sans elle.
+ */
+const takeBeltOrWarn = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => {
+  try {
+    await takeBelt(belt, maxAgeS);
+  } catch (err) {
+    releaseRecordingBelt();
+    setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
+  }
+};
+
 /** Suit dans l'état les mesures d'une ceinture tenue ; `release` la rend. */
 const wireBelt = (release: () => void, maxAgeS: number): void => {
   heartRateMaxAgeS = maxAgeS;
@@ -1259,14 +1343,16 @@ const releaseRecordingBelt = (): void => {
  * « Arrêter de chercher » (lot 198), ceinture perdue ou jamais trouvée en route : l'enregistrement la rend et continue
  * sans cardio, tuile BPM et alerte de FC perdue retirées. Plus rien ne la recherche jusqu'à la fin de la sortie : le
  * greffon n'est plus demandé (fin de sa reprise seule), la pause ne la reprend pas, et une reprise après une chute de
- * la page la trouve lâchée (`adoptBelt` rend `null`). Seul « Continuer l'enregistrement », après une application
- * tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu) : partie avec elle, elle la
- * garde, trous dans la FC compris ; sans elle, elle se chronomètre dès le départ (lot 210).
+ * la page ne la redemande pas, le journal le disant (`journalBeltLine`). Seul « Continuer l'enregistrement », après
+ * une application tuée, la redemande, comme au départ. Sans effet sur une session sans position (muscu) : partie avec
+ * elle, elle la garde, trous dans la FC compris ; sans elle, elle se chronomètre dès le départ (lot 210).
  */
 export const stopRecordingBeltSearch = (): void => {
   if (heartOnly || dropBelt === null) return;
   if (state.status === 'idle' || state.status === 'stopping') return;
   releaseRecordingBelt();
+  pendingLines += journalBeltLine(Date.now(), 'stopped');
+  void flushJournal();
   setState({ heartRate: null, beltLost: false, error: withoutBeltLost(state.error) });
 };
 
@@ -1280,7 +1366,7 @@ const startHeartRateRecording = async (activity: Activity, belt: HeartRateBelt |
   const sport = activity.base;
   withoutBelt = belt === null;
   try {
-    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity, withoutBelt));
+    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity, { withoutBelt }));
     if (belt) await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
   } catch (err) {
     releaseRecordingBelt();
@@ -1377,7 +1463,10 @@ export const startRecording = exclusive(async (
   }
   if (source === null) return;
   try {
-    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
+    // La ceinture et la capture du départ sont gardées dans l'en-tête : ce sont elles que « Continuer » et la reprise
+    // seule redemandent.
+    const extras = { belt: options.heartRate ?? null, motion: options.motion ?? null };
+    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity, extras));
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
     setState({ status: 'recording' });
   } catch (err) {
@@ -1395,14 +1484,7 @@ export const startRecording = exclusive(async (
       setState({ error: `Mesure des capteurs impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
   }
-  if (options.heartRate) {
-    try {
-      await takeBelt(options.heartRate, getSportProfile(sport).heartRate.maxAgeS);
-    } catch (err) {
-      releaseRecordingBelt();
-      setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
-    }
-  }
+  if (options.heartRate) await takeBeltOrWarn(options.heartRate, getSportProfile(sport).heartRate.maxAgeS);
   // Après les messages du départ (capteurs, ceinture), pour s'y ajouter sans être effacé par eux.
   void warnIfNotificationsOff();
 });
@@ -1410,8 +1492,12 @@ export const startRecording = exclusive(async (
 /**
  * « Continuer l'enregistrement » : la session en attente reprend sur son journal, dans un segment neuf, service
  * relancé par ce geste (l'application est au premier plan). Le temps hors de l'application ne compte pas (`continuedPause`).
- * Les séances du compteur, coupées avec l'application, s'arrêtent à la dernière ligne ; la capture ne reprend pas, son
- * fichier est retrouvé à l'arrêt. En échec, la session reste en attente et le journal est gardé.
+ * Les séances du compteur, coupées avec l'application, s'arrêtent à la dernière ligne. La capture du départ, gardée
+ * dans l'en-tête, est relancée en complétant son fichier ; un journal d'avant, qui ne la porte pas, la laisse arrêtée,
+ * son fichier retrouvé à l'arrêt. La ceinture du départ est redemandée (celle de l'en-tête, sinon pour un journal
+ * d'avant celle du réglage de l'activité), et veillée dès ici si elle mesurait avant la coupure : sans mesure pendant
+ * une minute, l'alerte de FC perdue part. Un refus de l'une ou de l'autre est dit sans arrêter la reprise. Muscu :
+ * la ceinture retenue, obligatoire, comme avant. En échec, la session reste en attente et le journal est gardé.
  */
 export const continuePendingSession = exclusive(async (source: LocationSource | null): Promise<void> => {
   const before = state.pending;
@@ -1448,16 +1534,20 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
     if (lifted.resumeLine) pendingLines += journalResumeLine(nowMs);
     pendingBreak = true;
     manualBreakAutoPartMs = lifted.autoPartMs;
+    // La ceinture du départ, gardée dans l'en-tête, même cessée d'être cherchée en route ; un journal d'avant, qui ne
+    // la porte pas, suit le réglage de l'activité.
+    const fromHeader = parsed.header?.belt;
+    const belt = !withPositions ? null : fromHeader !== undefined ? fromHeader : effectiveHeartRate(activity) ? savedBelt() : null;
+    // Redemandée ici : une reprise seule après une nouvelle chute la redemandera aussi.
+    if (belt && parsed.beltStopped) pendingLines += journalBeltLine(nowMs, 'asked');
     await flushJournal();
     const heartRate = getSportProfile(activity.base).heartRate;
     if (withPositions && source) {
       stopSource = await source.start(sourceOptions(activity, effectiveRecordingProfile(activity)), receiveFix, onSourceError);
-      const belt = effectiveHeartRate(activity) ? savedBelt() : null;
       if (belt) {
-        await takeBelt(belt, heartRate.maxAgeS).catch((err: unknown) => {
-          releaseRecordingBelt();
-          setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
-        });
+        await takeBeltOrWarn(belt, heartRate.maxAgeS);
+        // `continuedPause` a levé la pause manuelle : une ceinture qui mesurait avant la coupure est veillée dès ici.
+        watchResumedBelt(parsed, false);
       }
     } else {
       // Muscu partie sans la ceinture (lot 210) : aucune à reprendre, le minuteur repart plus bas.
@@ -1470,11 +1560,14 @@ export const continuePendingSession = exclusive(async (source: LocationSource | 
         setState({ error: `Service de l'enregistrement impossible : ${errorMessage(err, 'erreur inconnue')}. Gardez l'écran allumé.` });
       });
     }
-    const captured = await findMotionCapture(startedAtMs).catch(() => null);
-    setState({
-      status: 'recording', resuming: false,
-      ...(captured ? { error: joinMessages(state.error, CAPTURE_NOT_RESUMED) } : {}),
-    });
+    // Après la ceinture, dont le refus remplace les messages : celui des capteurs s'y ajoute. `continuedPause` a levé
+    // la pause manuelle, la capture reprend donc sa mesure.
+    const motion = parsed.header?.motion;
+    if (motion) await continueCapture(motion, false);
+    else if (motion === undefined && await findMotionCapture(startedAtMs).catch(() => null)) {
+      setState({ error: joinMessages(state.error, CAPTURE_NOT_RESUMED) });
+    }
+    setState({ status: 'recording', resuming: false });
     if (withoutBelt) startClock();
   } catch (err) {
     await backToPending(err);
@@ -1654,7 +1747,8 @@ export const motionCaptureWarning = (capture: MotionCapture | null, failure: str
   if (capture.error !== null) {
     return `Capteurs : écriture interrompue (${capture.error}), leurs mesures sont incomplètes : sauts, pumping ou cadence peuvent manquer.`;
   }
-  if (capture.samples === 0) return `Capteurs : aucune mesure reçue, ${lost}`;
+  // Capture reprise sans mesure depuis sa relance (session en pause, arrêt aussitôt) : celles d'avant la coupure restent.
+  if (capture.samples === 0 && capture.earlierMeasures !== true) return `Capteurs : aucune mesure reçue, ${lost}`;
   return null;
 };
 

@@ -357,7 +357,7 @@ export interface JumpProfile {
  * la grille, trou toléré, repos qui amorce la gravité, filtre d'attitude.
  */
 const ATTITUDE = {
-  gridStepS: 0.01, maxGapS: 0.05,
+  gridStepS: 0.01, maxGapS: 0.05, captureBreakS: 5,
   calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
   attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
 };

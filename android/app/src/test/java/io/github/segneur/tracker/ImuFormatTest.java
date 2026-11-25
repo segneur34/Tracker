@@ -2,6 +2,7 @@ package io.github.segneur.tracker;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -10,7 +11,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +32,9 @@ import org.junit.rules.TemporaryFolder;
  * Paquet par paquet, décompressé : deux `Deflater` peuvent produire des octets
  * différents pour le même contenu selon la JVM, ce qui ne change rien au format.
  * Ce test n'écrit jamais la référence (`ImuReference`, pour la refaire).
+ *
+ * Il garde aussi la reprise d'un fichier après une coupure (`ImuWriter.readExisting`
+ * et le second constructeur, lot 232) : la suite s'ajoute sans abîmer ce qui précède.
  */
 public class ImuFormatTest {
 
@@ -54,6 +60,118 @@ public class ImuFormatTest {
         assertEquals("Nombre de paquets." + IF_WANTED, reference.packets.size(), written.packets.size());
         for (int i = 0; i < reference.packets.size(); i++) {
             assertArrayEquals("Paquet " + (i + 1) + " décompressé." + IF_WANTED, reference.packets.get(i), written.packets.get(i));
+        }
+    }
+
+    /**
+     * Capture reprise après une coupure : le paquet tronqué par l'arrêt brutal est coupé, la suite s'ajoute sans
+     * nouvel en-tête, et le fichier se relit comme s'il avait été écrit d'un trait, trou compris.
+     */
+    @Test
+    public void repriseApresUnPaquetTronqueSeRelitCommeUnFichierEcritDUnTrait() throws IOException {
+        File whole = folder.newFile("entier.imu");
+        try (ImuWriter writer = new ImuWriter(whole, ImuReference.HEADER_JSON, streams())) {
+            packet(writer, 0);
+            writer.flushChunk();
+            packet(writer, 1);
+            writer.flushChunk();
+            packet(writer, 2);
+        }
+
+        File cut = folder.newFile("repris.imu");
+        try (ImuWriter writer = new ImuWriter(cut, ImuReference.HEADER_JSON, streams())) {
+            packet(writer, 0);
+            writer.flushChunk();
+            packet(writer, 1);
+        }
+        long kept = cut.length();
+        // Un troisième paquet coupé net : sa longueur annonce 50 octets, trois seulement ont été écrits.
+        Files.write(cut.toPath(), new byte[] { 50, 0, 0, 0, 1, 2, 3 }, StandardOpenOption.APPEND);
+        ImuWriter.Existing existing = ImuWriter.readExisting(cut);
+        assertEquals("Fin du dernier paquet entier.", kept, existing.end);
+        assertEquals(ImuReference.HEADER_JSON, existing.headerJson);
+        assertTrue("Des mesures gardées d'avant la coupure.", existing.hasPackets);
+        try (ImuWriter writer = new ImuWriter(cut, existing, streams())) {
+            assertEquals(kept, writer.bytes());
+            packet(writer, 2);
+        }
+
+        ImuContent expected = ImuContent.read(Files.readAllBytes(whole.toPath()));
+        ImuContent resumed = ImuContent.read(Files.readAllBytes(cut.toPath()));
+        assertArrayEquals("Marque et en-tête gardés tels quels.", expected.head, resumed.head);
+        assertEquals(3, resumed.packets.size());
+        for (int i = 0; i < 3; i++) {
+            assertArrayEquals("Paquet " + (i + 1) + " décompressé.", expected.packets.get(i), resumed.packets.get(i));
+        }
+    }
+
+    @Test
+    public void repriseApresUneLongueurDePaquetElleMemeCoupee() throws IOException {
+        File cut = folder.newFile("longueur-coupee.imu");
+        try (ImuWriter writer = new ImuWriter(cut, ImuReference.HEADER_JSON, streams())) {
+            packet(writer, 0);
+        }
+        long kept = cut.length();
+        Files.write(cut.toPath(), new byte[] { 9, 0 }, StandardOpenOption.APPEND);
+        assertEquals(kept, ImuWriter.readExisting(cut).end);
+        try (ImuWriter writer = new ImuWriter(cut, ImuWriter.readExisting(cut), streams())) {
+            packet(writer, 1);
+        }
+        assertEquals(2, ImuContent.read(Files.readAllBytes(cut.toPath())).packets.size());
+    }
+
+    @Test
+    public void repriseDUnFichierSansPaquet() throws IOException {
+        File empty = folder.newFile("sans-paquet.imu");
+        new ImuWriter(empty, ImuReference.HEADER_JSON, streams()).close();
+        long kept = empty.length();
+        ImuWriter.Existing existing = ImuWriter.readExisting(empty);
+        assertEquals(kept, existing.end);
+        assertFalse("Aucune mesure d'avant.", existing.hasPackets);
+        try (ImuWriter writer = new ImuWriter(empty, existing, streams())) {
+            packet(writer, 0);
+        }
+        ImuContent content = ImuContent.read(Files.readAllBytes(empty.toPath()));
+        assertEquals(kept, content.head.length);
+        assertEquals(1, content.packets.size());
+    }
+
+    @Test
+    public void marqueInconnueRefuseeSansToucherAuFichier() throws IOException {
+        File other = folder.newFile("autre.imu");
+        byte[] bytes = "PASIMU1\n\u0002\u0000\u0000\u0000{}".getBytes(StandardCharsets.US_ASCII);
+        Files.write(other.toPath(), bytes);
+        try {
+            ImuWriter.readExisting(other);
+            fail("Marque inconnue acceptée.");
+        } catch (IOException expected) {
+            assertArrayEquals(bytes, Files.readAllBytes(other.toPath()));
+        }
+        File shortHeader = folder.newFile("en-tete-coupe.imu");
+        byte[] cutHeader = Arrays.copyOf(writeFile(), ImuWriter.MAGIC.length + 10);
+        Files.write(shortHeader.toPath(), cutHeader);
+        try {
+            ImuWriter.readExisting(shortHeader);
+            fail("En-tête coupé accepté.");
+        } catch (IOException expected) {
+            assertArrayEquals(cutHeader, Files.readAllBytes(shortHeader.toPath()));
+        }
+    }
+
+    private static ImuWriter.Stream[] streams() {
+        return new ImuWriter.Stream[] {
+            new ImuWriter.Stream(0, 3, 0.01, 0),
+            new ImuWriter.Stream(1, 3, 0.002, 0),
+        };
+    }
+
+    /** Un paquet d'une seconde à 100 Hz, accéléromètre et gyroscope ; le n° 2 vient après un trou de 10 min. */
+    private static void packet(ImuWriter writer, int number) {
+        long startUs = number * 1_000_000L + (number >= 2 ? 600_000_000L : 0);
+        for (int i = 0; i < 100; i++) {
+            long t = startUs + i * 10_000L;
+            writer.add(0, t, new float[] { 0.1f * i, -9.81f, number });
+            writer.add(1, t + 500, new float[] { 0.002f * i, 0f, -0.5f * number });
         }
     }
 

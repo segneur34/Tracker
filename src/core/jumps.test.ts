@@ -455,3 +455,82 @@ describe('jumpCurveRows, copie gelée de la courbe des sauts', () => {
     });
   }
 });
+
+describe('sauts : capture reprise après une coupure (lot 232)', () => {
+  /**
+   * Capture coupée de 60 s à 60 s + `holeS`, puis reprise dans le même fichier :
+   * un saut de 1 m qui atterrit à 1 s du début du trou, un de 1,5 m qui décolle
+   * `afterS` après sa fin. Le téléphone n'est plus tenu pareil à la reprise
+   * (penché de 30°, puis de −60°), ni tiré pareil par l'aile.
+   */
+  const first = jump(56, Math.sqrt(2 * G * 1));
+  const resumed = (holeS: number, rateHz = 100, afterS = 2) => {
+    const second = jump(60 + holeS + afterS, Math.sqrt(2 * G * 1.5));
+    return {
+      second,
+      rec: record({
+        durationS: 120 + holeS, rateHz, gaps: [[60, 60 + holeS]],
+        az: (t) => first.az(t) + second.az(t) + chop(t) * 0.3,
+        tilt: (t) => (t < 60 ? Math.PI / 6 : -Math.PI / 3),
+        ay: (t) => (t < 60 ? 0.2 * G : 0.1 * G),
+      }),
+    };
+  };
+
+  it.each([100, 200])('à %i Hz : sauts juste avant et juste après un trou de 20 s, la verticale ne se calcule pas à travers', (rateHz) => {
+    const { rec } = resumed(20, rateHz);
+    const jumps = jumpsOf(rec);
+    expect(jumps).toHaveLength(2);
+    expect(Math.abs(jumps[0].heightM - 1)).toBeLessThan(0.05);
+    expect(Math.abs(jumps[1].heightM - 1.5)).toBeLessThan(0.05);
+    // Calculée à travers le trou, la verticale d'avant fausse le second saut.
+    const across = measureJumps(rec, { ...D, captureBreakS: Infinity }).jumps;
+    expect(across).toHaveLength(2);
+    expect(Math.abs(across[1].heightM - 1.5)).toBeGreaterThan(0.1);
+  });
+
+  it('fenêtres de part et d\'autre du trou, jamais à travers, et les mêmes sauts depuis le fichier élagué', async () => {
+    const { rec } = resumed(20);
+    const windows = pruneWindows(rec, D);
+    expect(windows).toHaveLength(2);
+    expect(windows[0][1]).toBeLessThanOrEqual(60e6);
+    expect(windows[1][0]).toBeGreaterThanOrEqual(80e6);
+    const selected = selectImuWindows(rec, windows);
+    const pruned = (await decodeImu(await encodeImu(selected.header, selected.series, 1, true)))!;
+    const whole = jumpsOf(rec);
+    const fromPruned = jumpsOf(pruned);
+    expect(fromPruned).toHaveLength(2);
+    fromPruned.forEach((j, k) => expect(Math.abs(j.heightM - whole[k].heightM)).toBeLessThan(0.005));
+  });
+
+  it('trou de 10 min : les sauts de part et d\'autre, aucun dans le trou, les mêmes à 100 et 200 Hz', () => {
+    const [at100, at200] = [100, 200].map((rateHz) => jumpsOf(resumed(600, rateHz).rec));
+    for (const jumps of [at100, at200]) {
+      expect(jumps).toHaveLength(2);
+      expect(jumps.some((j) => j.takeoffMs > WALL_MS + 60_000 && j.takeoffMs < WALL_MS + 660_000)).toBe(false);
+      expect(Math.abs(jumps[0].heightM - 1)).toBeLessThan(0.05);
+      expect(Math.abs(jumps[1].heightM - 1.5)).toBeLessThan(0.05);
+    }
+    at200.forEach((j, k) => expect(Math.abs(j.heightM - at100[k].heightM)).toBeLessThan(0.03));
+  });
+
+  it.each([1, 5])('trace à %i Hz, sans trou : vitesse et longueur de chaque saut, de part et d\'autre du trou de la capture', (hz) => {
+    const { rec, second } = resumed(600);
+    // La trace GPS continue pendant la coupure de la capture : 4 m/s avant, 6 m/s après.
+    const speed = (t: number) => (t < 300 ? 4 : 6);
+    const track = Array.from({ length: 720 * hz }, (_, i) => ({ timeMs: WALL_MS + (i * 1000) / hz, smoothedSpeedMs: speed(i / hz) }));
+    const jumps = jumpsOf(rec, track);
+    expect(jumps).toHaveLength(2);
+    expect(jumps[0].speedMs).toBeCloseTo(4, 6);
+    expect(jumps[1].speedMs).toBeCloseTo(6, 6);
+    expect(Math.abs(jumps[0].lengthM! - 4 * first.flightS)).toBeLessThan(0.3);
+    expect(Math.abs(jumps[1].lengthM! - 6 * second.flightS)).toBeLessThan(0.3);
+  });
+
+  it('sans trou : les mêmes fenêtres et les mêmes sauts que la capture d\'un seul morceau', () => {
+    const j = jump(30, 4);
+    const rec = record({ durationS: 400, az: (t) => j.az(t) + chop(t) * 0.3 });
+    expect(pruneWindows(rec, D)).toEqual(pruneWindows(rec, { ...D, captureBreakS: Infinity }));
+    expect(jumpsOf(rec)).toEqual(measureJumps(rec, { ...D, captureBreakS: Infinity }).jumps);
+  });
+});

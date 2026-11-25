@@ -108,7 +108,7 @@ const prunedMotion = async (
     if (profile.surf) {
       if (!profile.pump?.pruneCapture) return motion;
       const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activitySummarySettings(activityId)(sport)));
-      return rides ? await pruneSurfImu(motion, rides, profile.pump.pruneMarginS) : motion;
+      return rides ? await pruneSurfImu(motion, rides, profile.pump.pruneMarginS, profile.pump.captureBreakS) : motion;
     }
     if (sportTreatment(sport) === 'voile') {
       const activity = activityOfSession(sport, activityId);

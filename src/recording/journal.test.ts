@@ -5,7 +5,7 @@ import { buildGpx } from './gpxWriter';
 import type { SessionTest } from './fitnessTest';
 import { runCommand, startRun } from './intervalTimer';
 import {
-  journalActivity, journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
+  journalActivity, journalActivityLine, journalBeltLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
   parseJournal,
 } from './journal';
 import { roundFix, splitIntoSegments } from './session';
@@ -234,7 +234,7 @@ describe('journal d’une session sans position (muscu, lot I du 25/10)', () => 
   it('sans ceinture (lot 210) : l’en-tête le dit, et ses points d’heure seule se relisent', () => {
     const activity = { id: 'muscu', name: 'Muscu' };
     const text = [
-      journalHeaderLine('muscu', T0, activity, true),
+      journalHeaderLine('muscu', T0, activity, { withoutBelt: true }),
       journalHeartRateLine({ timeMs: T0 }),
       journalHeartRateLine({ timeMs: T0 + 1000 }),
       journalBreakLine(T0 + 60_000),
@@ -248,10 +248,52 @@ describe('journal d’une session sans position (muscu, lot I du 25/10)', () => 
 
   it('un en-tête sans l’indicateur, ancien journal compris, veut dire « avec la ceinture »', () => {
     expect(parseJournal(journalHeaderLine('muscu', T0)).header?.withoutBelt).toBeUndefined();
-    expect(journalHeaderLine('muscu', T0, undefined, false)).not.toContain('withoutBelt');
+    expect(journalHeaderLine('muscu', T0, undefined, { withoutBelt: false })).not.toContain('withoutBelt');
     // Valeur abîmée : comme absente.
     const broken = `{"format":"tracker-journal","version":1,"sport":"muscu","startedAtMs":${T0},"withoutBelt":"oui"}\n`;
     expect(parseJournal(broken).header?.withoutBelt).toBeUndefined();
+  });
+
+  it('garde la ceinture du départ dans l’en-tête, avec ou sans, et l’ignore abîmée', () => {
+    const activity = { id: 'running', name: 'Course' };
+    const strap = { address: 'AA:BB:CC:DD:EE:FF', name: 'Polar H10', random: true };
+    const header = (belt?: typeof strap | null) => parseJournal(journalHeaderLine('running', T0, activity, { belt })).header;
+    expect(header(strap)).toEqual({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, activity, belt: strap });
+    // Réduite à ce qui se retient : ni la force du signal d'une recherche, ni le type d'adresse s'il n'est pas connu.
+    expect(header({ address: 'a', name: 'b', rssi: -60 } as unknown as typeof strap)?.belt).toEqual({ address: 'a', name: 'b' });
+    expect(header(null)).toEqual({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, activity, belt: null });
+    // Journal d'avant : ni la ceinture, ni son absence ne sont dites.
+    expect(header()).not.toHaveProperty('belt');
+    for (const belt of [{ address: 3, name: 'b' }, { address: '', name: 'b' }, 'AA:BB']) {
+      const broken = JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, belt }) + '\n';
+      expect(parseJournal(broken).header).toEqual({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0 });
+    }
+  });
+
+  it('garde les quatre réglages de la capture dans l’en-tête, avec ou sans, et les ignore abîmés', () => {
+    const setup = { placement: 'taille' as const, foil: true, jumps: false, cadence: true };
+    const header = (motion?: typeof setup | null) => parseJournal(journalHeaderLine('running', T0, undefined, { belt: null, motion })).header;
+    expect(header(setup)).toEqual({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, belt: null, motion: setup });
+    expect(header({ ...setup, extra: 1 } as typeof setup)?.motion).toEqual(setup);
+    expect(header(null)?.motion).toBeNull();
+    expect(header()).not.toHaveProperty('motion');
+    for (const motion of [{ ...setup, placement: 'tete' }, { placement: 'poitrine', foil: false, jumps: true }, 'poitrine']) {
+      const broken = JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0, motion }) + '\n';
+      expect(parseJournal(broken).header).toEqual({ format: 'tracker-journal', version: 1, sport: 'running', startedAtMs: T0 });
+    }
+  });
+
+  it('suit la ceinture cessée en route, puis redemandée, la dernière ligne lisible l’emportant', () => {
+    const head = journalHeaderLine('running', T0, undefined, { belt: { address: 'a', name: 'b' } }) + journalFixLine(fixes[0]);
+    expect(parseJournal(head).beltStopped).toBe(false);
+    const stopped = head + journalBeltLine(T0 + 1000, 'stopped');
+    expect(parseJournal(stopped).beltStopped).toBe(true);
+    expect(parseJournal(stopped).lastLineMs).toBe(T0 + 1000);
+    // Valeur inconnue : sans effet.
+    expect(parseJournal(stopped + JSON.stringify(['belt', T0 + 1500, 'autre']) + '\n').beltStopped).toBe(true);
+    const asked = stopped + journalBeltLine(T0 + 1800, 'asked') + journalFixLine(fixes[2]);
+    expect(parseJournal(asked).beltStopped).toBe(false);
+    expect(parseJournal(asked).fixes).toHaveLength(2);
   });
 });
 

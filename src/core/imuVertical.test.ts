@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, type ImuRecording, type ImuSeries } from './imuFile';
 import { synthImu } from './imuSynthetic.fixture';
-import { captureBounds, mergeWindows, rangeOf, verticalAcceleration, type AttitudeParams } from './imuVertical';
+import { captureBounds, measuredPieces, mergeWindows, rangeOf, verticalAcceleration, type AttitudeParams } from './imuVertical';
 import { STANDARD_G } from './units';
 
 const P: AttitudeParams = {
-  gridStepS: 0.01, maxGapS: 0.05, calmForceFraction: 0.1, calmRotationRadS: 0.5, minCalmS: 1, attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+  gridStepS: 0.01, maxGapS: 0.05, captureBreakS: 5, calmForceFraction: 0.1, calmRotationRadS: 0.5, minCalmS: 1, attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
 };
 
 const stream = (kind: 'accel' | 'gyro', rateHz: number, durationS: number, value: (t: number, axis: number) => number, startUs = 0): ImuSeries => {
@@ -52,6 +52,50 @@ describe('captureBounds', () => {
     const rec = recording(stream('accel', 10, 1, () => 0, 1_000_000), stream('gyro', 10, 2, () => 0, 0));
     expect(captureBounds(rec)).toEqual([0, 1_900_000]);
     expect(captureBounds(recording())).toBeNull();
+  });
+});
+
+describe('measuredPieces (lot 232)', () => {
+  it('sans trou, un seul morceau, celui de captureBounds ; aucun sans mesure', () => {
+    const rec = recording(stream('accel', 10, 1, () => 0, 1_000_000), stream('gyro', 10, 2, () => 0, 0));
+    expect(measuredPieces(rec, 5)).toEqual([captureBounds(rec)]);
+    expect(measuredPieces(recording(), 5)).toEqual([]);
+  });
+
+  it('coupe là où tous les flux se taisent plus de breakS secondes, pas en deçà', () => {
+    // Deux parties de 3 s, séparées de 10 min : une capture reprise dans le même fichier.
+    const holeUs = 600e6;
+    const joined = (kind: 'accel' | 'gyro'): ImuSeries => {
+      const a = stream(kind, 100, 3, () => 0);
+      const b = stream(kind, 100, 3, () => 0, 3e6 + holeUs);
+      return { info: a.info, t: Float64Array.from([...a.t, ...b.t]), values: a.values.map((v, k) => Float32Array.from([...v, ...b.values[k]])) };
+    };
+    const rec = recording(joined('accel'), joined('gyro'));
+    expect(measuredPieces(rec, 5)).toEqual([[0, 2_990_000], [3e6 + holeUs, 3e6 + holeUs + 2_990_000]]);
+    expect(measuredPieces(rec, Infinity)).toEqual([captureBounds(rec)]);
+    // Un silence d'une demi-seconde n'est pas une coupure à 5 s, l'est à 0,1 s.
+    const shortA = stream('accel', 100, 2, () => 0);
+    const shortB = stream('accel', 100, 2, () => 0, 2.5e6);
+    const short = recording({ info: shortA.info, t: Float64Array.from([...shortA.t, ...shortB.t]), values: shortA.values.map((v, k) => Float32Array.from([...v, ...shortB.values[k]])) });
+    expect(measuredPieces(short, 5)).toHaveLength(1);
+    expect(measuredPieces(short, 0.1)).toHaveLength(2);
+  });
+
+  it('un flux seul qui se tait ne coupe pas la capture tant qu\'un autre mesure', () => {
+    const acc = stream('accel', 100, 10, () => 0);
+    const keep = Array.from(acc.t, (t) => t < 4e6 || t >= 6e6);
+    const holed: ImuSeries = { info: acc.info, t: acc.t.filter((_, i) => keep[i]), values: acc.values.map((v) => v.filter((_, i) => keep[i])) };
+    expect(measuredPieces(recording(holed, stream('gyro', 100, 10, () => 0)), 1)).toHaveLength(1);
+    expect(measuredPieces(recording(holed), 1)).toHaveLength(2);
+  });
+
+  it('même coupure à 50 et à 200 Hz', () => {
+    const at = (rateHz: number) => {
+      const rec = synthImu({ durationS: 40, rateHz, az: () => 0, gaps: [[10, 30]] });
+      return measuredPieces(rec, 5).map(([a, b]) => [Math.round(a / 1e5), Math.round(b / 1e5)]);
+    };
+    expect(at(50)).toEqual(at(200));
+    expect(at(50)).toEqual([[0, 100], [300, 400]]);
   });
 });
 

@@ -3,7 +3,7 @@ import { roundTo } from './basics';
 import type { ImuRecording, ImuSeries } from './imuFile';
 import { STANDARD_G } from './units';
 import {
-  captureBounds, centredMean, mergeWindows, rangeOf, verticalAcceleration, wallMsOf,
+  centredMean, measuredPieces, mergeWindows, rangeOf, verticalAcceleration, wallMsOf,
   type AttitudeParams, type ImuWindow,
 } from './imuVertical';
 
@@ -327,23 +327,25 @@ export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: numbe
 /**
  * Fenêtres à garder d'une séance entière : `pruneMarginS` de part et d'autre
  * de tout vol assez long et assez haut (critères larges, sans condition de
- * vitesse), fusionnées et rognées aux bords de la capture. Une séance déjà
+ * vitesse), fusionnées et rognées aux bords de leur morceau de capture
+ * (`measuredPieces`) : aucune ne franchit le trou d'une capture reprise après
+ * une coupure, et sans trou le morceau est la capture entière. Une séance déjà
  * élaguée rend ses fenêtres. Le calcul passe par tranches, pour ne pas tenir
  * toute la séance en mémoire.
  */
 export const pruneWindows = (rec: ImuRecording, d: JumpDetection): ImuWindow[] => {
   if (rec.header.windows) return rec.header.windows;
-  const bounds = captureBounds(rec);
-  if (!bounds) return [];
   const chunkUs = d.pruneChunkS * 1e6;
   const marginUs = d.pruneChunkMarginS * 1e6;
   const keepUs = d.pruneMarginS * 1e6;
   const windows: ImuWindow[] = [];
-  for (let core = bounds[0]; core <= bounds[1]; core += chunkUs) {
-    for (const flight of detectFlights(rec, d, core - marginUs, core + chunkUs + marginUs)) {
-      if (flight.takeoffUs < core || flight.takeoffUs >= core + chunkUs) continue;
-      if (flight.flightS < d.pruneMinFlightS || flight.heightM < d.pruneMinHeightM) continue;
-      windows.push([Math.max(bounds[0], flight.takeoffUs - keepUs), Math.min(bounds[1], flight.landingUs + keepUs)]);
+  for (const [first, last] of measuredPieces(rec, d.captureBreakS)) {
+    for (let core = first; core <= last; core += chunkUs) {
+      for (const flight of detectFlights(rec, d, Math.max(first, core - marginUs), Math.min(last, core + chunkUs + marginUs))) {
+        if (flight.takeoffUs < core || flight.takeoffUs >= core + chunkUs) continue;
+        if (flight.flightS < d.pruneMinFlightS || flight.heightM < d.pruneMinHeightM) continue;
+        windows.push([Math.max(first, flight.takeoffUs - keepUs), Math.min(last, flight.landingUs + keepUs)]);
+      }
     }
   }
   return mergeWindows(windows);

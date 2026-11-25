@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, decodeImu, decodeImuHeader, encodeImu, imuCaptureStats, selectImuWindows, type ImuHeader, type ImuSeries, type ImuStreamInfo,
 } from './imuFile';
+import { captureBounds, measuredPieces } from './imuVertical';
 import { sameData } from '../test/sameData';
 
 const HEADER: ImuHeader = {
@@ -189,5 +190,48 @@ describe('version du fichier (lot 160)', () => {
     expect(decodeImuHeader(recent)).toBeNull();
     expect(await decodeImu(recent)).toBeNull();
     expect(decodeImuHeader(await encodeImu(HEADER, [], 1))?.version).toBe(IMU_VERSION);
+  });
+});
+
+describe('capture reprise dans le même fichier (lot 232)', () => {
+  /** Paquets d'une capture reprise 10 min après la fin de la première, ajoutés au même fichier, sans second en-tête. */
+  const holeUs = 600e6;
+  const appended = async () => {
+    const before = await encodeImu(HEADER, [accel(), gyro(), pressure()]);
+    const afterStartUs = 5e6 + holeUs;
+    const after = await encodeImu(HEADER, [
+      series('accel', 100, 5, (_t, a) => (a === 1 ? 9.81 : 0.2), afterStartUs),
+      series('gyro', 100, 5, (_t, a) => 0.1 * a, afterStartUs),
+      series('pressure', 5, 5, () => 1012, afterStartUs),
+    ]);
+    const headerLength = (await encodeImu(HEADER, [])).length;
+    const file = new Uint8Array(before.length + after.length - headerLength);
+    file.set(before);
+    file.set(after.subarray(headerLength), before.length);
+    return file;
+  };
+
+  it('se relit en un seul fichier, mesures en ordre de part et d\'autre du trou', async () => {
+    const read = (await decodeImu(await appended()))!;
+    expect(read.truncated).toBe(false);
+    expect(read.skippedChunks).toBe(0);
+    for (const s of read.series) {
+      const perPiece = s.info.kind === 'pressure' ? 25 : 500;
+      expect(s.t.length).toBe(2 * perPiece);
+      for (let i = 1; i < s.t.length; i++) expect(s.t[i]).toBeGreaterThan(s.t[i - 1]);
+      expect(s.t[perPiece] - s.t[perPiece - 1]).toBeGreaterThan(holeUs);
+    }
+  });
+
+  it('se coupe en deux morceaux au trou, un seul sans trou', async () => {
+    const read = (await decodeImu(await appended()))!;
+    const pieces = measuredPieces(read, 5);
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0][0]).toBe(0);
+    expect(pieces[0][1]).toBeLessThan(5e6);
+    expect(pieces[1][0]).toBeGreaterThanOrEqual(5e6 + holeUs);
+    expect(pieces[1][1]).toBe(captureBounds(read)![1]);
+    const whole = (await decodeImu(await encodeImu(HEADER, [accel(), gyro(), pressure()])))!;
+    expect(measuredPieces(whole, 5)).toEqual([captureBounds(whole)]);
   });
 });
