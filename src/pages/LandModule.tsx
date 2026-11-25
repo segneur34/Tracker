@@ -1350,7 +1350,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     className="ui-mb-6" />
                 )}
                 {(zonesFold.open.tableau || !chartRowsShown) && (<>
-                <table className="ui-table ui-no-shrink">
+                <table className="ui-table ui-no-shrink an-zones-table">
                   <thead>
                     <tr className="ui-sunken">
                       <th className="ui-cell ui-cell--left">Zone</th>

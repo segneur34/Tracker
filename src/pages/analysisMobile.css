@@ -784,6 +784,30 @@
   }
 }
 
+/* Tableau des zones de pente (course, vélo) : six colonnes qui doivent tenir dans le cadre sans rien couper, de 390 à
+   320 px. Texte d'un cran plus petit et marges des cellules resserrées ; aucune colonne n'est retirée ni déplacée. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .an-zones-table {
+    font-size: var(--text-xs);
+  }
+
+  .an-zones-table .ui-cell {
+    padding: 0.4em 0.2em;
+  }
+}
+
+/* Sous 360 px : marges au plus juste, et le tableau mord sur le bord intérieur du cadre (qui reste plus large que lui). */
+@media (max-width: 359.98px) {
+  .an-zones-table {
+    width: calc(100% + 2 * var(--space-2));
+    margin-inline: calc(-1 * var(--space-2));
+  }
+
+  .an-zones-table .ui-cell {
+    padding: 0.4em 0.1em;
+  }
+}
+
 /* Cadres du surf sous 360 px de large : le bord intérieur du cadre se resserre, les colonnes gardent la place des
    intitulés (« Durée », « Rame »). */
 @media (max-width: 359.98px) {
