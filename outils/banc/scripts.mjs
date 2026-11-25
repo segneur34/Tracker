@@ -1,5 +1,5 @@
 // Registre des scripts du banc qui pilotent un Chrome sans fenêtre, lu par `passe.mjs`.
-// Hors registre : `make-gpx.mjs` (fabrique la trace), `charge-ts.mjs` et `*-diagnostic.mjs` (sans navigateur),
+// Hors registre : `make-gpx.mjs` (fabrique la trace), `charge-ts.mjs`, `direct-calcul.mjs` et `*-diagnostic.mjs` (sans navigateur),
 // `cdp.mjs` (WebView du téléphone), `shots.mjs` (chemins en arguments), `exe-fermeture.mjs` et `memoire-disque.mjs`
 // (lancent eux-mêmes le programme Windows : `node exe-fermeture.mjs <Tracker.exe>`).
 //
@@ -67,6 +67,9 @@ export const SCRIPTS = [
   { nom: 'exe-tuiles', args: ['{port}'], pages: ['voile'] },
   { nom: 'familles', args: ['{port}', '{captures?}'], pages: ['reglages'] },
   // Mesure (lot 114) : fluidité, ouverture d'une longue voile, seuil changé, zoom d'un graphe, résumés refaits, démarrage ; ×1 puis processeur ralenti ×6, en s ; seul (tâches longues et images par seconde), environ 12 min.
+  // Mesure (lot 235) : une sortie de 3 h rejouée dans Enregistrer, horloge ×100 puis ×1 et ralenti ×6, tâches longues et profil par groupe ; seule la version compilée vaut.
+  { nom: 'direct-long', args: ['{port}', '{travail}'], pages: ['enregistrer', 'voile', 'course'], solo: true, sansCache: true, delaiMin: 30,
+    manuel: 'mesure de la version compilée : FLUIDITE_SCRIPT=direct-long node outils/banc/fluidite-compile.mjs <étiquette>' },
   { nom: 'fluidite', args: ['{port}', '{travail}', '{captures?}'], pages: ['voile', 'course', 'accueil', 'bibliotheque'], solo: true, sansCache: true, delaiMin: 45 },
   { nom: 'fractionne', args: ['{port}', '{travail}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'], solo: true },
   { nom: 'general', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'velo', 'surf'] },

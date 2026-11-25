@@ -4,7 +4,8 @@
 // comme un Android moyen) ; chaque mesure est prise trois fois, médiane retenue.
 // Usage : node fluidite.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Variables : `FLUIDITE_MESURES=ouverture,quitter,seuil,zoom,resumes,demarrage` (sous-ensemble),
-// `FLUIDITE_REPS=3`, `FLUIDITE_ZOOM=course-pc,course-tel,bruit-tel,voile-tel,surf-tel` (variantes du zoom). Le script :
+// `FLUIDITE_OUVERTURE=voile,surf,course` (lot 235 : sessions dont l'ouverture est mesurée, voile seule par défaut ; la surf et la course de 2 h
+// ajoutent la même mesure, la surf étant importée au besoin), `FLUIDITE_REPS=3`, `FLUIDITE_ZOOM=course-pc,course-tel,bruit-tel,voile-tel,surf-tel` (variantes du zoom). Le script :
 //  1. écrit une session de voile de 3 h à 5 Hz (54 000 points, bords, virements et empannages comme `make-gpx.mjs`),
 //     la trace d'une heure de `make-gpx.mjs`, une course de 2 h à 1 Hz avec FC et altitude, et 30 sessions de voile
 //     d'une heure à 1 Hz, et les importe par la page ;
@@ -52,6 +53,7 @@ if (!port || !workDir) {
   process.exit(1);
 }
 const MESURES = (process.env.FLUIDITE_MESURES ?? 'ouverture,quitter,seuil,zoom,resumes,demarrage').split(',').map((m) => m.trim());
+const OUVERTURES = (process.env.FLUIDITE_OUVERTURE ?? 'voile').split(',').map((m) => m.trim()).filter(Boolean);
 const REPS = Math.max(1, Number(process.env.FLUIDITE_REPS ?? 3) || 3);
 const RATES = [1, 6];
 
@@ -344,19 +346,20 @@ const sailHrUrl = ZOOM_DEMANDEES.includes('voile-tel')
     const rnd = noiseFrom(7);
     return sailGpx({ hz: 5, seconds: 3 * 3600, startMs: Date.UTC(2026, 7, 3, 9, 0, 0), name: 'Voile 3 h 5 Hz FC', hrAt: (t) => 130 + 20 * Math.sin(t / 600) + 3 * rnd() + hrPeak(Math.floor(t), 1900, 30) }).text;
   })(), '2026-08-03') : null;
-const surfUrl = ZOOM_DEMANDEES.includes('surf-tel')
+const surfUrl = ZOOM_DEMANDEES.includes('surf-tel') || (MESURES.includes('ouverture') && OUVERTURES.includes('surf'))
   ? await importOne('surf', 'fluidite-surf.gpx', surfGpx({ seconds: 7200, startMs: Date.UTC(2026, 8, 9, 8, 0, 0) }), '2026-09-09') : null;
 const zoomImported = (noisyUrl ? 1 : 0) + (sailHrUrl ? 1 : 0) + (surfUrl ? 1 : 0);
 
 const results = {}; // nom de la mesure → { 1: {...médianes}, 6: {...} }
 
 // --- 2. Ouverture d'une session voile ---
-const openLong = async ({ profile = false } = {}) => {
+// Par défaut la longue session de voile ; `url`, `page` et `rows` visent une autre session (lot 235), `rows` : lignes de la bibliothèque au retour.
+const openLong = async ({ profile = false, url = longUrl, page = 'voile', rows = 2 } = {}) => {
   if (profile) await profileStart();
   const before = await metrics();
   const out = await evaluate(`new Promise((resolve) => {
     const t0 = performance.now();
-    ${SPA_GO(longUrl)}
+    ${SPA_GO(url)}
     const out = { t0, titre: null, trace: null, chiffres: null };
     const tick = () => {
       const now = performance.now();
@@ -383,37 +386,50 @@ const openLong = async ({ profile = false } = {}) => {
     libre: lt.lastEnd === null ? 0 : lt.lastEnd - out.t0, dom, script: (after.ScriptDuration - before.ScriptDuration) * 1000, prof };
   // Retour à la bibliothèque (navigation dans la page) : l'analyse démontée, la liste rendue (sous ralenti, React peut
   // n'avoir rien rendu quand `settle` voit un DOM immobile).
-  await evaluate(`${SPA_GO('/voile')} 'ok'`);
-  await waitFor(`!document.querySelector('.an-page') && document.querySelectorAll('.lib-row').length >= 2`, { timeout: 30000, every: 50, label: 'bibliothèque rendue' });
+  await evaluate(`${SPA_GO(`/${page}`)} 'ok'`);
+  await waitFor(`!document.querySelector('.an-page') && document.querySelectorAll('.lib-row').length >= ${rows}`, { timeout: 30000, every: 50, label: 'bibliothèque rendue' });
   await settle({ max: 10000, label: 'retour bibliothèque' });
   return r;
 };
 const openText = (r) => `titre ${sec(r.titre)} | trace ${sec(r.trace)} | chiffres ${sec(r.chiffres)} | fil libre à ${sec(r.libre)} | ${ltText(r)} | DOMParser ${sec(r.dom)} | script ${sec(r.script)}`;
 
+/** Sessions dont l'ouverture est mesurée : la voile de 3 h à 5 Hz (d'origine), puis, avec `FLUIDITE_OUVERTURE`, la surf et la course de 2 h à 1 Hz. */
+const CAS_OUVERTURE = {
+  voile: { cle: 'ouverture', titre: 'de voile (3 h à 5 Hz)', page: 'voile', rows: 2, url: () => longUrl, ligne: 'Ouverture voile 3 h 5 Hz' },
+  surf: { cle: 'ouverture surf', titre: 'de surf (2 h à 1 Hz)', page: 'surf', rows: 1, url: () => surfUrl, ligne: 'Ouverture surf 2 h' },
+  course: { cle: 'ouverture course', titre: 'de course (2 h à 1 Hz)', page: 'course', rows: 1, url: () => runUrl, ligne: 'Ouverture course 2 h' },
+};
 if (MESURES.includes('ouverture')) {
-  console.log('\n== Ouverture de la session de voile (3 h à 5 Hz) depuis la bibliothèque, onglets par défaut ==');
-  await go('/voile', 5000);
-  await waitFor(`document.querySelectorAll('.lib-row').length >= 2`, { timeout: 10000, label: 'bibliothèque' });
-  await throttle(1);
-  await openLong(); // chauffe : modules de l'analyse chargés
-  results.ouverture = {};
-  for (const rate of RATES) {
-    await throttle(rate);
-    const runs = [];
-    for (let k = 0; k < REPS; k++) {
-      const r = await openLong();
-      runs.push(r);
-      console.log(`×${rate} essai ${k + 1} : ${openText(r)}`);
+  for (const nom of OUVERTURES) {
+    const cas = CAS_OUVERTURE[nom];
+    if (!cas || !cas.url()) { console.log(`
+(ouverture inconnue ou session absente : ${nom})`); continue; }
+    const opts = { url: cas.url(), page: cas.page, rows: cas.rows };
+    console.log(`
+== Ouverture de la session ${cas.titre} depuis la bibliothèque, onglets par défaut ==`);
+    await go(`/${cas.page}`, 5000);
+    await waitFor(`document.querySelectorAll('.lib-row').length >= ${cas.rows}`, { timeout: 10000, label: 'bibliothèque' });
+    await throttle(1);
+    await openLong(opts); // chauffe : modules de l'analyse chargés
+    results[cas.cle] = {};
+    for (const rate of RATES) {
+      await throttle(rate);
+      const runs = [];
+      for (let k = 0; k < REPS; k++) {
+        const r = await openLong(opts);
+        runs.push(r);
+        console.log(`×${rate} essai ${k + 1} : ${openText(r)}`);
+      }
+      const med = Object.fromEntries(['titre', 'trace', 'chiffres', 'libre', 'max', 'total', 'dom', 'script'].map((k) => [k, median(runs.map((r) => r[k]))]));
+      med.count = median(runs.map((r) => r.count));
+      results[cas.cle][rate] = med;
+      console.log(`×${rate} médiane : ${openText(med)}`);
+      const p = await openLong({ ...opts, profile: true });
+      console.log(`×${rate} sous le profileur : chiffres ${sec(p.chiffres)}, ${ltText(p)}`);
+      if (p.prof) console.log(profileSummary(p.prof));
     }
-    const med = Object.fromEntries(['titre', 'trace', 'chiffres', 'libre', 'max', 'total', 'dom', 'script'].map((k) => [k, median(runs.map((r) => r[k]))]));
-    med.count = median(runs.map((r) => r.count));
-    results.ouverture[rate] = med;
-    console.log(`×${rate} médiane : ${openText(med)}`);
-    const p = await openLong({ profile: true });
-    console.log(`×${rate} sous le profileur : chiffres ${sec(p.chiffres)}, ${ltText(p)}`);
-    if (p.prof) console.log(profileSummary(p.prof));
+    await throttle(1);
   }
-  await throttle(1);
 }
 
 // --- 2 bis. Quitter l'analyse pendant la lecture ---
@@ -1017,11 +1033,13 @@ console.log('| Mesure | ×1 | ×6 |');
 console.log('|---|---|---|');
 const row = (label, f) => console.log(`| ${label} | ${f(1)} | ${f(6)} |`);
 for (const [label, f] of results.analyser ?? []) row(label, f);
-if (results.ouverture) {
-  const o = results.ouverture;
-  row('Ouverture voile 3 h 5 Hz : titre / trace / chiffres', (r) => `${sec(o[r].titre)} / ${sec(o[r].trace)} / ${sec(o[r].chiffres)}`);
-  row('Ouverture : tâche max / bloqué / fil libre à', (r) => `${sec(o[r].max)} / ${sec(o[r].total)} / ${sec(o[r].libre)}`);
-  row('Ouverture : DOMParser (lecture du GPX)', (r) => sec(o[r].dom));
+for (const cas of Object.values(CAS_OUVERTURE)) {
+  const o = results[cas.cle];
+  if (!o) continue;
+  const suffixe = cas.cle === 'ouverture' ? '' : cas.ligne.slice('Ouverture'.length);
+  row(`${cas.ligne} : titre / trace / chiffres`, (r) => `${sec(o[r].titre)} / ${sec(o[r].trace)} / ${sec(o[r].chiffres)}`);
+  row(`Ouverture${suffixe} : tâche max / bloqué / fil libre à`, (r) => `${sec(o[r].max)} / ${sec(o[r].total)} / ${sec(o[r].libre)}`);
+  row(`Ouverture${suffixe} : DOMParser (lecture du GPX)`, (r) => sec(o[r].dom));
 }
 if (results.quitter) {
   const q = results.quitter;

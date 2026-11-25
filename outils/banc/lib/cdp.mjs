@@ -200,7 +200,8 @@ const openSocket = async (url) => {
  * neuf, jeté à la fermeture ; `BANC_CONTEXTE=1` l'impose ; pas le défaut).
  */
 // `lieux` : laisser partir les requêtes de lieu des sessions (lot 215), que le banc fait échouer d'ordinaire (`LIEUX_SCRIPT`).
-export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1', lieux = false } = {}) => {
+// `horlogeVariable` (lot 235) : horloge dont le facteur se lit et se change en route par `window.__bancFacteur` (`lib/horloge.mjs`), même sans `TEMPS` ; hors cette option, rien ne change.
+export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1', lieux = false, horlogeVariable = false } = {}) => {
   const startedAt = Date.now();
   const ownTab = !process.env.BANC_WS;
   if (ownTab && !port) throw new Error('connect : port Chrome manquant');
@@ -279,9 +280,9 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
     await send('Page.addScriptToEvaluateOnNewDocument', { source: MEMOIRE_DISQUE_SCRIPT });
     await send('Runtime.evaluate', { expression: MEMOIRE_DISQUE_SCRIPT });
   }
-  if (TEMPS > 1) {
-    await send('Page.addScriptToEvaluateOnNewDocument', { source: horlogeScript(TEMPS, startedAt) });
-    diag(`horloge de la page ×${TEMPS}`);
+  if (TEMPS > 1 || horlogeVariable) {
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: horlogeScript(TEMPS, startedAt, { variable: horlogeVariable }) });
+    diag(`horloge de la page ×${TEMPS}${horlogeVariable ? ' (facteur variable, window.__bancFacteur)' : ''}`);
   }
   if (width && height) await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
 
@@ -298,7 +299,7 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
 
   // Le premier contexte audio du navigateur s'ouvre en 0,6 s de vrai temps (les suivants en 15 ms, mesuré le 29/10) : sous l'horloge
   // accélérée, le premier son de l'application figerait la page plusieurs secondes (×TEMPS). Il est ouvert ici, une fois par onglet.
-  if (TEMPS > 1) await evaluate(`(() => { try { new AudioContext().close(); } catch {} return 'ok'; })()`);
+  if (TEMPS > 1 || horlogeVariable) await evaluate(`(() => { try { new AudioContext().close(); } catch {} return 'ok'; })()`);
 
   /**
    * Attend une page prête : document chargé, racine React non vide (sous charge, le premier rendu peut suivre le

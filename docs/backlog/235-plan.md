@@ -43,3 +43,25 @@ Seuils (ralenti ×6, version compilée) :
 ## Non vérifié par le plan
 
 L'arrondi de la suggestion de seuil en voile (`suggestActiveThresholdKn`, `src/sailing/sailingConfig.ts` l. 187) ; le chargement de `liveStats.ts` sous Node par `charge-ts` ; `liveLegs.ts`, `sessionStats.ts`, `topSegments.ts`, `heartRate.ts`, `speedFilter.ts`, `surfSession.ts`, `sessionTrack.ts` ; si une ouverture attend vraiment derrière la file des résumés (`summaryQueue.ts`) ; si `PerformanceObserver` voit le travail de `setLatLngs` ; les durées, à ±50 %.
+
+## Mesures
+
+### M2, 25/11 au soir (poste chargé, à rejouer au calme)
+
+Temps d'un calcul des chiffres du direct, médiane puis 95e centile, en ms, sur PC :
+
+| Famille | 10 min | 1 h | 2 h | 3 h | cumul sur 3 h | sans mémoire à 3 h |
+|---|---|---|---|---|---|---|
+| Course | 0,5 / 0,8 | 2,5 / 3,7 | 4,9 / 6,6 | 8,0 / 10,0 | 26,9 s | 30,0 |
+| Vélo | 0,5 / 0,8 | 2,4 / 3,8 | 10,0 / 16,9 | 8,1 / 13,7 | 30,2 s | 17,4 |
+| Voile | 0,5 / 0,9 | 3,3 / 5,1 | 4,7 / 5,8 | 13,6 / 20,8 | 26,1 s | 25,4 |
+| Voile, seuil changé toutes les 60 s | 0,5 / 1,1 | 2,2 / 3,3 | 4,4 / 7,4 | 7,6 / 13,9 | 22,6 s | 14,1 |
+
+- Le coût grandit avec la durée malgré la mémoire (0,5 ms à 10 min, 8 à 14 ms à 3 h) : le seuil de la partie A (10 ms à 3 h) est dépassé en voile, frôlé à pied et à vélo. Résultat strictement égal au calcul sans mémoire dans les quatre cas.
+- Avec l'allure réelle de la page, la mémoire n'est jetée qu'une fois en 3 h en voile ; un seuil qui change la jette à chaque fois (179 fois), sans coût supérieur au nominal ici.
+- Répartition : la cinématique reprise ne pèse que 8 à 9 %. Ce qui pèse est refait à chaque calcul : à pied et à vélo `speedFilter` (22 %), `liveStats` (21 %), énergie (12 à 14 %), dénivelé (8 %), FC (7 %) ; en voile les bords (`liveLegs`, 23 %), `sessionStats` (18 %), `liveStats` (14 %), `topSegments` (13 %).
+- Décision de l'orchestrateur : A1 et A2 se codent (calculs repris là où ils s'étaient arrêtés) ; A3 (cinématique sans recopie) et A4 (dénivelé et énergie) attendent une nouvelle mesure après A2.
+
+### M3 et M4
+
+Scripts écrits le 25/11, jamais lancés (poste chargé) : `set FLUIDITE_SCRIPT=direct-long&& node outils/banc/fluidite-compile.mjs direct235` (16 min, plafond 25) et `set FLUIDITE_MESURES=ouverture&& set FLUIDITE_OUVERTURE=voile,surf,course&& node outils/banc/fluidite-compile.mjs ouv235` (8 à 10 min). Les parties B et C attendent leurs chiffres.

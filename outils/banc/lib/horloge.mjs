@@ -17,18 +17,47 @@ export const TEMPS = (() => {
  * de l'heure réelle à `anchorMs` (le branchement du script) et s'en écarte `k` fois plus vite, le même dans chaque
  * document : une heure écrite par une page reste dans le passé de la suivante. `performance.now()` part de
  * l'ouverture du document, comme l'originale.
+ *
+ * Option `variable` (lot 235, `direct-long.mjs`) : le facteur se lit et se change en route par `window.__bancFacteur`
+ * (`k` au départ, `1` pour une horloge ordinaire). Un changement garde l'heure continue : l'instant atteint est la
+ * nouvelle origine, les minuteurs déjà posés gardent leur délai. Sans cette option, rien ne change : le facteur est
+ * `k` pour toujours et `window.__bancFacteur` n'existe pas.
  */
-export const horlogeScript = (k = TEMPS, anchorMs = Date.now()) => `(() => {
+export const horlogeScript = (k = TEMPS, anchorMs = Date.now(), { variable = false } = {}) => `(() => {
   const k = ${Number(k)};
   const anchor = ${Number(anchorMs)};
-  if (!(k > 0) || k === 1 || window.__bancHorloge) return;
+  const variable = ${variable ? 'true' : 'false'};
+  if (!(k > 0) || (k === 1 && !variable) || window.__bancHorloge) return;
   Object.defineProperty(window, '__bancHorloge', { value: k, enumerable: false });
   const RealDate = Date;
   const realDateNow = RealDate.now.bind(RealDate);
   const realPerfNow = performance.now.bind(performance);
   const perf0 = realPerfNow();
-  const fastDateNow = () => anchor + (realDateNow() - anchor) * k;
-  const fastPerf = (t) => perf0 + (t - perf0) * k;
+  // Facteur courant et origines (vraie heure, heure de la page) de chaque horloge ; fixes sans l'option \`variable\`.
+  let factor = k;
+  let dateReal = anchor;
+  let dateVirtual = anchor;
+  let perfReal = perf0;
+  let perfVirtual = perf0;
+  const fastDateNow = () => dateVirtual + (realDateNow() - dateReal) * factor;
+  const fastPerf = (t) => perfVirtual + (t - perfReal) * factor;
+  if (variable) {
+    Object.defineProperty(window, '__bancFacteur', {
+      enumerable: false,
+      get: () => factor,
+      set: (next) => {
+        const f = Number(next);
+        if (!(f > 0) || f === factor) return;
+        const nowDate = realDateNow();
+        const nowPerf = realPerfNow();
+        dateVirtual = fastDateNow();
+        dateReal = nowDate;
+        perfVirtual = fastPerf(nowPerf);
+        perfReal = nowPerf;
+        factor = f;
+      },
+    });
+  }
 
   // Date : appelée sans \`new\`, elle rend la chaîne de l'heure accélérée, comme l'originale.
   function FastDate(...args) {
@@ -46,7 +75,7 @@ export const horlogeScript = (k = TEMPS, anchorMs = Date.now()) => `(() => {
 
   const realSetTimeout = window.setTimeout;
   const realSetInterval = window.setInterval;
-  const scaled = (ms) => (Number(ms) || 0) / k;
+  const scaled = (ms) => (Number(ms) || 0) / factor;
   window.setTimeout = function (fn, ms, ...rest) { return realSetTimeout(fn, scaled(ms), ...rest); };
   window.setInterval = function (fn, ms, ...rest) { return realSetInterval(fn, scaled(ms), ...rest); };
 
