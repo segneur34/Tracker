@@ -13,8 +13,9 @@
 // Les options sont celles de la page (`liveStatsOptionsFor`, chargé tel quel : les réglages de l'appareil, absents sous
 // Node, sont ceux par défaut, et leur lecture à chaque calcul n'est pas comptée).
 // Relevé par famille : médiane et 95e centile du temps d'un calcul (ms) dans les 5 min autour de 10 min, 1 h, 2 h et 3 h ;
-// temps cumulé de tous les calculs ; nombre de remises à zéro de la mémoire (clé de réglages changée, ou segment refait :
-// la cinématique est alors recalculée en entier) ; égalité stricte du dernier résultat avec le calcul sans mémoire.
+// temps cumulé de tous les calculs ; nombre de remises à zéro de la mémoire (clé changée, ou segment refait : la
+// cinématique est alors recalculée en entier ; depuis le lot 235, un réglage changé ne refait que les statistiques, compté
+// à part) ; égalité stricte du dernier résultat avec le calcul sans mémoire.
 // `--cpu-prof <dossier>` : un profil `direct-calcul-<famille>.cpuprofile` par famille (le temps relevé est alors gonflé
 // par le profileur) et la répartition du temps par fichier source. `--duree` : trace plus courte, pour un essai.
 // Sortie 1 si une égalité tombe.
@@ -198,7 +199,7 @@ const run = async ({ nom, activityId, fixes, seuil }) => {
   if (profDir) await post('Profiler.start');
   const memory = createLiveStatsMemory();
   const samples = []; // { n, ms }
-  const resets = { reglages: 0, segment: 0 };
+  const resets = { reglages: 0, segment: 0, statistiques: 0 };
   let last = null;
   let lastOptions = null;
   let lastSegments = null;
@@ -210,12 +211,14 @@ const run = async ({ nom, activityId, fixes, seuil }) => {
     const t0 = performance.now();
     const segments = [fixes.slice(0, n)];
     const options = optionsAt(segments, fixes[n - 1].timeMs);
-    const before = { key: memory.key, entries: memory.entries.slice() };
+    const before = { key: memory.key, statsKey: memory.statsKey, entries: memory.entries.slice() };
     last = computeLiveStats(segments, profile, options, memory);
     const ms = performance.now() - t0 - referenceMs;
     if (before.entries.length > 0) {
       if (memory.key !== before.key) resets.reglages++;
       else if (before.entries.some((e, k) => memory.entries[k] !== e)) resets.segment++;
+      // Clé des statistiques (lot 235) : la cinématique est gardée, seules les statistiques sont refaites.
+      else if (before.statsKey !== undefined && memory.statsKey !== before.statsKey) resets.statistiques++;
     }
     samples.push({ n, ms });
     lastOptions = options;
@@ -270,7 +273,7 @@ console.log(`| Famille | ${CENTRES_S.map((c) => `autour de ${heures(Math.min(c, 
 console.log(`|---|${CENTRES_S.map(() => '---').join('|')}|---|---|---|---|---|`);
 for (const r of results) {
   const cells = r.windows.map((w) => `${fr(w.median)} / ${fr(w.p95)}`);
-  console.log(`| ${r.nom} | ${cells.join(' | ')} | ${fr(r.cumulMs / 1000)} s | ${r.calls} | ${r.resets.reglages + r.resets.segment} (réglages ${r.resets.reglages}, segment ${r.resets.segment}) | ${r.equal ? 'oui' : 'NON'} | ${fr(r.withoutMs)} ms |`);
+  console.log(`| ${r.nom} | ${cells.join(' | ')} | ${fr(r.cumulMs / 1000)} s | ${r.calls} | ${r.resets.reglages + r.resets.segment} (réglages ${r.resets.reglages}, segment ${r.resets.segment})${r.resets.statistiques ? ` ; statistiques refaites ${r.resets.statistiques}` : ''} | ${r.equal ? 'oui' : 'NON'} | ${fr(r.withoutMs)} ms |`);
 }
 for (const r of results) {
   const w = r.windows.at(-1);

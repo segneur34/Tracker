@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { clampByAcceleration, linearSmoothByTime, meanFilterByTime, medianFilterByTime, medianFilterByTimeFrom } from './speedFilter';
+import {
+  clampByAcceleration, linearSmoothByTime, meanFilterByTime, meanFilterByTimeFrom, meanFilterStart, medianFilterByTime, medianFilterByTimeFrom,
+  type MeanFilterState,
+} from './speedFilter';
 import { sameData } from '../test/sameData';
 import { median } from './basics';
 
@@ -236,4 +239,32 @@ describe('meanFilterByTime', () => {
     // Fenêtre du premier point : lui-même et le suivant.
     expect(out[0]).toBe(5);
   });
+});
+
+describe('meanFilterByTimeFrom', () => {
+  for (const hz of [1, 5]) {
+    it(`repris sur une série qui s'allonge, donne la moyenne du calcul entier, à ${hz} Hz`, () => {
+      // Cadence lâche par endroits (pas de 3 s, dates égales), valeurs qui ondulent.
+      const values: number[] = [];
+      const times: number[] = [];
+      let t = 0;
+      for (let k = 0; k < 120 * hz; k++) {
+        t += k === 0 ? 0 : k % 50 === 17 ? 3000 : k % 61 === 5 ? 0 : 1000 / hz;
+        values.push(100 + 20 * Math.sin(k / 7) + (k % 3) * 0.1);
+        times.push(t);
+      }
+      let state: MeanFilterState | null = null;
+      const settled: number[] = [];
+      for (let n = 1; n <= values.length; n += 1 + ((n * 13) % 5)) {
+        const v = values.slice(0, n);
+        const ts = times.slice(0, n);
+        const out = settled.slice(0, state?.next ?? 0);
+        state = meanFilterByTimeFrom(v, ts, 5, state ?? meanFilterStart(v), (i, value, closed) => {
+          out[i] = value;
+          if (closed) settled[i] = value;
+        });
+        expect(out).toEqual(meanFilterByTime(v, ts, 5));
+      }
+    });
+  }
 });

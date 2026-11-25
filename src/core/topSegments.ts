@@ -77,6 +77,73 @@ export const bestWindowSpeedMs = (
 };
 
 /**
+ * Où en est le balayage de `scanBestWindow` : prochain début de fenêtre, fin
+ * courante, meilleure vitesse des fenêtres déjà résolues (`null` : aucune).
+ */
+export interface WindowScan {
+  next: number;
+  j: number;
+  best: number | null;
+}
+
+/** Balayage de départ. */
+export const WINDOW_SCAN_START: WindowScan = { next: 0, j: 1, best: null };
+
+/**
+ * `bestWindowSpeedMs` d'une trace entière, en balayage repris : les cumuls
+ * `cum` sont ceux de la trace (ou d'un passage, ses cumuls repartant de 0),
+ * `holes[offset + k]` le nombre de trous parmi les pas qui mènent à ses
+ * points 1 à k (`extendHoleCounts`, décalé de `offset` pour un passage).
+ * Le balayage part de `from` ; rend la meilleure vitesse et l'état qui suit
+ * la dernière fenêtre finie avant le point `frozenBefore` : sur une trace
+ * prolongée dont ces points ne changent pas, il reprend de là les mêmes
+ * calculs dans le même ordre, d'où la même vitesse que le calcul entier.
+ * `frozenBefore` n'est jamais plus petit que celui qui a rendu `from`.
+ */
+export const scanBestWindow = (
+  cum: CumulativeTrack,
+  holes: ArrayLike<number>,
+  offset: number,
+  durationS: number,
+  from: WindowScan,
+  frozenBefore: number
+): { best: number | null; frozen: WindowScan } => {
+  const { cumDist, cumTime } = cum;
+  const n = cumTime.length;
+  let { j, best } = from;
+  let { next: frozenNext, j: frozenJ, best: frozenBest } = from;
+  for (let i = from.next; i < n - 1; i++) {
+    const threshold = cumTime[i] + durationS;
+    if (j <= i) j = i + 1;
+    while (j < n && cumTime[j] < threshold) j++;
+    if (j >= n) break;
+    if (holes[offset + j] <= holes[offset + i]) {
+      // Comme `computeTopSegments`, cible de temps, une seule fenêtre, vitesse en m/s.
+      const distance = interpolateAt(cumTime, threshold, cumDist, j - 1, j) - cumDist[i];
+      const duration = durationS;
+      if (duration > 0 && distance > 0) {
+        const speed = distance / duration;
+        if (best === null || speed > best) best = speed;
+      }
+    }
+    if (j < frozenBefore) {
+      frozenNext = i + 1;
+      frozenJ = j;
+      frozenBest = best;
+    }
+  }
+  return { best, frozen: { next: frozenNext, j: frozenJ, best: frozenBest } };
+};
+
+/** Prolonge sur place les comptes de trous de `holeCounts` : ceux des `from` premiers points (au moins un) sont gardés. */
+export const extendHoleCounts = (track: readonly TrackPoint[], holes: number[], from = holes.length): number[] => {
+  holes.length = Math.max(1, from);
+  holes[0] = 0;
+  for (let k = holes.length; k < track.length; k++) holes.push(holes[k - 1] + (track[k].gapDistanceM !== undefined ? 1 : 0));
+  return holes;
+};
+
+/**
  * Nombre de trous parmi les pas qui mènent aux points 1 à k : la fenêtre
  * [i, j] en contient un si `gapCount[j] > gapCount[i]`.
  */

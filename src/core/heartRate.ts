@@ -1,6 +1,6 @@
 import { bandIndex } from './basics';
 import { firstIndexAtOrAfterTime, lastIndexAtOrBeforeTime } from './search';
-import { meanFilterByTime } from './speedFilter';
+import { meanFilterByTime, meanFilterByTimeFrom, meanFilterStart, type MeanFilterState } from './speedFilter';
 import { pathsWhere, type TrackStep } from './trackPaths';
 
 /**
@@ -97,6 +97,90 @@ export const heartRateStats = (points: readonly HeartRatePoint[], smoothed: read
   let maxBpm = 0;
   for (const v of smoothed) if (v !== null && v > maxBpm) maxBpm = v;
   return { avgBpm: sum / coveredS, maxBpm: Math.round(maxBpm), coveredS };
+};
+
+/** Somme pondérée par le temps et temps couvert de `heartRateStats` : `avgBpm` vaut `sum / coveredS`. */
+export interface HeartRateSums {
+  sum: number;
+  coveredS: number;
+}
+
+/**
+ * Où en sont les sommes de `resumeHeartRateSums` : prochain point à lire,
+ * suite en cours des FC valides (valeurs et dates, `runLength` premières),
+ * son lissage après la dernière valeur close (`null` : pas encore commencé),
+ * date du dernier point compté et sommes jusqu'à lui.
+ */
+export interface HeartRateSumsState extends HeartRateSums {
+  next: number;
+  values: number[];
+  times: number[];
+  runLength: number;
+  filter: MeanFilterState | null;
+  lastMs: number | null;
+}
+
+/**
+ * Les sommes de `heartRateStats(points, smoothHeartRate(points, windowS, gapS), gapS)`,
+ * reprises sur des points qui ne font que s'allonger (direct de
+ * l'enregistrement) : `previous` est l'état rendu sur les premiers points
+ * (mêmes valeurs), et seule la fin est relue, depuis la dernière FC lissée
+ * dont la fenêtre est fermée par le temps. Mêmes additions dans le même
+ * ordre : sommes identiques au calcul entier. `previous` est consommé (ses
+ * tableaux sont prolongés) : ne reprendre que le dernier état rendu.
+ */
+export const resumeHeartRateSums = (
+  points: readonly HeartRatePoint[],
+  windowS: number,
+  gapS: number,
+  previous: HeartRateSumsState | null
+): { sums: HeartRateSums; state: HeartRateSumsState } => {
+  const state: HeartRateSumsState = previous
+    ? { ...previous }
+    : { next: 0, values: [], times: [], runLength: 0, filter: null, lastMs: null, sum: 0, coveredS: 0 };
+  state.values.length = state.runLength;
+  state.times.length = state.runLength;
+
+  /** Un intervalle compté, comme `forEachCounted`. */
+  const count = (into: HeartRateSums & { lastMs: number | null }, timeMs: number, bpm: number) => {
+    const previousMs = into.lastMs;
+    into.lastMs = timeMs;
+    if (previousMs === null) return;
+    const dtS = (timeMs - previousMs) / 1000;
+    if (dtS <= 0 || dtS > gapS) return;
+    into.sum += Math.round(bpm) * dtS;
+    into.coveredS += dtS;
+  };
+
+  /** Lisse la suite en cours ; les valeurs closes (toutes, si la suite est finie) vont à l'état, les autres à une copie. */
+  const smoothRun = (finished: boolean): (HeartRateSums & { lastMs: number | null }) | null => {
+    if (state.values.length === 0) return null;
+    let tail: (HeartRateSums & { lastMs: number | null }) | null = null;
+    state.filter = meanFilterByTimeFrom(state.values, state.times, windowS, state.filter ?? meanFilterStart(state.values), (k, value, settled) => {
+      if (settled || finished) count(state, state.times[k], value);
+      else count((tail ??= { lastMs: state.lastMs, sum: state.sum, coveredS: state.coveredS }), state.times[k], value);
+    });
+    return tail;
+  };
+
+  for (let i = state.next; i < points.length; i++) {
+    const hr = points[i].hr;
+    if (!validBpm(hr)) continue;
+    const last = state.times.length - 1;
+    if (last >= 0 && points[i].timeMs - state.times[last] > gapS * 1000) {
+      smoothRun(true);
+      state.values = [];
+      state.times = [];
+      state.filter = null;
+    }
+    state.values.push(hr);
+    state.times.push(points[i].timeMs);
+  }
+  state.next = points.length;
+  state.runLength = state.values.length;
+  const tail = smoothRun(false);
+  const sums = tail ?? state;
+  return { sums: { sum: sums.sum, coveredS: sums.coveredS }, state };
 };
 
 /** Données du pratiquant qui fixent les seuils et les zones (`RunnerProfile`). */

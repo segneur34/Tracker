@@ -242,6 +242,24 @@ describe('resumeKinematics', () => {
     }
   }
 
+  for (const hz of [1, 5]) {
+    it(`garde à la reprise suivante les \`frozenUpTo\` premiers points, mêmes objets, à ${hz} Hz`, () => {
+      const points = build(480, hz, true);
+      let run: KinematicsRun | null = null;
+      let near = 0;
+      for (let n = 2; n <= points.length; n++) {
+        const next: KinematicsRun = resumeKinematics(points.slice(0, n), options, run)!;
+        if (run && next.track[0] === run.track[0]) {
+          for (let k = 0; k < run.frozenUpTo; k++) if (next.track[k] !== run.track[k]) expect.fail(`point ${k} recréé (n = ${n})`);
+          if (n > 60 * hz && run.frozenUpTo >= n - 1 - 10 * hz) near++;
+        }
+        run = next;
+      }
+      // Le figé suit la fin de la trace à quelques secondes près, hors dates égales.
+      expect(near).toBeGreaterThan(points.length / 2);
+    });
+  }
+
   it('refait tout si les points, les réglages ou la vitesse appareil changent', () => {
     const points = build(120, 1, false);
     const run = resumeKinematics(points.slice(0, 100), options, null)!;

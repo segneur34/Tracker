@@ -254,6 +254,13 @@ export interface KinematicsRun {
   resumeFrom: number;
   /** Indice de reprise de l'écrêtage à la reprise ; -1 : tout l'écrêtage est à refaire. */
   clampRestart: number;
+  /**
+   * Nombre de points de `track` que la prochaine reprise gardera tels quels
+   * (mêmes objets), si elle ne refait pas tout : ce qui ne dépend que d'eux
+   * peut être gardé d'un calcul à l'autre, tant que `track[frozenUpTo - 1]`
+   * reste le même objet.
+   */
+  frozenUpTo: number;
 }
 
 /** Les mêmes réglages, champ à champ. */
@@ -501,9 +508,16 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
     });
   }
 
+  // Le `Q` de la prochaine reprise, lu sur des dates qu'elle reprendra telles quelles (indices avant `tailStart - 1`).
+  let frozenUpTo = 0;
+  if (resumeFrom >= 3 && clampRestart >= 1 && clampRestart <= resumeFrom - 1) {
+    frozenUpTo = clampRestart;
+    while (frozenUpTo > 0 && timesMs[frozenUpTo - 1] >= timesMs[clampRestart] - halfWindowMs) frozenUpTo--;
+  }
+
   return {
     points, track, options, useDeviceSpeed, rawTimesMs, timesMs, chordsM, derivedRaw, bearingsRaw, spikes, rawSpeeds, clamped, smoothed,
-    unit, sortedRatios, ratiosUpTo, tailStart, resumeFrom, clampRestart,
+    unit, sortedRatios, ratiosUpTo, tailStart, resumeFrom, clampRestart, frozenUpTo,
   };
 };
 

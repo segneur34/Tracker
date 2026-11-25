@@ -65,3 +65,18 @@ Temps d'un calcul des chiffres du direct, médiane puis 95e centile, en ms, sur 
 ### M3 et M4
 
 Scripts écrits le 25/11, jamais lancés (poste chargé) : `set FLUIDITE_SCRIPT=direct-long&& node outils/banc/fluidite-compile.mjs direct235` (16 min, plafond 25) et `set FLUIDITE_MESURES=ouverture&& set FLUIDITE_OUVERTURE=voile,surf,course&& node outils/banc/fluidite-compile.mjs ouv235` (8 à 10 min). Les parties B et C attendent leurs chiffres.
+
+### Après A1 et A2 (26/11, poste chargé, avant et après dans les mêmes minutes)
+
+| Famille | 1 h | 2 h | 3 h | cumul sur 3 h |
+|---|---|---|---|---|
+| Course, avant | 2,7 / 4,3 | 5,1 / 7,4 | 8,8 / 12,7 | 24,2 s |
+| Course, après | 1,8 / 2,3 | 3,8 / 4,8 | 5,9 / 7,0 | 15,9 s |
+| Vélo, avant | 2,4 / 3,7 | 4,7 / 6,1 | 9,0 / 11,7 | 24,0 s |
+| Vélo, après | 1,6 / 2,3 | 3,6 / 5,2 | 5,5 / 8,4 | 14,7 s |
+| Voile, avant | 1,9 / 3,2 | 5,9 / 12,2 | 9,1 / 11,2 | 25,7 s |
+| Voile, après | 0,3 / 0,7 | 0,4 / 1,2 | 1,1 / 2,2 | 2,5 s |
+| Voile, seuil changé toutes les 60 s, avant | 2,1 / 3,2 | 12,4 / 21,5 | 6,5 / 10,1 | 39,4 s |
+| Voile, seuil changé toutes les 60 s, après | 0,2 / 0,8 | 0,7 / 1,8 | 0,8 / 2,0 | 3,3 s |
+
+Résultat strictement égal au calcul sans mémoire dans tous les cas. Ce qui reste : à pied et à vélo, le lissage de l'altitude et le dénivelé (un tiers), l'énergie (un quart) ; en voile, la cinématique (recopies, 55 % de 1,1 ms). Sous les seuils du plan : A3 et A4 ne se codent pas.

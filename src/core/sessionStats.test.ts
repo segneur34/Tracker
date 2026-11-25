@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from './kinematics';
-import { activeRuns, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, inMotionMask, thresholdActivityMask } from './sessionStats';
+import {
+  activeRuns, activityMaskStart, activityMaskStep, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, computeActivityMask,
+  extendCumulativeTrack, inMotionMask, thresholdActivityMask, thresholdMaskOptions,
+} from './sessionStats';
 import { getActiveThresholds, SPORT_PROFILES, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint, TrackPoint } from './types';
 import { mPerDegLon } from '../test/geo.fixture';
@@ -259,4 +262,33 @@ describe('distance d’un trou de la trace (A-B2)', () => {
     const raw = buildRaw([{ durationS: 60, speedMs: 3 }, { durationS: 60, speedMs: 0, noPoints: true }, { durationS: 60, speedMs: 3 }], 1, true);
     expect(computeKinematics(raw).some((p) => p.gapDistanceM !== undefined)).toBe(false);
   });
+});
+
+describe('automate du masque et cumuls, repris en cours de trace', () => {
+  const wing = SPORT_PROFILES.wingfoil;
+  for (const hz of [1, 5]) {
+    it(`donnent le masque et les cumuls du calcul entier, repris à tout point, à ${hz} Hz`, () => {
+      // Allures autour du seuil, trou immobile, trou en mouvement, reprise d'une pause.
+      const raw = buildRaw([
+        { durationS: 40, speedMs: 6 }, { durationS: 30, speedMs: 4.3 }, { durationS: 20, speedMs: 1 }, { durationS: 40, speedMs: 0, noPoints: true },
+        { durationS: 30, speedMs: 4.6 }, { durationS: 25, speedMs: 6, noPoints: true }, { durationS: 40, speedMs: 7 }, { durationS: 20, speedMs: 4.1 },
+      ], hz, true).map((p, k) => (k === 150 * hz ? { ...p, segmentStart: true as const } : p));
+      const track = analyzed(raw, wing);
+      expect(track.some((p) => p.gapDistanceM !== undefined)).toBe(true);
+      const options = thresholdMaskOptions(wing, 9);
+      const whole = computeActivityMask(track, options);
+      expect(whole).toEqual(thresholdActivityMask(track, wing, 9));
+      const cum = buildCumulativeTrack(track);
+      for (let cut = 0; cut <= track.length; cut += 1 + ((cut * 13) % 17)) {
+        const state = activityMaskStart(track, options);
+        for (let i = 0; i < cut; i++) activityMaskStep(track, i, options, state);
+        const resumed = { ...state };
+        const rest: boolean[] = [];
+        for (let i = cut; i < track.length; i++) rest.push(activityMaskStep(track, i, options, resumed));
+        expect(rest).toEqual(whole.slice(cut));
+        const partial = buildCumulativeTrack(track.slice(0, Math.max(1, cut)));
+        expect(extendCumulativeTrack(track, partial)).toEqual(cum);
+      }
+    });
+  }
 });

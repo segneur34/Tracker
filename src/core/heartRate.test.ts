@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { bandIndex } from './basics';
 import {
   edwardsLoad, efficiencyBlocks, estimateHrMax, heartRateDrift, heartRateHistogram, heartRateStats, heartRateThresholds, heartRateZonePaths, heartRateZones,
-  histogramZoneTimes, isValidThresholds, isValidZoneBounds, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate, type HeartRatePoint,
+  histogramZoneTimes, isValidThresholds, isValidZoneBounds, resumeHeartRateSums, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate,
+  type HeartRatePoint, type HeartRateSumsState,
 } from './heartRate';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -289,4 +290,29 @@ describe('timeSpanHeartRate', () => {
     const points = series(0, 100, 1, () => 150);
     expect(timeSpanHeartRate(points, analyze(points), T0 + 500_000, T0 + 600_000, P.gapS, P.recoveryS)).toBeNull();
   });
+});
+
+describe('resumeHeartRateSums', () => {
+  for (const hz of [1, 5]) {
+    it(`repris sur des points qui s'allongent, donne les sommes du calcul entier, à ${hz} Hz`, () => {
+      // Mesures manquantes ou impossibles, trou de 40 s (ceinture retirée), dates égales, FC qui ondule.
+      const points = series(0, 400, hz, (t) =>
+        (t >= 100 && t < 140) || Math.round(t * hz) % 11 === 3 ? undefined : Math.round(t * hz) % 29 === 7 ? 300 : 120 + 25 * Math.sin(t / 30)
+      ).map((p, k) => (k % 47 === 12 && k > 0 ? { ...p, timeMs: T0 + Math.floor((p.timeMs - T0) / 2000) * 2000 } : p));
+      let state: HeartRateSumsState | null = null;
+      for (let n = 1; n <= points.length; n = n === points.length ? n + 1 : Math.min(points.length, n + 1 + ((n * 13) % 7))) {
+        const prefix = points.slice(0, n);
+        const resumed = resumeHeartRateSums(prefix, P.smoothS, P.gapS, state);
+        state = resumed.state;
+        const whole = heartRateStats(prefix, smoothHeartRate(prefix, P.smoothS, P.gapS), P.gapS);
+        if (whole === null) {
+          expect(resumed.sums.coveredS).toBe(0);
+          continue;
+        }
+        expect(resumed.sums.sum / resumed.sums.coveredS).toBe(whole.avgBpm);
+        expect(resumed.sums.coveredS).toBe(whole.coveredS);
+      }
+      expect(state!.next).toBe(points.length);
+    });
+  }
 });

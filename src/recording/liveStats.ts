@@ -2,17 +2,16 @@ import { accumulateElevation, computeElevationStats, type ElevationStats } from 
 import { heartRateStats, smoothHeartRate } from '../core/heartRate';
 import { resumeKinematics, type KinematicsRun } from '../core/kinematics';
 import { referenceSpeedMs } from '../core/sessionSpeed';
-import {
-  MIN_ELEVATION_COVERAGE, buildCumulativeTrack, computeActiveDistanceM, computeActiveTimeMs, segmentDistanceM, thresholdActivityMask,
-} from '../core/sessionStats';
+import { MIN_ELEVATION_COVERAGE, buildCumulativeTrack, segmentDistanceM, thresholdMaskOptions } from '../core/sessionStats';
 import { SAILING_SPORTS, hasActiveThreshold, sportTreatment, type HeartRateProfile, type SportProfile } from '../core/sportProfiles';
 import { bestWindowSpeedMs } from '../core/topSegments';
-import type { CumulativeTrack, RawTrackPoint, TrackPoint } from '../core/types';
+import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { computeCyclingEnergy, type CyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { computeEnergy, type EnergyParams } from '../running/energy';
 import { computeGrades } from '../land/grade';
-import { EMPTY_LIVE_LEGS, combineLiveLegs, splitLiveLegs, type LiveLegSplit, type LiveLegs } from './liveLegs';
+import { EMPTY_LIVE_LEGS, combineLiveLegs, type LiveLegs } from './liveLegs';
+import { computeSegmentParts, type SegmentMemory, type SegmentParts, type SegmentSettings } from './liveSegment';
 
 /**
  * Statistiques affichées pendant l'enregistrement, calculées sur la trace en
@@ -21,11 +20,13 @@ import { EMPTY_LIVE_LEGS, combineLiveLegs, splitLiveLegs, type LiveLegSplit, typ
  * franchit une pause. Tout en unités SI ; la page convertit.
  *
  * Avec une mémoire (`LiveStatsMemory`, tenue par `useLiveRecording`), un
- * segment fermé n'est calculé qu'une fois et le segment en cours reprend sa
- * cinématique là où elle en était (`resumeKinematics`) : le coût de chaque
- * recalcul ne croît plus avec la durée que par le reste du segment en cours
- * (dénivelé, FC, énergie, tops), bien plus léger (27/10). Le résultat est
- * celui du calcul sans mémoire (`liveStats.test.ts`).
+ * segment fermé n'est calculé qu'une fois ; le segment en cours reprend sa
+ * cinématique là où elle en était (`resumeKinematics`, 27/10), et ses cumuls
+ * (distance, temps actif, FC, vitesse max, bords) là où ils étaient figés
+ * (`computeSegmentParts`, lot 235) : un recalcul ne relit que les derniers
+ * points et la fenêtre récente des tops. Dénivelé, pentes et énergie restent
+ * refaits sur tout le segment en cours. Le résultat est celui du calcul sans
+ * mémoire, au bit près (`liveStats.test.ts`).
  */
 
 /** Modèle de la puissance et de l'énergie en direct : celui de l'analyse de la famille. */
@@ -293,16 +294,29 @@ const segmentEnergy = (track: TrackPoint[], grades: number[], setup: LiveEnergyS
   return { effortJ: result.netJ, power: result.mechanicalPowerW };
 };
 
+/** Premier point daté d'au moins `sinceMs`, dans une trace aux dates croissantes. */
+const firstAtOrAfter = (track: TrackPoint[], sinceMs: number): number => {
+  let lo = 0;
+  let hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].timeMs < sinceMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+};
+
 /**
  * Meilleure vitesse sur `durationS`, parmi les points postérieurs à `sinceMs`.
  * Segment par segment : rien ne franchit une pause ; un segment fini avant
- * `sinceMs` n'est pas relu.
+ * `sinceMs` n'est pas relu, et les points récents se trouvent par dichotomie
+ * quand les dates sont croissantes.
  */
-const bestRecentTop = (tracks: TrackPoint[][], durationS: number, sinceMs: number): number | null => {
+const bestRecentTop = (parts: SegmentParts[], durationS: number, sinceMs: number): number | null => {
   let best: number | null = null;
-  for (const track of tracks) {
+  for (const { track, ordered } of parts) {
     if (track[track.length - 1].timeMs < sinceMs) continue;
-    const recent = track.filter((p) => p.timeMs >= sinceMs);
+    const recent = ordered ? track.slice(firstAtOrAfter(track, sinceMs)) : track.filter((p) => p.timeMs >= sinceMs);
     const value = bestWindowSpeedMs(recent, buildCumulativeTrack(recent), durationS);
     if (value !== null && (best === null || value > best)) best = value;
   }
@@ -310,21 +324,9 @@ const bestRecentTop = (tracks: TrackPoint[][], durationS: number, sinceMs: numbe
 };
 
 /** Ce qu'un segment apporte au direct ; calculé une fois pour un segment fermé. */
-interface SegmentParts {
-  /** Trace du segment ; vide sous deux positions. */
-  track: TrackPoint[];
-  cum: CumulativeTrack;
+interface LiveParts extends SegmentParts {
   pointCount: number;
   withEle: number;
-  distanceM: number;
-  movingTimeMs: number;
-  /** Distance et temps en action, avec un seuil passé (`activeThreshold`). */
-  active: { distanceM: number; timeMs: number } | null;
-  heart: { sum: number; coveredS: number } | null;
-  /** Meilleure vitesse tenue `maxDurationS` ; `null` si la trace est trop courte. */
-  maxSpeedMs: number | null;
-  /** Bords, en voile seulement. */
-  legs: LiveLegSplit | null;
   /** Dénivelé et pentes, demandés quand l'altitude est établie. */
   elevation: { stats: ElevationStats; grades: number[] } | null;
   /** Énergie, demandée avec un modèle, selon que les pentes étaient connues. */
@@ -336,17 +338,28 @@ interface SegmentEntry {
   fixes: ReadonlyArray<LocationFix>;
   raw: RawTrackPoint[];
   run: KinematicsRun | null;
-  parts: SegmentParts | null;
+  /** Trace du segment ; vide sous deux positions. */
+  track: TrackPoint[];
+  /** Positions qui portent une altitude, parmi les `fixes.length` vues. */
+  withEle: number;
+  parts: LiveParts | null;
+  /** Cumuls gardés du segment en cours (`computeSegmentParts`). */
+  memory: SegmentMemory | null;
 }
 
 /** Mémoire du direct d'une session, à créer par `createLiveStatsMemory` et à passer à `computeLiveStats`. */
 export interface LiveStatsMemory {
-  /** Profil et réglages du dernier calcul : s'ils changent, tout est refait. */
+  /** Profil du dernier calcul : s'il change, tout est refait. */
   key: string;
+  /**
+   * Réglages du dernier calcul : s'ils changent (seuil d'activité remesuré sur
+   * l'allure, unité), les statistiques sont refaites, la cinématique gardée.
+   */
+  statsKey: string;
   entries: SegmentEntry[];
 }
 
-export const createLiveStatsMemory = (): LiveStatsMemory => ({ key: '', entries: [] });
+export const createLiveStatsMemory = (): LiveStatsMemory => ({ key: '', statsKey: '', entries: [] });
 
 /** Les positions déjà vues sont les mêmes objets, au début du segment. */
 const samePrefix = (seen: ReadonlyArray<LocationFix>, segment: ReadonlyArray<LocationFix>): boolean => {
@@ -362,10 +375,19 @@ export const computeLiveStats = (
   memory?: LiveStatsMemory
 ): LiveStats => {
   const mem = memory ?? createLiveStatsMemory();
-  const key = `${profile.id}|${JSON.stringify(options)}`;
+  // La cinématique ne dépend que du profil ; un réglage changé ne refait que les statistiques.
+  const key = profile.id;
+  const statsKey = JSON.stringify(options);
   if (mem.key !== key) {
     mem.key = key;
     mem.entries = [];
+  }
+  if (mem.statsKey !== statsKey) {
+    mem.statsKey = statsKey;
+    for (const entry of mem.entries) {
+      entry.parts = null;
+      entry.memory = null;
+    }
   }
   const kinematicsOptions = {
     medianWindowSeconds: profile.medianWindowSeconds,
@@ -376,45 +398,43 @@ export const computeLiveStats = (
   // Un segment déjà vu tel quel garde tout ; prolongé, il reprend sa cinématique ; autre, il repart de zéro.
   const entries: SegmentEntry[] = segments.map((segment, k) => {
     const seen = mem.entries[k];
-    const entry: SegmentEntry = seen && samePrefix(seen.fixes, segment) ? seen : { fixes: [], raw: [], run: null, parts: null };
+    const entry: SegmentEntry = seen && samePrefix(seen.fixes, segment)
+      ? seen
+      : { fixes: [], raw: [], run: null, track: [], withEle: 0, parts: null, memory: null };
     if (entry.fixes.length !== segment.length) {
+      for (let i = entry.fixes.length; i < segment.length; i++) {
+        const altitudeM = segment[i].altitudeM;
+        if (altitudeM !== undefined && isFinite(altitudeM)) entry.withEle++;
+      }
       for (let i = entry.raw.length; i < segment.length; i++) entry.raw.push(toRawPoint(segment[i]));
       entry.fixes = segment;
       entry.run = resumeKinematics(entry.raw, kinematicsOptions, entry.run);
+      entry.track = entry.run && entry.run.track.length >= 2 ? entry.run.track : [];
       entry.parts = null;
     }
     return entry;
   });
   mem.entries = entries;
 
-  const sailing = SAILING_SPORTS.includes(profile.id);
+  const settings: SegmentSettings = {
+    mask: options.activeThreshold === undefined ? null : thresholdMaskOptions(profile, options.activeThreshold),
+    maxDurationS: options.maxDurationS,
+    heartRate: profile.heartRate,
+    sailing: SAILING_SPORTS.includes(profile.id),
+  };
   for (const entry of entries) {
     if (entry.parts) continue;
-    const track = entry.run && entry.run.track.length >= 2 ? entry.run.track : [];
-    const cum = buildCumulativeTrack(track);
-    let distanceM = 0;
-    for (let i = 1; i < track.length; i++) distanceM += segmentDistanceM(track, i);
-    const mask = options.activeThreshold === undefined ? null : thresholdActivityMask(track, profile, options.activeThreshold);
-    entry.parts = {
-      track,
-      cum,
-      pointCount: entry.fixes.length,
-      withEle: entry.fixes.filter((f) => f.altitudeM !== undefined && isFinite(f.altitudeM)).length,
-      distanceM,
-      movingTimeMs: track.length >= 2 ? track[track.length - 1].timeMs - track[0].timeMs : 0,
-      active: mask === null ? null : { distanceM: computeActiveDistanceM(track, mask), timeMs: computeActiveTimeMs(track, mask) },
-      heart: heartPart(entry.fixes, profile.heartRate),
-      maxSpeedMs: bestWindowSpeedMs(track, cum, options.maxDurationS),
-      legs: sailing && track.length >= 2 ? splitLiveLegs(track) : null,
-      elevation: null,
-      energy: null,
-    };
+    const { parts, memory: kept } = computeSegmentParts(entry.fixes, entry.track, entry.run?.frozenUpTo ?? 0, settings, entry.memory);
+    entry.parts = { ...parts, pointCount: entry.fixes.length, withEle: entry.withEle, elevation: null, energy: null };
+    entry.memory = kept;
   }
-  // Un segment fermé ne reprend jamais : ses étapes intermédiaires et ses points bruts ne servent plus.
+  // Un segment fermé ne reprend jamais : ses étapes intermédiaires, ses points bruts et ses cumuls gardés ne servent plus.
   for (let k = 0; k < entries.length - 1; k++) {
     entries[k].run = null;
     entries[k].raw = [];
+    entries[k].memory = null;
   }
+  const sailing = settings.sailing;
 
   const active = entries.map((e) => e.parts!).filter((p) => p.track.length >= 2);
   if (active.length === 0) return { ...EMPTY_LIVE_STATS, recentTopsMs: options.topDurationsS.map(() => null) };
@@ -503,7 +523,7 @@ export const computeLiveStats = (
     activeAverageSpeedMs: activeTimeMs > 0 ? activeDistanceM / (activeTimeMs / 1000) : null,
     lastDistanceSpeedMs: lastDistanceSpeed(tracks, options.lastDistanceM),
     recentDistanceSpeedMs: lastDistanceSpeed(tracks, options.recentDistanceM),
-    recentTopsMs: options.topDurationsS.map((d) => bestRecentTop(tracks, d, sinceMs)),
+    recentTopsMs: options.topDurationsS.map((d) => bestRecentTop(active, d, sinceMs)),
     maxSpeedMs,
     elevationGainM: hasElevation ? gainM : null,
     elevationLossM: hasElevation ? lossM : null,

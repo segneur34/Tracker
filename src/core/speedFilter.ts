@@ -373,3 +373,68 @@ export const meanFilterByTime = (
 
   return out;
 };
+
+/**
+ * Où en est la moyenne mobile de `meanFilterByTimeFrom` : prochain point à
+ * lisser, bornes de sa fenêtre et somme courante (celle de
+ * `values[start..end]`).
+ */
+export interface MeanFilterState {
+  next: number;
+  start: number;
+  end: number;
+  sum: number;
+}
+
+/** État de départ de la moyenne mobile ; `values` non vide. */
+export const meanFilterStart = (values: readonly number[]): MeanFilterState => ({ next: 0, start: 0, end: 0, sum: values[0] });
+
+/**
+ * La moyenne mobile de `meanFilterByTime`, reprise à `from` sur une série qui
+ * ne fait que s'allonger (direct de l'enregistrement) : `visit` reçoit chaque
+ * valeur lissée de `from.next` à la fin, dans l'ordre, et dit si elle est
+ * close (sa fenêtre est fermée par le temps, une valeur ajoutée ne la
+ * changera plus). L'état rendu est celui qui suit la dernière valeur close :
+ * repris sur la série allongée, il refait les mêmes additions dans le même
+ * ordre que `meanFilterByTime`, d'où des valeurs identiques
+ * (`speedFilter.test.ts`).
+ */
+export const meanFilterByTimeFrom = (
+  values: readonly number[],
+  timesMs: readonly number[],
+  windowSeconds: number,
+  from: MeanFilterState,
+  visit: (i: number, value: number, settled: boolean) => void
+): MeanFilterState => {
+  const halfWindowMs = (windowSeconds * 1000) / 2;
+  let { start, end, sum } = from;
+  // État qui suit la dernière valeur close.
+  let { next: sNext, start: sStart, end: sEnd, sum: sSum } = from;
+
+  for (let i = from.next; i < values.length; i++) {
+    while (end < i) {
+      end++;
+      sum += values[end];
+    }
+    while (start < i && timesMs[i] - timesMs[start] > halfWindowMs) {
+      sum -= values[start];
+      start++;
+    }
+    while (end + 1 < values.length && timesMs[end + 1] - timesMs[i] <= halfWindowMs) {
+      end++;
+      sum += values[end];
+    }
+
+    // Arrêtée par le temps et non par la fin de la série : la fenêtre ne bougera plus.
+    const closed = end + 1 < values.length;
+    visit(i, sum / (end - start + 1), closed);
+    if (closed) {
+      sNext = i + 1;
+      sStart = start;
+      sEnd = end;
+      sSum = sum;
+    }
+  }
+
+  return { next: sNext, start: sStart, end: sEnd, sum: sSum };
+};

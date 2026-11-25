@@ -1,7 +1,7 @@
 import { angleDiff, normalizeDeg, toDeg, toRad } from '../core/angles';
-import { buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
-import { computeTopSegments } from '../core/topSegments';
-import type { TrackPoint } from '../core/types';
+import { buildCumulativeTrack, extendCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
+import { WINDOW_SCAN_START, computeTopSegments, extendHoleCounts, scanBestWindow, type WindowScan } from '../core/topSegments';
+import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { MANEUVER_MAX_STEP_S, MANEUVER_MIN_DISTANCE_M, MANEUVER_MIN_TURN_DEG, MANEUVER_WINDOW_S } from '../sailing/sailingConfig';
 
 /**
@@ -66,15 +66,16 @@ export interface LiveLegs {
 export const EMPTY_LIVE_LEGS: LiveLegs = { current: null, previous: null };
 
 /** Cumuls des pas pondérés par leur distance : sommes sur un intervalle en temps constant. */
-interface StepSums {
+export interface StepSums {
   x: number[];
   y: number[];
   d: number[];
 }
 
-const stepSums = (track: TrackPoint[]): StepSums => {
-  const sums: StepSums = { x: [0], y: [0], d: [0] };
-  for (let i = 1; i < track.length; i++) {
+/** Prolonge sur place les cumuls des pas : ceux des `from` premiers points (au moins un) sont gardés. */
+const extendStepSums = (track: TrackPoint[], sums: StepSums, from: number): StepSums => {
+  sums.x.length = sums.y.length = sums.d.length = Math.max(1, from);
+  for (let i = sums.d.length; i < track.length; i++) {
     const d = segmentDistanceM(track, i);
     const b = toRad(track[i].bearing);
     sums.x.push(sums.x[i - 1] + d * Math.sin(b));
@@ -96,11 +97,19 @@ const meanHeading = (s: StepSums, from: number, to: number): { headingDeg: numbe
   };
 };
 
-const describeLeg = (track: TrackPoint[], s: StepSums, from: number, to: number, options: LiveLegOptions): LiveLeg => {
+/**
+ * Bord des points `from` à `to`. Sa vitesse max est celle de `openMax` pour
+ * le bord ouvert (balayage gardé d'un calcul à l'autre, `OpenLegMemory`),
+ * relue sur le bord sinon.
+ */
+const describeLeg = (
+  track: TrackPoint[], s: StepSums, from: number, to: number, options: LiveLegOptions, openMax?: number | null
+): LiveLeg => {
   const { headingDeg, distanceM } = meanHeading(s, from, to);
   const durationS = (track[to].timeMs - track[from].timeMs) / 1000;
   let maxSpeedMs: number | null = null;
-  if (durationS >= options.topDurationS) {
+  if (durationS >= options.topDurationS && openMax !== undefined) maxSpeedMs = openMax;
+  else if (durationS >= options.topDurationS) {
     const slice = track.slice(from, to + 1);
     const [top] = computeTopSegments(
       slice,
@@ -121,19 +130,67 @@ const describeLeg = (track: TrackPoint[], s: StepSums, from: number, to: number,
   };
 };
 
-/** Découpe une trace continue (sans pause) en bords ; le dernier reste ouvert. */
+/** Où en est l'automate des bords : prochain point, début de la fenêtre du cap récent, bord en cours ou virage, bords fermés. */
+interface SplitState {
+  next: number;
+  w: number;
+  legStart: number;
+  turningSince: number | null;
+  closed: LiveLeg[];
+}
+
+/** Cumuls et balayage de la vitesse max du bord ouvert, en indices comptés depuis son début `legStart`. */
+interface OpenLegMemory {
+  legStart: number;
+  cum: CumulativeTrack;
+  scan: WindowScan;
+}
+
+/**
+ * Ce qui est gardé d'un découpage à l'autre d'une trace qui s'allonge : les
+ * cumuls des pas, l'automate après le point `frozen - 1`, et le bord ouvert.
+ * Ne vaut que si les `frozen` premiers points n'ont pas changé.
+ */
+export interface LiveLegsMemory {
+  frozen: number;
+  sums: StepSums;
+  split: SplitState;
+  open: OpenLegMemory | null;
+  /** Comptes de trous de la trace (`extendHoleCounts`), pour la vitesse max du bord ouvert. */
+  holes: number[];
+}
+
+/**
+ * Découpe une trace continue (sans pause) en bords ; le dernier reste ouvert.
+ * Repris de `previous`, seuls les points d'après son `frozen` sont relus.
+ * Rend l'automate après le point `frozen - 1` (`null` s'il ne peut l'être).
+ */
 const splitTrack = (
   track: TrackPoint[],
-  options: LiveLegOptions
-): { closed: LiveLeg[]; open: LiveLeg | null } => {
-  const s = stepSums(track);
+  options: LiveLegOptions,
+  frozen: number,
+  previous: LiveLegsMemory | null
+): { split: LiveLegSplit; memory: LiveLegsMemory | null } => {
+  /** Points repris tels quels du calcul précédent. */
+  const reused = previous ? previous.frozen : 0;
+  const s = extendStepSums(track, previous ? previous.sums : { x: [0], y: [0], d: [0] }, reused);
+  const holes = extendHoleCounts(track, previous ? previous.holes : [0], reused);
   const windowMs = options.windowS * 1000;
-  const closed: LiveLeg[] = [];
-  let legStart = 0;
-  let turningSince: number | null = null;
-  let w = 0;
+  const start: SplitState = previous ? previous.split : { next: 1, w: 0, legStart: 0, turningSince: null, closed: [] };
+  const closed = start.closed.slice();
+  let legStart = start.legStart;
+  let turningSince = start.turningSince;
+  let w = start.w;
+  // État avant le pas `frozen` : les pas d'avant n'ont lu que des points figés, ils ne changeront plus.
+  let kept: SplitState | null = null;
+  let keptClosed = 0;
 
-  for (let i = 1; i < track.length; i++) {
+  for (let i = start.next; ; i++) {
+    if (i === frozen) {
+      kept = { next: i, w, legStart, turningSince, closed: [] };
+      keptClosed = closed.length;
+    }
+    if (i >= track.length) break;
     while (track[w].timeMs < track[i].timeMs - windowMs) w++;
     // Cadence lâche (règle 10) : une fenêtre vide lit le seul pas qui la traverse.
     const from = Math.min(w, i - 1);
@@ -167,9 +224,23 @@ const splitTrack = (
       }
     }
   }
+  if (kept) kept.closed = closed.slice(0, keptClosed);
 
   const last = track.length - 1;
-  return { closed, open: turningSince === null ? describeLeg(track, s, legStart, last, options) : null };
+  let open: LiveLeg | null = null;
+  let openMemory: OpenLegMemory | null = null;
+  if (turningSince === null) {
+    // Vitesse max du bord ouvert : cumuls du bord, comme ceux de sa tranche (`describeLeg`), prolongés et balayés depuis l'état gardé.
+    const seen = previous?.open?.legStart === legStart ? previous.open : null;
+    const keepLocal = seen ? Math.max(1, Math.min(seen.cum.cumDist.length, reused - legStart)) : 1;
+    const cum = extendCumulativeTrack(track, seen ? seen.cum : { cumDist: [0], cumTime: [0] }, keepLocal, legStart);
+    const scanFrom = seen && keepLocal > 1 ? seen.scan : WINDOW_SCAN_START;
+    const { best, frozen: scan } = scanBestWindow(cum, holes, legStart, options.topDurationS, scanFrom, frozen - legStart);
+    open = describeLeg(track, s, legStart, last, options, best);
+    openMemory = { legStart, cum, scan };
+  }
+  const memory = kept && frozen >= 2 ? { frozen, sums: s, split: kept, open: openMemory, holes } : null;
+  return { split: { closed, open }, memory };
 };
 
 /** Bords d'une trace continue (sans pause) : les fermés, et le dernier, ouvert (`null` pendant une manœuvre). */
@@ -178,8 +249,26 @@ export interface LiveLegSplit {
   open: LiveLeg | null;
 }
 
-/** Bords d'une trace continue ; calculés une fois par segment fermé dans le direct (`liveStats.ts`). */
-export const splitLiveLegs = (track: TrackPoint[], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegSplit => splitTrack(track, options);
+/** Bords d'une trace continue. */
+export const splitLiveLegs = (track: TrackPoint[], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegSplit => splitTrack(track, options, 0, null).split;
+
+/**
+ * Les bords de `splitLiveLegs`, repris sur une trace qui ne fait que
+ * s'allonger (direct de l'enregistrement) : `previous` est la mémoire rendue
+ * par l'appel précédent, valable si les `previous.frozen` premiers points de
+ * `track` sont les mêmes ; `frozen` dit combien de points de `track` le
+ * prochain appel trouvera inchangés (`KinematicsRun.frozenUpTo`). Seuls les
+ * points d'après sont relus, avec les mêmes calculs dans le même ordre : le
+ * découpage est celui du calcul entier. `previous` est consommé (ses
+ * tableaux sont prolongés) : ne reprendre que la dernière mémoire rendue.
+ */
+export const resumeLiveLegs = (
+  track: TrackPoint[],
+  frozen: number,
+  previous: LiveLegsMemory | null,
+  options: LiveLegOptions = LIVE_LEG_DEFAULTS
+): { split: LiveLegSplit; memory: LiveLegsMemory | null } =>
+  splitTrack(track, options, Math.min(frozen, track.length), previous && previous.frozen <= track.length ? previous : null);
 
 /**
  * Bord en cours et bord précédent, à partir des bords de chaque segment, dans

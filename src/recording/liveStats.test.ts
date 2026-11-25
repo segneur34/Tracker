@@ -236,6 +236,200 @@ describe('computeLiveStats : mémoire du direct', () => {
   });
 });
 
+describe('computeLiveStats : calculs du segment en cours repris, cas difficiles (lot 235)', () => {
+  /** Égalité au bit près (0 et −0 distincts) ; en cas d'écart, le message de `toEqual`. */
+  const expectSame = (actual: unknown, expected: unknown, where: string) => {
+    if (sameData(actual, expected)) return;
+    expect(actual).toEqual(expected);
+    expect.fail(`écart au bit près (${where})`);
+  };
+  type Variant = 'doppler' | 'sans' | 'kmh';
+  /**
+   * Trois segments à `hz`, positions, altitude et FC : bords de 90 s et virements de 6 s, GPS perdu 40 s (300 à
+   * 340 s), dates égales deux à deux (420 à 426 s) ; après une pause, un bord de `legS` (20 min à 1 Hz, 5 min à
+   * 5 Hz pour la durée des tests) ; après une autre, une cadence de 1 à 15 s avec un virage de 90° dans un seul pas
+   * de 15 s (règle 10). FC sur deux points sur trois. Vitesse appareil en m/s, absente, ou en km/h (l'unité se
+   * tranche alors au dixième point environ).
+   */
+  const legSOf = (hz: number) => (hz === 1 ? 1200 : 300);
+  const scenario = (hz: number, variant: Variant): LocationFix[][] => {
+    const legS = legSOf(hz);
+    let lat = 43.5;
+    let lon = 3.9;
+    const lonM = M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180);
+    const fix = (tS: number, speed: number, k: number, timeS = tS): LocationFix => ({
+      timeMs: T0 + Math.round(timeS * 1000),
+      lat,
+      lon,
+      altitudeM: 50 + 20 * Math.sin(tS / 120) + ((k * 7) % 5) * 0.3,
+      ...(variant === 'sans' ? {} : { speedMs: variant === 'kmh' ? speed * 3.6 : speed }),
+      ...(k % 3 === 0 ? {} : { heartRateBpm: 125 + Math.round(15 * Math.sin(tS / 50)) }),
+    });
+    const move = (speed: number, headingDeg: number, dtS: number) => {
+      const rad = (headingDeg * Math.PI) / 180;
+      lat += (speed * dtS * Math.cos(rad)) / M_PER_DEG_LAT;
+      lon += (speed * dtS * Math.sin(rad)) / lonM;
+    };
+    const a: LocationFix[] = [];
+    for (let k = 0; k <= 600 * hz; k++) {
+      const t = k / hz;
+      const inLeg = t % 96;
+      const tackFrom = Math.floor(t / 96) % 2 === 0 ? 45 : 315;
+      const heading = inLeg < 90 ? tackFrom : tackFrom + (tackFrom === 45 ? -90 : 90) * ((inLeg - 90) / 6);
+      const speed = inLeg < 90 ? 7 + Math.sin(t / 13) : 4;
+      if (k > 0) move(speed, heading, 1 / hz);
+      if (t >= 300 && t < 340) continue;
+      a.push(fix(t, speed, k, t >= 420 && t < 426 ? 420 + 2 * Math.floor((t - 420) / 2) : t));
+    }
+    const b: LocationFix[] = [];
+    for (let k = 0; k <= legS * hz; k++) {
+      const t = 660 + k / hz;
+      const speed = 8 + 0.5 * Math.sin(t / 7);
+      if (k > 0) move(speed, 80 + 3 * Math.sin(t / 11), 1 / hz);
+      b.push(fix(t, speed, k));
+    }
+    const c: LocationFix[] = [];
+    const steps = [1, 1, 2, 5, 1, 15, 1, 3, 1, 1, 8, 1];
+    let t = 720 + legS;
+    for (let k = 0; t <= 1200 + legS; k++) {
+      const dt = k === 0 ? 0 : steps[k % steps.length];
+      const heading = t < 950 + legS ? 45 : 135;
+      const speed = 6 + Math.sin(t / 17);
+      if (k > 0) move(speed, heading, dt);
+      t += dt;
+      c.push(fix(t, speed, k));
+    }
+    return [a, b, c];
+  };
+  const seenAfter = (segments: LocationFix[][], n: number): LocationFix[][] => {
+    const out: LocationFix[][] = [];
+    let left = n;
+    for (const segment of segments) {
+      if (left <= 0) break;
+      out.push(segment.slice(0, Math.min(left, segment.length)));
+      left -= segment.length;
+    }
+    return out;
+  };
+  const withThreshold = { ...LIVE_STATS_DEFAULTS, activeAverage: true, activeThreshold: 8 };
+  const cycling = SPORT_PROFILES.cycling;
+  /** Les trois familles : voile au seuil d'activité, course et vélo avec dénivelé et énergie. */
+  const FAMILIES = [
+    { name: 'voile', profile: wing, options: withThreshold },
+    { name: 'course', profile: running, options: { ...LIVE_STATS_DEFAULTS, energy: { family: 'course' as const, params: DEFAULT_ENERGY_PARAMS, massKg: 70 } } },
+    { name: 'vélo', profile: cycling, options: { ...LIVE_STATS_DEFAULTS, energy: { family: 'velo' as const, params: cyclingEnergyParams('route', 8.5, 75) } } },
+  ];
+
+  for (const hz of [1, 5]) {
+    for (const variant of ['doppler', 'sans', 'kmh'] as const) {
+      it(`donne le calcul sans mémoire : trou de 40 s, dates égales, bord de ${legSOf(hz) / 60} min, cadence lâche, vitesse ${variant}, à ${hz} Hz`, () => {
+        const segments = scenario(hz, variant);
+        const total = segments.reduce((n, s) => n + s.length, 0);
+        const edges = new Set<number>();
+        let offset = 0;
+        for (const segment of segments) {
+          for (let k = 1; k <= 3; k++) edges.add(offset + k).add(offset + segment.length + 1 - k);
+          offset += segment.length;
+        }
+        // Les trois familles sur la vitesse Doppler ; la voile seule sur les deux autres variantes.
+        for (const { name, profile, options } of variant === 'doppler' ? FAMILIES : FAMILIES.slice(0, 1)) {
+          // Au rythme du direct (toutes les 2 s de trace), et une mémoire qui ne passe que toutes les 37 s, pause et reprise dans le même appel.
+          const memory = createLiveStatsMemory();
+          const sparse = createLiveStatsMemory();
+          for (let n = 1; n <= total; n++) {
+            const isChecked = n <= 30 || n % (37 * hz) === 0 || n === total || edges.has(n);
+            const isSparse = n % (37 * hz) === 0 || n === total;
+            if (!isChecked && n % (2 * hz) !== 0) continue;
+            const seen = seenAfter(segments, n);
+            const live = computeLiveStats(seen, profile, options, memory);
+            if (!isChecked) continue;
+            const whole = computeLiveStats(seen, profile, options);
+            expectSame(live, whole, `${name}, ${n} positions`);
+            if (!isSparse) continue;
+            expectSame(computeLiveStats(seen, profile, options, sparse), whole, `${name}, ${n} positions, mémoire espacée`);
+          }
+          if (profile !== wing) {
+            // Le dénivelé et l'énergie sont bien là.
+            const last = computeLiveStats(segments, profile, options, memory);
+            expect(last.elevationGainM).not.toBeNull();
+            expect(last.effortJ).not.toBeNull();
+            continue;
+          }
+          // Les cas voulus sont bien là : un bord ouvert de presque tout le deuxième segment, une moyenne active.
+          const open = computeLiveStats(seenAfter(segments, segments[0].length + segments[1].length), profile, options, createLiveStatsMemory()).legs.current;
+          expect((open!.endMs - open!.startMs) / 1000).toBeGreaterThan(legSOf(hz) - 60);
+          expect(computeLiveStats(segments, profile, options, memory).activeAverageSpeedMs).not.toBeNull();
+        }
+      }, 60_000);
+    }
+  }
+
+  for (const hz of [1, 5]) {
+    it(`repris à des positions tirées au hasard, donne à chaque fois le calcul entier, trois familles, à ${hz} Hz`, () => {
+      const segments = scenario(hz, 'doppler');
+      const total = segments.reduce((n, s) => n + s.length, 0);
+      for (const { name, profile, options } of FAMILIES) {
+        // Pas de 1 à 23 s de trace (à 1 Hz) ou de 1 à 23 × 5 positions, tirés d'une suite fixe : la mémoire reprend à un indice quelconque.
+        let seed = 7;
+        const memory = createLiveStatsMemory();
+        for (let n = 1; n <= total; ) {
+          const seen = seenAfter(segments, n);
+          expectSame(computeLiveStats(seen, profile, options, memory), computeLiveStats(seen, profile, options), `${name}, ${n} positions`);
+          if (n === total) break;
+          seed = (seed * 1103515245 + 12345) % 2147483648;
+          n = Math.min(total, n + 1 + Math.floor((seed / 2147483648) * 23 * hz));
+        }
+      }
+    }, 60_000);
+  }
+
+  for (const hz of [1, 5]) {
+    it(`départ à l'arrêt puis seuil franchi dans les premiers points, appels à chaque point, tous les 2 et tous les 5, à ${hz} Hz`, () => {
+      // Confirmation de 3 s : l'état de départ de l'automate, lu sur le premier point, pèse sur les premières secondes.
+      const slowConfirm: SportProfile = { ...wing, minStateDurationS: 3 };
+      for (const stillS of [0.4, 1, 2]) {
+        const fixes = trace(0, 90, hz, (t) => (t < stillS ? 0.3 : 7 + Math.sin(t / 13)));
+        for (const every of [1, 2, 5]) {
+          const memory = createLiveStatsMemory();
+          for (let n = 1; n <= fixes.length; n += every) {
+            const seen = [fixes.slice(0, n)];
+            expectSame(computeLiveStats(seen, slowConfirm, withThreshold, memory), computeLiveStats(seen, slowConfirm, withThreshold), `${n} positions`);
+          }
+        }
+      }
+    });
+  }
+
+  for (const hz of [1, 5]) {
+    it(`un seuil qui change à mi-parcours refait les statistiques sur la cinématique gardée, à ${hz} Hz`, () => {
+      const segments = scenario(hz, 'doppler');
+      const total = segments.reduce((n, s) => n + s.length, 0);
+      const memory = createLiveStatsMemory();
+      // Seuil remesuré toutes les 60 s de trace, comme l'allure de la session (`useLiveRecording`), alterné ici.
+      let changes = 0;
+      let previousThreshold: number | null = null;
+      for (let n = 2 * hz; n <= total; n += 2 * hz) {
+        const seen = seenAfter(segments, n);
+        const last = seen[seen.length - 1];
+        const threshold = 8 + (Math.floor((last[last.length - 1].timeMs - T0) / 60_000) % 2) * 3;
+        const options = { ...withThreshold, activeThreshold: threshold };
+        const entriesBefore = memory.entries.slice();
+        const live = computeLiveStats(seen, wing, options, memory);
+        if (previousThreshold !== null && threshold !== previousThreshold) {
+          changes++;
+          // La cinématique de chaque segment déjà vu est gardée : mêmes entrées, même trace.
+          entriesBefore.forEach((entry, k) => expect(memory.entries[k]).toBe(entry));
+          expectSame(live, computeLiveStats(seen, wing, options), `seuil ${threshold}, ${n} positions`);
+        } else if (n % (37 * hz) === 0) {
+          expectSame(live, computeLiveStats(seen, wing, options), `seuil ${threshold}, ${n} positions`);
+        }
+        previousThreshold = threshold;
+      }
+      expect(changes).toBeGreaterThan(15);
+    }, 60_000);
+  }
+});
+
 describe('computeLiveStats : derniers mètres, pente, vitesse ascensionnelle', () => {
   it('donne la vitesse des 300 derniers mètres', () => {
     // 800 s à 2 m/s puis 100 s à 4 m/s : les 300 derniers mètres tiennent dans la partie à 4 m/s.

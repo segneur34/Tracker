@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { LocationFix } from '../platform/location';
 import { computeLiveStats } from './liveStats';
+import { resumeLiveLegs, splitLiveLegs, type LiveLegSplit, type LiveLegsMemory } from './liveLegs';
+import { computeKinematics } from '../core/kinematics';
 import { angleDiff } from '../core/angles';
 import { M_PER_DEG_LAT, mPerDegLon } from '../test/geo.fixture';
 
@@ -128,4 +130,51 @@ describe('bords du direct', () => {
     const stats = computeLiveStats([tack()], SPORT_PROFILES.running);
     expect(stats.legs).toEqual({ current: null, previous: null });
   });
+});
+
+describe('resumeLiveLegs', () => {
+  const trackOf = (fixes: LocationFix[]) =>
+    computeKinematics(
+      fixes.map((f) => ({ lat: f.lat, lon: f.lon, time: new Date(f.timeMs), rawTimeMs: f.timeMs, speedMs: f.speedMs })),
+      { medianWindowSeconds: wing.medianWindowSeconds, maxSpeedMs: wing.maxPlausibleSpeedMs, maxGapS: wing.maxGapS }
+    );
+  /** Virements, bord ouvert de 20 min, manœuvre lente, clapot. */
+  const course = (hz: number) => sail(
+    [
+      { durationS: 120, fromDeg: 45, speedMs: 8 },
+      { durationS: 6, fromDeg: 45, toDeg: 315, speedMs: 4 },
+      { durationS: 90, fromDeg: 315, speedMs: 7 },
+      { durationS: 24, fromDeg: 315, toDeg: 135, speedMs: 5 },
+      { durationS: 1200, fromDeg: 135, speedMs: 7.5 },
+      { durationS: 8, fromDeg: 135, toDeg: 45, speedMs: 4 },
+      { durationS: 60, fromDeg: 45, speedMs: 6 },
+    ],
+    hz, 0, (t) => 6 * Math.sin(t / 4)
+  );
+
+  for (const hz of [1, 5]) {
+    it(`repris sur une trace qui s'allonge, donne les bords du calcul entier, à ${hz} Hz`, () => {
+      const fixes = course(hz);
+      const track = trackOf(fixes);
+      // Le virage compressé dans un seul pas : un enregistreur économique qui se tait 22 s.
+      const compressed = trackOf([...sail([{ durationS: 120, fromDeg: 45, speedMs: 5 }]), ...sail([{ durationS: 22, fromDeg: 180, speedMs: 3 }, { durationS: 120, fromDeg: 315, speedMs: 5 }], 1, 120).slice(22)]);
+      for (const whole of [track, compressed]) {
+        let memory: LiveLegsMemory | null = null;
+        let frozen = 0;
+        let sawLongOpen = false;
+        for (let n = 2; n <= whole.length; n += 1 + ((n * 13) % 9)) {
+          const prefix = whole.slice(0, n);
+          // Points figés : jamais moins qu'à l'appel précédent, de 0 à 16 points avant la fin.
+          frozen = Math.max(frozen, n - ((n * 7) % 17));
+          const resumed: { split: LiveLegSplit; memory: LiveLegsMemory | null } = resumeLiveLegs(prefix, frozen, memory);
+          memory = resumed.memory;
+          const open = resumed.split.open;
+          if (open && open.endMs - open.startMs > 19 * 60_000) sawLongOpen = true;
+          if (n % 3 !== 0 && n !== whole.length) continue;
+          expect(resumed.split).toEqual(splitLiveLegs(prefix));
+        }
+        expect(sawLongOpen).toBe(whole === track);
+      }
+    });
+  }
 });

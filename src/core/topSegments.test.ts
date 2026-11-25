@@ -5,9 +5,12 @@ import {
   computeActiveDistanceM,
   computeActiveTimeMs,
   computeActivityMask,
+  extendCumulativeTrack,
 } from './sessionStats';
 import { computeKinematics } from './kinematics';
-import { bestWindowSpeedMs, computeAllTopSegments, computeTopSegments } from './topSegments';
+import {
+  WINDOW_SCAN_START, bestWindowSpeedMs, computeAllTopSegments, computeTopSegments, extendHoleCounts, scanBestWindow,
+} from './topSegments';
 import type { RawTrackPoint, TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
 import { sameData } from '../test/sameData';
@@ -478,5 +481,51 @@ describe('bestWindowSpeedMs : vitesse max, meilleure moyenne sur 2 s (Q34, lot 8
       for (const d of [2, 5, 30]) expect(bestWindowSpeedMs(track, cum, d)).toBe(frozenBestTopOf(track, cum, d));
     }
     expect(bestWindowSpeedMs([], buildCumulativeTrack([]), 2)).toBe(frozenBestTopOf([], buildCumulativeTrack([]), 2));
+  });
+});
+
+describe('scanBestWindow', () => {
+  /** Trace à `hz` aux vitesses qui ondulent, pas de 4 s par endroits, deux trous de la trace. */
+  const bumpy = (hz: number): TrackPoint[] => {
+    const speeds = Array.from({ length: 200 * hz }, (_, k) => 5 + 3 * Math.sin(k / (7 * hz)) + (k % (37 * hz) === 5 ? 4 : 0));
+    let timeMs = eastwardTrack([0])[0].timeMs;
+    return eastwardTrack(speeds, 1 / hz).map((p, k) => {
+      timeMs += k === 0 ? 0 : k % (53 * hz) === 9 ? 4000 : 1000 / hz;
+      return { ...p, timeMs, ...(k === 60 * hz || k === 140 * hz ? { gapDistanceM: 12 } : {}) };
+    });
+  };
+
+  for (const hz of [1, 5]) {
+    it(`repris sur une trace qui s'allonge, donne la vitesse du calcul entier, à ${hz} Hz`, () => {
+      const track = bumpy(hz);
+      for (const durationS of [2, 10]) {
+        let scan = WINDOW_SCAN_START;
+        let frozen = 0;
+        const cum = { cumDist: [0], cumTime: [0] };
+        const holes = [0];
+        for (let n = 2; n <= track.length; n += 1 + ((n * 13) % 7)) {
+          const prefix = track.slice(0, n);
+          extendCumulativeTrack(prefix, cum, Math.max(1, frozen));
+          extendHoleCounts(prefix, holes, frozen);
+          // Points figés : jamais moins qu'au calcul précédent, de 0 à 12 points avant la fin.
+          const nextFrozen = Math.max(frozen, n - ((n * 7) % 13));
+          const { best, frozen: kept } = scanBestWindow(cum, holes, 0, durationS, scan, nextFrozen);
+          expect(best).toBe(bestWindowSpeedMs(prefix, buildCumulativeTrack(prefix), durationS));
+          scan = kept;
+          frozen = nextFrozen;
+        }
+      }
+    });
+  }
+
+  it("lit un passage par ses propres cumuls et les trous décalés d'autant", () => {
+    const track = bumpy(1);
+    const holes = extendHoleCounts(track, [0]);
+    for (const from of [0, 10, 59, 61]) {
+      const slice = track.slice(from);
+      const cum = extendCumulativeTrack(track, { cumDist: [0], cumTime: [0] }, 1, from);
+      expect(cum).toEqual(buildCumulativeTrack(slice));
+      expect(scanBestWindow(cum, holes, from, 2, WINDOW_SCAN_START, 0).best).toBe(bestWindowSpeedMs(slice, buildCumulativeTrack(slice), 2));
+    }
   });
 });
