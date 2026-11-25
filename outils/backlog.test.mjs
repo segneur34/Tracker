@@ -94,7 +94,7 @@ describe('tableau de bord', () => {
     expect(lignes.length).toBeLessThanOrEqual(20)
   })
 
-  it('ne compte pas les lots validés sur lecture dans la limite de Maintenant', () => {
+  it('ne limite pas Maintenant : les lots prêts restent annoncés, les lots sur lecture rangés à part', () => {
     const lot = (n, essai) => [
       `- ${n} · [idée] Lot ${n} · noté 20/10 · petit · à valider`,
       ...(essai ? [`  - essai ${essai} : quoi → attendu.`] : []),
@@ -103,11 +103,12 @@ describe('tableau de bord', () => {
     const { r, lignes, alertes: a } = bord(fichier({ maintenant, prochains: '' }))
     expect(r.erreurs).toEqual([])
     expect(a).toEqual([])
-    expect(lignes).toContain('- Rien avant validation : 3 lots attendent leurs essais.')
+    expect(lignes.some((l) => l.startsWith('- Rien avant validation'))).toBe(false)
+    expect(lignes.some((l) => l.startsWith("- Prêts, dans l'ordre :"))).toBe(true)
     expect(lignes).toContain('- À relire et valider, sans essai : lots 20, 21.')
   })
 
-  it('alerte au-delà de 3 lots avec essais, de 7 dans Ensuite, de 5 questions et de 4 semaines', () => {
+  it('alerte au-delà de 7 dans Ensuite, de 5 questions et de 4 semaines, jamais sur le nombre de lots avec essais', () => {
     const maintenant = [10, 11, 12, 13].flatMap((n) => [
       `- ${n} · [idée] Lot ${n} · noté 20/10 · à valider`,
       `  - essai ${n} : quoi → attendu.`,
@@ -118,7 +119,6 @@ describe('tableau de bord', () => {
     const { r, alertes: a } = bord(fichier({ maintenant, ensuite, questions, occasion: [], plusTard: [], prochains: '' }))
     expect(r.erreurs).toEqual([])
     expect(a).toEqual([
-      "Maintenant : 4 lots attendent des essais au téléphone (3 au plus) : valider avant d'en lancer un autre.",
       'Ensuite : 8 éléments (7 au plus) : en renvoyer en Plus tard.',
       'Questions : 6 ouvertes (5 au plus).',
       'Q6 sans réponse depuis 4 semaines ou plus : proposer de la trancher par défaut.',
@@ -138,7 +138,7 @@ describe('tableau de bord', () => {
     expect(lignes).toContain('- 2 idées ou dettes ; 90 jours ou plus, à garder ou lâcher : 16 Pile 90 jours (noté 30/07).')
   })
 
-  it('range un lot bloqué chez vous et un lot à revoir chez Claude, hors de la limite de 3', () => {
+  it('range un lot bloqué chez vous et un lot à revoir chez Claude', () => {
     const lot = (n, etat, essai) => [
       `- ${n} · [idée] Lot ${n} : détail · noté 20/10 · petit · ${etat}`,
       ...(essai ? [`  - essai ${essai} : quoi → attendu.`] : []),

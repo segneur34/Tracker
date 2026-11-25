@@ -21,7 +21,7 @@ Fable, effort high, dès que le paquet contient un lot « Fable » ou une questi
 
 ## 1. Résultats d'essais, s'il y en a dans l'argument
 
-Exactement l'étape 3 de `/clore` (`.claude/skills/clore/SKILL.md`), qui fait foi : essai ok, sous-ligne supprimée ; essai raté, sous-ligne retirée et `[bogue]` en tête d'Ensuite (numéro pris dans « Prochains numéros », mis à jour ; remarque de l'utilisateur), le lot restant dans Maintenant « à revoir : bogue n° M », hors de la limite de 3 ; lot sur lecture retenu par `ok sauf lot L`, remarque dans son état ; lots validés passés à l'agent `doc` un par un, puis leur ligne supprimée ; un bogue fait et validé emporte avec lui la ligne de son lot « à revoir » ; commit de la doc.
+Exactement l'étape 3 de `/clore` (`.claude/skills/clore/SKILL.md`), qui fait foi : essai ok, sous-ligne supprimée ; essai raté, sous-ligne retirée et `[bogue]` en tête d'Ensuite (numéro pris dans « Prochains numéros », mis à jour ; remarque de l'utilisateur), le lot restant dans Maintenant « à revoir : bogue n° M » ; lot sur lecture retenu par `ok sauf lot L`, remarque dans son état ; lots validés passés à l'agent `doc` un par un, puis leur ligne supprimée ; un bogue fait et validé emporte avec lui la ligne de son lot « à revoir » ; commit de la doc.
 
 ## 2. La boucle
 
@@ -38,7 +38,7 @@ Les lots se prennent dans l'ordre d'Ensuite. Leur code peut s'écrire en parall�
 - Rendu le plus tôt possible : un lot fini avant celui qui le précède dans l'ordre peut être rapatrié et commité le premier, puisqu'il est indépendant.
 
 Pour chaque lot :
-1. **Limite** : si Maintenant compte déjà 3 lots avec des essais au téléphone (`node outils/backlog.mjs` le dit : « Rien avant validation »), ne lance rien : « validez d'abord les essais », et propose `/clore`. Un lot validé sur lecture, sans essai, ne compte pas.
+1. **Pas de limite** (décision de l'utilisateur du 25/11, qui retire celle des 3 lots avec essais) : le nombre de lots de Maintenant qui attendent leurs essais ne retient rien ; la boucle ne s'arrête que sur les cas de « 4. Arrêt ».
 2. Prendre le premier élément d'Ensuite dont « dépend de » est levé. `git status --short` doit être vide (hors `docs/BACKLOG.md` et `docs/backlog/`, dont les changements partent avec le commit suivant, celui du lot ou de la doc) ; sinon un lot précédent a été mal clos (étape 5 ou 6) : le dire et s'arrêter. Déplacer sa ligne en Maintenant, état « en cours ».
 3. Deux garde-fous avant de coder, puis le lancement :
    - **Maquette d'abord** pour un lot qui change ce que l'utilisateur voit (page neuve, disposition, image de partage, thème) : si la ligne ou le brief ne cite pas une maquette validée, ne lance pas le lot ; traite-le comme BLOQUÉ par une question majeure (étape 5) et propose la maquette. C'est le plan de l'utilisateur, le seul qui vaille d'attendre.
@@ -64,7 +64,6 @@ Seulement une vraie décision : choix de produit, donnée perdue, seuil à reten
 
 Arrête la boucle, mets `docs/BACKLOG.md` à jour, lance `node outils/backlog.mjs` (sans erreur de forme), et propose `/clore` quand :
 - un paquet de 2 ou 3 lots est « à valider » : construis alors l'APK (procédure au §12 d'ETAT, version déjà augmentée), pose son tag annoté `v<version>`, installe-la, et note-la dans la première ligne de Maintenant (« APK <version> installée le jj/mm (versionCode …). ») ;
-- la limite de 3 lots avec essais est atteinte ;
 - une compaction a eu lieu, ou `/context` dépasse environ 60 % ;
 - tout ce qui reste est bloqué par des réponses de l'utilisateur : pose alors toutes les questions en attente en une fois (`AskUserQuestion`, quatre au plus, une recommandation en tête).
 
