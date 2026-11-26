@@ -111,13 +111,21 @@ export function estTemporaire(nom: string): boolean {
   return (bas.endsWith(SUFFIXE_REMPLACEMENT) && bas.length > SUFFIXE_REMPLACEMENT.length) || (bas.endsWith(SUFFIXE_NEUF) && bas.length > SUFFIXE_NEUF.length)
 }
 
-/** Vrai si le segment est un nom de fichier ou de dossier admis. */
-export function segmentAdmis(segment: string): boolean {
+/**
+ * Vrai si le segment peut être écrit tel quel sur le disque de Windows (une copie de sécurité) : ni vide, ni `.` ou
+ * `..`, ni caractère interdit ou de contrôle, ni point ou espace finale, ni nom réservé. Les noms provisoires passent.
+ */
+export function segmentCopiable(segment: string): boolean {
   if (segment === '' || segment === '.' || segment === '..') return false
   if (CARACTERES_INTERDITS.test(segment) || aUnCaractereDeControle(segment)) return false
   // Windows retire en silence un point ou une espace finale : `a.` et `a` seraient le même fichier.
   if (segment.endsWith('.') || segment.endsWith(' ')) return false
-  if (NOMS_RESERVES.test(segment)) return false
+  return !NOMS_RESERVES.test(segment)
+}
+
+/** Vrai si le segment est un nom de fichier ou de dossier admis. */
+export function segmentAdmis(segment: string): boolean {
+  if (!segmentCopiable(segment)) return false
   const bas = segment.toLowerCase()
   return !bas.endsWith(SUFFIXE_REMPLACEMENT) && !bas.endsWith(SUFFIXE_NEUF)
 }

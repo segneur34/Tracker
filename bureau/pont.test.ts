@@ -6,7 +6,7 @@ import { ORIGINE } from './origine'
 import type { EvenementPont, Gestionnaire } from './pont'
 import { brancherCanaux, enReponse, expediteurAdmis, reussite, uneALaFois } from './pont'
 import { ErreurDisque } from './disque'
-import { CANAUX_TELEPHONE, gestionnairesTelephone } from './telephone'
+import { CANAUX_TELEPHONE, dossierLocal, gestionnairesTelephone } from './telephone'
 
 const page = { nom: 'contenu de la fenêtre principale' }
 const tete = { url: `${ORIGINE}/sessions`, parent: null }
@@ -97,18 +97,20 @@ describe('uneALaFois', () => {
 
 describe('preload', () => {
   it('nomme les canaux du téléphone comme ses gestionnaires', () => {
-    const servis = Object.keys(gestionnairesTelephone({ etat: async () => ({ etat: 'absent' }), lister: async () => [], lire: async () => undefined }, '.'))
+    const servis = Object.keys(gestionnairesTelephone(dossierLocal(null), '.'))
     expect(servis).toEqual(CANAUX_TELEPHONE.map((nom) => `telephone:${nom}`))
   })
 
-  it('expose exactement les canaux servis par la mémoire et le téléphone (lecture seule), une fonction chacun, sans ipcRenderer tel quel', () => {
+  it('expose exactement les canaux servis par la mémoire et le téléphone (aucun effacement), une fonction chacun, sans ipcRenderer tel quel', () => {
     const source = readFileSync(path.join(__dirname, 'preload.ts'), 'utf8')
     const canaux = [...source.matchAll(/'memoire:([A-Za-z]+)'/g)].map((m) => m[1])
     expect(canaux).toEqual([...CANAUX_MEMOIRE])
     for (const nom of CANAUX_MEMOIRE) expect(source).toMatch(new RegExp(`\\b${nom}: (sans|avec)\\('memoire:${nom}'\\)`))
     const telephone = [...source.matchAll(/'telephone:([A-Za-z]+)'/g)].map((m) => m[1])
     expect(telephone).toEqual([...CANAUX_TELEPHONE])
-    expect(telephone).toEqual(['etat', 'lister', 'lireOctets'])
+    expect(telephone).toEqual(['etat', 'lister', 'lireOctets', 'enregistrement', 'ecrireOctets', 'listerCorbeille', 'mettreDeCote', 'copieSecurite', 'copieExiste'])
+    // Le téléphone n'a aucun canal d'effacement : un retrait est une mise de côté dans sa corbeille.
+    expect(telephone.filter((nom) => /effac|suppr|retir|rm/i.test(nom))).toEqual([])
     for (const nom of CANAUX_TELEPHONE) expect(source).toMatch(new RegExp(`\\b${nom}: (sans|avec)\\('telephone:${nom}'\\)`))
     expect(source).toMatch(/^\s+telephone,$/m)
     // Les textes de la coquille restent en français, écrits dans `main.ts` : aucun canal de textes ; deux seuls appels à `invoke` (`sans`, `avec`).

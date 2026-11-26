@@ -35,8 +35,9 @@ import { findSession, sessionOfFile } from './sessionLibrary/memory';
  * découpé par sujet sous `hooks/sessionLibrary/` (lot 113), en couches dont
  * chacune n'importe que les précédentes (`couches.test.ts`) : `store`,
  * `memory`, `summarySettings`, `recordWrites`, `cache`, `scan`,
- * `summaryQueue`, `deviceSettings`, `placeQueue`, `addSession`, `pending`, `importer`, `phoneRecovery`, `incoming`,
- * `sessionRecords`, `lifecycle`.
+ * `summaryQueue`, `deviceSettings`, `placeQueue`, `addSession`, `pending`, `importer`, `incoming`,
+ * `sessionRecords`, `lifecycle`, `trashRestore`, et la synchronisation avec le téléphone : `syncRouteFiles`,
+ * `sync`, `phoneSync`.
  */
 
 export type { LibraryState, LibraryStatus } from './sessionLibrary/store';
@@ -48,9 +49,9 @@ export { adoptSettingsFile, importSettingsFile, renameDevice, settingsUpgraded }
 export { startPlaceSearch } from './sessionLibrary/placeQueue';
 export type { AddResult, AddStatus } from './sessionLibrary/addSession';
 export { answerImportQuestion, canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
-export { dismissPhoneRecovery, recoverFromPhone, usePhoneRecovery } from './sessionLibrary/phoneRecovery';
-export type { PhoneRecoveryStep } from './sessionLibrary/phoneRecovery';
 export { startIncomingFiles } from './sessionLibrary/incoming';
+export { cancelPhoneSync, confirmPhoneSync, dismissPhoneSync, startPhoneSync, usePhoneSync } from './sessionLibrary/phoneSync';
+export type { PhoneSyncStep } from './sessionLibrary/phoneSync';
 export {
   loadFullSession, loadSessionGpx, readSessionExport, readSessionGpx, readSessionMotion, removeSession,
   updateSessionRecord,

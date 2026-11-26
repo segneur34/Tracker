@@ -320,6 +320,40 @@ const sameAsLine = (s: Seen, side: SyncSideName, line: SyncBaseRoute): boolean =
     && (gpx === null ? now.gpx === null : now.gpx !== null && now.gpx.name === gpx.name && now.gpx.size === gpx.size);
 };
 
+/** Valeur JSON aux clés triées, pour comparer deux fiches sans égard à l'ordre de leurs champs. */
+const canonical = (value: unknown): unknown =>
+  Array.isArray(value) ? value.map(canonical)
+    : value !== null && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical((value as Record<string, unknown>)[key])]))
+      : value;
+
+/** Le lieu d'une fiche d'itinéraire (`place`), `undefined` s'il n'y en a pas ou si elle ne se lit pas. */
+const placeOf = (text: string): unknown => {
+  try {
+    const record: unknown = JSON.parse(text);
+    return record !== null && typeof record === 'object' ? (record as Record<string, unknown>).place ?? undefined : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Vrai si deux fiches d'itinéraire ne diffèrent que par leur lieu (`place`, trouvé en fond après le rangement et écrit
+ * sans changer `updatedAt`, lot 236) : deux appareils qui l'ont trouvé chacun de leur côté n'ont rien changé l'un
+ * contre l'autre.
+ */
+export const routesDifferOnlyByPlace = (a: string, b: string): boolean => {
+  try {
+    const [ra, rb]: unknown[] = [JSON.parse(a), JSON.parse(b)];
+    if (ra === null || rb === null || typeof ra !== 'object' || typeof rb !== 'object') return false;
+    const { place: _pa, ...restA } = ra as Record<string, unknown>;
+    const { place: _pb, ...restB } = rb as Record<string, unknown>;
+    return JSON.stringify(canonical(restA)) === JSON.stringify(canonical(restB));
+  } catch {
+    return false;
+  }
+};
+
 /** Vrai si cet itinéraire part d'un appareil : mis à la corbeille de l'ordinateur, ou retiré du téléphone. */
 export const isRouteDeletion = (item: RouteSyncItem): boolean => item.ops.some((op) => op.kind === 'trash' || op.kind === 'removeFromPhone');
 
@@ -452,8 +486,12 @@ export const planRouteSync = (input: RouteSyncInput): RouteSyncPlan => {
       // Mêmes fiches, autres tampons (fiche relue sans changement, GPX refait) : la ligne est reposée.
       return { ...item, base: { kind: 'set', computer: { base: o.files.base, updatedAt: o.updatedAt as string }, phone: { base: t.files.base, updatedAt: t.updatedAt as string } } };
     }
-    const conflict = changed.computer && changed.phone;
-    const from: SyncSideName = conflict ? (dateOf(o.updatedAt) >= dateOf(t.updatedAt) ? 'computer' : 'phone') : changed.computer ? 'computer' : 'phone';
+    // Changées des deux côtés, mais seulement par le lieu, trouvé de chaque côté : ni conflit ni copie à la corbeille ;
+    // le lieu de l'ordinateur est gardé (celui du téléphone s'il n'y en a qu'un), et il passe à l'autre fiche.
+    const onlyPlace = changed.computer && changed.phone && o.text !== null && t.text !== null && routesDifferOnlyByPlace(o.text, t.text);
+    const conflict = changed.computer && changed.phone && !onlyPlace;
+    const from: SyncSideName = onlyPlace ? (placeOf(o.text as string) === undefined && placeOf(t.text as string) !== undefined ? 'phone' : 'computer')
+      : conflict ? (dateOf(o.updatedAt) >= dateOf(t.updatedAt) ? 'computer' : 'phone') : changed.computer ? 'computer' : 'phone';
     const to = otherSyncSide(from);
     const source = sides[from];
     const target = sides[to];

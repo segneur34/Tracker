@@ -38,6 +38,21 @@ const lockedText = (state: string): string | null =>
     : state === 'newer' ? "La corbeille vient d'une version plus récente de Tracker : mettez l'application à jour pour l'ouvrir."
       : null;
 
+let trashGate: Promise<void> = Promise.resolve();
+
+/**
+ * Tient la corbeille pendant `action` (une synchronisation, qui compte sur ce qu'elle tient pour retirer une session
+ * du téléphone) : « Restaurer », « Supprimer définitivement », « Vider la corbeille » et la purge attendent sa fin.
+ */
+export const holdTrashDuring = <T,>(action: () => Promise<T>): Promise<T> => {
+  const running = action();
+  trashGate = running.then(() => undefined, () => undefined);
+  return running;
+};
+
+/** Attend qu'aucune synchronisation ne tienne la corbeille. */
+export const trashReleased = (): Promise<void> => trashGate;
+
 /** Relit l'index de la corbeille du dossier ouvert ; vide hors du programme Windows. */
 export const reloadTrash = async (): Promise<void> => {
   const f = trashFolderOf(lib.folder);
@@ -65,6 +80,7 @@ export const startTrash = async (opened: MemoryFolder): Promise<void> => {
     return;
   }
   try {
+    await trashReleased();
     await purgeTrash(f, Date.now());
   } catch {
     // Purge reprise au lancement suivant ; la corbeille se lit quand même.

@@ -7,7 +7,7 @@ import {
 } from './syncBase';
 import { SYNC_GUARD_LIMITS, SYNC_GUARD_MAX_REMOVALS, type SyncHeldChoice, type SyncScope } from './syncPlan';
 import {
-  planRouteSync, restrictRouteSyncPlan, routeRecordsToRead, syncRouteId, syncRouteLineOf, syncRouteListing, syncRouteSide, syncWholeGuard,
+  planRouteSync, restrictRouteSyncPlan, routeRecordsToRead, syncRouteId, syncRouteLineOf, syncRouteListing, syncRouteSide, syncWholeGuard, routesDifferOnlyByPlace,
   type RouteSyncItem, type RouteSyncPlan,
 } from './syncRoutes';
 import { SYNC_NOW_MS, createSyncFolder, type SyncFolder } from '../test/syncFolder.fixture';
@@ -596,6 +596,34 @@ describe('garde-fou et restrictions', () => {
     expect(updatedOf(pair.computer, 'r0')).toBe(iso(21));
     expect(updatedOf(pair.phone, 'r2')).toBe(iso(22));
     expect(pair.trash).toMatchObject([{ id: iso(0), origin: 'ordinateur' }]);
+  });
+
+  it('lieu trouvé des deux côtés, sans autre changement : ni conflit ni corbeille, le lieu de l’ordinateur gagne', async () => {
+    const pair = await syncedPair(2);
+    // Le lieu est rangé dans la fiche sans changer `updatedAt` (lot 236), chacun le sien.
+    const withPlace = (folder: SyncFolder, base: string, place: unknown): void => {
+      const record = JSON.parse(folder.text(routePath(`${base}.json`)) as string) as Record<string, unknown>;
+      folder.put(routePath(`${base}.json`), `${JSON.stringify({ ...record, place })}\n`);
+    };
+    withPlace(pair.computer, 'r0', { name: 'Montpellier', fetchedAt: 1 });
+    withPlace(pair.phone, 'r0', { name: 'Montpellier-Centre', fetchedAt: 2 });
+    // Un seul côté l'a trouvé, l'autre non, et les deux fiches ont été relues : le lieu passe, sans conflit.
+    withPlace(pair.phone, 'r1', { name: 'Sète', fetchedAt: 3 });
+    withPlace(pair.computer, 'r1', undefined);
+    const plan = await run(pair);
+    expect(itemOf(plan, iso(0))).toMatchObject({ conflict: false, ops: [{ kind: 'copy', to: 'phone' }] });
+    expect(itemOf(plan, iso(1))).toMatchObject({ conflict: false, ops: [{ kind: 'copy', to: 'computer' }] });
+    expect(opKinds(plan)).not.toContain('loserToTrash');
+    expect(pair.trash).toEqual([]);
+    expect(JSON.parse(pair.phone.text(routePath('r0.json')) as string).place).toEqual({ name: 'Montpellier', fetchedAt: 1 });
+    expect(JSON.parse(pair.computer.text(routePath('r1.json')) as string).place).toEqual({ name: 'Sète', fetchedAt: 3 });
+    // Autre chose changé que le lieu : c'est bien un conflit, la perdante passe à la corbeille.
+    editRoute(pair.computer, 'r0', iso(20), 46);
+    editRoute(pair.phone, 'r0', iso(21), 47);
+    expect(itemOf(await run(pair), iso(0))).toMatchObject({ conflict: true, ops: [{ kind: 'loserToTrash' }, { kind: 'copy', to: 'computer' }] });
+    expect(routesDifferOnlyByPlace('{"a":1,"place":{"n":1}}', '{"place":{"n":2},"a":1}')).toBe(true);
+    expect(routesDifferOnlyByPlace('{"a":1}', '{"a":2}')).toBe(false);
+    expect(routesDifferOnlyByPlace('pas du json', '{"a":1}')).toBe(false);
   });
 
   it('une version perdante n’est jamais écrasée sans avoir été rangée : un conflit à moitié permis attend entier', () => {

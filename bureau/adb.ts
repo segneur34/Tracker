@@ -1,11 +1,26 @@
-// Le dossier du téléphone par le débogage USB, en LECTURE SEULE : `adb.exe`, l'outil de Google, cherché sur le poste
-// (il n'est pas livré avec le programme), lancé par un tableau d'arguments (`execFile`, sans shell de Windows ni chaîne
-// de commande). Sans Electron.
+// Le dossier du téléphone par le débogage USB : `adb.exe`, l'outil de Google, cherché sur le poste (il n'est pas livré
+// avec le programme), lancé par un tableau d'arguments (`execFile`, sans shell de Windows ni chaîne de commande). Sans
+// Electron.
 //
-// Commandes lancées, et elles seules : `version`, `start-server`, `devices -l`, `shell` avec l'un des trois textes
-// fixes du listage (`commandesListage`), et `pull -a` d'un fichier du dernier listage (le chemin passe en argument, par
-// le protocole de copie d'adb, sans shell). Aucune commande qui écrive, renomme ou retire quoi que ce soit sur le
-// téléphone n'existe ici ; un test relit ce fichier pour le garantir.
+// Commandes lancées, et elles seules (liste fermée, un test relit ce fichier pour la garantir) :
+// - `version`, `start-server`, `devices -l` ;
+// - `pull -a` d'un fichier du dernier listage, `push` d'un fichier du PC vers `nom.tracker-new` sous la racine (chemins
+//   passés en arguments, par le protocole de copie d'adb, sans shell) ;
+// - `shell` avec un texte que seul `texteShell` fabrique, d'après une `CommandeShell` dont chaque chemin est vérifié :
+//   les textes fixes du listage, `dumpsys activity services <paquet>`, `stat -c` d'un fichier ou de dossiers,
+//   `mv -f nom.tracker-new nom` sous la racine, `mv` d'un fichier de la racine vers la corbeille du téléphone,
+//   `mkdir -p` d'un dossier de la corbeille, le listage d'un jour de la corbeille, le listage entier de la racine pour la
+//   copie de sécurité (`listageTout`, lecture seule, lu par `pull` fichier par fichier), et `rm -f` d'un seul
+//   `nom.tracker-new` sous la racine, le provisoire d'un envoi raté, jamais un fichier de l'utilisateur.
+// Les sorties d'`adb shell` sont lues en UTF-8 (`lanceurReel`), comme le téléphone les écrit : un nom accentué se
+// relit tel quel.
+// Le shell du téléphone recolle la commande : chaque nom y passe entre apostrophes (`citerShell`). Jamais
+// `kill-server`, jamais `rm` d'un autre nom, jamais `-r`.
+//
+// Écriture d'un fichier : relue l'activité de l'application (aucun service de premier plan, `lireServices`), `push`
+// vers `nom.tracker-new`, taille relue par `stat`, puis `mv -f` sur le nom. Sur un échec, le provisoire est retiré et
+// le fichier d'arrivée n'a pas été touché. Retrait : `mv` vers la corbeille du téléphone, après relecture du fichier
+// (taille et date du listage) et de la place visée (libre), puis relecture des deux.
 //
 // Liaison tenue par un autre : un seul serveur adb tient le téléphone. Un client d'une autre version que le serveur en
 // place l'arrête pour lancer le sien, ce qui couperait l'outil de l'utilisateur (Android Studio, scrcpy, la coquille de
@@ -16,7 +31,8 @@
 // aucune commande. Le serveur d'un autre n'est jamais arrêté.
 //
 // Plusieurs appareils branchés (ou un émulateur ouvert) : état `plusieurs`, refusé. Les commandes visent la série du
-// téléphone prêt (`-s`), et une lecture celle du dernier listage seulement.
+// téléphone prêt (`-s`) ; une lecture, une écriture ou un retrait celle du dernier listage seulement, et une écriture
+// ou un retrait revoit d'abord la liste des appareils : un seul, le même, sinon refus.
 //
 // Chaque commande a son délai maximal ; les commandes passent l'une après l'autre (la file est celle des gestionnaires
 // de `telephone.ts`).
@@ -25,17 +41,51 @@ import { execFile } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { connect } from 'node:net'
 import path from 'node:path'
-import { ErreurDisque } from './disque'
-import type { DossierDistant, EtatTelephone, FichierTelephone, FichierVu } from './telephone'
-import { NOM_RACINE, RACINE_ESSAI, commeLeTelephone, fichiersAdmis, pasPret, racineAbsente, sansReel } from './telephone'
+import { ErreurDisque, SUFFIXE_NEUF, SUFFIXE_REMPLACEMENT } from './disque'
+import type { DossierDistant, EtatTelephone, FichierBrut, FichierTelephone, FichierVu } from './telephone'
+import {
+  CORBEILLE_PAGE,
+  DOSSIERS_RETIRABLES,
+  NOM_RACINE,
+  PAQUET_APPLICATION,
+  RACINE_ESSAI,
+  SERVICES_APPLICATION,
+  changeDepuisListage,
+  cheminEcrivable,
+  cheminRefuse,
+  cheminRetirable,
+  commeLeTelephone,
+  corbeillePrise,
+  dossierCorbeilleAdmis,
+  enregistrementEnCours,
+  fichiersAdmis,
+  nomCorbeille,
+  nomProvisoire,
+  pasListe,
+  pasPret,
+  racineAbsente,
+  retraitAdmis,
+  sansReel,
+} from './telephone'
+
+/** Dossier sous lequel vivent la mémoire du téléphone et sa corbeille. */
+const DOCUMENTS = '/sdcard/Documents'
 
 /** Dossier du téléphone lu par défaut, dans sa mémoire partagée. */
-export const RACINE_DISTANTE = `/sdcard/Documents/${NOM_RACINE}`
+export const RACINE_DISTANTE = `${DOCUMENTS}/${NOM_RACINE}`
 
 /** Chemin du dossier lu sur le téléphone : `Documents/Tracker`, ou une racine d'essai (`RACINE_ESSAI`) ; tout autre nom lève. */
 export function racineDistante(nomRacine: string = NOM_RACINE): string {
   if (nomRacine !== NOM_RACINE && !RACINE_ESSAI.test(nomRacine)) throw new ErreurDisque('UNKNOWN', `Racine du téléphone refusée : ${nomRacine.slice(0, 60)}`)
-  return `/sdcard/Documents/${nomRacine}`
+  return `${DOCUMENTS}/${nomRacine}`
+}
+
+/** Les deux seuls lieux où une commande peut écrire : la racine lue et la corbeille du téléphone, chemins absolus. */
+export type LieuxDistants = { racine: string; corbeille: string }
+
+/** Racine et corbeille d'un nom de racine admis (`racineDistante`). */
+export function lieuxDistants(nomRacine: string = NOM_RACINE): LieuxDistants {
+  return { racine: racineDistante(nomRacine), corbeille: `${DOCUMENTS}/${nomCorbeille(nomRacine)}` }
 }
 
 /** Sous-dossier où l'utilisateur peut poser l'outil, dans le profil du programme ou à côté de `Tracker.exe`. */
@@ -60,6 +110,12 @@ export const DELAIS = Object.freeze({
   parMo: 1_000,
   /** La sonde du serveur. */
   sonde: 1_000,
+  /**
+   * Durée pendant laquelle une écriture se fie à la dernière lecture de l'activité de l'application (« aucun service en
+   * cours ») au lieu d'en refaire une : `dumpsys` coûte un aller-retour au téléphone par fichier. Une mise de côté la
+   * relit toujours. Un enregistrement commencé pendant ce temps n'écrit rien dans la mémoire avant son arrêt.
+   */
+  activite: 3_000,
 })
 
 /** Taille maximale de ce qu'une commande peut écrire sur sa sortie (un listage de quelques milliers de fichiers). */
@@ -74,13 +130,13 @@ export type CommandesListage = { listage: string; racine: string; repli: string 
  * - `listage` : les fichiers de la racine et de ses sous-dossiers, chacun en « mode-en-hexadécimal taille
  *   date-en-secondes chemin », en une commande ;
  * - `racine` : repli si `find … -exec … +` manque sur le téléphone, le dossier existe-t-il ?
- * - `repli` : `stat` sur les fichiers de la racine et de `sessions/` (le mode écarte les dossiers).
+ * - `repli` : `stat` sur les fichiers de la racine et des sous-dossiers listés (le mode écarte les dossiers).
  */
 export function commandesListage(racine: string = RACINE_DISTANTE): CommandesListage {
   return {
     listage: `find ${racine} -maxdepth 2 -type f -exec stat -c '%f %s %Y %n' {} +`,
     racine: `stat -c '%f' ${racine}`,
-    repli: `stat -c '%f %s %Y %n' ${racine}/* ${racine}/sessions/*`,
+    repli: `stat -c '%f %s %Y %n' ${racine}/* ${['sessions', 'itineraires', 'reglages', 'journaux'].map((d) => `${racine}/${d}/*`).join(' ')}`,
   }
 }
 
@@ -88,6 +144,147 @@ const PAR_DEFAUT = commandesListage()
 export const COMMANDE_LISTAGE = PAR_DEFAUT.listage
 export const COMMANDE_RACINE = PAR_DEFAUT.racine
 export const COMMANDE_LISTAGE_REPLI = PAR_DEFAUT.repli
+
+/** Ce que l'application du téléphone fait tourner : ses services, filtrés sur son paquet. */
+export const COMMANDE_SERVICES = `dumpsys activity services ${PAQUET_APPLICATION}`
+
+/**
+ * Un texte cité pour le shell du téléphone (`adb shell` recolle ses arguments en une seule ligne de commande) : entre
+ * apostrophes, où rien n'est interprété (espaces, `$`, accent grave, `;`, `\`, retour à la ligne), chaque apostrophe
+ * fermant la citation, échappée, puis la rouvrant (`'\''`). Un caractère nul est refusé : il couperait la commande.
+ */
+export function citerShell(texte: string): string {
+  if (texte.includes('\0')) throw new ErreurDisque('UNKNOWN', 'Nom refusé pour le téléphone : caractère nul.')
+  return `'${texte.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * Les seules commandes `shell` envoyées au téléphone ; `texteShell` en fait le texte après avoir vérifié chaque
+ * chemin (absolu, sur le téléphone) :
+ * - `listage`, `racine`, `repli` : les textes fixes du listage de la racine (`commandesListage`) ;
+ * - `services` : `dumpsys activity services <paquet>` ;
+ * - `stat` : mode, taille et date d'un fichier de la racine (écrivable ou retirable, provisoires compris) ou de la corbeille ;
+ * - `statDossiers` : mode de la corbeille, d'un de ses jours, ou d'un sous-dossier retirable d'un jour ;
+ * - `renommer` : `mv -f nom.tracker-new nom`, `nom` écrivable sous la racine ;
+ * - `deplacer` : `mv` d'un fichier retirable de la racine (ou de son `.tracker-tmp`) vers la corbeille, même
+ *   sous-dossier, même suffixe ;
+ * - `creerDossier` : `mkdir -p` d'un sous-dossier retirable d'un jour de la corbeille ;
+ * - `listageCorbeille`, `repliCorbeille` : les fichiers d'un jour de la corbeille ;
+ * - `effacerProvisoire` : `rm -f` d'un seul `nom.tracker-new`, `nom` écrivable sous la racine.
+ */
+export type CommandeShell =
+  | { sorte: 'listage' | 'racine' | 'repli' | 'services' | 'listageTout' }
+  | { sorte: 'stat'; chemin: string }
+  | { sorte: 'statDossiers'; chemins: readonly string[] }
+  | { sorte: 'renommer'; de: string; vers: string }
+  | { sorte: 'deplacer'; de: string; vers: string }
+  | { sorte: 'creerDossier'; chemin: string }
+  | { sorte: 'listageCorbeille' | 'repliCorbeille'; jour: string }
+  | { sorte: 'effacerProvisoire'; chemin: string }
+
+/** Le chemin relatif à `dossier` d'un chemin absolu du téléphone, `null` s'il n'est pas dessous. */
+function sous(chemin: string, dossier: string): string | null {
+  return chemin.startsWith(`${dossier}/`) ? chemin.slice(dossier.length + 1) : null
+}
+
+/** `nom` sans le suffixe `suffixe`, et s'il le portait. */
+function sansSuffixe(nom: string, suffixe: string): { base: string; avec: boolean } {
+  return nom.endsWith(suffixe) && nom.length > suffixe.length ? { base: nom.slice(0, -suffixe.length), avec: true } : { base: nom, avec: false }
+}
+
+/** Le relatif d'un fichier de la racine admis pour `stat` : écrivable ou retirable, avec ou sans suffixe provisoire. */
+function relatifRacineAdmis(relatif: string): boolean {
+  const neuf = sansSuffixe(relatif, SUFFIXE_NEUF)
+  const base = neuf.avec ? neuf.base : sansSuffixe(relatif, SUFFIXE_REMPLACEMENT).base
+  return cheminEcrivable(base) || cheminRetirable(base)
+}
+
+/** Le relatif d'un fichier de la corbeille (`AAAA-MM-JJ/<sous>/<nom>`, `.tracker-tmp` admis) : sa destination, ou `null`. */
+function relatifCorbeilleAdmis(relatif: string): { sous: string; avec: boolean } | null {
+  const segments = relatif.split('/')
+  if (segments.length !== 3) return null
+  const { base, avec } = sansSuffixe(segments[2], SUFFIXE_REMPLACEMENT)
+  const d = retraitAdmis(`${segments[1]}/${base}`, `${CORBEILLE_PAGE}/${segments[0]}/${segments[1]}/${base}`)
+  return d === null ? null : { sous: d.sous, avec }
+}
+
+/** Un dossier de la corbeille admis : elle-même, un de ses jours, ou un sous-dossier retirable d'un jour. */
+function dossierCorbeilleOuJour(chemin: string, corbeille: string): boolean {
+  if (chemin === corbeille) return true
+  const relatif = sous(chemin, corbeille)
+  if (relatif === null) return false
+  const [jour, sousDossier, ...reste] = relatif.split('/')
+  if (reste.length > 0 || dossierCorbeilleAdmis(`${CORBEILLE_PAGE}/${jour}`) === null) return false
+  return sousDossier === undefined || DOSSIERS_RETIRABLES.includes(sousDossier)
+}
+
+/**
+ * Le texte d'une commande `shell`, seul passage des commandes au téléphone : chaque chemin est vérifié contre les
+ * lieux (`racine`, `corbeille`) et les listes fermées de `telephone.ts`, puis cité. Lève `PERMISSION` sur tout chemin
+ * hors liste, sans rien lancer.
+ */
+export function texteShell(commande: CommandeShell, lieux: LieuxDistants): string {
+  const { racine, corbeille } = lieux
+  const refus = (detail: string) => cheminRefuse(detail)
+  switch (commande.sorte) {
+    case 'listage':
+    case 'racine':
+    case 'repli':
+      return commandesListage(racine)[commande.sorte]
+    case 'services':
+      return COMMANDE_SERVICES
+    case 'listageTout':
+      return `find ${racine} ! -type d -exec stat -c '%f %s %Y %n' {} +`
+    case 'stat': {
+      const dansRacine = sous(commande.chemin, racine)
+      const dansCorbeille = sous(commande.chemin, corbeille)
+      const admis = dansRacine !== null ? relatifRacineAdmis(dansRacine) : dansCorbeille !== null && relatifCorbeilleAdmis(dansCorbeille) !== null
+      if (!admis) throw refus(commande.chemin)
+      return `stat -c '%f %s %Y' ${citerShell(commande.chemin)}`
+    }
+    case 'statDossiers': {
+      if (commande.chemins.length === 0 || commande.chemins.some((c) => !dossierCorbeilleOuJour(c, corbeille))) throw refus(commande.chemins.join(' '))
+      return `stat -c '%f %n' ${commande.chemins.map(citerShell).join(' ')}`
+    }
+    case 'renommer': {
+      const vers = sous(commande.vers, racine)
+      if (vers === null || !cheminEcrivable(vers) || commande.de !== nomProvisoire(commande.vers)) throw refus(`${commande.de} → ${commande.vers}`)
+      return `mv -f ${citerShell(commande.de)} ${citerShell(commande.vers)}`
+    }
+    case 'deplacer': {
+      const de = sous(commande.de, racine)
+      const vers = sous(commande.vers, corbeille)
+      const source = de === null ? null : sansSuffixe(de, SUFFIXE_REMPLACEMENT)
+      const destination = vers === null ? null : relatifCorbeilleAdmis(vers)
+      if (source === null || destination === null || !cheminRetirable(source.base) || source.base.split('/')[0] !== destination.sous) {
+        throw refus(`${commande.de} → ${commande.vers}`)
+      }
+      // Un remplacement interrompu caché ne part que sous un nom qui le reste ; l'original, sous un nom ordinaire, ou
+      // le `.tracker-tmp` que le téléphone montre sous le nom de l'original, sous ce nom.
+      if (destination.avec && !source.avec) throw refus(`${commande.de} → ${commande.vers}`)
+      return `mv ${citerShell(commande.de)} ${citerShell(commande.vers)}`
+    }
+    case 'creerDossier': {
+      const relatif = sous(commande.chemin, corbeille)
+      if (relatif === null || relatif.split('/').length !== 2 || !dossierCorbeilleOuJour(commande.chemin, corbeille)) throw refus(commande.chemin)
+      return `mkdir -p ${citerShell(commande.chemin)}`
+    }
+    case 'listageCorbeille':
+    case 'repliCorbeille': {
+      if (dossierCorbeilleAdmis(`${CORBEILLE_PAGE}/${commande.jour}`) === null) throw refus(commande.jour)
+      const jour = `${corbeille}/${commande.jour}`
+      return commande.sorte === 'listageCorbeille'
+        ? `find ${jour} -maxdepth 2 -type f -exec stat -c '%f %s %Y %n' {} +`
+        : `stat -c '%f %s %Y %n' ${DOSSIERS_RETIRABLES.map((d) => `${jour}/${d}/*`).join(' ')}`
+    }
+    case 'effacerProvisoire': {
+      const relatif = sous(commande.chemin, racine)
+      const nom = relatif === null ? null : sansSuffixe(relatif, SUFFIXE_NEUF)
+      if (nom === null || !nom.avec || !cheminEcrivable(nom.base)) throw refus(commande.chemin)
+      return `rm -f ${citerShell(commande.chemin)}`
+    }
+  }
+}
 
 /**
  * Valeur d'une variable d'environnement, sans égard à la casse de son nom (comme Windows), espaces retirés ;
@@ -162,6 +359,7 @@ export function lireReponseVersion(recu: string): { etat: 'version'; version: nu
 
 /** Mode d'un fichier ordinaire (`S_IFREG`), lu dans le mode en hexadécimal de `stat -c %f`. */
 const MODE_FICHIER = 0x8000
+const MODE_DOSSIER = 0x4000
 const MASQUE_TYPE = 0xf000
 
 /**
@@ -187,6 +385,108 @@ export function lireListageVu(sortie: string, racine = RACINE_DISTANTE): Fichier
 /** Fichiers d'un listage, tels que la page les reçoit (`lireListageVu` sans les noms réels). */
 export function lireListage(sortie: string, racine = RACINE_DISTANTE): FichierTelephone[] {
   return lireListageVu(sortie, racine).map(sansReel)
+}
+
+/** Mode, taille et date d'un fichier, lus dans la sortie d'un `stat` (`texteShell`) ; `null` si elle n'en porte pas. */
+export function lireStat(sortie: string): { mode: number; taille: number; dateMs: number } | null {
+  const m = /^([0-9a-fA-F]+) (\d+) (\d+)\r?$/m.exec(sortie)
+  return m ? { mode: parseInt(m[1], 16), taille: Number(m[2]), dateMs: Number(m[3]) * 1000 } : null
+}
+
+/** Mode de chaque chemin lu dans la sortie d'un `statDossiers` (« mode chemin » par ligne) ; les absents n'y sont pas. */
+export function lireModes(sortie: string): Map<string, number> {
+  const modes = new Map<string, number>()
+  for (const brute of sortie.split('\n')) {
+    const m = /^([0-9a-fA-F]+) (.+?)\r?$/.exec(brute)
+    if (m) modes.set(m[2], parseInt(m[1], 16))
+  }
+  return modes
+}
+
+/** Vrai si le mode lu par `stat -c %f` est celui d'un fichier ordinaire (pas un lien, pas un dossier). */
+export function estFichierOrdinaire(mode: number): boolean {
+  return (mode & MASQUE_TYPE) === MODE_FICHIER
+}
+
+/** Vrai si le mode lu par `stat -c %f` est celui d'un dossier (pas un lien). */
+export function estDossier(mode: number): boolean {
+  return (mode & MASQUE_TYPE) === MODE_DOSSIER
+}
+
+/**
+ * Vrai si une commande muette en cas de réussite (`mv`, `mkdir`, `rm -f`) a échoué : code non nul, ou message
+ * d'erreur (un téléphone ancien rend toujours 0 à `adb shell`).
+ */
+export function echecDuShell(sortie: { code: number; stderr: string; stdout: string }): boolean {
+  return sortie.code !== 0 || sortie.stderr.trim() !== '' || sortie.stdout.trim() !== ''
+}
+
+/** Ce que l'application du téléphone fait tourner, lu dans `dumpsys activity services <paquet>`. */
+export type ActiviteApplication =
+  /** Aucun de ses services : on peut écrire. */
+  | { etat: 'libre' }
+  /** Un service de premier plan, ou l'un de ses services connus (`SERVICES_APPLICATION`) : rien n'est écrit. */
+  | { etat: 'occupee'; services: string[] }
+  /** Une sortie qu'on ne sait pas lire : rien n'est écrit non plus. */
+  | { etat: 'illisible' }
+
+/**
+ * Lit la sortie de `dumpsys activity services <paquet>` (`COMMANDE_SERVICES`). Sans l'en-tête « ACTIVITY MANAGER
+ * SERVICES », illisible. Chaque `ServiceRecord{… u0 <paquet>/<classe> …}` du paquet est un bloc, jusqu'au suivant :
+ * l'application est occupée si l'un d'eux est l'un de ses services connus (`SERVICES_APPLICATION`, au premier plan ou
+ * non), ou porte `isForeground=true`. Prudente : dans le doute, on n'écrit pas.
+ */
+export function lireServices(sortie: string, paquet: string = PAQUET_APPLICATION): ActiviteApplication {
+  if (!/ACTIVITY MANAGER SERVICES/.test(sortie)) return { etat: 'illisible' }
+  const services: string[] = []
+  let courant: { classe: string; connu: boolean } | null = null
+  let premierPlan = false
+  const clore = () => {
+    if (courant && (courant.connu || premierPlan) && !services.includes(courant.classe)) services.push(courant.classe)
+    courant = null
+    premierPlan = false
+  }
+  for (const ligne of sortie.split('\n')) {
+    const m = /ServiceRecord\{\S+ u\d+ ([\w.]+)\/([\w.$]+)/.exec(ligne)
+    if (m) {
+      clore()
+      if (m[1] !== paquet) continue
+      const classe = m[2].startsWith('.') ? `${paquet}${m[2]}` : m[2]
+      const court = classe.slice(classe.lastIndexOf('.') + 1)
+      courant = { classe: court, connu: (SERVICES_APPLICATION as readonly string[]).includes(court) }
+      continue
+    }
+    if (courant && /\bisForeground=true\b/.test(ligne)) premierPlan = true
+  }
+  clore()
+  return services.length > 0 ? { etat: 'occupee', services } : { etat: 'libre' }
+}
+
+/**
+ * Vrai si la sortie dit que la commande de listage n'est pas connue du téléphone (`find` sans `-exec … +`) : seul cas
+ * où l'on se replie sur `stat`. Toute autre erreur d'un listage est une erreur.
+ */
+function commandeInconnue(texte: string): boolean {
+  return /\b(unknown|unrecognized|invalid|bad) (option|argument|primary|predicate)|missing argument|: not found\b|inaccessible or not found/i.test(texte)
+}
+
+/**
+ * Vrai si un repli `stat` (motifs `dossier/*`) n'a échoué que sur ses motifs sans fichier : chaque ligne qui n'est
+ * pas une ligne de `stat` dit « No such file or directory » d'un motif en `/*`. Une autre erreur (accès refusé, sortie
+ * coupée) le rend incomplet.
+ */
+function repliComplet(sortie: { code: number; stdout: string; stderr: string; delaiDepasse: boolean }): boolean {
+  if (sortie.delaiDepasse) return false
+  if (sortie.code === 0) return true
+  return `${sortie.stderr}\n${sortie.stdout}`.split('\n').every((brute) => {
+    const ligne = brute.replace(/\r$/, '')
+    return ligne.trim() === '' || /^[0-9a-fA-F]+ \d+ \d+ .+$/.test(ligne) || (/No such file or directory/i.test(ligne) && /\/\*/.test(ligne))
+  })
+}
+
+/** Erreur d'un listage qui n'a pas été complet : rien ne se décide sur lui. */
+function listageIncomplet(texte: string): ErreurDisque {
+  return new ErreurDisque('UNKNOWN', `Listage du téléphone incomplet : ${texte.trim().slice(0, 300) || 'erreur sans message'}`)
 }
 
 /** Vrai si la sortie dit qu'un chemin n'existe pas sur le téléphone. */
@@ -353,6 +653,8 @@ export type OptionsAdb = {
   /** Nom du dossier lu sous `Documents` : `Tracker` par défaut, ou une racine d'essai. */
   nomRacine?: string
   lanceur?: Lanceur
+  /** Horloge, en ms (celle du poste par défaut) : seulement pour la durée de `DELAIS.activite`. */
+  horloge?: () => number
   sonde?: (cible: CibleServeur) => Promise<Sonde>
   existe?: (fichier: string) => boolean
   journal?: (message: string) => void
@@ -368,24 +670,30 @@ type Outil = { adb: string; version: number }
 export function dossierAdb(options: OptionsAdb): DossierDistant {
   const { env, profil, programme } = options
   const nomRacine = options.nomRacine ?? NOM_RACINE
-  const racine = racineDistante(nomRacine)
-  const textes = commandesListage(racine)
+  const lieux = lieuxDistants(nomRacine)
+  const { racine, corbeille } = lieux
   const lancer = options.lanceur ?? lanceurReel
   const sonder = options.sonde ?? ((cible: CibleServeur) => sonderServeur(cible))
   const existe = options.existe ?? estUnFichier
   const journal = options.journal ?? (() => undefined)
+  const horloge = options.horloge ?? Date.now
   /** L'outil trouvé et la version de serveur qu'il porte ; recherché à nouveau tant qu'il manque. */
   let outil: Outil | null = null
   /** Série du téléphone prêt au dernier état. */
   let serie: string | null = null
   /** Nom réel sur le téléphone de chaque fichier du dernier listage, par chemin montré (`commeLeTelephone`). */
   let reels = new Map<string, string>()
-  /** Série de l'appareil du dernier listage réussi : la seule que vise une lecture ; `null` sans listage valable. */
+  /** Série de l'appareil du dernier listage réussi : la seule que visent lecture, écriture et retrait ; `null` sans listage valable. */
   let listeSerie: string | null = null
+  /** Chemins réels et tailles du dernier `listerTout` : les seuls que `lireBrut` lit. */
+  let tous = new Map<string, number>()
+  /** Instant de la dernière lecture de l'activité qui a trouvé l'application libre ; `null` : à relire. */
+  let libreLe: number | null = null
 
   function oublierListage(): void {
     reels = new Map()
     listeSerie = null
+    libreLe = null
   }
 
   /** L'outil, ou `null` s'il n'est pas sur le poste. */
@@ -405,10 +713,10 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
   }
 
   /**
-   * Seul passage des commandes qui parlent au serveur (`devices`, `shell`, `pull`, et `start-server` qu'il lance
-   * lui-même) : le serveur visé est sondé juste avant chacune. Pas de serveur sur ce poste : le nôtre est lancé. Un
-   * serveur d'une autre version, une réponse étrangère ou un serveur que la sonde ne sait pas viser : `null`, et rien
-   * n'est lancé. Les commandes héritent de l'environnement, donc visent le même serveur que la sonde.
+   * Seul passage des commandes qui parlent au serveur (`devices`, `shell`, `pull`, `push`, et `start-server` qu'il
+   * lance lui-même) : le serveur visé est sondé juste avant chacune. Pas de serveur sur ce poste : le nôtre est lancé.
+   * Un serveur d'une autre version, une réponse étrangère ou un serveur que la sonde ne sait pas viser : `null`, et
+   * rien n'est lancé. Les commandes héritent de l'environnement, donc visent le même serveur que la sonde.
    */
   async function parLeServeur(o: Outil, args: readonly string[], delaiMs: number): Promise<Sortie | null> {
     const cible = cibleServeur(env)
@@ -447,7 +755,10 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     return lu.etat
   }
 
-  /** État du téléphone. Un autre appareil que celui du dernier listage (ou plus aucun, ou une panne) fait oublier ce listage. */
+  /**
+   * État du téléphone. Un autre appareil que celui du dernier listage (ou plus aucun, plusieurs, ou une panne) fait
+   * oublier ce listage : lire, écrire et retirer demandent alors un nouveau listage.
+   */
   async function etat(): Promise<EtatTelephone> {
     try {
       const e = await lireEtat()
@@ -459,8 +770,9 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     }
   }
 
-  /** Une commande `shell` à texte fixe sur le téléphone prêt. */
-  async function shell(o: Outil, s: string, texte: string): Promise<Sortie> {
+  /** Une commande `shell` sur le téléphone prêt, au texte fabriqué par `texteShell` seulement. */
+  async function shell(o: Outil, s: string, commande: CommandeShell): Promise<Sortie> {
+    const texte = texteShell(commande, lieux)
     const sortie = await parLeServeur(o, ['-s', s, 'shell', texte], DELAIS.listage)
     if (sortie === null) throw pasPret('occupe')
     if (sortie.delaiDepasse) throw new ErreurDisque('UNKNOWN', 'Le téléphone ne répond pas (délai dépassé).')
@@ -469,22 +781,128 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     return sortie
   }
 
+  /** Une commande muette en cas de réussite (`mv`, `mkdir`) : lève, avec la phrase donnée, si elle a parlé ou échoué. */
+  async function shellMuet(o: Outil, s: string, commande: CommandeShell, phrase: string): Promise<void> {
+    const sortie = await shell(o, s, commande)
+    if (echecDuShell(sortie)) throw new ErreurDisque('UNKNOWN', `${phrase} : ${(sortie.stderr || sortie.stdout).trim().slice(0, 300)}`)
+  }
+
   /** Le listage, fichiers vus comme le téléphone les voit. */
   async function listerVus(o: Outil, s: string): Promise<FichierVu[]> {
-    const sortie = await shell(o, s, textes.listage)
+    const sortie = await shell(o, s, { sorte: 'listage' })
     const fichiers = lireListageVu(sortie.stdout, racine)
-    if (fichiers.length > 0 || sortie.code === 0) return fichiers
+    if (sortie.code === 0 && !sortie.delaiDepasse) return fichiers
+    // Un code non nul n'est jamais un listage complet, même avec des lignes lues (fichier disparu en route, accès
+    // refusé, sortie coupée) : seul le dossier absent, ou la commande inconnue sans rien de lu, ont une suite.
     const texte = `${sortie.stderr}\n${sortie.stdout}`
-    if (dossierManquant(texte)) throw racineAbsente(nomRacine)
-    // Rien de lisible et une erreur qui n'est pas « absent » : `find` du téléphone ne connaît pas `-exec … +`.
+    const rienLu = sortie.stdout.trim() === ''
+    if (rienLu && dossierManquant(texte)) throw racineAbsente(nomRacine)
+    if (!rienLu || !commandeInconnue(texte)) throw listageIncomplet(texte)
     journal(`listage par find impossible, repli sur stat : ${texte.trim().slice(0, 200)}`)
-    const r = await shell(o, s, textes.racine)
+    const r = await shell(o, s, { sorte: 'racine' })
     if (r.code !== 0) {
       if (dossierManquant(`${r.stderr}\n${r.stdout}`)) throw racineAbsente(nomRacine)
       throw new ErreurDisque('UNKNOWN', `Listage du téléphone impossible : ${(r.stderr || r.stdout).trim().slice(0, 300)}`)
     }
-    // Un motif sans fichier (`sessions/` vide) reste tel quel et donne une erreur : les lignes lues suffisent.
-    return lireListageVu((await shell(o, s, textes.repli)).stdout, racine)
+    // Un motif sans fichier (`sessions/` vide) reste tel quel et donne une erreur, sans gravité ; toute autre erreur
+    // rend le repli incomplet.
+    const repli = await shell(o, s, { sorte: 'repli' })
+    if (!repliComplet(repli)) throw listageIncomplet(`${repli.stderr}\n${repli.stdout}`)
+    return lireListageVu(repli.stdout, racine)
+  }
+
+  /**
+   * L'outil et la série du dernier listage réussi, la seule que visent lecture, écriture et retrait (`-s`). Lève,
+   * sans rien lancer, s'il n'y a pas de listage valable.
+   */
+  function liaison(): { o: Outil; s: string } {
+    const o = outil
+    const s = listeSerie
+    if (o === null || s === null) throw pasListe()
+    return { o, s }
+  }
+
+  /**
+   * Avant une écriture ou un retrait : la liaison du dernier listage, le même appareil seul branché (sinon le listage
+   * est oublié et rien n'est écrit), et l'application du téléphone sans service en cours (sinon refus). L'activité est
+   * relue à chaque fois pour un retrait (`fraiche`) ; une écriture se fie à une lecture « libre » de moins de
+   * `DELAIS.activite`.
+   */
+  async function liaisonPourEcrire(fraiche: boolean): Promise<{ o: Outil; s: string }> {
+    const { o, s } = liaison()
+    const appareils = await parLeServeur(o, ['devices', '-l'], DELAIS.court)
+    if (appareils === null) throw pasPret('occupe')
+    if (appareils.delaiDepasse || appareils.code !== 0) throw new ErreurDisque('UNKNOWN', 'Le serveur adb ne répond pas.')
+    const lu = etatDesAppareils(lireAppareils(appareils.stdout))
+    if (lu.etat.etat !== 'pret' || lu.serie !== s) {
+      oublierListage()
+      throw lu.etat.etat === 'plusieurs' ? pasPret('plusieurs') : pasListe()
+    }
+    const recente = libreLe !== null && horloge() - libreLe >= 0 && horloge() - libreLe < DELAIS.activite
+    if (fraiche || !recente) {
+      const activite = await lireActivite(o, s)
+      if (activite.etat === 'occupee') {
+        journal(`téléphone occupé (${activite.services.join(', ')}) : rien n'est écrit`)
+        throw enregistrementEnCours()
+      }
+      if (activite.etat === 'illisible') throw new ErreurDisque('PERMISSION', "On ne sait pas si le téléphone enregistre une session : rien n'y est écrit.")
+    }
+    return { o, s }
+  }
+
+  async function lireActivite(o: Outil, s: string): Promise<ActiviteApplication> {
+    libreLe = null
+    const sortie = await shell(o, s, { sorte: 'services' })
+    const lu = lireServices(sortie.stdout)
+    if (lu.etat === 'libre') libreLe = horloge()
+    if (lu.etat === 'illisible') journal(`activité de l'application illisible : ${(sortie.stderr || sortie.stdout).trim().slice(0, 200)}`)
+    return lu
+  }
+
+  /** Mode, taille et date d'un fichier du téléphone ; `null` s'il n'existe pas. */
+  async function statDistant(o: Outil, s: string, distant: string): Promise<{ mode: number; taille: number; dateMs: number } | null> {
+    const sortie = await shell(o, s, { sorte: 'stat', chemin: distant })
+    const lu = lireStat(sortie.stdout)
+    if (lu !== null) return lu
+    if (dossierManquant(`${sortie.stderr}\n${sortie.stdout}`)) return null
+    throw new ErreurDisque('UNKNOWN', `Lecture de l'état d'un fichier du téléphone impossible : ${(sortie.stderr || sortie.stdout).trim().slice(0, 300)}`)
+  }
+
+  /**
+   * Retire le provisoire d'un envoi raté, et lui seul (`nom.tracker-new`, `texteShell` refuse tout autre nom) ; sans
+   * effet s'il n'existe pas. Un échec est seulement noté : le téléphone efface lui-même un `.tracker-new` resté seul.
+   */
+  async function retirerProvisoire(o: Outil, s: string, provisoire: string): Promise<void> {
+    try {
+      const sortie = await shell(o, s, { sorte: 'effacerProvisoire', chemin: provisoire })
+      if (echecDuShell(sortie)) journal(`provisoire non retiré : ${(sortie.stderr || sortie.stdout).trim().slice(0, 200)}`)
+    } catch (e) {
+      journal(`provisoire non retiré : ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  /** Seule lecture d'un fichier du téléphone : `pull -a` du fichier `reel` (sous la racine) vers `fichierLocal`. */
+  async function tirer(o: Outil, s: string, reel: string, fichier: FichierTelephone, fichierLocal: string): Promise<void> {
+    const distant = `${racine}/${reel}`
+    const sortie = await parLeServeur(o, ['-s', s, 'pull', '-a', distant, fichierLocal], delaiLecture(fichier.taille))
+    if (sortie === null) throw pasPret('occupe')
+    if (sortie.delaiDepasse) throw new ErreurDisque('UNKNOWN', `Lecture de « ${fichier.chemin} » trop longue (délai dépassé).`)
+    if (sortie.code !== 0) {
+      throw new ErreurDisque('UNKNOWN', `Lecture de « ${fichier.chemin} » impossible : ${(sortie.stderr || sortie.stdout).trim().slice(0, 300)}`)
+    }
+  }
+
+  /** Les fichiers d'un jour de la corbeille, lus dans une sortie de `stat -c '%f %s %Y %n'`, en chemins vus de la page. */
+  function lireCorbeille(sortie: string, jour: string): string[] {
+    const prefixe = `${corbeille}/${jour}/`
+    const chemins: string[] = []
+    for (const brute of sortie.split('\n')) {
+      const m = /^([0-9a-fA-F]+) \d+ \d+ (.+?)\r?$/.exec(brute)
+      if (!m || !estFichierOrdinaire(parseInt(m[1], 16)) || !m[2].startsWith(prefixe)) continue
+      const [sousDossier, nom, ...reste] = m[2].slice(prefixe.length).split('/')
+      if (reste.length === 0 && nom !== undefined && nom !== '' && DOSSIERS_RETIRABLES.includes(sousDossier)) chemins.push(`${CORBEILLE_PAGE}/${jour}/${sousDossier}/${nom}`)
+    }
+    return chemins
   }
 
   return {
@@ -508,14 +926,138 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
       const o = outil
       const s = listeSerie
       const reel = reels.get(fichier.chemin)
-      if (o === null || s === null || reel === undefined) throw new ErreurDisque('UNKNOWN', "Le téléphone n'a pas été listé.")
-      const distant = `${racine}/${reel}`
-      const sortie = await parLeServeur(o, ['-s', s, 'pull', '-a', distant, fichierLocal], delaiLecture(fichier.taille))
-      if (sortie === null) throw pasPret('occupe')
-      if (sortie.delaiDepasse) throw new ErreurDisque('UNKNOWN', `Lecture de « ${fichier.chemin} » trop longue (délai dépassé).`)
-      if (sortie.code !== 0) {
-        throw new ErreurDisque('UNKNOWN', `Lecture de « ${fichier.chemin} » impossible : ${(sortie.stderr || sortie.stdout).trim().slice(0, 300)}`)
+      if (o === null || s === null || reel === undefined) throw pasListe()
+      await tirer(o, s, reel, fichier, fichierLocal)
+    },
+
+    async listerTout() {
+      const { o, s } = liaison()
+      tous = new Map()
+      const sortie = await shell(o, s, { sorte: 'listageTout' })
+      const texte = `${sortie.stderr}\n${sortie.stdout}`
+      if (sortie.code !== 0 || sortie.delaiDepasse) {
+        if (sortie.stdout.trim() === '' && dossierManquant(texte)) throw racineAbsente(nomRacine)
+        throw listageIncomplet(texte)
       }
+      const prefixe = `${racine}/`
+      const trouves: FichierBrut[] = []
+      for (const brute of sortie.stdout.split('\n')) {
+        const ligne = brute.endsWith('\r') ? brute.slice(0, -1) : brute
+        if (ligne.trim() === '') continue
+        const m = /^([0-9a-fA-F]+) (\d+) (\d+) (.+)$/.exec(ligne)
+        // Une ligne illisible (nom coupé par un retour à la ligne) rend le listage incomplet : rien n'est écarté en silence.
+        if (!m || !m[4].startsWith(prefixe)) throw listageIncomplet(`ligne illisible : ${ligne.slice(0, 200)}`)
+        trouves.push({ chemin: m[4].slice(prefixe.length), taille: Number(m[2]), dateMs: Number(m[3]) * 1000, ordinaire: estFichierOrdinaire(parseInt(m[1], 16)) })
+      }
+      tous = new Map(trouves.map((f) => [f.chemin, f.taille]))
+      return trouves.sort((a, b) => (a.chemin < b.chemin ? -1 : a.chemin > b.chemin ? 1 : 0))
+    },
+
+    async lireBrut(fichier, fichierLocal) {
+      const { o, s } = liaison()
+      if (tous.get(fichier.chemin) !== fichier.taille) throw new ErreurDisque('UNKNOWN', `Fichier absent du dernier listage complet : « ${fichier.chemin.slice(0, 200)} ».`)
+      await tirer(o, s, fichier.chemin, fichier, fichierLocal)
+    },
+
+    async enregistrement() {
+      const { o, s } = liaison()
+      const activite = await lireActivite(o, s)
+      if (activite.etat === 'illisible') throw new ErreurDisque('UNKNOWN', "On ne sait pas lire ce que fait l'application du téléphone.")
+      return activite.etat === 'occupee'
+    },
+
+    async ecrire(chemin, fichierLocal, taille) {
+      if (!cheminEcrivable(chemin)) throw cheminRefuse(chemin)
+      const distant = `${racine}/${chemin}`
+      const provisoire = nomProvisoire(distant)
+      // Vérifiés avant toute commande : le texte du renommage et celui de l'effacement du provisoire.
+      texteShell({ sorte: 'renommer', de: provisoire, vers: distant }, lieux)
+      texteShell({ sorte: 'effacerProvisoire', chemin: provisoire }, lieux)
+      const { o, s } = await liaisonPourEcrire(false)
+      const avant = await statDistant(o, s, distant)
+      if (avant !== null && !estFichierOrdinaire(avant.mode)) throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un fichier sur le téléphone.`)
+      try {
+        const envoi = await parLeServeur(o, ['-s', s, 'push', fichierLocal, provisoire], delaiLecture(taille))
+        if (envoi === null) throw pasPret('occupe')
+        if (envoi.delaiDepasse) throw new ErreurDisque('UNKNOWN', `Écriture de « ${chemin} » trop longue (délai dépassé).`)
+        if (envoi.code !== 0) {
+          throw new ErreurDisque('UNKNOWN', `Écriture de « ${chemin} » impossible : ${(envoi.stderr || envoi.stdout).trim().slice(0, 300)}`)
+        }
+        const lu = await statDistant(o, s, provisoire)
+        if (lu === null || !estFichierOrdinaire(lu.mode) || lu.taille !== taille) {
+          throw new ErreurDisque('UNKNOWN', `Écriture incomplète de « ${chemin} » : ${lu?.taille ?? 0} octets sur ${taille}.`)
+        }
+        await shellMuet(o, s, { sorte: 'renommer', de: provisoire, vers: distant }, `Renommage de « ${chemin} » impossible`)
+        reels.set(chemin, chemin)
+        return { chemin, taille: lu.taille, dateMs: lu.dateMs }
+      } catch (e) {
+        await retirerProvisoire(o, s, provisoire)
+        throw e
+      }
+    },
+
+    async mettreDeCote(fichier, vers) {
+      const destination = retraitAdmis(fichier.chemin, vers)
+      if (destination === null) throw cheminRefuse(`${fichier.chemin} → ${String(vers)}`)
+      const reel = reels.get(fichier.chemin)
+      if (reel === undefined) throw pasListe()
+      const source = `${racine}/${reel}`
+      const cible = `${corbeille}/${destination.relatif}`
+      const jour = `${corbeille}/${destination.jour}`
+      const dossier = `${jour}/${destination.sous}`
+      // Le remplacement interrompu caché à côté (`nom.tracker-tmp` à côté de `nom`) part aussi, et d'abord : seul, le
+      // téléphone lui rendrait le nom de l'original.
+      const cache = reel === fichier.chemin ? `${source}${SUFFIXE_REMPLACEMENT}` : null
+      // Vérifiés avant toute commande : chaque texte que ce retrait peut envoyer.
+      texteShell({ sorte: 'deplacer', de: source, vers: cible }, lieux)
+      if (cache !== null) texteShell({ sorte: 'deplacer', de: cache, vers: `${cible}${SUFFIXE_REMPLACEMENT}` }, lieux)
+      texteShell({ sorte: 'creerDossier', chemin: dossier }, lieux)
+      const { o, s } = await liaisonPourEcrire(true)
+      const lu = await statDistant(o, s, source)
+      if (lu === null) {
+        reels.delete(fichier.chemin)
+        return
+      }
+      if (!estFichierOrdinaire(lu.mode)) throw new ErreurDisque('PERMISSION', `« ${fichier.chemin} » n'est pas un fichier sur le téléphone.`)
+      if (lu.taille !== fichier.taille || lu.dateMs !== fichier.dateMs) throw changeDepuisListage(fichier.chemin)
+      const luCache = cache === null ? null : await statDistant(o, s, cache)
+      if (luCache !== null && !estFichierOrdinaire(luCache.mode)) throw new ErreurDisque('PERMISSION', `« ${fichier.chemin} » a à côté autre chose qu'un fichier.`)
+      if ((await statDistant(o, s, cible)) !== null) throw corbeillePrise(String(vers))
+      if (luCache !== null && (await statDistant(o, s, `${cible}${SUFFIXE_REMPLACEMENT}`)) !== null) throw corbeillePrise(`${String(vers)}${SUFFIXE_REMPLACEMENT}`)
+      // La corbeille, son jour et son sous-dossier : absents, ou de vrais dossiers (rien n'est écrit à travers un lien).
+      const modes = lireModes((await shell(o, s, { sorte: 'statDossiers', chemins: [corbeille, jour, dossier] })).stdout)
+      for (const [chemin, mode] of modes) {
+        if (!estDossier(mode)) throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un dossier sur le téléphone.`)
+      }
+      await shellMuet(o, s, { sorte: 'creerDossier', chemin: dossier }, 'Corbeille du téléphone impossible à créer')
+      if (luCache !== null && cache !== null) {
+        await shellMuet(o, s, { sorte: 'deplacer', de: cache, vers: `${cible}${SUFFIXE_REMPLACEMENT}` }, `Mise de côté de « ${fichier.chemin} » impossible`)
+      }
+      await shellMuet(o, s, { sorte: 'deplacer', de: source, vers: cible }, `Mise de côté de « ${fichier.chemin} » impossible`)
+      reels.delete(fichier.chemin)
+      // Relu : le fichier est dans la corbeille, et plus rien sous son nom ne le ferait revenir.
+      const arrive = await statDistant(o, s, cible)
+      if (arrive === null || arrive.taille !== lu.taille) throw new ErreurDisque('UNKNOWN', `« ${fichier.chemin} » n'est pas arrivé dans la corbeille du téléphone.`)
+      for (const reste of cache === null ? [source] : [source, cache]) {
+        if ((await statDistant(o, s, reste)) !== null) throw changeDepuisListage(fichier.chemin)
+      }
+    },
+
+    async listerCorbeille(dossierJour) {
+      const jour = dossierCorbeilleAdmis(dossierJour)
+      if (jour === null) throw cheminRefuse(dossierJour)
+      const { o, s } = liaison()
+      const sortie = await shell(o, s, { sorte: 'listageCorbeille', jour })
+      const chemins = lireCorbeille(sortie.stdout, jour)
+      if (sortie.code === 0 && !sortie.delaiDepasse) return chemins.sort()
+      const texte = `${sortie.stderr}\n${sortie.stdout}`
+      const rienLu = sortie.stdout.trim() === ''
+      if (rienLu && dossierManquant(texte)) return []
+      if (!rienLu || !commandeInconnue(texte)) throw listageIncomplet(texte)
+      journal(`listage de la corbeille par find impossible, repli sur stat : ${texte.trim().slice(0, 200)}`)
+      const repli = await shell(o, s, { sorte: 'repliCorbeille', jour })
+      if (!repliComplet(repli)) throw listageIncomplet(`${repli.stderr}\n${repli.stdout}`)
+      return lireCorbeille(repli.stdout, jour).sort()
     },
   }
 }

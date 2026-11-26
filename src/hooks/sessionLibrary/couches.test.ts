@@ -19,22 +19,23 @@ const SRC = new URL('../../', import.meta.url);
 /** Les couches, de la plus basse à la plus haute. */
 const LAYERS = [
   'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings', 'placeQueue',
-  'trash', 'addSession', 'pending', 'importer', 'phoneRecovery', 'incoming', 'sessionRecords', 'lifecycle', 'trashRestore',
+  'trash', 'addSession', 'pending', 'importer', 'incoming', 'sessionRecords', 'lifecycle', 'trashRestore',
+  'syncRouteFiles', 'sync', 'phoneSync',
 ] as const;
 
 /** Valeurs exportées par le point d'entrée, les mêmes qu'avant le découpage (et cinq types). */
 const ENTRY_VALUES = [
   'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'deleteFromTrash', 'dismissIncomingNotice', 'dismissLibraryMessage',
   'emptyWholeTrash', 'restoreFromTrash', 'stashRoute', 'trashStore',
-  'dismissPhoneRecovery', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
+  'cancelPhoneSync', 'confirmPhoneSync', 'dismissPhoneSync', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
-  'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'recoverFromPhone', 'refreshLibrary',
+  'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'refreshLibrary',
   'removeSession', 'renameDevice', 'reportStartupError', 'saveRecordedSession', 'settingsUpgraded', 'startIncomingFiles', 'startLibraryUi',
-  'startPlaceSearch',
+  'startPhoneSync', 'startPlaceSearch',
   'summarizeGpxText', 'switchToBrowserMemory', 'updateSessionRecord', 'useLibraryFields', 'useLibrarySelector',
-  'useLibrarySession', 'usePhoneRecovery', 'useSessionName',
+  'useLibrarySession', 'usePhoneSync', 'useSessionName',
 ];
-const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneRecoveryStep', 'SettingsFileInfo', 'TrashState'];
+const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneSyncStep', 'SettingsFileInfo', 'TrashState'];
 
 const isCode = (name: string): boolean => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.fixture\.ts$/.test(name);
 

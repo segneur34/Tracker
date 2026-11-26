@@ -58,3 +58,7 @@ Gtracker (`D:\gong tracker\Gtracker`, lecture seule par `git -C "D:/gong tracker
 ## Non vérifié par le plan
 
 La sortie de `dumpsys` sur le Xiaomi ; `mv -f` qui écrase sur `/sdcard` ; les droits d'un fichier posé par `adb push`, lu puis effacé par l'application ; la commande `find` du téléphone ; l'adb partagé avec la session Gtracker ; les écarts entre les fichiers de Gtracker et le code de Tracker (fiche, `sessionRecords`, `routeFiles`).
+
+## État au 26/11
+
+« Synchroniser » (3c, 3d, 3e) est codé : le bouton « Récupérer », `PhoneRecoverButton`, les deux `phoneRecovery.ts` et le script `exe-recuperer.mjs` cités plus haut n'existent plus (remplacés par `PhoneSyncButton`, `hooks/sessionLibrary/sync.ts`, `phoneSync.ts` et `outils/banc/exe-synchroniser.mjs`). Ajouté après relecture : une session à brouillon non enregistré n'est jamais retirée ; une copie de sécurité effacée depuis est refaite ; une synchronisation dont la restriction a écarté une opération n'est pas dite entière.

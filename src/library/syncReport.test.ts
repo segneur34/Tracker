@@ -3,7 +3,8 @@ import { formatSessionDate } from '../core/units';
 import type { SyncStamp } from './syncBase';
 import type { SyncExtrasPlan } from './syncExtras';
 import { SYNC_GUARD_LIMITS, type SyncItem, type SyncOp, type SyncPlan } from './syncPlan';
-import { describeSyncPreview, syncCounts, syncCountsText, syncGuardQuestion } from './syncReport';
+import { emptySyncOutcome, type SyncOutcome } from './syncOutcome';
+import { describePhoneProblem, describeSyncConfirmation, describeSyncOutcome, describeSyncPreview, syncCounts, syncCountsText, syncGuardQuestion } from './syncReport';
 import type { RouteSyncItem, RouteSyncPlan } from './syncRoutes';
 
 const T0 = Date.UTC(2026, 10, 1, 10, 0, 0);
@@ -166,5 +167,76 @@ describe('ce qu’on dit avant de synchroniser', () => {
       "2 journaux d'enregistrement copiés vers l'ordinateur.",
       "Deux appareils s'appellent « Pixel » : renommez-en un dans Réglages › Mémoire pour que leurs réglages s'échangent.",
     ]);
+  });
+});
+
+describe('compte rendu et confirmation', () => {
+  const outcomeOf = (patch: Partial<SyncOutcome>): SyncOutcome => ({ ...emptySyncOutcome(null), phoneWritable: true, ...patch });
+  const removeOp: SyncOp = { kind: 'removeFromPhone', files: [stamp('2.gpx')], absent: null, keep: 'none', recordText: null, moveTo: 'Tracker-corbeille/2026-11-26' };
+
+  it('dit ce qui a été copié dans chaque sens, mis de côté, et rappelle « Mettre à jour » sur le téléphone', () => {
+    const done = [item(1, { case: 'newOnComputer', ops: [copyTo('phone', 1)] }), item(2, { case: 'deletedOnComputer', ops: [removeOp] }), item(3, { case: 'newOnPhone', ops: [copyTo('computer', 3)] })];
+    const report = describeSyncOutcome(outcomeOf({ done, plan: planOf(done), phoneChanged: true, complete: true }));
+    expect(report.title).toBe('Synchronisation faite');
+    expect(report.rows.map((r) => `${r.label} : ${r.text}`)).toEqual([
+      'Copié vers l’ordinateur : 1 session',
+      'Copié vers le téléphone : 1 session',
+      "Mis de côté sur le téléphone : 1 session supprimée sur l'ordinateur : retirée de la mémoire du téléphone, rangée dans son dossier Documents/Tracker-corbeille (rien n'y est effacé)",
+    ]);
+    expect(report.notes).toEqual(['Sur le téléphone, touchez « Mettre à jour » dans Réglages › Mémoire (ou relancez Tracker) pour voir les changements.']);
+  });
+
+  it('dit les conflits et qui l’a emporté, ce qui attend, et la première fois', () => {
+    const done = [item(1, { conflicts: ['name'], ops: [{ kind: 'writeRecord', on: 'phone', file: stamp('1.json'), text: '{}' }] })];
+    const report = describeSyncOutcome(outcomeOf({
+      first: 'noBase', done, plan: planOf(done), deletions: 'excluded', withheldDeletions: [item(4, { case: 'deletedOnComputer' })],
+    }));
+    expect(report.paragraphs[0]).toBe("Première synchronisation avec ce téléphone : rien n'a été supprimé, chaque appareil a reçu ce qui lui manquait.");
+    expect(report.notes.some((n) => /changé sur les deux appareils\. La version de l'ordinateur a été gardée sur les deux\./.test(n))).toBe(true);
+    expect(report.notes.some((n) => n.startsWith("Rien n'a été supprimé : 1 session supprimée sur un appareil est encore sur l'autre."))).toBe(true);
+  });
+
+  it('refus, coupure et enregistrement commencé : dits en clair, « Réessayer » quand il y a lieu', () => {
+    expect(describeSyncOutcome(emptySyncOutcome('phoneRecording'))).toMatchObject({ retry: true, title: 'Synchronisation impossible' });
+    expect(describeSyncOutcome(emptySyncOutcome('newerBase')).retry).toBe(false);
+    expect(describeSyncOutcome(outcomeOf({ linkLost: 'device not found' }))).toMatchObject({ retry: true, title: 'Synchronisation arrêtée' });
+    expect(describeSyncOutcome(outcomeOf({ recordingStarted: true })).notes[0]).toMatch(/^Un enregistrement a commencé sur le téléphone/);
+    expect(describeSyncOutcome(outcomeOf({ complete: true })).paragraphs).toEqual(['Les deux appareils étaient déjà à jour.']);
+  });
+
+  it('la confirmation chiffre le plan entier permis et nomme chaque retrait, sans la phrase du garde-fou', () => {
+    const items = [item(1, { case: 'newOnComputer', ops: [copyTo('phone', 1)] }), item(2, { case: 'deletedOnComputer', ops: [removeOp] })];
+    const confirmation = describeSyncConfirmation(outcomeOf({ preview: true, plan: planOf(items), names: { sessions: { [T0 + 2]: 'Sortie' }, routes: {} } }));
+    expect(confirmation.counts).toBe('1 à copier vers le téléphone, 1 à retirer');
+    expect(confirmation.removals.sessions).toEqual([{ startMs: T0 + 2, side: 'phone', label: 'Sortie' }]);
+    expect(confirmation.notes.some((n) => n.startsWith('Cette synchronisation retirerait'))).toBe(false);
+  });
+
+  it('un téléphone pas prêt : une phrase et « Réessayer », le dossier de l’outil à part', () => {
+    expect(describePhoneProblem({ kind: 'toolMissing', folder: 'C:\\profil' })).toMatchObject({ retry: true, folder: 'C:\\profil' });
+    expect(describePhoneProblem({ kind: 'phone', state: 'plusieurs', count: 2 }).paragraphs[0]).toMatch(/^Plusieurs appareils sont branchés à l'ordinateur \(2\)/);
+    expect(describePhoneProblem({ kind: 'cannotWrite' }).retry).toBe(false);
+  });
+});
+
+describe('titres du compte rendu', () => {
+  const outcomeOf = (patch: Partial<SyncOutcome>): SyncOutcome => ({ ...emptySyncOutcome(null), phoneWritable: true, ...patch });
+  const one = item(1, { case: 'followed' });
+
+  it('« faite », « incomplète » (échoué, laissé, en attente), « arrêtée » ; « Réessayer » aussi pour ce qui a été laissé', () => {
+    expect(describeSyncOutcome(outcomeOf({ complete: true }))).toMatchObject({ title: 'Synchronisation faite', retry: false });
+    expect(describeSyncOutcome(outcomeOf({ failed: [{ item: one, detail: 'disque plein' }] }))).toMatchObject({ title: 'Synchronisation incomplète', retry: true });
+    expect(describeSyncOutcome(outcomeOf({ skipped: [one] }))).toMatchObject({ title: 'Synchronisation incomplète', retry: true });
+    expect(describeSyncOutcome(outcomeOf({ deletions: 'awaitingConfirmation', withheldDeletions: [one] }))).toMatchObject({ title: 'Synchronisation incomplète', retry: false });
+    expect(describeSyncOutcome(outcomeOf({ linkLost: 'device offline', skipped: [one] }))).toMatchObject({ title: 'Synchronisation arrêtée', retry: true });
+    // « Sans rien supprimer » choisi : ce qui attend est dit, sans que la synchronisation soit dite incomplète.
+    expect(describeSyncOutcome(outcomeOf({ deletions: 'excluded', withheldDeletions: [one] })).title).toBe('Synchronisation faite');
+  });
+
+  it('la reprise d’une synchronisation coupée ne se dit terminée que si elle l’est', () => {
+    const resumed = "La synchronisation précédente s'était arrêtée en route : elle vient d'être terminée.";
+    expect(describeSyncOutcome(outcomeOf({ interrupted: true, complete: true })).paragraphs).toContain(resumed);
+    expect(describeSyncOutcome(outcomeOf({ interrupted: true, skipped: [one] })).paragraphs).not.toContain(resumed);
+    expect(describeSyncOutcome(outcomeOf({ interrupted: true, failed: [{ item: one, detail: 'x' }] })).paragraphs).not.toContain(resumed);
   });
 });

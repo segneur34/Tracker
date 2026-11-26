@@ -10,7 +10,7 @@
  *
  * Les types sont décrits ici, à la main : ceux de la coquille emploient les types de Node, que l'application n'a pas.
  * La tâche à attendre avant de fermer la fenêtre s'y pose aussi (`onDesktopClose`, lot 232). Le téléphone branché
- * par câble s'y lit, en lecture seule (`telephone`, élément 217) : `phoneCable.ts`.
+ * par câble s'y lit, s'y écrit et s'y met de côté, jamais effacé (`telephone`, élément 217) : `phoneCable.ts`.
  */
 
 /** Code d'une erreur du pont, lisible par `fileErrorCode`. */
@@ -103,26 +103,56 @@ export type DesktopPhoneState =
   /** Plusieurs appareils sont branchés : refusé. */
   | { etat: 'plusieurs'; nombre: number };
 
-/** Fichier du téléphone : chemin relatif à `Documents/Tracker` (racine ou `sessions/`), taille en octets, date. */
+/**
+ * Fichier du téléphone : chemin relatif à `Documents/Tracker` (racine, `sessions/`, `itineraires/`, `reglages/`,
+ * `journaux/`), taille en octets, date à la seconde.
+ */
 export interface DesktopPhoneFile {
   chemin: string;
   taille: number;
   dateMs: number;
 }
 
-/** Le dossier `Documents/Tracker` du téléphone branché, en lecture seule : aucune fonction n'y écrit. */
+/**
+ * Le dossier `Documents/Tracker` du téléphone branché. La lecture est là depuis le lot 2 ; l'écriture et la mise de
+ * côté (élément 217, sous-lot 3c) manquent à une coquille plus ancienne. Rien n'y efface un fichier : un retrait est
+ * un déplacement dans la corbeille du téléphone (`Documents/Tracker-corbeille/AAAA-MM-JJ/`).
+ */
 export interface DesktopPhoneBridge {
   etat(): Promise<BridgeAnswer<DesktopPhoneState>>;
   /** `NOT_FOUND` si le dossier est absent du téléphone ; `UNKNOWN` si le téléphone n'est pas prêt ou s'est perdu. */
   lister(): Promise<BridgeAnswer<DesktopPhoneFile[]>>;
   /** Octets d'un fichier rendu par le dernier `lister` seulement ; `UNKNOWN` pour tout échec. */
   lireOctets(argument: { chemin: string }): Promise<BridgeAnswer<Uint8Array>>;
+  /** Vrai si l'application du téléphone enregistre (rien n'y est alors écrit) ; après un `lister`. */
+  enregistrement?(): Promise<BridgeAnswer<boolean>>;
+  /**
+   * Écrit un fichier de la liste fermée de la coquille (`sessions/`, `itineraires/`, `reglages/`, `tracker.json`,
+   * `fc-repos.json`) après un `lister`, et rend le fichier tel qu'il est sur le téléphone ; `PERMISSION` hors liste
+   * ou pendant un enregistrement.
+   */
+  ecrireOctets?(argument: { chemin: string; octets: Uint8Array }): Promise<BridgeAnswer<DesktopPhoneFile>>;
+  /** Chemins déjà pris dans un jour de la corbeille (`dossier` : `Tracker-corbeille/AAAA-MM-JJ`), depuis `Documents/`. */
+  listerCorbeille?(argument: { dossier: string }): Promise<BridgeAnswer<string[]>>;
+  /**
+   * Déplace un fichier du dernier `lister` (`sessions/` ou `itineraires/`) dans la corbeille du téléphone, sous `vers`
+   * (`Tracker-corbeille/AAAA-MM-JJ/<même sous-dossier>/<nom>`), sans jamais écraser ; refusé s'il a changé depuis le
+   * listage ou pendant un enregistrement.
+   */
+  mettreDeCote?(argument: { chemin: string; vers: string }): Promise<BridgeAnswer<null>>;
+  /**
+   * Copie de sécurité des deux dossiers (la mémoire retenue de l'ordinateur et ce que liste le téléphone) dans un
+   * dossier neuf de `<Documents>Tracker-copies`, avant la première synchronisation d'un téléphone ; rend son chemin.
+   */
+  copieSecurite?(): Promise<BridgeAnswer<string>>;
+  /** Vrai si ce chemin est une copie de sécurité encore là, sous le dossier des copies, et non vide. */
+  copieExiste?(argument: { chemin: string }): Promise<BridgeAnswer<boolean>>;
 }
 
 export interface DesktopBridge {
   version: string;
   memoire: DesktopMemoryBridge;
-  /** Le téléphone branché, en lecture seule ; absent d'une coquille plus ancienne, qui ne le lit pas. */
+  /** Le téléphone branché ; absent d'une coquille plus ancienne, qui ne le lit pas. */
   telephone?: DesktopPhoneBridge;
   /**
    * Pose la tâche que la coquille attend avant de fermer sa fenêtre (écritures en attente), échec compris ; elle ferme

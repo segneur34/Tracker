@@ -78,7 +78,7 @@ const localTravellingValues = (): Record<string, unknown> => {
 let lastSignature: string | null = null;
 
 /** Identifiant de l'appareil, tiré au hasard la première fois. */
-const deviceId = (): string => {
+export const deviceId = (): string => {
   const stored = jsonStore.read<string>(DEVICE_ID_KEY);
   if (typeof stored === 'string' && stored !== '') return stored;
   const id = newId();

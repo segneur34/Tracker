@@ -136,7 +136,7 @@ function texte(a: Record<string, unknown>, cle: string): string {
 }
 
 /** Vrai pour un tableau d'octets (`Uint8Array` ou `Buffer`), quel que soit le contexte qui l'a créé. */
-function estOctets(v: unknown): v is Uint8Array {
+export function estOctets(v: unknown): v is Uint8Array {
   return ArrayBuffer.isView(v) && Object.prototype.toString.call(v) === '[object Uint8Array]'
 }
 

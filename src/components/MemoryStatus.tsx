@@ -12,7 +12,7 @@ import { READ_ONLY_MEMORY_MESSAGE, browserMemoryIsGuaranteed, desktopMemoryPlace
 import { isDesktopApp, isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
-import PhoneRecoverButton, { PhoneRecoverProgress } from './PhoneRecoverButton';
+import PhoneSyncButton, { PhoneSyncPanel } from './PhoneSyncButton';
 import RefreshLibraryButton from './RefreshLibraryButton';
 import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
 import TrashZone from './TrashZone';
@@ -43,7 +43,8 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  * Dans le programme Windows, la même carte dit le dossier du disque : proposé au
  * premier lancement (« Utiliser ce dossier », « Choisir un autre dossier »),
  * introuvable (« Réessayer »), dans OneDrive ; jamais la mémoire du navigateur. Dans Réglages, il y ajoute
- * « Récupérer les sessions du téléphone » (`PhoneRecoverButton`), qui lit le téléphone branché par câble, et la
+ * « Synchroniser avec le téléphone » (`PhoneSyncButton`), qui met l'ordinateur et le téléphone branché par câble à
+ * jour l'un de l'autre après une confirmation chiffrée, et la
  * corbeille de l'ordinateur (`TrashZone`) quand elle n'est pas vide.
  */
 
@@ -115,10 +116,10 @@ function MemoryStatus({
         <div style={rowStyle}>
           <RefreshLibraryButton />
           <ImportButtons gpx={false} />
-          <PhoneRecoverButton />
+          <PhoneSyncButton />
         </div>
       )}
-      {detailed && <PhoneRecoverProgress />}
+      {detailed && <PhoneSyncPanel />}
     </>
   );
 

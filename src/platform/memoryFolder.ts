@@ -58,9 +58,10 @@ export type FileStat = Pick<FolderEntry, 'size' | 'mtimeMs'>;
 
 /**
  * `browser` : mémoire privée du navigateur ; `picked` : dossier choisi sur le PC ; `device` : dossier du téléphone ;
- * `disk` : dossier du disque tenu par le programme Windows.
+ * `disk` : dossier du disque tenu par le programme Windows ; `phone` : dossier mémoire du téléphone branché, vu du
+ * programme Windows par le câble (`phoneMemoryFolder`), jamais la mémoire de l'application.
  */
-export type MemoryKind = 'browser' | 'picked' | 'device' | 'disk';
+export type MemoryKind = 'browser' | 'picked' | 'device' | 'disk' | 'phone';
 
 export interface MemoryFolder {
   kind: MemoryKind;

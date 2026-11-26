@@ -295,10 +295,13 @@ describe('règle 12 : les API de l’appareil seulement dans platform/', () => {
       files.filter((file) => withoutComments(fs.readFileSync(new URL(file, SRC), 'utf8')).split('\n').some((line) => re.test(line)));
     expect(uses(/\btrackerBureau\b/)).toEqual(['platform/desktopBridge.ts']);
     expect(uses(/\.telephone\b/)).toEqual(['platform/phoneCable.ts']);
-    // Le téléphone, en lecture seule : la page ne lui demande que son état, son listage et un fichier lu.
+    // Le téléphone : la page lui demande son état, son listage, un fichier lu, s'il enregistre, une écriture, la
+    // corbeille du jour et une mise de côté ; jamais un effacement (élément 217, sous-lot 3c).
     const cable = withoutComments(fs.readFileSync(new URL('platform/phoneCable.ts', SRC), 'utf8'));
-    expect([...new Set([...cable.matchAll(/\bphone\.([A-Za-z]+)\(/g)].map((m) => m[1]))].sort()).toEqual(['etat', 'lireOctets']);
+    expect([...new Set([...cable.matchAll(/\bphone\.([A-Za-z]+)\(/g)].map((m) => m[1]))].sort()).toEqual([
+      'copieExiste', 'copieSecurite', 'ecrireOctets', 'enregistrement', 'etat', 'lireOctets', 'listerCorbeille', 'mettreDeCote',
+    ]);
     expect(cable).toMatch(/requirePhone\(\)\.lister\(\)/);
-    expect(cable).not.toMatch(/\b(ecrire|effacer|ecrireOctets|ecrireTexte)\b/);
+    expect(cable).not.toMatch(/\b(effacer|effacerDossier|ecrireTexte|supprimer)\b/);
   });
 });

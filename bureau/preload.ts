@@ -38,13 +38,22 @@ const memoire = Object.freeze({
 })
 
 /**
- * Le dossier `Documents/Tracker` du téléphone branché, en lecture seule (noms gardés égaux à ceux de `telephone.ts`
- * par un test) : `etat()`, `lister()`, et `lireOctets({ chemin })` d'un fichier du dernier listage seulement.
+ * Le dossier `Documents/Tracker` du téléphone branché (noms gardés égaux à ceux de `telephone.ts` par un test) :
+ * `etat()`, `lister()`, `lireOctets({ chemin })` d'un fichier du dernier listage seulement, `enregistrement()`,
+ * `ecrireOctets({ chemin, octets })` dans la liste fermée de la coquille, `listerCorbeille({ dossier })`, et
+ * `mettreDeCote({ chemin, vers })` vers la corbeille du téléphone, et `copieSecurite()` des deux dossiers avant la
+ * première synchronisation. Rien n'y efface un fichier.
  */
 const telephone = Object.freeze({
   etat: sans('telephone:etat'),
   lister: sans('telephone:lister'),
   lireOctets: avec('telephone:lireOctets'),
+  enregistrement: sans('telephone:enregistrement'),
+  ecrireOctets: avec('telephone:ecrireOctets'),
+  listerCorbeille: avec('telephone:listerCorbeille'),
+  mettreDeCote: avec('telephone:mettreDeCote'),
+  copieSecurite: sans('telephone:copieSecurite'),
+  copieExiste: avec('telephone:copieExiste'),
 })
 
 /**

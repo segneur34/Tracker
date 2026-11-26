@@ -241,8 +241,9 @@ export const orphanTrashDirs = (entries: readonly TrashEntry[], listing: readonl
  */
 export const reusableTrashEntry = (
   entries: readonly TrashEntry[], startMs: number, mainName: string, files: readonly TrashFile[], origin: TrashOrigin = 'ordinateur',
+  kind: 'session' | 'restes' = 'session',
 ): TrashEntry | null =>
-  entries.find((e) => e.kind === 'session' && e.startMs === startMs && e.origin === origin && e.main.toLowerCase() === mainName.toLowerCase()
+  entries.find((e) => e.kind === kind && e.startMs === startMs && e.origin === origin && e.main.toLowerCase() === mainName.toLowerCase()
     && files.every((file) => e.files.some((f) => f.name.toLowerCase() === file.name.toLowerCase() && f.size === file.size))) ?? null;
 
 /** Même chose pour un itinéraire : même base, même création, fiche de même taille. */

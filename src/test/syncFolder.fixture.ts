@@ -13,46 +13,13 @@ import {
   type SyncAncestors, type SyncGuardLimits, type SyncHeldChoice, type SyncItem, type SyncOp, type SyncPlan, type SyncScope, type SyncTargetNames, type SyncTrashed,
 } from '../library/syncPlan';
 import { mergeSyncRecords } from '../library/syncRecordMerge';
+import { REPLACE_SUFFIX, cableTempName, phoneVisibleNames, type VisibleName } from '../library/remoteTemps';
 import { sessionRecord } from './record.fixture';
 
 /** Fichier de test seulement : le code de l'application ne l'importe pas. */
 
 /** Liaison coupée (câble débranché, programme fermé) : levée par toute opération d'un faux dossier après sa coupure. */
 export class SyncCutError extends Error {}
-
-
-/** Le téléphone écrit un fichier remplacé sous ce nom, à côté de l'original (`MemoryFolderPlugin.java`). */
-export const REPLACE_SUFFIX = '.tracker-tmp';
-/** Un fichier neuf, et tout ce qu'écrit le câble (lot 217-3c), le temps de l'écrire. */
-export const NEW_SUFFIX = '.tracker-new';
-
-/** Un nom tel que le téléphone le montre, et le nom que le fichier porte vraiment. */
-interface VisibleName {
-  name: string;
-  actual: string;
-}
-
-/**
- * Les fichiers du téléphone tels que son application les voit après une coupure (`MemoryFolderPlugin.list`) : un
- * `.tracker-new` resté seul est caché ; un `.tracker-tmp` à côté de son original aussi ; un `.tracker-tmp` resté seul
- * reprend le nom de l'original (`finishInterruptedReplace`). Le lot 217-3c en fera une pièce de `library/`.
- */
-const phoneVisibleNames = (names: readonly string[]): VisibleName[] => {
-  const present = new Set(names);
-  const visible: VisibleName[] = [];
-  for (const actual of names) {
-    if (actual.endsWith(NEW_SUFFIX)) continue;
-    if (actual.endsWith(REPLACE_SUFFIX)) {
-      const original = actual.slice(0, -REPLACE_SUFFIX.length);
-      if (present.has(original)) continue;
-      present.add(original);
-      visible.push({ name: original, actual });
-      continue;
-    }
-    visible.push({ name: actual, actual });
-  }
-  return visible;
-};
 
 export interface SyncFolder extends MemoryFolder {
   /**
@@ -62,6 +29,8 @@ export interface SyncFolder extends MemoryFolder {
   moveAside(path: string, to: string): Promise<void>;
   /** Ce qui a été déplacé hors de la mémoire du téléphone, par chemin depuis `Documents/`. */
   aside(): Map<string, string>;
+  /** Chemins déjà pris dans un jour de la corbeille du téléphone ('dir', depuis Documents/), comme phoneMemoryFolder. */
+  asideTaken(dir: string): Promise<string[]>;
   /** Pose un fichier sans passer par le protocole d'écriture, ni compter dans la coupure : la mise en place d'un essai. */
   put(path: string, content: string | Uint8Array): void;
   /** Efface un fichier de même, comme le ferait l'application de l'appareil ou un gestionnaire de fichiers. */
@@ -140,7 +109,7 @@ export const createSyncFolder = (
   };
   const writeRaw = async (path: string, bytes: Uint8Array): Promise<void> => {
     if (!phone) return step(() => store(path, bytes));
-    const temp = path + NEW_SUFFIX;
+    const temp = cableTempName(path);
     step(() => store(temp, bytes));
     step(() => {
       const written = files.get(temp) as Stored;
@@ -202,6 +171,7 @@ export const createSyncFolder = (
       listed?.delete(path);
     },
     aside: () => new Map(moved),
+    asideTaken: async (dir) => [...moved.keys()].filter((p) => p.startsWith(dir + '/')),
     put: (path, content) => store(path, encode(content)),
     drop: (path) => void files.delete(path),
     text: (path) => {

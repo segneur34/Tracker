@@ -9,7 +9,7 @@ import { addGpx, type AddOptions } from './addSession';
 import { refreshLibrary } from './lifecycle';
 import { findSessionAt, lib } from './memory';
 import { writeRecordNow } from './recordWrites';
-import { recordOptionsFromText, reloadTrash, trashFolderOf, trashStore } from './trash';
+import { recordOptionsFromText, reloadTrash, trashFolderOf, trashReleased, trashStore } from './trash';
 
 /**
  * Gestes de Réglages › Mémoire sur la corbeille du programme Windows : restaurer une ligne, la supprimer
@@ -18,6 +18,8 @@ import { recordOptionsFromText, reloadTrash, trashFolderOf, trashStore } from '.
 
 const openTrash = async (): Promise<MemoryFolder> => {
   await lib.opening;
+  // Une synchronisation compte sur ce que tient la corbeille : le geste attend sa fin.
+  await trashReleased();
   const f = trashFolderOf(lib.folder);
   if (!f) throw new Error("La corbeille n'est pas ouverte : le dossier mémoire ne répond pas.");
   return f;
