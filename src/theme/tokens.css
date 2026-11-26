@@ -50,6 +50,11 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  /* Téléphone droit, analyses et Profil (`analysisMobile.css`, `ProfilePage.css`) : espace entre deux cadres (carte,
+     barre d'onglets, premier panneau, cartes du Profil), puis entre deux blocs (panneaux d'un onglet, sections du
+     Profil). Ordinateur et téléphone tourné gardent les leurs. */
+  --frame-gap: 6px;
+  --section-gap: 10px;
 
   /* Pages d'analyse, sur ordinateur : largeur de la carte, centrée, la place de part et d'autre
      servant à faire défiler la page à la souris (`analysisMobile.css`). */

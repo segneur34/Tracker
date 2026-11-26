@@ -365,3 +365,17 @@ button.profile-legend__row {
   flex: 0 0 auto;
   color: var(--faint);
 }
+
+/* Téléphone droit : les cartes se rapprochent, l'espace entre deux blocs de la page est celui des analyses. Le
+   téléphone tourné garde celui de l'ordinateur. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .ui-page.profile {
+    gap: var(--section-gap);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .ui-page.profile {
+    gap: var(--space-5);
+  }
+}

@@ -119,6 +119,12 @@
   display: none;
 }
 
+/* Cadre de la carte compacte (`AnalysisMap`) : trait et coins arrondis ; le téléphone droit les retire sur les côtés. */
+.an-map-frame {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+}
+
 /* Coin bas droit d'une carte d'analyse (`AnalysisMap`) : la légende de couleur, puis la mention OSM,
    côte à côte sur une ligne plutôt qu'empilées ; si les deux ne tiennent pas, la mention passe sous la légende
    (jamais écrasée : la mention d'OSM ne doit pas être coupée, `flex-shrink: 0`). */
@@ -442,25 +448,45 @@
     display: contents !important;
   }
 
+  /* Entre la barre d'onglets et les panneaux : l'espace entre deux cadres, puis entre deux panneaux, l'espace entre
+     deux blocs (Statistiques garde le sien). */
   .an-carte-col {
     order: 1;
     flex: none !important;
+    gap: var(--frame-gap);
   }
 
-  /* Bloc carte (`AnalysisMap`, légende posée dessus) : pleine largeur, carte à hauteur fixe. */
+  .an-page:not(.stats-page) .an-carte-panels {
+    gap: var(--section-gap);
+  }
+
+  /* Bloc carte (`AnalysisMap`, légende posée dessus) : d'un bord à l'autre de l'écran (il sort des marges de la
+     page), carte à hauteur fixe, sans trait ni coins sur les côtés ; le téléphone tourné, plus bas, la range à
+     gauche, dans ses marges. */
   .an-map-panel {
     order: -1;
     flex: none !important;
-    width: 100% !important;
+    width: calc(100% + 2 * var(--space-5)) !important;
+    max-width: none !important;
+    margin-left: calc(-1 * var(--space-5));
+    margin-right: calc(-1 * var(--space-5));
     height: auto !important;
     resize: none !important;
-    margin-bottom: var(--space-2);
+    margin-bottom: var(--frame-gap);
   }
 
   .an-map-frame {
     flex: none !important;
     height: 30vh;
     cursor: pointer;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* La légende et la mention de la carte restent à 10 px du bord de l'écran (marge sûre comprise). */
+  .an-map-frame.an-map-corner .leaflet-bottom.leaflet-right {
+    padding-right: max(10px, var(--inset-right));
   }
 
   /* Feuille réduite à l'en-tête, sur une ligne au-dessus de la carte : la flèche de retour, le nom
@@ -833,12 +859,28 @@
     bottom: calc(var(--space-3) + var(--inset-bottom));
     left: calc(var(--shell-left) + var(--space-3));
     width: calc(var(--an-map-w) - var(--space-3)) !important;
-    margin-bottom: 0;
+    margin: 0;
   }
 
   .an-map-frame {
     flex: 1 1 auto !important;
     height: auto;
+    border-radius: var(--radius-s);
+    border-left: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .an-map-frame.an-map-corner .leaflet-bottom.leaflet-right {
+    padding-right: 0;
+  }
+
+  /* Les espaces resserrés du téléphone droit ne valent pas ici : ceux de l'ordinateur. */
+  .an-carte-col {
+    gap: var(--space-3);
+  }
+
+  .an-page:not(.stats-page) .an-carte-panels {
+    gap: 20px;
   }
 
   .an-map-overlay {
