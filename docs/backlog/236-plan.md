@@ -42,3 +42,14 @@ Production : P1, P2, P5, P6 par ajout dans la page servie (classes existantes `M
 ## Non vérifié par le plan
 
 Un réglage qui interdirait la recherche de lieu en ligne ; le format de date court « 20/11 » (`core/calendar.ts` n'a que `shortDate`) ; les leçons et aides qui citent les anciens blocs.
+
+## Choisi par l'utilisateur le 26/11, sur la planche (https://claude.ai/artifact/7bHCMZHxbuKTcwD3KXEo6P)
+
+- Menu « … » de Planifier : le proposé, en haut à droite du titre ; Partager l'image, Partager le GPX, Supprimer (avec la confirmation dans le menu) ; « Exporter le GPX » sur ordinateur seulement.
+- Liste des itinéraires : le proposé ; « … » = Partager l'image, Partager le GPX, Supprimer ; l'icône de partage reste en raccourci vers le GPX.
+- Image de partage d'un itinéraire : le proposé (chiffres fixes : distance, D+, D−, temps estimé à pied et à vélo). La bande du revêtement doit être UN CHOIX de l'utilisateur dans la fenêtre de partage (à pied et à vélo), ni toujours là ni jamais. L'image de voile et de surf lui convient (balises numérotées, une pastille « distance · cap » par bord, rose du nord, trois chiffres), au cadre et au cartouche de Tracker.
+- Noms donnés d'office : le proposé, sans l'activité devant (« Boucle à Montpellier le 20/11 ») ; un nom saisi prime toujours.
+- Tracé et balises réunis en voile et en surf : oui.
+- Hauteur de la carte de Planifier au téléphone droit : ni 58 % ni 45 %, un entre-deux à 50 % de l'écran.
+- À ne pas oublier au code (vu en fabriquant la planche) : la rangée Précédent, Inverser, Boucler, Charger un GPX, Tout effacer tient sur trois lignes à 390 px, à resserrer ; la ligne dépliée d'une balise (Monter, Descendre, Retirer) débordait.
+- La planche est validée : le lot peut se coder (sous-lots A à D du plan, la carte à 50 % au lieu de 45 %).

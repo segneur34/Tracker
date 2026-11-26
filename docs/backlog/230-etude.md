@@ -146,3 +146,7 @@ Limite connue : le test de FC de repos de l'application (couché, 30 s les plus 
 2. Faut-il une forme mesurée pour les paliers « Très sportif » et « Athlète » ? Par défaut oui, ce qui pousse au test de FC de repos.
 3. Les noms des paliers conviennent-ils ? Par défaut ceux du §4.
 4. « Les efforts que tu fais exprès » : toutes les sessions comptent-elles, marche et bateau compris ? Par défaut oui, à leur intensité.
+
+## 10. Réponse de l'utilisateur le 26/11, sur la maquette (https://claude.ai/artifact/Hz8zoKZvnXMbLvm9TpBUx8)
+
+« J'aime bien, il faut juste faire gaffe à l'intégration de la racine. » La note est acceptée dans son principe (parts, paliers, poids recommandés J1, plafond à 74 sans forme mesurée, faute de remarque contraire). Point d'attention pour le plan et le code : la place du cadre « Niveau sportif » par rapport à la racine et à la fleur du Profil (le dessin de la racine est en haut à droite de la page) : ni chevauchement, ni deux éléments qui se disputent le haut de la page, ni deux choses qui disent la même. Non précisé : la présentation retenue, A (tout déplié) ou B (une ligne qui se déplie) ; à redemander avant de coder, ou montrer les deux avec la vraie racine dessinée.

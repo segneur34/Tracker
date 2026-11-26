@@ -62,3 +62,9 @@ L'utilisateur a demandé « tout Analyses » d'après Gtracker, où ces règles 
 ## À vérifier en passant
 
 Onglets retrouvés ouverts par `outils/banc/surf.mjs` à 390 px : très probablement un artefact du script (`go()` abandonne en silence après 5 s si la page ne change pas ; l'état des onglets n'est qu'un `useState`, rangé nulle part). À confirmer en relevant les onglets juste après le `go()` de la partie téléphone.
+
+## Partie 5 · Choisi par l'utilisateur le 26/11, sur la planche (https://claude.ai/artifact/1GVnTbubfYoS96dwkZp5S3)
+
+Réponse : « espace entre les lignes le plus petit, du coup C ». Retenu : le réglage C de la planche (carte d'un bord à l'autre de l'écran au téléphone droit, 8 px entre deux cadres, 14 px entre deux blocs). À confirmer avant de coder : « le plus petit » désignerait plutôt le réglage B (6 et 10 px) ; la lettre donnée est C. La carte d'un bord à l'autre est commune à B et à C.
+
+Le prototype CSS (derrière l'attribut `data-proto-espaces`) est gardé, non commité, dans la copie `.claude/worktrees/planche-234` : variables `--proto-gap-cadres` et `--proto-gap-sections` dans `tokens.css`, règles en fin de `analysisMobile.css` et dans `ProfilePage.css`. À reprendre au propre (deux vraies variables d'espace, téléphone tourné inchangé, légende et mention de la carte à 10 px du bord), avec `docs/MISE_EN_PAGE.md` à accorder à la passe de doc. Relevé sur la planche : l'espace sous la carte (8 px) n'a pas été touché ; au Profil tout se rapproche (photo, période, bandes de chiffres) ; mode nuit et téléphone tourné non regardés.
