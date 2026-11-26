@@ -35,11 +35,11 @@ const BUILT = [
   row('victory-vendor', 'MIT AND ISC AND BSD-3-Clause'),
   row('un-nom-de-paquet-tres-long-qui-ne-tient-pas-sur-une-ligne-de-telephone', 'MIT'),
   row('react-leaflet', 'Hippocratic-2.1'),
-  row('@capgo/background-geolocation', 'MPL-2.0'),
+  row('@exemple/greffon-natif', 'MPL-2.0'),
 ];
 const EXTRA = [
   row('@fontsource/shrikhand', 'OFL-1.1'),
-  row('@capgo/background-geolocation', 'MPL-2.0', { notice: 'Utilisé sans modification. Sources :', url: 'https://github.com/Cap-go/capacitor-background-geolocation', text: 'Texte MPL' }),
+  row('@exemple/greffon-natif', 'MPL-2.0', { notice: 'Utilisé sans modification. Sources :', url: 'https://example.org/greffon-natif', text: 'Texte MPL' }),
   { name: 'AndroidX', version: '2 composants', identifier: 'Apache-2.0', text: 'Texte Apache', components: ['androidx.core:core:1.17.0', 'androidx.activity:activity:1.11.0'] },
 ];
 /** Réponses données à `fetch` : une liste, ou 'échec' pour un refus. */
@@ -119,7 +119,7 @@ const firstGroup = await evaluate(`document.querySelectorAll('.about-licenses__l
 check('trois composants dans le premier groupe', firstGroup === 3, firstGroup);
 const others = before.slice(3).map((r) => r.id);
 check('Hippocratic, MPL, OFL et Apache dans les autres licences', ['Hippocratic-2.1', 'MPL-2.0', 'OFL-1.1', 'Apache-2.0'].every((id) => others.includes(id)), others.join(', '));
-check('le greffon GPS, présent dans les deux listes, une seule fois', before.filter((r) => r.name.startsWith('@capgo/')).length === 1);
+check('le greffon natif, présent dans les deux listes, une seule fois', before.filter((r) => r.name.startsWith('@exemple/')).length === 1);
 check('lignes de 44 px au moins', before.every((r) => r.h >= 44), before.map((r) => r.h).join(', '));
 const pageBg = await tokenColor('--bg');
 check('lignes sur le fond de page', before.every((r) => r.bg === pageBg), `${before[0].bg} / ${pageBg}`);
@@ -138,10 +138,10 @@ const long = await textZone();
 check('son texte complet', long.count === 1 && long.text.includes('Ligne 200 de la licence'), long.count);
 check('dans une zone qui défile, 320 px au plus', long.client <= 320 && long.scroll > long.client, `${long.client} / ${long.scroll}`);
 check('un seul ouvert à la fois', (await clickRow('bravo')) === 'ok' && (await settle({ max: 500 }), (await textZone()).text === 'Texte de bravo'), (await textZone()).text);
-await clickRow('@capgo/');
+await clickRow('@exemple/');
 await settle({ max: 500 });
 const gps = await textZone();
-check('greffon GPS : non modifié, lien, texte du complément', gps.text.includes('Utilisé sans modification') && gps.link === 'https://github.com/Cap-go/capacitor-background-geolocation' && gps.text.includes('Texte MPL'), gps.text);
+check('greffon natif : non modifié, lien, texte du complément', gps.text.includes('Utilisé sans modification') && gps.link === 'https://example.org/greffon-natif' && gps.text.includes('Texte MPL'), gps.text);
 await clickRow('AndroidX');
 await settle({ max: 500 });
 const androidx = await textZone();
@@ -195,7 +195,7 @@ await waitFor(`document.querySelectorAll('.about-license__row').length > 0`, { t
 const devIntro = await evaluate(`[...document.querySelectorAll('.about-licenses__intro')].map((p) => p.textContent)`);
 check('sans licences.json : la mention', devIntro.includes('Liste complète dans la version construite.'), devIntro.join(' | '));
 const devRows = await rows();
-check('… et le complément réel', ['@fontsource/shrikhand', '@capgo/background-geolocation', 'AndroidX', 'Services Google Play'].every((n) => devRows.some((r) => r.name.startsWith(n))), devRows.map((r) => r.name).join(', '));
+check('… et le complément réel', ['@fontsource/shrikhand', '@capacitor/android', 'AndroidX'].every((n) => devRows.some((r) => r.name.startsWith(n))), devRows.map((r) => r.name).join(', '));
 await shoot('apropos-sans-liste');
 
 await setStub(stubSource('échec', 'échec'));

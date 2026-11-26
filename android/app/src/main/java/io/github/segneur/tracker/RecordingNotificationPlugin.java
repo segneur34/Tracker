@@ -19,11 +19,11 @@ import org.json.JSONException;
  * Notification de l'enregistrement (src/platform/notification.ts,
  * src/hooks/recordingNotification.ts), lisible écran verrouillé.
  *
- * Elle appartient au service GPS qui la pose à son démarrage : celui du
- * greffon @capgo/background-geolocation, puis le nôtre (RecordingService),
- * qui porte le même numéro et le même canal, pour qu'il n'y ait jamais deux
+ * Elle appartient au service GPS qui la pose à son démarrage (RecordingService,
+ * qui a remplacé l'ancien greffon @capgo/background-geolocation et garde son
+ * numéro et son canal, pour qu'il n'y ait jamais deux
  * notifications de l'enregistrement et que les réglages d'écran verrouillé
- * de l'utilisateur, attachés au canal, restent. Ce greffon la récrit sur ce
+ * de l'utilisateur, attachés au canal, restent). Ce greffon la récrit sur ce
  * numéro et ce canal : Android garde son lien avec le service au premier
  * plan. Hors pause manuelle, il ne la pose que si celle du
  * service est affichée, pour ne jamais laisser de notification orpheline
@@ -39,7 +39,7 @@ public class RecordingNotificationPlugin extends Plugin {
 
     /**
      * Numéro et canal de la notification de l'enregistrement : un seul propriétaire, le service (RecordingService),
-     * qui reprend ceux du greffon de position d'avant (BackgroundGeolocationService, constantes non publiques).
+     * qui garde ceux de l'ancien greffon de position (retiré).
      */
     static final int NOTIFICATION_ID = RecordingService.NOTIFICATION_ID;
     static final String CHANNEL_ID = RecordingService.CHANNEL_ID;

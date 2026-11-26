@@ -11,8 +11,9 @@ const config: CapacitorConfig = {
   appName: 'Tracker',
   webDir: 'dist',
   android: {
-    // Exigé par `@capgo/background-geolocation` : sans lui, les positions
-    // cessent d'arriver après 5 min en arrière-plan.
+    // Gardé depuis le retrait de l'ancien greffon de position (`@capgo/background-geolocation`, qui l'exigeait pour
+    // que les positions ne cessent pas après 5 min en arrière-plan) : nos greffons (RecordingPlugin et le service
+    // RecordingService) n'en dépendent pas à notre connaissance, mais l'ancien pont reste le réglage éprouvé.
     useLegacyBridge: true,
     // Chromium 111 : la cible de construction de Vite (`baseline-widely-available`) ; en dessous, des écrans
     // blancs. Capacitor ne fait que journaliser le refus (pas d'écran d'erreur sans `server.errorPath`).

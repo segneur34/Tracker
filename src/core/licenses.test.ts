@@ -160,15 +160,8 @@ describe('complément hors JS (public/licences-hors-js.json)', () => {
 
   it('paquets npm : versions du package-lock', () => {
     const npm = rows.filter((r) => r.name.startsWith('@'));
-    expect(npm.map((r) => r.name)).toEqual(['@fontsource/montserrat', '@fontsource/shrikhand', '@capacitor/android', '@capgo/background-geolocation']);
+    expect(npm.map((r) => r.name)).toEqual(['@fontsource/montserrat', '@fontsource/shrikhand', '@capacitor/android']);
     for (const row of npm) expect(row.version, row.name).toBe(lockVersion(row.name));
-  });
-
-  it('greffon GPS : la ligne MPL, « non modifié » et le lien vers ses sources', () => {
-    const gps = rows.find((r) => r.name === '@capgo/background-geolocation');
-    expect(gps?.identifier).toBe('MPL-2.0');
-    expect(gps?.notice).toContain('sans modification');
-    expect(gps?.url).toBe('https://github.com/Cap-go/capacitor-background-geolocation');
   });
 
   it.each([
@@ -183,12 +176,6 @@ describe('complément hors JS (public/licences-hors-js.json)', () => {
   ])('natif : %s de android/variables.gradle', (variable, component) => {
     expect(gradleVariable(variable), variable).toBeDefined();
     expect(nativeVersions.get(component), component).toBe(gradleVariable(variable));
-  });
-
-  it('services Google Play : conditions du SDK Android, avec leur lien', () => {
-    const gms = rows.find((r) => r.name === 'Services Google Play');
-    expect(gms?.identifier).toBe('Licence du SDK Android');
-    expect(gms?.url).toBe('https://developer.android.com/studio/terms');
   });
 });
 

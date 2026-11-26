@@ -46,9 +46,6 @@ const packageSource = (path: string): string => {
 const appJava = (name: string): string =>
   fs.readFileSync(new URL(`../../android/app/src/main/java/io/github/segneur/tracker/${name}`, import.meta.url), 'utf8');
 
-const GPS_SERVICE = packageSource(
-  '@capgo/background-geolocation/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocationService.java'
-);
 const RECORDING_NOTIFICATION = appJava('RecordingNotificationPlugin.java');
 const BRIDGE = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/Bridge.java');
 const BRIDGE_ACTIVITY = packageSource('@capacitor/android/capacitor/src/main/java/com/getcapacitor/BridgeActivity.java');
@@ -79,17 +76,10 @@ const between = (text: string, from: string, to: string): string => {
   return text.slice(start, end);
 };
 
-describe("notification de l'enregistrement : un seul propriétaire, notre service, aux valeurs du greffon", () => {
-  it('même numéro que le service GPS du greffon', () => {
-    expect(captured(RECORDING_SERVICE, /\bNOTIFICATION_ID = (\d+);/)).toBe('28351');
-    expect(captured(RECORDING_SERVICE, /\bNOTIFICATION_ID = (\d+);/))
-      .toBe(captured(GPS_SERVICE, /\bNOTIFICATION_ID = (\d+);/));
-  });
-
-  it('même canal : le greffon le nomme de son paquet, pas par un texte', () => {
-    expect(GPS_SERVICE).toContain('NOTIFICATION_CHANNEL_ID = BackgroundGeolocationService.class.getPackage().getName();');
-    expect(captured(RECORDING_SERVICE, /\bCHANNEL_ID = "([^"]+)";/))
-      .toBe(captured(GPS_SERVICE, /^package ([\w.]+);/m));
+describe("notification de l'enregistrement : un seul propriétaire, notre service, aux valeurs héritées de l'ancien greffon", () => {
+  it("numéro et canal gardés : les réglages d'écran verrouillé des téléphones tiennent au canal déjà créé", () => {
+    expect(captured(RECORDING_SERVICE, /int NOTIFICATION_ID = (\d+);/)).toBe('28351');
+    expect(captured(RECORDING_SERVICE, /String CHANNEL_ID = "([^"]+)";/)).toBe('com.capgo.capacitor_background_geolocation');
   });
 
   it('le greffon qui la récrit lit les deux chez le service, sans les recopier', () => {

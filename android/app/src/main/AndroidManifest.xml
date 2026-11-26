@@ -107,11 +107,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
-
-        <!-- Récepteur du greffon GPS, retiré : il ne restaure au démarrage que des zones de géorepérage, jamais créées ici. -->
-        <receiver
-            android:name="com.capgo.capacitor_background_geolocation.GeofenceBootReceiver"
-            tools:node="remove" />
     </application>
 
     <!-- Permissions -->
@@ -130,7 +125,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <!-- L'application ne sert à rien sans GPS : même exigence que celle du greffon de position d'avant. -->
+    <!-- L'application ne sert à rien sans GPS : sans lui, Google Play ne la propose pas. -->
     <uses-feature android:name="android.hardware.location.gps" />
     <!-- « Réessayer » du GPS (GnssPlugin, lot 232) : recharger les données d'aide au GPS, sans jamais les effacer ;
          permission normale, sans demande. -->
@@ -145,6 +140,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Carte « Autorisations » (PermissionsPlugin) : l'écran système qui lève l'optimisation de la batterie. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Déclarée par le greffon GPS et par androidx.work, sans usage ici (récepteur retiré plus haut). -->
+    <!-- Démarrage du téléphone : aucun usage ici ; retirée au cas où une bibliothèque la fusionnerait (l'ancien greffon GPS et androidx.work la déclaraient). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 </manifest>

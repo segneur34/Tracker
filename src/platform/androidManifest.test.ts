@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Le manifeste Android (lot 151) : ni sauvegarde Google ni transfert d'appareil, le dossier mémoire est la seule
- * sauvegarde ; le récepteur de démarrage du greffon GPS et sa permission retirés. Une mise à jour du greffon qui
- * changerait ce récepteur rendrait le retrait muet sans erreur de compilation.
+ * sauvegarde ; la permission de démarrage retirée. L'ancien greffon GPS (et son récepteur de démarrage) n'est plus là.
  *
  * Les services et la permission batterie restent pour l'instant (n° 171 du reste à faire) : leur retrait se décidera
  * avec le reste, pas par accident.
@@ -11,28 +10,17 @@ import { describe, expect, it } from 'vitest';
 
 // Les types de Node ne sont pas ceux de l'app (voir `hooks/mediaQueries.test.ts`) : le peu qui sert est décrit à la main.
 interface Fs {
-  existsSync(file: URL): boolean;
   readFileSync(file: URL, encoding: 'utf8'): string;
 }
 const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as Fs;
 
-/** Source d'un fichier d'un paquet, cherché en remontant les `node_modules` comme le fait Node. */
-const packageSource = (path: string): string => {
-  for (let dir = new URL('./', import.meta.url); ; dir = new URL('../', dir)) {
-    const file = new URL(`node_modules/${path}`, dir);
-    if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8');
-    if (new URL('../', dir).href === dir.href) throw new Error(`Introuvable dans node_modules : ${path}`);
-  }
-};
 const repoFile = (path: string): string => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
 /** Commentaires XML retirés : un mot cité dans un commentaire ne prouve rien. */
 const withoutComments = (xml: string): string => xml.replace(/<!--[\s\S]*?-->/g, '');
 const MANIFEST = withoutComments(repoFile('android/app/src/main/AndroidManifest.xml'));
 const RULES = withoutComments(repoFile('android/app/src/main/res/xml/data_extraction_rules.xml'));
-const PLUGIN_MANIFEST = packageSource('@capgo/background-geolocation/android/src/main/AndroidManifest.xml');
 
-const BOOT_RECEIVER = 'com.capgo.capacitor_background_geolocation.GeofenceBootReceiver';
 /** Tous les emplacements que connaît `data-extraction-rules` (developer.android.com/identity/data/autobackup). */
 const DOMAINS = ['root', 'file', 'database', 'sharedpref', 'external', 'device_root', 'device_file', 'device_database', 'device_sharedpref'];
 
@@ -45,21 +33,12 @@ describe('manifeste Android : retraits', () => {
     expect(MANIFEST).toContain('xmlns:tools="http://schemas.android.com/tools"');
   });
 
-  it('retire le récepteur de démarrage du greffon GPS', () => {
-    expect(tagWithName(MANIFEST, 'receiver', BOOT_RECEIVER)).toContain('tools:node="remove"');
-  });
-
   it('retire la permission de démarrage', () => {
     expect(tagWithName(MANIFEST, 'uses-permission', 'android.permission.RECEIVE_BOOT_COMPLETED')).toContain('tools:node="remove"');
   });
 
-  it('le greffon déclare toujours ce récepteur et cette permission : le retrait vise juste', () => {
-    expect(PLUGIN_MANIFEST).toContain(`android:name="${BOOT_RECEIVER}"`);
-    expect(PLUGIN_MANIFEST).toContain('android:name="android.permission.RECEIVE_BOOT_COMPLETED"');
-  });
-
-  it('l\'application ne crée aucune zone de géorepérage, seule chose que ce récepteur restaure', () => {
-    expect(repoFile('src/platform/location.ts')).not.toMatch(/addGeofence/);
+  it("aucun récepteur de l'ancien greffon GPS ne revient", () => {
+    expect(MANIFEST).not.toContain('com.capgo');
   });
 });
 
@@ -125,10 +104,6 @@ describe('manifeste Android : ce qui reste', () => {
   it("changer la taille ou la graisse du texte du téléphone ne recrée pas l'activité (enregistrement en cours, lot 232)", () => {
     const changes = tagWithName(MANIFEST, 'activity', '.MainActivity')?.match(/android:configChanges="([^"]*)"/)?.[1].split('|') ?? [];
     expect(changes).toEqual(expect.arrayContaining(['fontScale', 'fontWeightAdjustment', 'orientation', 'screenSize', 'uiMode', 'density']));
-  });
-
-  it('ne retire pas le récepteur de géorepérage du greffon', () => {
-    expect(MANIFEST).not.toContain('GeofenceBroadcastReceiver');
   });
 });
 

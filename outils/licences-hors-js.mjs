@@ -15,7 +15,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const SDK_ANDROID = 'https://developer.android.com/studio/terms'
-const GREFFON_GPS = 'https://github.com/Cap-go/capacitor-background-geolocation'
 
 // `io.ionic.libs:ionfilesystem-android` : son AAR n'a pas de fichier de licence et son POM ne donne qu'un lien, lu le
 // 05/11 : https://github.com/ionic-team/ion-android-filesystem/blob/1.1.1/LICENSE
@@ -132,7 +131,6 @@ const principal = () => {
     lignePaquet('@fontsource/montserrat'),
     lignePaquet('@fontsource/shrikhand'),
     lignePaquet('@capacitor/android'),
-    lignePaquet('@capgo/background-geolocation', { notice: 'Utilisé sans modification. Sources :', url: GREFFON_GPS }),
     ...lignesNatives(composants, apache),
   ]
   writeFileSync(join(RACINE, 'public', 'licences-hors-js.json'), `${JSON.stringify(lignes, null, 2)}\n`)

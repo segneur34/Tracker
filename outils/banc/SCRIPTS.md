@@ -437,7 +437,7 @@ Un script **à verdict** contrôle lui-même des chiffres ou des états attendus
   - le bloc en dernier, après « Tutoriels », replié, aucune liste demandée au chargement ni à son ouverture ;
   - ouvert : logo centré en police du logo à 34 px, version, paragraphe, filet, ligne « Licences… » repliée ;
   - dépliée : les deux listes demandées, la phrase, les deux groupes, trois composants puis « Voir les 4 autres », lignes de 44 px au moins sur le fond de page, rayon `--radius-s`, un doublon JS et complément une seule fois ;
-  - un composant : son texte dans une zone qui défile (320 px au plus), un seul ouvert à la fois, notice et lien du greffon GPS, composants d'une famille native ;
+  - un composant : son texte dans une zone qui défile (320 px au plus), un seul ouvert à la fois, notice et lien d'un greffon natif synthétique (l'ancien greffon GPS, seul sous MPL, est retiré), composants d'une famille native ;
   - à 390×844 puis tourné : aucun débordement, zone à la moitié de l'écran au plus ; thème sombre : lignes sur le fond sombre ; « Tout réduire », rechargement compris ;
   - sans `licences.json` (le serveur de développement répond par la page HTML) : le complément réel et la mention ; les deux fichiers en échec : le message.
 

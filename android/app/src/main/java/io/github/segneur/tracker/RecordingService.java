@@ -61,7 +61,8 @@ public class RecordingService extends Service {
 
     /**
      * Numéro et canal de la notification de l'enregistrement. Valeurs à ne pas changer : les réglages d'écran
-     * verrouillé de l'utilisateur tiennent au canal, et ce sont celles du greffon de position d'avant.
+     * verrouillé de l'utilisateur tiennent au canal, et ce sont celles de l'ancien greffon de position (retiré) :
+     * le nom hérité « com.capgo… » reste, un canal déjà créé sur les téléphones ne se renomme pas.
      */
     static final int NOTIFICATION_ID = 28351;
     static final String CHANNEL_ID = "com.capgo.capacitor_background_geolocation";
