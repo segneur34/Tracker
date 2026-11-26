@@ -18,9 +18,16 @@ describe('itinéraire, compatibilité', () => {
     const r = parseRouteRecord(route({ version: 4 }))!;
     expect(isWritableRouteRecord(r)).toBe(false);
   });
-  it('(b) point mal typé : fiche entière ignorée ; nom vide : « Itinéraire »', () => {
+  it("(b) point mal typé : fiche entière ignorée ; nom vide, absent ou ancien nom donné d'office : relu vide (lot 236)", () => {
     expect(parseRouteRecord(route({ waypoints: [{ lat: '43', lon: 3 }, { lat: 43.1, lon: 3.1 }] }))).toBeNull();
-    expect(parseRouteRecord(route({ name: '' }))?.name).toBe('Itinéraire');
+    expect(parseRouteRecord(route({ name: '' }))?.name).toBe('');
+    expect(parseRouteRecord(route({ name: 42 }))?.name).toBe('');
+    expect(parseRouteRecord(route({ name: 'Itinéraire' }))?.name).toBe('');
+    expect(parseRouteRecord(route({ name: 'Itinéraire du 20/11/2026' }))?.name).toBe('');
+    expect(parseRouteRecord(route({ name: ' Itinéraire du 3/1/2026 ' }))?.name).toBe('');
+    // Un nom saisi reste, même s'il ressemble à l'ancien.
+    expect(parseRouteRecord(route({ name: 'Itinéraire du 20/11/2026 (2)' }))?.name).toBe('Itinéraire du 20/11/2026 (2)');
+    expect(parseRouteRecord(route({ name: 'Itinéraire du matin' }))?.name).toBe('Itinéraire du matin');
   });
   it('(c) __proto__ sans pollution ; champ inconnu de tronçon perdu à la réécriture', () => {
     const r = parseRouteRecord(route().replace('"name"', '"__proto__":{"pollue":true},"name"'))!;

@@ -66,11 +66,12 @@ export const followedTraceFromPoints = (
  * Trace d'un itinéraire rangé : ses tronçons à la suite ; un tronçon jamais
  * calculé y figure en ligne droite, comme sur la page Itinéraires. Elle garde
  * l'activité choisie pour l'itinéraire, ses points en balises, et ses bips
- * d'approche s'il en a de propres.
+ * d'approche s'il en a de propres. `name` : le nom montré de l'itinéraire, saisi
+ * ou donné d'office (`routeDisplayName`, `library/routeName.ts`).
  */
-export const followedTraceFromRoute = (record: RouteRecord): FollowedTrace | null => {
+export const followedTraceFromRoute = (record: RouteRecord, name: string): FollowedTrace | null => {
   const route = recordToRoute(record);
-  const trace = followedTraceFromPoints(routePoints(route), record.name, 'route', record.activityId, route.waypoints);
+  const trace = followedTraceFromPoints(routePoints(route), name, 'route', record.activityId, route.waypoints);
   const markGuide = routeMarkGuide(record);
   return trace && markGuide ? { ...trace, markGuide } : trace;
 };

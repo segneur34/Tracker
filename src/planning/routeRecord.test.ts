@@ -41,6 +41,13 @@ describe('fiche d\'itinéraire', () => {
     expect(routeToRecord(sample(), META, record).couleur).toBe('rouge');
   });
 
+  it('garde le lieu trouvé à la réécriture (lot 236)', () => {
+    const place = { name: 'Montpellier', kind: 'commune', start: { lat: 43.6, lon: 3.88 } };
+    const record = parseRouteRecord(serializeRouteRecord({ ...routeToRecord(sample(), META), place }))!;
+    expect(record.place).toEqual(place);
+    expect(routeToRecord(sample(), { ...META, name: 'Renommé' }, record).place).toEqual(place);
+  });
+
   it('range les bips propres au parcours, les garde au renommage, les retire sur demande', () => {
     const guide = { curve: [{ distanceM: 30, intervalMs: 200 }, { distanceM: 120, intervalMs: 1500 }], vibrate: false };
     const record = parseRouteRecord(serializeRouteRecord(routeToRecord(sample(), { ...META, markGuide: guide })))!;

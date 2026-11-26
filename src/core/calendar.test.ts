@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DAY_MS, addDays, addMonths, dayMonthTime, dayMonthYear, dayMonthYearTime, formatLocalDate, monthYearLong, monthYearShort, shortDate, stacksByActivity,
+  DAY_MS, addDays, addMonths, dayMonthNumeric, dayMonthTime, dayMonthYear, dayMonthYearTime, formatLocalDate, monthYearLong, monthYearShort, shortDate, stacksByActivity,
   startOfDay, startOfMonth, weekdayDayMonthYear,
 } from './calendar';
 
@@ -46,6 +46,16 @@ describe('calendar', () => {
       expect(shortDate(ms)).toBe('Invalid Date');
     }
     expect(shortDate(8.64e15)).toBe(oldShortDate(8.64e15));
+  });
+
+  it('écrit le jour et le mois en chiffres, « 20/11 »', () => {
+    expect(dayMonthNumeric(new Date(2026, 10, 20, 8).getTime())).toBe('20/11');
+    expect(dayMonthNumeric(new Date(2026, 2, 3, 23, 59))).toBe('03/03');
+    for (const ms of SAMPLES) {
+      const d = new Date(ms);
+      expect(dayMonthNumeric(ms)).toBe(`${oldPad(d.getDate())}/${oldPad(d.getMonth() + 1)}`);
+    }
+    expect(dayMonthNumeric(NaN)).toBe('Invalid Date');
   });
 
   it('écrit la date locale AAAA-MM-JJ', () => {

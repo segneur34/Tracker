@@ -64,6 +64,8 @@ const dateFormatter = (options: Intl.DateTimeFormatOptions): ((when: number | Da
 
 /** « 12 mars » */
 export const shortDate = dateFormatter({ day: 'numeric', month: 'short' });
+/** « 12/03 » : jour et mois en chiffres (nom donné d'office d'un itinéraire, `library/routeName.ts`). */
+export const dayMonthNumeric = dateFormatter({ day: '2-digit', month: '2-digit' });
 /** « 12 mars 2026 » */
 export const dayMonthYear = dateFormatter({ day: 'numeric', month: 'short', year: 'numeric' });
 /** « jeu. 12 mars 2026 » */

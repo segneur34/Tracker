@@ -70,6 +70,14 @@ describe('nom d\'un itinéraire importé', () => {
 });
 
 describe('fiche d\'un itinéraire importé', () => {
+  it('GPX de Tracker sans nom saisi : reste sans nom, son lieu repris (lot 236)', () => {
+    const place = { name: 'Carnon-Plage', kind: 'eau', search: 'eau', source: 'osm', version: 1, fetchedAt: NOW, start: { lat: 43.5, lon: 3.9 } };
+    const unnamed = { ...courseRecord, name: '', place };
+    const record = importedRouteRecord(buildRouteGpx(course, 'Boucle à Carnon-Plage le 01/11', markLabel, unnamed), 'x.gpx', options(['']));
+    expect(record?.name).toBe('');
+    expect(record?.place).toEqual(place);
+  });
+
   it('GPX de Tracker : balises, tronçons, activité et bips repris tels quels, nom non doublé', () => {
     const record = importedRouteRecord(sharedGpx, 'x.gpx', options([courseRecord.name]));
     expect(record).not.toBeNull();

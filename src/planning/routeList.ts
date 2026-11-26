@@ -81,13 +81,18 @@ interface Sortable {
   record: { name: string; updatedAt: string };
 }
 
-/** Itinéraires dans l'ordre demandé, sans toucher à la liste reçue ; à égalité, l'ordre reçu. */
-export const sortRoutes = <T extends Sortable>(routes: T[], sort: RouteSort, distanceOf: (route: T) => number): T[] => {
+/**
+ * Itinéraires dans l'ordre demandé, sans toucher à la liste reçue ; à égalité, l'ordre reçu. `nameOf` : le nom
+ * montré, saisi ou donné d'office (`routeDisplayName`), sur lequel se fait le tri par nom ; le nom de la fiche par défaut.
+ */
+export const sortRoutes = <T extends Sortable>(
+  routes: T[], sort: RouteSort, distanceOf: (route: T) => number, nameOf: (route: T) => string = (r) => r.record.name
+): T[] => {
   const time = (r: T) => Date.parse(r.record.updatedAt) || 0;
   const compare: Record<RouteSort, (a: T, b: T) => number> = {
     recent: (a, b) => time(b) - time(a),
     ancien: (a, b) => time(a) - time(b),
-    nom: (a, b) => a.record.name.localeCompare(b.record.name, 'fr', { sensitivity: 'base' }),
+    nom: (a, b) => nameOf(a).localeCompare(nameOf(b), 'fr', { sensitivity: 'base' }),
     'distance-croissante': (a, b) => distanceOf(a) - distanceOf(b),
     'distance-decroissante': (a, b) => distanceOf(b) - distanceOf(a),
   };

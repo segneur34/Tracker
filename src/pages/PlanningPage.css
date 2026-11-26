@@ -95,7 +95,8 @@
 
 .plan-map {
   position: relative;
-  height: 58vh;
+  /* Téléphone droit : la moitié de l'écran (lot 236), le reste aux onglets dessous. */
+  height: 50vh;
   min-height: 300px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-m);

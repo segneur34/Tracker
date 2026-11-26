@@ -47,6 +47,10 @@ interface StoredLeg {
 export interface RouteRecord {
   format: typeof ROUTE_FORMAT;
   version: number;
+  /**
+   * Nom saisi par l'utilisateur ; vide : aucun, le nom montré est donné d'office à la lecture
+   * (`routeDisplayName`, `library/routeName.ts`) et jamais écrit ici.
+   */
   name: string;
   /** Activité choisie pour l'itinéraire (unités d'affichage, terrain) ; `null` : aucune. */
   activityId: string | null;
@@ -60,8 +64,27 @@ export interface RouteRecord {
    * ceux de l'activité. À relire par `routeMarkGuide`.
    */
   markGuide?: unknown;
+  /**
+   * Lieu du départ (et de l'arrivée d'un aller lointain), cherché comme celui d'une session tant que le nom est
+   * vide, avec les positions où il a été cherché ; gardé à la réécriture. À relire par `readRoutePlace`
+   * (`library/routeName.ts`), qui écarte un lieu mal formé.
+   */
+  place?: unknown;
   [unknown: string]: unknown;
 }
+
+/**
+ * Noms donnés d'office avant le lot 236 et rangés comme des noms saisis : « Itinéraire du 20/11/2026 » (date du
+ * premier rangement), et « Itinéraire », que la relecture mettait à la place d'un nom vide. Relus vides : le nom
+ * donné d'office d'aujourd'hui les remplace.
+ */
+const LEGACY_DEFAULT_NAME = /^Itinéraire(?: du \d{1,2}\/\d{1,2}\/\d{4})?$/;
+
+/** Nom saisi d'une fiche relue : rogné, vide sans nom ou pour un ancien nom donné d'office (`LEGACY_DEFAULT_NAME`). */
+const typedName = (raw: unknown): string => {
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  return LEGACY_DEFAULT_NAME.test(name) ? '' : name;
+};
 
 
 const round = (value: number, digits: number): number => Number(value.toFixed(digits));
@@ -136,7 +159,10 @@ export const recordToRoute = (record: RouteRecord): PlannedRoute => {
   return { waypoints, legs };
 };
 
-/** Lit une fiche ; `null` si le texte n'en est pas une lisible. Les champs inconnus sont gardés. */
+/**
+ * Lit une fiche ; `null` si le texte n'en est pas une lisible. Les champs inconnus sont gardés. Un nom absent,
+ * vide ou donné d'office par une version d'avant le lot 236 est relu vide.
+ */
 export const parseRouteRecord = (text: string): RouteRecord | null => {
   const raw = parseJson(text);
   if (!isObject(raw) || raw.format !== ROUTE_FORMAT || !isFiniteNumber(raw.version)) return null;
@@ -149,7 +175,7 @@ export const parseRouteRecord = (text: string): RouteRecord | null => {
     ...raw,
     format: ROUTE_FORMAT,
     version: raw.version,
-    name: typeof raw.name === 'string' && raw.name.trim() !== '' ? raw.name.trim() : 'Itinéraire',
+    name: typedName(raw.name),
     activityId: typeof raw.activityId === 'string' && raw.activityId !== '' ? raw.activityId : null,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : now,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : now,

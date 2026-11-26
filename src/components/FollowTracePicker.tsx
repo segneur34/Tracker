@@ -9,6 +9,7 @@ import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { sessionDisplayName } from '../library/sessionName';
+import { routeDisplayName } from '../library/routeName';
 import { shownRoutes } from '../planning/routeList';
 import { followedTraceFromRoute, followedTraceFromSession, type FollowedTrace } from '../recording/followedTrace';
 import ActivitySelect from './ActivitySelect';
@@ -81,7 +82,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
     : sortedSessions.filter((s) => s.activity?.id === activityFilter);
 
   const pickRoute = (saved: SavedRoute) => {
-    const trace = followedTraceFromRoute(saved.record);
+    const trace = followedTraceFromRoute(saved.record, routeDisplayName(saved.record));
     if (!trace) {
       setError('Cet itinéraire n\'a pas assez de points.');
       return;
@@ -131,7 +132,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
             {routes.map((saved) => (
               <li key={saved.base}>
                 <button type="button" style={ROW_STYLE} onClick={() => pickRoute(saved)}>
-                  <strong>{saved.record.name}</strong>
+                  <strong>{routeDisplayName(saved.record)}</strong>
                   <span style={DETAIL_STYLE}>Enregistré le {formatDate(saved.record.updatedAt)}</span>
                 </button>
               </li>

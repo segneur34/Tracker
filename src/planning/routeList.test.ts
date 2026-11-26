@@ -45,6 +45,11 @@ describe('sortRoutes', () => {
     expect(order('distance-decroissante')).toEqual(['a', 'b', 'c']);
   });
 
+  it("trie par le nom montré qu'on lui donne (nom donné d'office, lot 236)", () => {
+    const shown: Record<string, string> = { a: 'Zèbre', b: 'Aller du 20/11', c: 'Boucle du 20/11' };
+    expect(sortRoutes(list, 'nom', (r) => r.distanceM, (r) => shown[r.base]).map((r) => r.base)).toEqual(['b', 'c', 'a']);
+  });
+
   it('ne touche pas à la liste reçue', () => {
     order('nom');
     expect(list.map((r) => r.base)).toEqual(['b', 'a', 'c']);

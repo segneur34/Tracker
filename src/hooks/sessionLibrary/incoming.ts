@@ -7,6 +7,7 @@ import { libraryState, sentence, setState, subscribe, type IncomingNotice } from
 import { lib } from './memory';
 import { canImportSessions, importEntries } from './importer';
 import { isGpxFileName } from '../../library/record';
+import { routeDisplayName, type RouteNameSource } from '../../library/routeName';
 import { isRouteGpx } from '../../planning/routeImport';
 
 /**
@@ -67,7 +68,7 @@ const refusalText = (name: string, refusal: IncomingRefusal): string => {
 };
 
 /** Range l'itinéraire d'un GPX (`hooks/routeFiles.ts`, passé par `main.tsx`) ; rend le nom de ses fichiers et son nom. */
-export type IncomingRouteImporter = (text: string, fileName: string) => Promise<{ base: string; record: { name: string } }>;
+export type IncomingRouteImporter = (text: string, fileName: string) => Promise<{ base: string; record: RouteNameSource }>;
 
 let port: IncomingFilesPort = incomingFiles;
 /** Absent : un GPX d'itinéraire suit l'import des sessions, comme avant le lot 194. */
@@ -124,7 +125,7 @@ const routeArrival = async (file: IncomingFile): Promise<'route' | Uint8Array | 
   if (!isRouteGpx(new TextDecoder().decode(bytes))) return bytes;
   try {
     const saved = await importRoute(new TextDecoder().decode(bytes), name);
-    notify({ id, text: `${quoted(name)} est rangé dans les itinéraires, sous « ${saved.record.name} ».`, file: null, route: saved.base, trouble: false });
+    notify({ id, text: `${quoted(name)} est rangé dans les itinéraires, sous « ${routeDisplayName(saved.record)} ».`, file: null, route: saved.base, trouble: false });
     await forget(file);
   } catch (err) {
     notify({

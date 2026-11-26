@@ -17,6 +17,7 @@ import { plainError } from '../platform/errorText';
 import { readPickedFile } from '../platform/files';
 import { isNativeApp } from '../platform/runtime';
 import { trashDeleteButton } from '../library/trash';
+import { routeDisplayName } from '../library/routeName';
 import { useDeletesToTrash } from '../hooks/useTrash';
 import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
@@ -64,7 +65,7 @@ function RoutesPage() {
     const filtered = filter === null
       ? routes
       : routes.filter((r) => (routeActivity(r, activities)?.id ?? WITHOUT_ACTIVITY) === filter);
-    return sortRoutes(filtered, sort, (r) => distances.get(r.base) ?? 0);
+    return sortRoutes(filtered, sort, (r) => distances.get(r.base) ?? 0, (r) => routeDisplayName(r.record));
   }, [routes, activities, filter, sort, distances]);
   /** Range l'itinéraire du GPX choisi ; le champ est vidé pour accepter de reprendre le même fichier. */
   const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -77,7 +78,7 @@ function RoutesPage() {
       const saved = await importGpx(await readPickedFile(file), file.name);
       setFilter(null);
       setImported(saved.base);
-      setNote({ text: `« ${saved.record.name} » est rangé dans vos itinéraires.`, error: false });
+      setNote({ text: `« ${routeDisplayName(saved.record)} » est rangé dans vos itinéraires.`, error: false });
     } catch (err) {
       setNote({ text: plainError(err, 'Import impossible.'), error: true });
     }
@@ -161,10 +162,10 @@ function RoutesPage() {
             ) : (
               <>
                 <Button size="s" variant="ghost" className="route-list__icon-btn" title="Partager"
-                  onClick={() => void share(saved)} aria-label={`Partager ${saved.record.name}`}>
+                  onClick={() => void share(saved)} aria-label={`Partager ${routeDisplayName(saved.record)}`}>
                   <IconShare size={24} />
                 </Button>
-                <MoreMenu label={`Plus d'actions sur ${saved.record.name}`}>
+                <MoreMenu label={`Plus d'actions sur ${routeDisplayName(saved.record)}`}>
                   <Button size="s" variant="danger" onClick={() => setConfirmingDelete(saved.base)}>Supprimer</Button>
                 </MoreMenu>
               </>

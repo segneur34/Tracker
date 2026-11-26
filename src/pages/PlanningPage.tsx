@@ -47,6 +47,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute, type ImportedElevationStatus } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorderStatus } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
+import { findRoutePlace } from '../hooks/routePlace';
 import { useDeletesToTrash } from '../hooks/useTrash';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -55,6 +56,7 @@ import {
 import { PLANNING_FAMILIES, resolveTerrainStepM } from '../settings/activitySettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
+import { routeDisplayName, routeFileLabel, type RouteNameSource } from '../library/routeName';
 import { trashDeleteButton } from '../library/trash';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
 import { shownRoutes } from '../planning/routeShown';
@@ -232,8 +234,6 @@ function MapEvents({ onTap, onTakeOver }: { onTap: (w: Waypoint) => void; onTake
   });
   return null;
 }
-
-const defaultName = (): string => `Itinéraire du ${new Date().toLocaleDateString('fr-FR')}`;
 
 const sameGuide = (a: MarkGuideSettings | null, b: MarkGuideSettings | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
@@ -517,6 +517,15 @@ function PlanningPage() {
       || !sameGuide(courseGuide, routeMarkGuide(current.record))
     : route.waypoints.length > 0 || courseGuide !== null;
   useLeaveWarning(dirty ? { message: 'L\'itinéraire en cours n\'est pas enregistré. Quitter quand même ?', discard: noop } : null);
+  /**
+   * Nom du tracé en cours (`routeDisplayName`) : le nom saisi, sinon le nom donné d'office, d'après le genre du
+   * tracé, le lieu de l'itinéraire rangé et son jour de création (aujourd'hui s'il n'est pas rangé).
+   */
+  const nameSource: RouteNameSource = {
+    name: name.trim(), place: current?.record.place, waypoints: route.waypoints, createdAt: current?.record.createdAt ?? new Date().toISOString(),
+  };
+  /** Nom donné d'office, montré dans le champ tant qu'aucun nom n'est saisi. */
+  const composedName = routeDisplayName({ ...nameSource, name: '' });
 
   // --- Profil d'altitude ---
 
@@ -666,16 +675,28 @@ function PlanningPage() {
       : `Un tronçon n'a pas pu être calculé : il sera ${verb} en ligne droite. Continuer ?`);
   };
 
+  /**
+   * Cherche en fond le lieu d'un itinéraire sans nom saisi (`findRoutePlace`), qui compose son nom donné d'office ;
+   * l'itinéraire ouvert prend la fiche complétée s'il n'a pas été rangé de nouveau entre-temps.
+   */
+  const locatePlace = (saved: SavedRoute) => {
+    void findRoutePlace(saved).then((found) => {
+      if (found) setCurrent((c) => (c?.base === found.base && c.record.updatedAt === found.record.updatedAt ? found : c));
+    });
+  };
+
   const handleSave = async () => {
     if (!confirmFailedLegs('enregistré')) return;
     setSaving(true);
     setMessage(null);
     try {
-      const finalName = name.trim() || defaultName();
+      // Sans nom saisi, la fiche garde un nom vide : le nom est donné d'office à la lecture.
+      const finalName = name.trim();
       const saved = await library.save(route, { name: finalName, activityId: activity?.id ?? null, markGuide: courseGuide }, current ?? undefined);
       setCurrent(saved);
       setSavedRoute(route);
       setName(finalName);
+      locatePlace(saved);
       setMessage(`Enregistré dans ${ROUTES_DIR}/${saved.base}.json, avec son GPX.`);
     } catch (err) {
       setMessage(plainError(err, 'Enregistrement impossible.'));
@@ -708,6 +729,7 @@ function PlanningPage() {
     setMessage(null);
     zoom.reset();
     fitTo(opened);
+    locatePlace(saved);
   };
 
   const startNew = () => {
@@ -789,8 +811,8 @@ function PlanningPage() {
 
   const exportGpx = () => {
     if (!confirmFailedLegs('exporté')) return;
-    const fileName = `${current?.base ?? safeFileName(name.trim() || defaultName())}.gpx`;
-    downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName(), label));
+    const fileName = `${current?.base ?? safeFileName(routeFileLabel(nameSource))}.gpx`;
+    downloadTextFile(fileName, buildRouteGpx(route, routeDisplayName(nameSource), label));
   };
 
   // Itinéraire demandé par l'adresse : ouvert une fois la liste lue et la carte prête, puis l'adresse est
@@ -1268,7 +1290,7 @@ function PlanningPage() {
             <div className="plan-form">
               <label className="plan-form__field">
                 <span className="ui-eyebrow">Nom</span>
-                <input className="ui-field" value={name} placeholder={defaultName()} onChange={(e) => setName(e.target.value)} />
+                <input className="ui-field" value={name} placeholder={composedName} onChange={(e) => setName(e.target.value)} />
               </label>
             </div>
             {!library.canSave && (
@@ -1320,7 +1342,7 @@ function PlanningPage() {
                     <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
                   </span>
                 ) : (
-                  <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(saved.base)} aria-label={`Supprimer ${saved.record.name}`}>Supprimer</Button>
+                  <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(saved.base)} aria-label={`Supprimer ${routeDisplayName(saved.record)}`}>Supprimer</Button>
                 ))} />
             )}
           </PlanBlock>

@@ -8,6 +8,7 @@ import type { SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { effectiveDistanceUnit, effectiveDurationSettings } from '../hooks/useSportSettings';
 import { useThemedShade } from '../hooks/useTheme';
+import { routeDisplayName } from '../library/routeName';
 import { routeActivity, routeDistanceM, routeDurationS } from '../planning/routeList';
 import ActivityIcon from './ActivityIcon';
 import Button from './ui/Button';
@@ -57,7 +58,7 @@ function RouteList({ routes, activities, onOpen, currentBase = null, actions, go
         const duration = durations.get(saved.base) ?? null;
         const body = (
           <>
-            <strong>{saved.record.name}</strong>
+            <strong>{routeDisplayName(saved.record)}</strong>
             <span className="route-list__meta">
               {activity
                 ? <ActivityIcon activity={activity} size={14} className="route-list__icon" style={{ color: shown(activity.color) }} />
@@ -82,7 +83,7 @@ function RouteList({ routes, activities, onOpen, currentBase = null, actions, go
             )}
             {withGo && (
               <Button size="s" variant="record" disabled={!canGo} onClick={() => go(saved)}
-                title={canGo ? undefined : 'Un enregistrement est en cours'} aria-label={`Partir sur ${saved.record.name}`}>
+                title={canGo ? undefined : 'Un enregistrement est en cours'} aria-label={`Partir sur ${routeDisplayName(saved.record)}`}>
                 Partir
               </Button>
             )}
