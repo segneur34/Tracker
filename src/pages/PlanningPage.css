@@ -393,23 +393,74 @@
   white-space: nowrap;
 }
 
-/* Bords d'un parcours de voile : balises, distance, cap. */
-.plan-course {
-  list-style: none;
-  margin: var(--space-3) 0 0;
+/*
+ * Bloc « tracé et balises » (voile et surf, lot 236) : sous les chiffres, la rangée d'actions, serrée pour tenir
+ * sur deux lignes à 390 px, cibles de 40 px ; puis une ligne par balise, « 1,60 km · 65° » depuis la précédente,
+ * touchée pour la déplier sur Monter, Descendre, Retirer, qui passent à la ligne plutôt que de déborder.
+ */
+.plan-actions--course {
+  margin-top: var(--space-3);
+  gap: var(--space-1) var(--space-2);
+}
+
+.plan-actions--course > .ui-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 0 var(--space-2);
+}
+
+.plan-marks {
+  margin-top: var(--space-2);
+}
+
+.plan-mark__main {
+  flex: 1 1 100%;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.plan-course__leg {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 4em;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-1);
-  border-top: 1px solid var(--line-soft);
+.plan-mark__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.plan-course__leg span:not(:first-child) {
-  text-align: right;
+.plan-mark__end {
+  color: var(--muted);
+}
+
+.plan-mark__chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.plan-mark__chevron--open {
+  transform: rotate(180deg);
+}
+
+.plan-mark__actions {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.plan-mark__actions > .ui-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 0 var(--space-2);
 }
 
 /* Bips d'approche du parcours : ceux de l'activité, ou réglés pour lui. */

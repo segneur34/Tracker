@@ -1,7 +1,8 @@
 // Banc de test : parcours de voile et bips d'approche des balises (§10, point 77).
 // Usage : node balises.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
 // Sur un profil neuf. Le script :
-//  1. pose un parcours en Voile sur la page Itinéraires (numéros, pas de type de voie, bloc « Parcours »),
+//  1. pose un parcours en Voile sur la page Itinéraires (numéros, pas de type de voie, bloc « Tracé et balises » du
+//     lot 236, bips dans « Balises sonores »),
 //     le boucle, règle des bips propres au parcours (validation tirée plus loin), l'enregistre (fiche avec
 //     ses bips, GPX à balises numérotées) et « Partir » (trace suivie avec ses balises et ses bips) ;
 //  2. remplace la trace suivie par un parcours synthétique de trois balises (départ, 300 m au nord, puis
@@ -125,7 +126,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, devi
 await send('Page.navigate', { url: `${BASE}/itineraires` });
 await wait(3000);
 // Tous les onglets ouverts (seul le premier l'est par défaut), lus au chargement de la page.
-await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, parcours: true, trace: true, points: true, ranger: true, liste: true } })); 'ok'`);
+await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, parcours: true, traceBalises: true, trace: true, points: true, ranger: true, liste: true } })); 'ok'`);
 await send('Page.navigate', { url: `${BASE}/itineraires` });
 await wait(3000);
 console.log('activité Voile :', await chooseOption('Voile'));
@@ -138,8 +139,7 @@ const planState = () => evaluate(`JSON.stringify({
   typesDeVoie: document.querySelectorAll('.plan-modes').length,
   blocs: [...document.querySelectorAll('.plan-block__head')].map((x) => x.textContent.trim()),
   chiffres: [...document.querySelectorAll('.plan-stat')].map((x) => x.innerText.replace(/\\n/g, ' ')),
-  bords: [...document.querySelectorAll('.plan-course__leg')].map((x) => x.innerText.replace(/\\n/g, ' ')),
-  liste: [...document.querySelectorAll('.plan-point__text strong')].map((x) => x.textContent),
+  balises: [...document.querySelectorAll('.plan-mark__main')].map((x) => x.innerText.replace(/\\n/g, ' ')),
   sélecteursDeVoie: document.querySelectorAll('.plan-points select').length,
 })`);
 const trois = await planState();
@@ -151,7 +151,8 @@ const boucle = await planState();
 console.log('boucle :', boucle);
 {
   const b = JSON.parse(boucle ?? '{}');
-  check('« Boucler » : 4 balises, dont le bord 3 → 1', (b.blocs ?? []).includes('Balises (4)') && (b.bords ?? []).some((x) => x.startsWith('3 → 1')), boucle);
+  check('« Boucler » : 3 balises, la dernière ligne revient à la 1', (b.blocs ?? []).some((x) => x.startsWith('Tracé et balises (3)'))
+    && (b.balises ?? []).length === 4 && /^1 .*retour au départ/.test((b.balises ?? []).at(-1) ?? ''), boucle);
 }
 console.log('note :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).find((t) => t.includes('se valide')) ?? null`));
 await shoot('balises-planification');
