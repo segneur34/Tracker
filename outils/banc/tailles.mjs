@@ -255,7 +255,7 @@ const OPEN_ALL = `(async () => {
 })()`;
 
 const PAGES = [
-  { name: 'accueil', path: '/' },
+  { name: 'accueil', path: '/accueil' },
   { name: 'bibliothèque voile', path: '/voile' },
   { name: 'bibliothèque à pied', path: '/course' },
   { name: 'bibliothèque vélo', path: '/velo' },
@@ -273,7 +273,7 @@ const PAGES = [
   { name: 'planifier', path: '/itineraires', ms: 3500 },
   { name: 'itinéraires', path: '/itineraires/liste' },
   { name: 'statistiques', path: '/statistiques' },
-  { name: 'profil', path: '/profil', ms: 3000 },
+  { name: 'profil', path: '/', ms: 3000 },
   { name: 'réglages (tout ouvert)', path: '/parametres', open: true },
 ].filter((p) => !process.env.PAGES || process.env.PAGES.split(',').some((q) => p.path.startsWith(q.trim()) || p.name.includes(q.trim())));
 

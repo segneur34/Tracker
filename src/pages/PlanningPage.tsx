@@ -39,6 +39,7 @@ import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { activityFamily, activityTreatment, findActivity, type Activity } from '../core/activities';
 import { DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
+import { HOME_PATH } from '../core/parentPage';
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, getSportProfile, usesMarkCourse } from '../core/sportProfiles';
 import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
@@ -910,7 +911,7 @@ function PlanningPage() {
     <div className="ui-page ui-page--wide plan-page">
       <PageHeader
         title="Itinéraires"
-        back={{ to: '/', label: 'Accueil' }}
+        back={{ to: HOME_PATH, label: 'Accueil' }}
         aside={showMenu ? (
           <RouteMenu label="Plus d'actions sur l'itinéraire" blocked={shareBlocked}
             onShareImage={() => current && setSharingImage(current)} onShareGpx={() => void shareCurrent()}

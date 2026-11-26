@@ -5,9 +5,10 @@ import Button from './ui/Button';
 import Dialog from './ui/Dialog';
 import SegmentedControl from './ui/SegmentedControl';
 import { RUNNER_NAME_MAX, type RunnerProfile } from '../library/athleteProfile';
-import { missingProfileFields, shouldPromptProfile } from '../library/profilePrompt';
+import { missingProfileFields, profilePromptGate, shouldPromptProfile } from '../library/profilePrompt';
 import { readRunnerProfile, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { isNativeApp } from '../platform/runtime';
+import { PermissionsPrompt } from './PermissionsStatus';
 import './ProfilePrompt.css';
 
 /**
@@ -36,9 +37,10 @@ const draftOf = (profile: RunnerProfile): Draft => ({
 });
 
 /**
- * Pop-up de l'accueil, dans l'application : tant que le profil n'est pas rempli
+ * Pop-up du profil, dans l'application : tant que le profil n'est pas rempli
  * (pseudo, année de naissance, sexe, poids, taille : `missingProfileFields`), il
- * s'ouvre une fois par lancement. Posé par l'accueil une fois la mémoire et la
+ * s'ouvre une fois par lancement, sur le Profil ou l'accueil, celui des deux
+ * ouvert le premier (`OpeningPrompts`). Posé une fois la mémoire et la
  * carte des autorisations décidées, il tranche à son arrivée ; `otherCardShown` :
  * l'une d'elles est à l'écran, et il attend le lancement suivant. `onDecided`
  * apprend une fois s'il s'ouvre (la carte du jour des tutoriels attend alors).
@@ -113,6 +115,34 @@ function ProfilePrompt({ otherCardShown, onDecided }: { otherCardShown: boolean;
         <Button variant="primary" onClick={save}>Enregistrer</Button>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Cartes d'ouverture posées sous la mémoire, sur l'accueil et sur le Profil, page d'ouverture depuis le lot 238 :
+ * la carte des autorisations (téléphone seulement, s'il en manque), puis le pop-up du profil, jamais par-dessus elle
+ * ni par-dessus la carte de la mémoire (`profilePromptGate`). Le pop-up ne s'ouvre qu'une fois par lancement, d'une
+ * page à l'autre (`askedThisLaunch`). `onPermissionsDecided` et `onProfileDecided` apprennent ce qui paraît (la
+ * leçon du jour de l'accueil attend après eux).
+ */
+export function OpeningPrompts({ memoryNeedsAction, memoryReady, onPermissionsDecided, onProfileDecided }: {
+  memoryNeedsAction: boolean;
+  memoryReady: boolean;
+  onPermissionsDecided?: (shown: boolean) => void;
+  onProfileDecided?: (shown: boolean) => void;
+}) {
+  /** La carte des autorisations paraît-elle ? `null` tant qu'elle n'a pas lu les autorisations. */
+  const [permissionsShown, setPermissionsShown] = useState<boolean | null>(null);
+  const gate = profilePromptGate({ memoryNeedsAction, memoryReady, permissionsShown });
+  const decidePermissions = (shown: boolean) => {
+    setPermissionsShown(shown);
+    onPermissionsDecided?.(shown);
+  };
+  return (
+    <>
+      {!memoryNeedsAction && memoryReady && <PermissionsPrompt onDecided={decidePermissions} />}
+      {gate.mount && <ProfilePrompt otherCardShown={gate.otherCardShown} onDecided={onProfileDecided} />}
+    </>
   );
 }
 

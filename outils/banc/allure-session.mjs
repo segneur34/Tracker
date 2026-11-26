@@ -73,7 +73,7 @@ const recordAndAnalyse = async (gpx) => {
 await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 
 step('0. Ancienne allure par support posée dans les réglages de l\'appareil (1 m/s en wingfoil)');
-await go('/');
+await go('/accueil');
 await evaluate(`localStorage.setItem('tracker.sportSettings', JSON.stringify({ referenceSpeeds: { wingfoil: 1 } })); 'ok'`);
 console.log('réglages :', await sportSettings());
 

@@ -46,7 +46,7 @@ const snapshot = () => evaluate(`JSON.stringify({ url: location.pathname, h1: do
 
 // Rangée « avancé » des analyses ouverte d'office, onglets posés dans `tracker.sections` rejoués à chaque analyse (`lib/onglets.mjs`, 05/11) ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
-await go('/', 2500);
+await go('/accueil', 2500);
 // Onglets de la colonne de la carte tous ouverts, comme chez l'utilisateur.
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ 'sailing-onglets': { tops: true, manoeuvres: true, graphiques: true, vmg: true, vent: true, matos: true, reglages: true } })); 'ok'`);
 

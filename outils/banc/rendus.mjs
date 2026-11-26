@@ -109,7 +109,7 @@ await phase('carte ouverte');
 console.log('Réduire la carte :', await clickText('Réduire la carte'));
 await vwait(1000);
 await phase('carte réduite');
-console.log('Accueil :', await click('.shell-brand'));
+console.log('Accueil :', await click('.shell-toplink[href="/accueil"]'));
 await vwait(1000);
 await phase('accueil');
 

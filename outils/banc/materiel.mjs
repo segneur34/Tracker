@@ -149,7 +149,7 @@ await shoot('materiel-telephone');
 
 // --- 5. Statistiques : matériel croisé (lot 146) ---
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-await go('/', 3000);
+await go('/accueil', 3000);
 await evaluate(`(() => {
   const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
   s.gearGroups = { ...s.gearGroups, running: [

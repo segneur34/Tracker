@@ -69,7 +69,7 @@ const card = () => evaluate(`(() => {
 /** L'accueil posé : la mémoire lue (les familles sont là), puis le temps que la garde décide. */
 const homeAt = async (dayMs) => {
   await setClock(dayMs);
-  await go('/', 4000);
+  await go('/accueil', 4000);
   await waitFor(`Boolean(document.querySelector('.home-families'))`, { timeout: 4000, label: 'accueil' });
   await waitFor(`Boolean(document.querySelector('.tutorial-card'))`, { timeout: 2000, label: 'carte du jour' });
 };

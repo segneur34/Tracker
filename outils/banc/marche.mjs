@@ -38,7 +38,7 @@ const seed = async (activities, version) => {
     localStorage.setItem('tracker.sportSettings', JSON.stringify({ activities: ${JSON.stringify(activities)}, activitiesVersion: ${version} }));
     return 'ok';
   })()`);
-  await go('/');
+  await go('/accueil');
 };
 const SAIL = { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: '#1976d2' };
 const RUN = { id: 'running', name: 'Course', base: 'running', color: '#d42a3c' };
@@ -46,8 +46,8 @@ const ROUTE = { id: 'cycling', name: 'Route', base: 'cycling', color: '#1e7a3c' 
 const TRAIL = { id: 'a-trail', name: 'Trail', base: 'running', color: '#f0504a' };
 
 // 1. Installation neuve : rien n'est rangé tant qu'on ne règle rien, la liste est celle de départ.
-await go('/');
-await go('/');
+await go('/accueil');
+await go('/accueil');
 // Réglages : la famille À pied et les cartes Course et Marche ouvertes, toutes leurs parties dépliées.
 await evaluate(`(() => {
   const sections = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}');
@@ -84,7 +84,7 @@ await seed([SAIL, RUN, TRAIL, ROUTE], 5);
 const v5 = await names();
 check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Bateau', 'Course', 'Trail', 'Marche', 'Route', 'Tests', 'Muscu']), JSON.stringify(v5));
 check('version 10 rangée', (await stored())?.activitiesVersion === 10);
-await go('/');
+await go('/accueil');
 check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Marche').length === 1);
 
 // 3. Liste de la version 5 avec une « marche » de l'utilisateur.

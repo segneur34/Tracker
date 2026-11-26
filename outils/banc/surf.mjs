@@ -181,7 +181,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: ONGLETS });
 await blockNetwork();
 
 // 1. Accueil, barre, Réglages.
-await go('/');
+await go('/accueil');
 // Tuiles des familles de l'accueil (`.home-family__name`, le sélecteur `.shell-main a` d'avant ne trouvait plus rien).
 const accueil = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((n) => n.textContent.trim()).join(', ')`);
 const barre = await evaluate(`[...document.querySelectorAll('.shell-toplink')].map((a) => a.textContent).join(', ')`);

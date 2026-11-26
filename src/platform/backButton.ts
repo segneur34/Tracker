@@ -1,6 +1,6 @@
 import { isNativeApp } from './runtime';
 
-/** Renvoie à la page au-dessus ; faux s'il n'y en a pas (accueil). Posé par le cadre des pages, qui a le routeur. */
+/** Renvoie à la page au-dessus ; faux s'il n'y en a pas (Profil, la page de base). Posé par le cadre des pages, qui a le routeur. */
 let backNavigator: (() => boolean) | null = null;
 
 /** Vues posées par-dessus la page (carte en plein écran…), la dernière ouverte en fin : le retour les ferme d'abord. */
@@ -27,7 +27,7 @@ export const pushBackLayer = (close: () => void): (() => void) => {
   };
 };
 
-/** Ce qu'a fait un retour : vue fermée, page retenue (brouillon), page au-dessus, ou rien (accueil). */
+/** Ce qu'a fait un retour : vue fermée, page retenue (brouillon), page au-dessus, ou rien (Profil, la page de base). */
 export type BackOutcome = 'layer' | 'held' | 'page' | 'none';
 
 /**
@@ -84,8 +84,8 @@ export const exitAfter = async (
 /**
  * Touche retour d'Android, et geste du bord de l'écran : elle ferme la vue
  * posée par-dessus la page (`pushBackLayer`), sinon renvoie à la page
- * au-dessus (`core/parentPage.ts`), pas à la page vue juste avant. À
- * l'accueil, elle fermerait l'activité, donc la WebView : un enregistrement en
+ * au-dessus (`core/parentPage.ts`), pas à la page vue juste avant. Au
+ * Profil (la page de base), elle fermerait l'activité, donc la WebView : un enregistrement en
  * cours perdrait alors ses positions, même si le service GPS continue de
  * tourner. Tant que `keepAlive` répond vrai, l'application passe en
  * arrière-plan au lieu de se fermer ; sinon elle se ferme après `beforeExit`

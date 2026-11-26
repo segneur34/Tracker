@@ -80,7 +80,7 @@ const pickerText = () => evaluate(`document.querySelector('[data-testid="gear-pi
 const allRecords = async () => (await records()).map((r) => r.record ?? r);
 
 // Liste de matériel de Course, écrite dans les réglages.
-await go('/');
+await go('/accueil');
 await evaluate(`(() => {
   const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
   s.gearGroups = { ...s.gearGroups, running: [{ id: 'g1', name: 'Chaussures', items: [{ id: 'i1', name: 'Trail rouge' }, { id: 'i2', name: 'Route blanche' }] }] };

@@ -73,7 +73,7 @@ const climbGpx = (type, speedMs, t0) => {
 };
 
 // --- 1. Poids et import ---
-await go('/', 3000);
+await go('/accueil', 3000);
 await evaluate(`(() => { localStorage.setItem('tracker.runnerProfile', JSON.stringify({ me: { weightKg: 70 } })); return 'ok'; })()`);
 const start = Date.parse('2026-10-03T08:00:00Z');
 await go('/course', 3000);

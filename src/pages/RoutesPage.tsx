@@ -9,6 +9,7 @@ import { RouteRowActions } from '../components/RouteMenu';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import { activityCounts } from '../core/activities';
+import { HOME_PATH } from '../core/parentPage';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, shownRoutes, sortRoutes, type RouteSort } from '../planning/routeList';
@@ -100,7 +101,7 @@ function RoutesPage() {
     <div className="ui-page" style={{ '--tab-accent': 'var(--neutral-accent)' } as React.CSSProperties}>
       <PageHeader
         title="Itinéraires planifiés"
-        back={{ to: '/', label: 'Accueil' }}
+        back={{ to: HOME_PATH, label: 'Accueil' }}
         subtitle={loaded ? plural(routes.length, 'itinéraire') : undefined} />
 
       <MemoryStatus />

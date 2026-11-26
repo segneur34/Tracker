@@ -121,7 +121,7 @@ const rootReady = async (ms = 4500) => {
   await waitFor(`Boolean(document.querySelector('.profile-root-slot')?.textContent)`, { timeout: ms, label: 'racine posée' });
   await settle({ max: 1000, label: 'racine' });
 };
-const profileAt = async (fakeMs, forget = true, ms = 4500) => { await setClock(fakeMs, forget); await go('/profil', ms); await rootReady(ms); };
+const profileAt = async (fakeMs, forget = true, ms = 4500) => { await setClock(fakeMs, forget); await go('/', ms); await rootReady(ms); };
 
 // --- Captures et planche ---
 const plate = [];
@@ -208,13 +208,13 @@ check('Réglages : la ligne « Objectif par semaine »', labels.some((t) => t.st
 check('Réglages : plus de durée, de tour ni de recul', !labels.some((t) => /Durée d'une période|Tour complet en|Tout perdre en|Objectif d'une période/.test(t)));
 check('Réglages : objectif à 60 min', await setField('Objectif par semaine', '60'));
 await wait(300);
-await go('/profil', 4500);
+await go('/', 4500);
 await rootReady();
 check('à 60 min, aucune semaine tenue : la graine', (await slotText()) === '0étape', await slotText());
 await go('/parametres', 3000);
 await setField('Objectif par semaine', '');
 await wait(300);
-await go('/profil', 4500);
+await go('/', 4500);
 await rootReady();
 check('vidé : 45 min par défaut', (await slotText()) === '30étapes', await slotText());
 
@@ -231,7 +231,7 @@ const recordDrawn = async (shots) => {
 };
 await setClock(dayAt(32, 0, 12), false);
 await evaluate(`(() => { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); all.racine = { level: 3, period: 1, minutes: 20 }; localStorage.setItem('tracker.profil', JSON.stringify(all)); })()`);
-await send('Page.navigate', { url: `${BASE}/profil` });
+await send('Page.navigate', { url: `${BASE}/` });
 let drawn = await recordDrawn(false);
 check('état vu sans version (valeurs d\'essai) ignoré : rien de rejoué', drawn.length > 0 && drawn.every((v) => v === 21), [...new Set(drawn)].join(' → '));
 check('état vu réécrit avec la version de la règle', (await seen())?.rules === 2, JSON.stringify(await seen()));
@@ -240,7 +240,7 @@ await profileAt(dayAt(30, 0, 12));
 const at30 = await seen();
 check('visite de la semaine 30 retenue', at30?.level === 30 && at30?.rules === 2, JSON.stringify(at30));
 await setClock(dayAt(32, 0, 12), false);
-await send('Page.navigate', { url: `${BASE}/profil` });
+await send('Page.navigate', { url: `${BASE}/` });
 drawn = await recordDrawn(true);
 check('rejeu : de 30 à 21, par l\'entre-deux', drawn[0] === 30 && drawn.some((v) => v > 21.5 && v < 29.5) && drawn.at(-1) === 21, [...new Set(drawn.map((v) => Math.round(v)))].join(' → '));
 if (shotDir) plate.push({ name: 'racine-rejeu-8', label: 'Rejeu du recul de 9 : 0,9 s', full: true }, { name: 'racine-rejeu-16', label: '1,7 s', full: true }, { name: 'racine-rejeu-24', label: '2,5 s', full: true });
@@ -249,7 +249,7 @@ if (shotDir) plate.push({ name: 'racine-rejeu-8', label: 'Rejeu du recul de 9 : 
 await setClock(dayAt(35, 3, 12));
 for (const width of [390, 320]) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 2, mobile: true });
-  await go('/profil', 4500);
+  await go('/', 4500);
 await rootReady();
   check(`${width} px : rien ne déborde`, (await overflow()) === false);
   await evaluate(`document.querySelector('.profile-root-slot').click()`);

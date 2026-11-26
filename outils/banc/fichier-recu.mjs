@@ -76,7 +76,7 @@ const queueSize = () => evaluate('window.__fauxRecus.queue.size');
 const noticeWith = (text, label) => waitFor(async () => (await notices()).some((n) => n.includes(text)), { timeout: 8000, label });
 
 // --- 1. Sans fichier reçu ---
-await go('/', 3000);
+await go('/accueil', 3000);
 check('ouverture normale : aucun bandeau', (await notices()).length === 0);
 await plugQueue();
 await wait(300);
@@ -89,7 +89,7 @@ await noticeWith('rangé dans la mémoire', 'bandeau rangée');
 check('rangée : bandeau, nom du fichier en français', (await notices())[0] === '« ma sortie.gpx » est rangé dans la mémoire.', (await notices())[0]);
 check('rangée : copie retirée', (await queueSize()) === 0);
 check('rangée : une fiche', (await records()).length === 1);
-check('rangée : on reste sur la page', await evaluate(`location.pathname === '/'`));
+check('rangée : on reste sur la page', await evaluate(`location.pathname === '/accueil'`));
 await shoot('fichier-recu-range');
 console.log('Voir la session :', await seeSession());
 await waitFor(`location.pathname === '/course/analyse'`, { timeout: 5000, label: 'analyse ouverte' });
@@ -138,7 +138,7 @@ check('d\'une analyse à une autre : le brouillon abandonné ne suit pas', !(awa
 check('d\'une analyse à une autre : une seule question de plus', (await questions()).length === 2);
 
 // --- 5. Refusés ---
-await go('/', 3000);
+await go('/accueil', 3000);
 await plugQueue();
 await receive('photo.jpg', '', 'format');
 await noticeWith('ni un GPX ni un FIT', 'refus du téléphone');
@@ -159,7 +159,7 @@ await receive('sans type.gpx', gpxText(20, null));
 await noticeWith('sans type.gpx', 'bandeau à classer');
 console.log('Voir la session :', await seeSession());
 await waitFor(() => bodyHas('Quelle activité ?'), { timeout: 3000, label: 'question de l\'activité' });
-check('à classer : l\'activité est demandée avant l\'analyse', await evaluate(`location.pathname === '/'`));
+check('à classer : l\'activité est demandée avant l\'analyse', await evaluate(`location.pathname === '/accueil'`));
 await shoot('fichier-recu-classer');
 console.log('choisit Marche :', await clickText('Marche', 'button'));
 await waitFor(`location.pathname === '/course/analyse'`, { timeout: 5000, label: 'analyse après choix' });
@@ -168,7 +168,7 @@ await waitFor(async () => (await records()).some((r) => r.activityId === 'a-marc
 check('à classer : analyse ouverte, activité gardée dans la fiche', true);
 
 // --- 7. Enregistrement en cours ---
-await go('/', 3000);
+await go('/accueil', 3000);
 await plugQueue();
 await evaluate('window.__fauxEnregistrement = true');
 await receive('pendant.gpx', gpxText(30, 'running'));

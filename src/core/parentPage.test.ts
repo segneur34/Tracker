@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { SETTINGS_SENSORS_PATH, analysisPath, libraryPath, parentPage, sessionFamily, settingsBlockFromSearch } from './parentPage';
+import {
+  HOME_PATH, LEGACY_PROFILE_PATH, PROFILE_PATH, SETTINGS_SENSORS_PATH, analysisPath, legacyRedirect, libraryPath, parentPage, sessionFamily,
+  settingsBlockFromSearch,
+} from './parentPage';
 
 describe('Réglages ouverts sur un bloc (lot 232)', () => {
   it("lit le bloc désigné par l'adresse de Réglages, rien sans paramètre", () => {
@@ -8,18 +11,28 @@ describe('Réglages ouverts sur un bloc (lot 232)', () => {
     expect(settingsBlockFromSearch('?activite=x')).toBeNull();
   });
 
-  it("Réglages ouverts par le lien de la ceinture renvoient à Enregistrer, sinon à l'accueil", () => {
+  it('Réglages ouverts par le lien de la ceinture renvoient à Enregistrer, sinon au Profil', () => {
     expect(SETTINGS_SENSORS_PATH).toBe('/parametres?bloc=capteurs');
     expect(parentPage('/parametres', '?bloc=capteurs')).toBe('/enregistrer');
     expect(parentPage('/parametres/', '?bloc=capteurs')).toBe('/enregistrer');
-    expect(parentPage('/parametres', '?bloc=autre')).toBe('/');
-    expect(parentPage('/parametres', '')).toBe('/');
+    expect(parentPage('/parametres', '?bloc=autre')).toBe(PROFILE_PATH);
+    expect(parentPage('/parametres', '')).toBe(PROFILE_PATH);
   });
 });
 
 describe('parentPage', () => {
-  it("rien au-dessus de l'accueil", () => {
+  it('rien au-dessus du Profil, la page de base, ancienne adresse comprise (lot 238)', () => {
+    expect(PROFILE_PATH).toBe('/');
     expect(parentPage('/', '')).toBeNull();
+    expect(parentPage('/', '?periode=annee')).toBeNull();
+    expect(parentPage('/profil', '')).toBeNull();
+    expect(parentPage('/profil/', '')).toBeNull();
+  });
+
+  it("l'accueil remonte au Profil (lot 238)", () => {
+    expect(HOME_PATH).toBe('/accueil');
+    expect(parentPage('/accueil', '')).toBe('/');
+    expect(parentPage('/accueil/', '')).toBe('/');
   });
 
   it("l'analyse renvoie à la bibliothèque de sa famille", () => {
@@ -46,7 +59,7 @@ describe('parentPage', () => {
     expect(parentPage('/fractionne/tests/fc-repos', '')).toBe('/fractionne/seances');
     expect(parentPage('/fractionne/timer', '')).toBe('/fractionne');
     expect(parentPage('/fractionne/timer/editer', '?id=s1')).toBe('/fractionne/timer');
-    expect(parentPage('/course/seances', '')).toBe('/');
+    expect(parentPage('/course/seances', '')).toBe(HOME_PATH);
   });
 
   it('une leçon des tutoriels remonte à leur liste, la liste à Réglages (lot 147)', () => {
@@ -57,20 +70,22 @@ describe('parentPage', () => {
 
   it('Enregistrer en mode Timer renvoie à la liste du Timer', () => {
     expect(parentPage('/enregistrer', '?minuterie=1')).toBe('/fractionne/timer');
-    expect(parentPage('/enregistrer', '?activite=a-course')).toBe('/');
+    expect(parentPage('/enregistrer', '?activite=a-course')).toBe(PROFILE_PATH);
   });
 
   it("une bibliothèque renvoie à l'accueil, filtre compris", () => {
-    expect(parentPage('/voile', '')).toBe('/');
-    expect(parentPage('/course', '?activite=a-marche')).toBe('/');
-    expect(parentPage('/velo', '?vue=planifiees')).toBe('/');
+    for (const family of ['voile', 'course', 'velo', 'fractionne', 'surf']) expect(parentPage(`/${family}`, '')).toBe('/accueil');
+    expect(parentPage('/course', '?activite=a-marche')).toBe('/accueil');
+    expect(parentPage('/velo', '?vue=planifiees')).toBe('/accueil');
   });
 
-  it("les autres pages renvoient à l'accueil", () => {
-    for (const p of ['/enregistrer', '/profil', '/parametres', '/itineraires', '/itineraires/liste', '/inconnue', '/voile/autre']) {
-      expect(parentPage(p, '')).toBe('/');
-    }
-    expect(parentPage('/itineraires', '?itineraire=x')).toBe('/');
+  it("Planifier, les itinéraires et une adresse inconnue sous une famille renvoient à l'accueil", () => {
+    for (const p of ['/itineraires', '/itineraires/liste', '/voile/autre']) expect(parentPage(p, '')).toBe('/accueil');
+    expect(parentPage('/itineraires', '?itineraire=x')).toBe('/accueil');
+  });
+
+  it('Enregistrer, Réglages, Statistiques et toute autre page renvoient au Profil (lot 238)', () => {
+    for (const p of ['/enregistrer', '/parametres', '/statistiques', '/inconnue']) expect(parentPage(p, '')).toBe('/');
   });
 
   it('les Statistiques remontent d\'un cran, la période gardée', () => {
@@ -78,13 +93,25 @@ describe('parentPage', () => {
     expect(parentPage('/statistiques', '?famille=voile&activite=kite')).toBe('/statistiques?famille=voile');
     expect(parentPage('/statistiques', '?famille=voile&periode=annee')).toBe('/statistiques?periode=annee');
     expect(parentPage('/statistiques', '?famille=velo')).toBe('/statistiques');
-    expect(parentPage('/statistiques', '?periode=annee')).toBe('/');
-    expect(parentPage('/statistiques', '')).toBe('/');
+    expect(parentPage('/statistiques', '?periode=annee')).toBe(PROFILE_PATH);
+    expect(parentPage('/statistiques', '')).toBe(PROFILE_PATH);
   });
 
   it('une barre oblique finale ne change rien', () => {
     expect(parentPage('/voile/analyse/', '')).toBe('/voile');
     expect(parentPage('/statistiques/', '?famille=surf')).toBe('/statistiques');
+  });
+});
+
+describe('ancienne adresse du Profil (lot 238)', () => {
+  it('renvoie `/profil` à la racine, paramètres gardés', () => {
+    expect(LEGACY_PROFILE_PATH).toBe('/profil');
+    expect(legacyRedirect('/profil', '')).toBe('/');
+    expect(legacyRedirect('/profil/', '?periode=annee')).toBe('/?periode=annee');
+  });
+
+  it('laisse toute autre adresse', () => {
+    for (const p of ['/', '/accueil', '/parametres', '/profil/autre', '/profils']) expect(legacyRedirect(p, '')).toBeNull();
   });
 });
 

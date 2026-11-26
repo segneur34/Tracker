@@ -92,12 +92,12 @@ check('champ « Nom ou pseudo » dans Pratiquant', (await setPseudo('Tom le ride
 await wait(300);
 check('le libellé est là', (await evaluate(`document.body.innerText`)).includes('Nom ou pseudo'));
 await shoot('pseudo-reglages');
-await go('/profil', 3000);
+await go('/', 3000);
 check('Profil : le pseudo en titre', (await evaluate(`document.querySelector('h1')?.textContent`)) === 'Tom le rider', await evaluate(`document.querySelector('h1')?.textContent`));
 await go('/parametres', 3000);
 await setPseudo('');
 await wait(300);
-await go('/profil', 3000);
+await go('/', 3000);
 check('Profil : sans pseudo, « Profil »', (await evaluate(`document.querySelector('h1')?.textContent`)) === 'Profil');
 
 // --- 3. Téléphone ---

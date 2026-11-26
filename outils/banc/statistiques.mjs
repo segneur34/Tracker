@@ -128,7 +128,7 @@ await waitFor(async () => (await sessionRecords())?.length === SESSIONS.length, 
 await settle({ max: 2000, label: 'import' });
 
 // 1. Accès.
-await go('/');
+await go('/accueil');
 check('lien dans la barre du haut', (await evaluate(`document.querySelector('.shell-toplinks')?.textContent`))?.includes('Statistiques'));
 check('plus de lien sur l\'accueil (demande du 19/10)', !(await evaluate(`[...document.querySelectorAll('.shell-main a')].some((a) => a.textContent.trim().startsWith('Statistiques'))`)));
 check('lien de la barre du haut', await click('.shell-toplinks a', 'Statistiques'));
@@ -451,7 +451,7 @@ const fit = await evaluate(`(() => {
 check('320 px : rien ne déborde, le choix en vue', !(await overflow()) && fit?.visible, JSON.stringify(fit));
 await shoot('stats-320');
 
-await go('/');
+await go('/accueil');
 const tab = (label) => `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === ${JSON.stringify(label)})`;
 // Case et page attendues, pas lues une fois : sous la charge du poste, l'accueil peut tarder au-delà du plafond de `go` (25/11).
 check('barre du bas : case Statistiques', await waitFor(`!!${tab('Statistiques')}`, { timeout: 5000, label: 'case Statistiques' }));

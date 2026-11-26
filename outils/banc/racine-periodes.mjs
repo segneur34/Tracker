@@ -7,6 +7,8 @@
 //  - la hauteur de la page et de chacun des cadres entourés ;
 // et il vérifie que la longueur de la racine est la même aux cinq périodes, pour chaque taille d'écran. La ligne
 // « Niveau » (lot 230), premier cadre entouré, est dépliée puis repliée à chaque période : la longueur ne doit pas bouger.
+// Lot 238 : une carte de la hauteur de celle des autorisations (téléphone seulement, absente du navigateur) est posée
+// sous les périodes, à sa place : ni le haut de la ligne « Niveau » ni la longueur de la racine ne bougent.
 // Avec un dossier, il y écrit une capture réduite (échelle 0,35) par période et par taille.
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
@@ -78,7 +80,7 @@ for (const size of sizes) {
   const unfolded = [];
   for (const period of PERIODS) {
     await evaluate(`(() => { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); all.affichage = { periode: ${JSON.stringify(period)} }; localStorage.setItem('tracker.profil', JSON.stringify(all)); })()`);
-    await go('/profil', 4500);
+    await go('/', 4500);
     // La racine se dessine quand la bibliothèque est lue (OPFS), ce que `settle` ne voit pas.
     await waitFor(`Number(document.querySelector('canvas.profile-root')?.dataset.longueur) > 0`, { timeout: 4500, label: 'racine dessinée' });
     await settle({ max: 1000, label: 'racine' });
@@ -112,6 +114,15 @@ for (const size of sizes) {
       writeFileSync(`${shotDir}/racine-periode-${size.name}-${period}.png`, Buffer.from(shot.result.data, 'base64'));
     }
   }
+  // Carte des autorisations (lot 238), simulée : un cadre de 280 px posé juste après les périodes, là où la page la met.
+  const levelTop = () => evaluate(`Math.round(document.querySelector('.profile-level')?.getBoundingClientRect().top ?? -1)`);
+  const topBefore = await levelTop();
+  await evaluate(`(() => { const p = document.querySelector('.profile-periods'); const d = document.createElement('section'); d.className = 'ui-card banc-carte'; d.style.height = '280px'; p.after(d); window.dispatchEvent(new Event('resize')); return 'ok'; })()`);
+  await settle({ max: 1500, label: 'carte posée' });
+  const withCard = await evaluate(`Number(document.querySelector('canvas.profile-root')?.dataset.longueur)`);
+  const topAfter = await levelTop();
+  console.log(`${size.name} carte sous les périodes : longueur ${withCard} px | haut de « Niveau » ${topBefore} puis ${topAfter}`);
+  check(`${size.name} : carte sous les périodes, longueur et haut de « Niveau » inchangés`, withCard === lengths[lengths.length - 1] && topAfter === topBefore, `${withCard} / ${topBefore} → ${topAfter}`);
   check(`${size.name} : longueur de la racine identique aux cinq périodes`, lengths.every((l) => l > 0 && l === lengths[0]), lengths.join(', '));
   check(`${size.name} : longueur identique ligne « Niveau » repliée et dépliée, aux cinq périodes`, unfolded.length === PERIODS.length && unfolded.every(Boolean));
   check(`${size.name} : rien ne déborde`, overflows.every((t) => t === false));

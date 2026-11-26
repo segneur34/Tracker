@@ -3,6 +3,25 @@ import type { SportType } from './types';
 
 const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).includes(s);
 
+/**
+ * Profil, la page de base (lot 238, 26/11) : Tracker s'y ouvre, le logo et le retour d'Android y ramènent, première
+ * case de la barre du bas. Seul endroit où l'adresse de la racine est dite.
+ */
+export const PROFILE_PATH = '/';
+
+/** Accueil : les sports, « Planifier » et les itinéraires, deuxième case de la barre du bas (lot 238). */
+export const HOME_PATH = '/accueil';
+
+/** Ancienne adresse du Profil, avant le lot 238 : elle s'ouvre toujours, renvoyée à la racine (`legacyRedirect`). */
+export const LEGACY_PROFILE_PATH = '/profil';
+
+/** Adresse sans barre oblique finale, `/` pour la racine. */
+const trimPath = (pathname: string): string => pathname.replace(/\/+$/, '') || '/';
+
+/** Où renvoyer une ancienne adresse (`/profil`), paramètres de recherche gardés ; `null` pour toute autre. */
+export const legacyRedirect = (pathname: string, search: string): string | null =>
+  trimPath(pathname) === LEGACY_PROFILE_PATH ? `${PROFILE_PATH}${search}` : null;
+
 /** Réglages. */
 const SETTINGS_ROUTE = '/parametres';
 
@@ -25,12 +44,17 @@ export const settingsBlockFromSearch = (search: string): string | null => new UR
  * leçon des tutoriels à leur liste, et celle-ci à Réglages ; les
  * Statistiques remontent d'un cran (activité, famille, vue d'ensemble), la
  * période gardée ; Réglages ouverts par le lien de la ceinture d'Enregistrer
- * (`?bloc=capteurs`) y renvoient ; toute autre page renvoie à l'accueil. `null` à l'accueil :
- * rien au-dessus.
+ * (`?bloc=capteurs`) y renvoient. Depuis le lot 238, le Profil est la base : ce
+ * qui s'ouvre depuis l'accueil (bibliothèque d'une famille et toute adresse sous
+ * elle sans page au-dessus, Planifier, liste des itinéraires) y renvoie,
+ * l'accueil lui-même et toute autre page (Statistiques à leur dernier cran,
+ * Réglages, Enregistrer) renvoient au Profil. `null` au Profil, ancienne adresse
+ * comprise : rien au-dessus.
  */
 export const parentPage = (pathname: string, search: string): string | null => {
-  const path = pathname.replace(/\/+$/, '') || '/';
-  if (path === '/') return null;
+  const path = trimPath(pathname);
+  if (path === PROFILE_PATH || path === LEGACY_PROFILE_PATH) return null;
+  if (path === HOME_PATH) return PROFILE_PATH;
   // Réglages ouverts par le lien de la page Enregistrer (`?bloc=capteurs`, lot 232) : retour à Enregistrer.
   if (path === SETTINGS_ROUTE && settingsBlockFromSearch(search) === 'capteurs') return '/enregistrer';
   const parts = path.split('/').filter(Boolean);
@@ -49,13 +73,15 @@ export const parentPage = (pathname: string, search: string): string | null => {
     const next = new URLSearchParams();
     const famille = params.get('famille');
     const periode = params.get('periode');
-    if (famille === null) return '/';
+    if (famille === null) return PROFILE_PATH;
     if (params.get('activite') !== null) next.set('famille', famille);
     if (periode !== null) next.set('periode', periode);
     const query = next.toString();
     return query === '' ? '/statistiques' : `/statistiques?${query}`;
   }
-  return '/';
+  // Ouvertes depuis l'accueil : une bibliothèque (et ce qui, sous sa famille, n'a pas de page au-dessus), Planifier, les itinéraires.
+  if (isFamily(parts[0]) || parts[0] === 'itineraires') return HOME_PATH;
+  return PROFILE_PATH;
 };
 
 /** Bibliothèque d'une famille, filtrée sur une activité si `activityId` est donné. */

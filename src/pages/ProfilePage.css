@@ -321,6 +321,24 @@ button.profile-legend__row {
   }
 }
 
+/* Périodes au téléphone, droit ou tourné (lot 238 : le Profil est la page d'ouverture), marges resserrées. Quand la
+   place manque, « Depuis le début » rétrécit d'abord et passe à la ligne entre ses mots, jamais au milieu (`min-content`) ;
+   les quatre autres ne rétrécissent qu'ensuite (texte d'Android agrandi), et ne coupent un mot qu'en dernier recours,
+   plutôt que de faire défiler la rangée. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .ui-segmented.profile-periods button {
+    padding: 0 var(--space-1);
+    overflow-wrap: break-word;
+    hyphens: manual;
+  }
+
+  .ui-segmented.profile-periods button:last-of-type {
+    flex-shrink: 100;
+    min-width: min-content;
+    overflow-wrap: normal;
+  }
+}
+
 /* Écran le plus étroit : les périodes se serrent pour tenir sans défiler. */
 @media (max-width: 359px) {
   .ui-segmented.profile-periods button {

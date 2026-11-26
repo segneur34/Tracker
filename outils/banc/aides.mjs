@@ -1,4 +1,4 @@
-// Banc de test : aides « ? » partout et barre du haut sans « Accueil » (lot 3 des demandes du 24/10).
+// Banc de test : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10 ; Profil page de base, lot 238).
 // Usage : node aides.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau (IGN, Overpass, tuiles bloqués). Dure environ 1 min. Le script :
 //  1. importe une wing (la trace de `make-gpx.mjs`) et une course en côte ;
@@ -6,10 +6,11 @@
 //     sans replier le panneau ; celui des réglages referme le premier (une seule aide à la fois) ; un second appui
 //     referme ;
 //  3. voile : le « ? » des manœuvres, puis celui du vent, qui referme le premier ;
-//  4. Statistiques : rien d'ouvert, la note du graphique sous son « ? » ; passer par Profil et revenir, par la barre,
+//  4. Statistiques : rien d'ouvert, la note du graphique sous son « ? » ; passer par l'accueil et revenir, par la barre,
 //     referme l'aide (une aide ne survit pas à un changement de page) ;
-//  5. barre du haut à 1400 et 1000 px (800 px relevé pour information) : plus de lien « Accueil » (le logo y mène), chaque lien sur une ligne,
-//     « Itinéraires » entier ; au téléphone, « Accueil » reste dans la barre du bas, et pas de pop-up du profil.
+//  5. barre du haut à 1400 et 1000 px (800 px relevé pour information) : « Accueil » en premier lien, plus de lien
+//     « Profil » (le logo y mène, lot 238), chaque lien sur une ligne, « Itinéraires » entier ; au téléphone, barre du
+//     bas Profil, Accueil, Statistiques, Réglages, et pas de pop-up du profil sur l'accueil.
 import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -157,7 +158,7 @@ await settle({ max: 1200 });
 check('statistiques : la note du graphique cachée', !(await text()).includes('Un point par session'), '');
 check("statistiques : le « ? » du graphique l'ouvre", (await clickHelp('Graphique')) && (await text()).includes('Un point par session'), (await helpLabels()).join(', '));
 const nav = (href) => evaluate(`(() => { const a = document.querySelector('.shell-toplinks a[href="${href}"]'); if (!a) return false; a.click(); return true; })()`);
-console.log('vers Profil :', await nav('/profil'));
+console.log("vers l'accueil :", await nav('/accueil'));
 await settle({ max: 1200 });
 console.log('retour aux Statistiques :', await nav('/statistiques'));
 await settle({ max: 1500 });
@@ -165,8 +166,8 @@ check("changer de page referme l'aide", (await evaluate('location.pathname')) ==
 
 // --- 5. Barre du haut ---
 const topLinks = () => evaluate(`[...document.querySelectorAll('.shell-toplinks a')].map((a) => a.textContent.trim())`);
-check('ordinateur : plus de lien « Accueil » en haut', !(await topLinks()).includes('Accueil'), (await topLinks()).join(', '));
-check("ordinateur : le logo mène à l'accueil", (await evaluate(`document.querySelector('.shell-brand')?.getAttribute('href')`)) === '/');
+check('ordinateur : « Accueil » en premier lien, plus de « Profil » en haut', (await topLinks())[0] === 'Accueil' && !(await topLinks()).includes('Profil'), (await topLinks()).join(', '));
+check('ordinateur : le logo mène au Profil, à la racine', (await evaluate(`document.querySelector('.shell-brand')?.getAttribute('href')`)) === '/');
 for (const width of [1400, 1000, 800]) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
   await wait(600);
@@ -178,15 +179,15 @@ for (const width of [1400, 1000, 800]) {
     const cut = all.filter((a) => a.scrollWidth > a.clientWidth + 1 || a.getBoundingClientRect().right > document.documentElement.clientWidth).map((a) => a.textContent.trim());
     return { spread: Math.max(...heights) - Math.min(...heights), cut, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   })()`);
-  // 800 px : relevé seulement ; la barre n'y tient pas encore (familles, Statistiques, Profil, Réglages et deux boutons).
+  // 800 px : relevé seulement ; la barre n'y tient pas encore (Accueil, familles, Statistiques, Réglages et deux boutons).
   if (width < 1000) console.log(`${width} px, pour information :`, JSON.stringify(bar));
   else check(`${width} px : liens de la barre du haut sur une ligne, aucun coupé`, bar.spread <= 1 && bar.cut.length === 0 && bar.overflow === 0, JSON.stringify(bar));
   await shoot(`aides-barre-${width}`);
 }
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-await go('/', 2500);
+await go('/accueil', 2500);
 const tabs = await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((a) => a.textContent.trim())`);
-check('téléphone : « Accueil » dans la barre du bas', tabs.includes('Accueil'), tabs.join(', '));
+check('téléphone : barre du bas Profil, Accueil, Statistiques, Réglages', tabs.join(', ') === 'Profil, Accueil, Statistiques, Réglages', tabs.join(', '));
 check('navigateur : pas de pop-up du profil (téléphone seulement)', await evaluate(`document.querySelector('.profile-prompt') === null`));
 
 console.log('\n--- console (erreurs, avertissements) ---');

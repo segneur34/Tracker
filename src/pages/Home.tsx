@@ -8,8 +8,7 @@ import vignetteVelo from '../assets/accueil/vignette-velo.webp';
 import vignetteVoile from '../assets/accueil/vignette-voile.webp';
 import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
-import { PermissionsPrompt } from '../components/PermissionsStatus';
-import ProfilePrompt from '../components/ProfilePrompt';
+import { OpeningPrompts } from '../components/ProfilePrompt';
 import TutorialOfDay from '../components/TutorialOfDay';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconFlag, IconRoute } from '../components/icons';
@@ -17,7 +16,6 @@ import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../core/parentPage';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
-import { profilePromptGate } from '../library/profilePrompt';
 import { runnerName } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
@@ -60,7 +58,6 @@ function Home() {
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
   /** La carte des autorisations paraît-elle ? `null` tant qu'elle n'a pas lu les autorisations. */
   const [permissionsShown, setPermissionsShown] = useState<boolean | null>(null);
-  const gate = profilePromptGate({ memoryNeedsAction, memoryReady: status === 'ready', permissionsShown });
   /** Le pop-up du profil s'ouvre-t-il ? `null` tant qu'il n'a pas tranché. */
   const [profileShown, setProfileShown] = useState<boolean | null>(null);
   const tutorialGate = tutorialCardGate({ memoryNeedsAction, memoryReady: status === 'ready', permissionsShown, profileShown });
@@ -74,10 +71,10 @@ function Home() {
       </header>
 
       {memoryNeedsAction && <MemoryStatus />}
-      {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
-      {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt onDecided={setPermissionsShown} />}
-      {/* Puis le profil, s'il manque un champ, une fois par lancement ; jamais par-dessus ces deux cartes. */}
-      {gate.mount && <ProfilePrompt otherCardShown={gate.otherCardShown} onDecided={setProfileShown} />}
+      {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque), puis le profil,
+          s'il manque un champ, une fois par lancement (Profil et accueil confondus) ; jamais par-dessus ces deux cartes. */}
+      <OpeningPrompts memoryNeedsAction={memoryNeedsAction} memoryReady={status === 'ready'}
+        onPermissionsDecided={setPermissionsShown} onProfileDecided={setProfileShown} />
       {/* Puis la leçon du jour des tutoriels, jamais par-dessus l'une d'elles (elle attend alors le lancement suivant). */}
       <TutorialOfDay gate={tutorialGate} />
 

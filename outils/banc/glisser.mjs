@@ -85,7 +85,7 @@ const dragTwo = async (label, kind, step = '') => {
 const runOn = async (screen) => {
   console.log(`--- ${screen} ---`);
   // 1-4. Profil : la période.
-  await go('/profil');
+  await go('/');
   await dragTwo('Période', 'souris', `${screen}, Profil, `);
   if (screen === 'téléphone') {
     await dragTwo('Période', 'doigt', `${screen}, Profil, `);

@@ -6,7 +6,7 @@
 //     la boussole sur la carte (22/10 ; « Ouvrir l'onglet général » avant) ;
 //  3. course : « zones de pente » dit pourquoi elle est vide (pas d'altitude, IGN injoignable) et propose « Réessayer » ;
 //  4. surf : la légende de la répartition ne redit pas le pourcentage « sur la vague » ; la rame garde le sien ;
-//  5. à 360×800 : accueil sans lien Profil ni Statistiques, barre du bas Accueil · Profil · rond · Statistiques ·
+//  5. à 360×800 : accueil sans lien Profil ni Statistiques, barre du bas Profil · Accueil · rond · Statistiques ·
 //     Réglages ; Réglages, carte Voile ouverte : le nom en texte, qui replie la carte, « Renommer » à droite, sur la
 //     ligne du nom ; Échap n'enregistre rien, Entrée renomme, le nom est relu ; rien ne déborde.
 import { connect } from './lib/cdp.mjs';
@@ -139,12 +139,12 @@ check('surf : la rame garde le sien', /rame \d+ %/.test(legend), legend);
 
 // --- 5. Téléphone : accueil, barre, Renommer ---
 await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
-await go('/', 3000);
+await go('/accueil', 3000);
 const homeLinks = await evaluate(`[...document.querySelectorAll('.home-link, .home-action')].map((a) => a.textContent.trim()).join(' | ')`);
 check('accueil : ni Profil ni Statistiques', !/Profil|Statistiques/.test(homeLinks), homeLinks);
 check('accueil : itinéraires planifiés gardés', homeLinks.includes('Itinéraires planifiés'), homeLinks);
 const bar = await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`);
-check('barre du bas : Accueil, Profil, Statistiques, Réglages', bar === 'Accueil | Profil | Statistiques | Réglages', bar);
+check('barre du bas : Profil, Accueil, Statistiques, Réglages', bar === 'Profil | Accueil | Statistiques | Réglages', bar);
 
 await go('/parametres', 2000);
 await evaluate(`(() => {

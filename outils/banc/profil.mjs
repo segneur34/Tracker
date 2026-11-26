@@ -3,14 +3,16 @@
 // Sur un profil neuf, sans réseau. Le script écrit lui-même six sessions synthétiques de 20 min, datées en jours
 // avant aujourd'hui (deux courses, une sortie à vélo en côte et une de wingfoil récentes, une course et une sortie à
 // vélo de l'an passé), les importe par la page Course, et vérifie :
-//  1. l'accueil : plus de graphe d'activités, une ligne « Profil » qui ouvre la page ; « Profil » dans la barre du haut ;
+//  1. l'accueil (`/accueil`) : plus de graphe d'activités, ni de ligne « Profil » ; le logo de la barre du haut ouvre le
+//     Profil, à la racine (page de base, lot 238) ;
 //  2. la période en tête (bouton glissant), « Année » au départ : distance (somme des vitesses × durées, à 5 % près),
 //     sport préféré (la course, avec son dessin, qui ouvre sa bibliothèque), D+ de la côte seule, nombre de sessions du graphe ; l'anneau et sa légende (une part par activité, la course à 50 %) ;
 //     le graphe d'activités en bas, sans barre de période à lui ;
 //  3. les autres périodes règlent toute la page : « 30 jours » (trois sessions), « Depuis le début » (les six, une
-//     barre par mois), choix retenu au rechargement ;
+//     barre par mois), choix retenu au rechargement par l'ancienne adresse `/profil`, renvoyée à la racine ;
 //  4. une ligne de la légende ouvre la bibliothèque filtrée sur son activité ;
-//  5. à 390×844 : rien ne déborde, chiffres en une bande de deux sur deux, détail par activité retenu déplié ; la case « Profil » de la barre du bas ouvre la page, allumée ;
+//  5. à 390×844 : rien ne déborde, chiffres en une bande de deux sur deux, détail par activité retenu déplié ; barre du bas Profil, Accueil, Statistiques, Réglages, la case « Profil » ouvre la page, allumée ;
+//     le retour d'Android : accueil, Statistiques, Réglages, Enregistrer → Profil, bibliothèque et Planifier → accueil, rien au-dessus du Profil ;
 //     à 320 px, aucune case de la bande ne sort de l'écran (la bande « qui dépasse » de la maquette du 22/10) ;
 //  6. cinq activités de plus (huit en tout) : « Autres (3) » dans l'anneau ; le toucher ouvre le détail replié et y
 //     déplie ses trois activités, en retrait, dont une ouvre sa bibliothèque ; la ligne « Autres » les replie ;
@@ -110,22 +112,22 @@ await waitFor(async () => (await records())?.length === SESSIONS.length, { timeo
 await settle({ max: 2000, label: 'import' });
 
 // 1. Accueil.
-await go('/');
+await go('/accueil');
 check('accueil : plus de graphe d\'activités', (await evaluate(`!!document.querySelector('.actchart')`)) === false);
 const backdrop = () => evaluate(`document.querySelector('.page-backdrop')?.getAttribute('class')`);
 // Fond des pages hors sport (lot 3 du 23/10) : le motif de la famille du sport préféré de toutes les sessions, la course.
 check('accueil : fond de la famille du sport préféré', (await backdrop()) === 'page-backdrop page-backdrop--course', await backdrop());
 check('accueil : plus de ligne « Profil » (demande du 19/10)', !(await evaluate(`[...document.querySelectorAll('.home-link')].some((el) => el.textContent.trim() === 'Profil')`)));
 const opened = await evaluate(`(() => {
-  const a = [...document.querySelectorAll('.shell-toplink')].find((el) => el.textContent.trim() === 'Profil');
+  const a = document.querySelector('.shell-brand');
   if (!a) return false;
   a.click();
   return true;
 })()`);
-check('barre du haut : lien « Profil »', opened);
+check('barre du haut : le logo, sans lien « Profil »', opened && !(await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((el) => el.textContent.trim() === 'Profil')`)));
 await settle({ max: 1500 });
-check('le lien ouvre la page', (await search()) === '/profil', await search());
-check('barre du haut : Profil, allumé', await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((a) => a.textContent.trim() === 'Profil' && a.classList.contains('active'))`));
+check('le logo ouvre la page, à la racine', (await search()) === '/', await search());
+check('barre du haut : aucun lien allumé au Profil', !(await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((a) => a.classList.contains('active'))`)));
 
 // 2. L'année en cours.
 check('titre', (await text('.profile-head__title')) === 'Profil', await text('.profile-head__title'));
@@ -180,6 +182,7 @@ check('depuis le début : les six sessions', Math.abs(parseFr(distance) - kmOf(S
 check('depuis le début : un mois par barre', (await text('.actchart__head h2')) === 'Depuis le début, par mois'
   && (await evaluate(`document.querySelectorAll('.actchart__bar').length`)) >= 14, await text('.actchart__head h2'));
 await go('/profil');
+check("l'ancienne adresse /profil renvoie à la racine", (await search()) === '/', await search());
 check('choix retenu au rechargement', (await pressed()) === 'Depuis le début', await pressed());
 check('« Année » de nouveau', await pick('Année'));
 await wait(500);
@@ -189,14 +192,14 @@ check("retour à l'année", (await chartCount()) === '4 sessions', await chartCo
 await evaluate(`document.querySelector('.profile-figure--link').click()`);
 await settle({ max: 1500 });
 check('le sport préféré ouvre sa bibliothèque', (await search())?.startsWith('/course?activite=running'), await search());
-await go('/profil');
+await go('/');
 await evaluate(`document.querySelector('.profile-legend__row').click()`);
 await settle({ max: 1500 });
 check('la ligne ouvre la bibliothèque filtrée', (await search())?.startsWith('/course?activite='), await search());
 
 // 5. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-await go('/profil');
+await go('/');
 check('390 px : rien ne déborde', !(await overflow()));
 /** Bande des chiffres : deux cases sur deux lignes, aucune hors de l'écran. */
 const twoByTwo = () => evaluate(`(() => {
@@ -210,20 +213,31 @@ check('390 px : les cinq périodes tiennent sans défiler', await periodsFit());
 check('390 px : détail par activité toujours déplié (état retenu)', (await legend()).length === 3);
 await shoot('profil-telephone');
 await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
-await go('/profil');
+await go('/');
 check('320 px : rien ne déborde, la bande non plus', !(await overflow()) && (await twoByTwo()));
 check('320 px : les cinq périodes tiennent sans défiler', await periodsFit());
 check('320 px : aucun chiffre plus large que sa case', await evaluate(`[...document.querySelectorAll('.profile-figure__value')].every((v) => v.scrollWidth <= v.clientWidth + 1)`));
 await shoot('profil-320');
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-await go('/');
+await go('/accueil');
 const tab = `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === 'Profil')`;
-check('barre du bas : Accueil, Profil, Statistiques, Réglages',
-  (await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`)) === 'Accueil | Profil | Statistiques | Réglages');
+check('barre du bas : Profil, Accueil, Statistiques, Réglages',
+  (await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`)) === 'Profil | Accueil | Statistiques | Réglages');
 await evaluate(`${tab}.click()`);
 await settle({ max: 1000 });
-check('la case Profil ouvre la page, allumée', (await search()) === '/profil' && (await evaluate(`${tab}.classList.contains('active')`)), await search());
+check('la case Profil ouvre la page, allumée', (await search()) === '/' && (await evaluate(`${tab}.classList.contains('active')`)), await search());
 check('390 px : barre du bas sans débordement', !(await overflow()));
+// Retour d'Android (`trackerBack`, lot 238) : l'accueil remonte au Profil, une bibliothèque et Planifier à l'accueil,
+// Statistiques, Réglages et Enregistrer au Profil ; rien au-dessus du Profil.
+const back = () => evaluate(`window.trackerBack ? window.trackerBack() : 'absent'`);
+for (const [from, to] of [['/accueil', '/'], ['/voile', '/accueil'], ['/itineraires', '/accueil'], ['/statistiques', '/'], ['/parametres', '/'], ['/enregistrer', '/']]) {
+  await go(from);
+  const outcome = await back();
+  const arrived = await waitFor(`location.pathname === ${JSON.stringify(to)}`, { timeout: 3000 });
+  check(`retour : ${from} mène à ${to}`, outcome === 'page' && arrived === true, `${outcome}, ${await search()}`);
+}
+await go('/');
+check('retour : rien au-dessus du Profil', (await back()) === 'none' && (await search()) === '/', await search());
 
 // 6. « Autres » : cinq activités de plus, 20 min chacune, cette semaine.
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -243,7 +257,7 @@ console.log('import des cinq de plus :', await evaluate(`(() => {
 })()`));
 await waitFor(async () => (await records())?.length === SESSIONS.length + EXTRA.length, { timeout: 12000, label: 'fiches' });
 await settle({ max: 2000, label: 'import' });
-await go('/profil');
+await go('/');
 // Détail replié d'abord, pour voir le toucher sur « Autres » l'ouvrir.
 if ((await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'true') await evaluate(`document.querySelector('.profile-fold').click()`);
 await wait(300);
@@ -266,7 +280,7 @@ await settle({ max: 1500 });
 check('une activité d\'« Autres » ouvre sa bibliothèque', /^\/(voile|course|fractionne|surf|velo)\?activite=/.test((await search()) ?? ''), await search());
 
 // 7. La photo.
-await go('/profil');
+await go('/');
 const avatarState = () => evaluate(`(() => {
   const b = document.querySelector('.profile-head__avatar');
   const img = b?.querySelector('img');
@@ -282,7 +296,7 @@ check('toucher la photo ouvre le choix des seize dessins', (await evaluate(`docu
 await evaluate(`document.querySelector('.avatar-picker__choice[aria-label="Kitesurf"]').click()`);
 await wait(300);
 check('un dessin choisi : le choix se ferme, la photo suit', !(await evaluate(`!!document.querySelector('.avatar-picker')`)) && (await avatarState()) === 'dessin var(--voile) tracé', await avatarState());
-await go('/profil');
+await go('/');
 check('… retenu au rechargement', (await avatarState()) === 'dessin var(--voile) tracé', await avatarState());
 await evaluate(`document.querySelector('.profile-head__avatar').click()`);
 await wait(300);
@@ -304,7 +318,7 @@ console.log('image importée :', await evaluate(`(async () => {
 })()`));
 await settle({ max: 1500 });
 check('image importée : réduite à 256 px, en JPEG, le choix fermé', (await avatarState()) === 'photo 256 data:image/jpeg' && !(await evaluate(`!!document.querySelector('.avatar-picker')`)), await avatarState());
-await go('/profil');
+await go('/');
 check('… retenue au rechargement', (await avatarState()) === 'photo 256 data:image/jpeg', await avatarState());
 await shoot('profil-photo');
 await evaluate(`document.querySelector('.profile-head__avatar').click()`);

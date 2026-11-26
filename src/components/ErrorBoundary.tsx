@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { HOME_PATH } from '../core/parentPage';
 import Button from './ui/Button';
 
 /**
@@ -34,7 +35,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   private goHome = () => {
     const { onHome } = this.props;
     if (!onHome) {
-      window.location.replace('/');
+      window.location.replace(HOME_PATH);
       return;
     }
     // Remise à zéro d'abord : l'erreur peut venir de l'accueil lui-même, dont l'adresse ne change pas.

@@ -385,7 +385,7 @@ console.log('Réglages, activités :', await evaluate(`[...document.querySelecto
 await setSelect('Famille', 'fractionne');
 await wait(200);
 console.log('ajout, calculs du fractionné :', await evaluate(`[...document.querySelectorAll('.settings-add select')].map((s) => [...s.options].map((o) => o.textContent).join('/')).join(' | ')`));
-await go('/');
+await go('/accueil');
 console.log('accueil :', await evaluate(`[...document.querySelectorAll('.home-family__name')].map((n) => n.textContent).join(', ')`),
   '| barre :', await evaluate(`[...document.querySelectorAll('.shell-toplink')].map((a) => a.textContent).join(', ')`));
 await go('/itineraires', 4000);

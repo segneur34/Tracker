@@ -1,7 +1,7 @@
 import { Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
-import { parentPage } from '../core/parentPage';
+import { HOME_PATH, PROFILE_PATH, parentPage } from '../core/parentPage';
 import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useIntervalTimer } from '../hooks/useIntervalTimer';
@@ -23,13 +23,14 @@ import IncomingFileNotice from './IncomingFileNotice';
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
  *
+ * Le Profil est la page de base (lot 238, 26/11) : Tracker s'y ouvre, le logo y mène.
  * Sur téléphone (moins de 768 px de large, ou tourné : `NARROW_QUERY`), une barre d'onglets en bas, en
- * cinq cases fixes, à la verticale à gauche sur le téléphone tourné, le bouton rond au milieu : Accueil · Profil ·
+ * cinq cases fixes, à la verticale à gauche sur le téléphone tourné, le bouton rond au milieu : Profil · Accueil ·
  * Enregistrer · Statistiques · Réglages. Les sports et les itinéraires s'ouvrent
  * depuis l'accueil. Le bouton rond est vert au repos, rouge pendant un
  * enregistrement.
- * Sur ordinateur, toutes les destinations dans une barre en haut (les
- * statistiques et le profil avant Réglages), et « Itinéraires » à côté du
+ * Sur ordinateur, toutes les destinations dans une barre en haut (l'accueil en
+ * tête, les statistiques avant Réglages ; le Profil par le logo), et « Itinéraires » à côté du
  * bouton Enregistrer. Une famille cachée dans Réglages n'y est pas ; son
  * adresse s'ouvre toujours (§10, point 100). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
  * taille d'écran en JavaScript.
@@ -50,7 +51,7 @@ interface Destination {
   accent: string;
 }
 
-const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: 'var(--ink)' };
+const HOME: Destination = { to: HOME_PATH, label: 'Accueil', Icon: IconHome, accent: 'var(--ink)' };
 const familyDestination = (family: SportFamily, to: string): Destination =>
   ({ to, label: FAMILY_LABEL[family], Icon: FAMILY_ICON[family], accent: FAMILY_ACCENT[family] });
 const VOILE = familyDestination('voile', '/voile');
@@ -63,7 +64,7 @@ const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: CO
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
 const STATISTIQUES: Destination = { to: '/statistiques', label: 'Statistiques', Icon: IconChart, accent: 'var(--ink-2)' };
-const PROFIL: Destination = { to: '/profil', label: 'Profil', Icon: IconUser, accent: 'var(--ink-2)' };
+const PROFIL: Destination = { to: PROFILE_PATH, label: 'Profil', Icon: IconUser, accent: 'var(--ink-2)' };
 
 /**
  * Bandeau du compteur sur les autres pages : phase et temps restant, un
@@ -137,11 +138,14 @@ function RecordButton({ status, pressingMs, handlers }: {
   );
 }
 
+/** Cases allumées sur leur seule adresse, pas sur les pages en dessous : le Profil (la racine) et l'accueil. */
+const EXACT = new Set([PROFILE_PATH, HOME_PATH]);
+
 const tabLink = (d: Destination) => (
   <NavLink
     key={d.to}
     to={d.to}
-    end={d.to === '/'}
+    end={EXACT.has(d.to)}
     className="shell-tab"
     style={{ '--tab-color': d.accent } as React.CSSProperties}>
     <d.Icon size={24} />
@@ -153,7 +157,7 @@ const topLink = (d: Destination) => (
   <NavLink
     key={d.to}
     to={d.to}
-    end={d.to === '/'}
+    end={EXACT.has(d.to)}
     className="shell-toplink"
     style={{ '--tab-color': d.accent } as React.CSSProperties}>
     {d.label}
@@ -178,7 +182,8 @@ function AppShell() {
   const paused = status === 'paused';
   const canToggle = status === 'recording' || paused;
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
-  const goHome = useCallback(() => navigate('/'), [navigate]);
+  // « Revenir à l'accueil » d'une page en erreur : l'accueil, pas le Profil, qui peut être la page en erreur.
+  const goHome = useCallback(() => navigate(HOME_PATH), [navigate]);
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
   const { families } = useVisibility();
@@ -205,11 +210,11 @@ function AppShell() {
   return (
     <div className="shell">
       <header className="shell-topbar">
-        <Link to="/" className="shell-brand">Tracker</Link>
+        <Link to={PROFILE_PATH} className="shell-brand">Tracker</Link>
         <nav aria-label="Navigation principale" className="shell-toplinks">
+          {topLink(HOME)}
           {families.map((f) => topLink(FAMILY_TABS[f]))}
           {topLink(STATISTIQUES)}
-          {topLink(PROFIL)}
           {topLink(SETTINGS)}
         </nav>
         <div className="shell-topactions">
@@ -249,8 +254,8 @@ function AppShell() {
       </main>
 
       <nav aria-label="Navigation principale" className="shell-tabbar">
-        {tabLink(HOME)}
         {tabLink(PROFIL)}
+        {tabLink(HOME)}
         <div className="shell-tabbar__record">
           <RecordButton status={status} pressingMs={pressingMs} handlers={handlers} />
         </div>

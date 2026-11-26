@@ -154,7 +154,7 @@ const finalHashes = async (label) => {
 };
 
 // 2. Premier lancement : rien de gardé.
-await go('/', 5000);
+await go('/accueil', 5000);
 await evaluate(`Promise.all(['tracker-vignettes', 'tracker-vignettes-images'].map((name) => caches.delete(name))).then(() => true, () => true)`);
 const firstMs = (await launch()).trace;
 console.log('1er lancement         :', firstMs == null ? '(vignettes absentes après 60 s)' : `${seconds(firstMs)}, sans ralenti`);

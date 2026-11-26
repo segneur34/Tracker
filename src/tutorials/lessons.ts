@@ -1,3 +1,4 @@
+import { PROFILE_PATH } from '../core/parentPage';
 import type { SportFamily } from '../core/sportProfiles';
 
 /**
@@ -103,7 +104,7 @@ export const LESSONS: readonly Lesson[] = [
     title: 'Le Profil',
     hook: 'La racine qui pousse à chaque semaine tenue, et sa fleur.',
     icon: 'profil',
-    target: '/profil',
+    target: PROFILE_PATH,
     body: [
       'Le Profil résume vos activités sur la période choisie : distance, dénivelé, sport préféré et temps par activité.',
       'Autour des cadres pousse une racine : elle gagne une étape à chaque semaine où vous tenez votre objectif, et fait le tour de la page en 26 semaines. Des semaines manquées la font reculer.',

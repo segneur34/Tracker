@@ -136,7 +136,7 @@ const scenario = async (label, files, profile, expected) => {
     // Toucher émulé au téléphone : pointeur grossier, donc barre du bas, ou rail à gauche une fois tourné.
     await b.send('Emulation.setTouchEmulationEnabled', { enabled: size.mobile, maxTouchPoints: size.mobile ? 5 : 1 });
     await b.evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); delete s.profil; localStorage.setItem('tracker.sections', JSON.stringify(s)); })()`);
-    await b.go('/profil', 6000);
+    await b.go('/', 6000);
     await b.waitFor(`Number(document.querySelector('canvas.profile-root')?.dataset.longueur) > 0`, { timeout: 8000, label: 'racine dessinée' });
     await b.settle({ max: 1500, label: 'racine' });
     const shut = await b.evaluate(MEASURE);
@@ -168,7 +168,7 @@ const runner = await scenario('coureur de 28 ans', runnerFiles(12), { birthYear:
 await runner.b.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 await runner.b.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 await runner.setProfile({ sex: 'm', weightKg: 70 });
-await runner.b.go('/profil', 6000);
+await runner.b.go('/', 6000);
 await runner.b.waitFor(`Number(document.querySelector('canvas.profile-root')?.dataset.longueur) > 0`, { timeout: 8000, label: 'racine dessinée' });
 await runner.b.settle({ max: 1500, label: 'sans âge' });
 const anonymous = await runner.b.evaluate(MEASURE);

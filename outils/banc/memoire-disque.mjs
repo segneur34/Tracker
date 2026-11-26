@@ -139,7 +139,7 @@ try {
   const propose = join(A.documents, 'Tracker');
   let sessionsLancement1 = '';
   await avecProgramme(A.profil, { TRACKER_DOCUMENTS: A.documents }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     const t = await attendre(b, /Dossier proposé/, 'carte');
     check('la carte dit « Aucun dossier mémoire choisi. »', t.includes('Aucun dossier mémoire choisi.'), ligne(t, /mémoire/i));
     check('la carte propose « Dossier proposé : <Documents>\\Tracker »', t.includes(`Dossier proposé : ${propose}`), ligne(t, /proposé/));
@@ -178,7 +178,7 @@ try {
 
   console.log('-- second lancement sur le même profil (sans variable de mémoire)');
   await avecProgramme(A.profil, { TRACKER_DOCUMENTS: A.documents }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     const t = await attendre(b, /session/, 'mémoire prête');
     check('le Profil ne propose pas de dossier (déjà retenu)', !t.includes('Dossier proposé') && !t.includes('Aucun dossier mémoire choisi.'));
     const s2 = await pageSessions(b);
@@ -191,7 +191,7 @@ try {
   const renomme = join(A.documents, 'Tracker-renomme');
   renameSync(propose, renomme);
   await avecProgramme(A.profil, { TRACKER_DOCUMENTS: A.documents }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     const t = await attendre(b, /introuvable/, 'carte introuvable');
     check('la carte dit que le dossier est introuvable, avec son chemin', t.includes(`Le dossier ${propose} est introuvable`), ligne(t, /introuvable/));
     check('« Rien n\'est recréé à sa place. » est dit', t.includes("Rien n'est recréé à sa place."));
@@ -222,7 +222,7 @@ try {
   writeFileSync(join(C.telephone, 'sessions', '2026-10-02_07-00-00_Telephone.gpx'), gpxSynthetique(2, 'Telephone'));
   check('préparation : un GPX sans fiche dans sessions/', fiches(C.telephone).length === 0 && gpxs(C.telephone).length === 1);
   await avecProgramme(C.profil, { TRACKER_DOCUMENTS: C.documents, TRACKER_BANC_DOSSIER: C.telephone }, async (b, p) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     await attendre(b, /Dossier proposé/, 'carte');
     check('clic « Choisir un autre dossier »', (await b.clickText('Choisir un autre dossier')) === 'ok');
     await b.waitFor(() => fiches(C.telephone).length >= 1, { timeout: 10000, label: 'fiche créée' });
@@ -246,7 +246,7 @@ try {
   writeFileSync(join(dossierSessions, 'brouillon.txt.tracker-new'), 'contenu a ecarter');
   check('préparation : les deux temporaires sont déposés', temporaires(propose).length === 2, temporaires(propose).join(','));
   await avecProgramme(A.profil, { TRACKER_DOCUMENTS: A.documents }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     await attendre(b, /session/, 'mémoire prête');
     await b.settle({ max: 2000 });
     console.log(`après l'ouverture : ${(arbre(propose) ?? []).filter((c) => /notes|brouillon/.test(c)).join(', ') || '(ni l\'un ni l\'autre)'}`);
@@ -282,7 +282,7 @@ try {
   const documentsE = join(E.parent, 'Documents');
   mkdirSync(documentsE, { recursive: true });
   await avecProgramme(E.profil, { TRACKER_DOCUMENTS: documentsE, OneDrive: documentsE }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     const t = await attendre(b, /Dossier proposé/, 'carte');
     const attendu = join(E.parent, 'Tracker');
     check('le dossier proposé est hors de OneDrive (à côté de Documents)', t.includes(`Dossier proposé : ${attendu}`), ligne(t, /proposé/));
@@ -296,7 +296,7 @@ try {
   const F = { profil: dossier('f-profil'), documents: dossier('f-documents') };
   const avantF = empreinte(propose);
   await avecProgramme(F.profil, { TRACKER_DOCUMENTS: F.documents, TRACKER_BANC_DOSSIER: join(propose, 'sessions') }, async (b) => {
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     await attendre(b, /Dossier proposé/, 'carte');
     check('clic « Choisir un autre dossier »', (await b.clickText('Choisir un autre dossier')) === 'ok');
     const t = await attendre(b, /est un dossier de la mémoire Tracker/, 'refus');
@@ -373,7 +373,7 @@ try {
   let octetsPremier = null;
   await avecProgramme(G.profil, { TRACKER_DOCUMENTS: G.documents }, async (b) => {
     b.onMessage((m) => { if (m.method === 'Page.javascriptDialogOpening') fenetresG.push(m.params.message); });
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     await attendre(b, /Dossier proposé/, 'carte');
     check('clic « Utiliser ce dossier »', (await b.clickText('Utiliser ce dossier')) === 'ok');
     await b.waitFor(() => existsSync(join(memG, FICHIER_MARQUEUR)), { timeout: 8000, label: 'marqueur' });
@@ -475,7 +475,7 @@ try {
   // Second lancement : la purge de l'ouverture ; puis un itinéraire, la suppression définitive d'une entrée, le vidage.
   await avecProgramme(G.profil, { TRACKER_DOCUMENTS: G.documents }, async (b) => {
     b.onMessage((m) => { if (m.method === 'Page.javascriptDialogOpening') fenetresG.push(m.params.message); });
-    await b.go('/profil', 5000);
+    await b.go('/', 5000);
     await attendre(b, /session/, 'mémoire prête');
     await b.waitFor(() => indexG()?.entries?.length === 1, { timeout: 12000, label: 'purge à l\'ouverture' });
     await b.wait(800);

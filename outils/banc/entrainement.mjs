@@ -64,7 +64,7 @@ const check = (name, ok, detail = '') => {
 await blockNetwork(['https://*']);
 
 // --- 1. Le nom de la famille ---
-await go('/');
+await go('/accueil');
 await ready('.home-family__name');
 const homeNames = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((n) => n.textContent).join(', ')`);
 check('accueil : carte « Entraînement »', homeNames?.includes('Entraînement') && !homeNames.includes('Fractionné'), homeNames);
@@ -254,7 +254,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, devi
 await go('/fractionne/seances');
 await ready('.train-item');
 check('320 px : page Fractionné sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
-await go('/');
+await go('/accueil');
 await ready('.home-family__name');
 check('320 px : accueil sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('entrainement-accueil-320');

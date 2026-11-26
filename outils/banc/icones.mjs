@@ -82,7 +82,7 @@ await waitFor(async () => ((await records()) ?? []).length >= SESSIONS.length, {
 await settle({ max: 2500, label: 'import' });
 
 // 1. Accueil.
-await go('/');
+await go('/accueil');
 await ready('.home-family__name');
 const homeLabels = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((s) => s.textContent)`);
 check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Surf', 'Entraînement']), JSON.stringify(homeLabels));
@@ -190,7 +190,7 @@ await go('/voile');
 await ready('.lib-row');
 check('390 : bibliothèque sans débordement', (await overflow()) === false);
 await shoot('icones-voile-390');
-await go('/');
+await go('/accueil');
 await ready('.home-family__name');
 check('390 : accueil sans débordement', (await overflow()) === false);
 await shoot('icones-accueil-390');

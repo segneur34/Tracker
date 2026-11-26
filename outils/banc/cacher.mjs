@@ -53,7 +53,7 @@ const openBlock = (label, probe) => evaluate(`(() => {
 /** Relevé de l'application : les deux barres, puis le texte de chaque page. */
 const snapshot = async () => {
   const out = {};
-  await go('/');
+  await go('/accueil');
   out.barreHaut = await evaluate(`document.querySelector('.shell-toplinks')?.textContent`);
   out.barreBas = await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`);
   out.accueil = await evaluate('document.querySelector(".shell-main").innerText');
@@ -84,7 +84,7 @@ const before = await snapshot();
 console.log('\n--- départ ---');
 for (const [k, v] of Object.entries(before)) console.log(`${k} : ${String(v).replace(/\s+/g, ' ').slice(0, 220)}`);
 check('la session est sous Route', before.velo.includes('Route'));
-check('barre du bas : Accueil, Profil, Statistiques, Réglages', before.barreBas === 'Accueil | Profil | Statistiques | Réglages', before.barreBas);
+check('barre du bas : Profil, Accueil, Statistiques, Réglages', before.barreBas === 'Profil | Accueil | Statistiques | Réglages', before.barreBas);
 
 // --- 2. Surf, puis Route, cachés ---
 await go('/parametres');

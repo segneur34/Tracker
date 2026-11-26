@@ -30,7 +30,7 @@
 //     effacé), la page est relancée sur l'accueil ; temps jusqu'aux 30 résumés refaits, tâches longues, et la latence
 //     d'un mouvement de souris envoyé toutes les 300 ms pendant ce temps (la page répond-elle ?) ; une prise de plus
 //     sous le profileur ;
-//  6. démarrage : du chargement de `/` à l'accueil rendu, puis au premier répit d'une seconde sans tâche longue
+//  6. démarrage : du chargement de `/accueil` (la racine est au Profil depuis le lot 238) à l'accueil rendu, puis au premier répit d'une seconde sans tâche longue
 //     (« interactif »), tâches longues et modules chargés sur 12 s ; avec le préchargement des pages
 //     (`preloadPages` d'`App.tsx`), puis sans (`requestIdleCallback` neutralisé depuis le script, rien dans `src/`) ;
 //  7. « Finir » (lot 161, refait au lot 212 : la session est rangée dès l'arrêt et l'analyse s'ouvre d'elle-même), hors
@@ -717,7 +717,7 @@ if (MESURES.includes('resumes')) {
   console.log(`\n== Mise à jour des résumés de ${COUNT} sessions de voile (1 h à 1 Hz) au lancement, sur l'accueil ==`);
   const refreshOnce = async ({ profile = false } = {}) => {
     const n = await outdateRecords();
-    await reload('/');
+    await reload('/accueil');
     if (profile) await profileStart();
     const tNav = await evaluate('performance.now()');
     // Sonde : un mouvement de souris toutes les 300 ms, sa latence relevée dans la page et l'aller-retour vu d'ici.
@@ -777,17 +777,17 @@ if (MESURES.includes('resumes')) {
 
 // --- 6. Démarrage ---
 if (MESURES.includes('demarrage')) {
-  console.log('\n== Démarrage : chargement de `/` jusqu\'à l\'accueil, 33 sessions en mémoire, cache des fiches à jour ==');
+  console.log('\n== Démarrage : chargement de `/accueil` jusqu\'à l\'accueil, 33 sessions en mémoire, cache des fiches à jour ==');
   const WINDOW_MS = 12000;
   await throttle(1);
-  await reload('/');
+  await reload('/accueil');
   await settle({ max: 20000, label: 'accueil, cache refait' });
   await wait(3000);
   let scripts = 0;
   const unlisten = b.onMessage((msg) => { if (msg.method === 'Network.requestWillBeSent' && msg.params.type === 'Script') scripts++; });
   const startOnce = async () => {
     scripts = 0;
-    await reload('/');
+    await reload('/accueil');
     const m0 = await metrics();
     await wait(WINDOW_MS);
     const m1 = await metrics();

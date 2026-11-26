@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import ActivityArt from '../components/activityArt';
 import MemoryStatus from '../components/MemoryStatus';
+import { OpeningPrompts } from '../components/ProfilePrompt';
 import PageBackdrop from '../components/PageBackdrop';
 import { AvatarPicker, ProfileAvatar } from '../components/ProfileAvatar';
 import ProfileRoot, { RootSlot } from '../components/ProfileRoot';
@@ -104,7 +105,9 @@ const LegendContent = ({ slice: s }: { slice: Slice }) => (
 
 function ProfilePage() {
   const navigate = useNavigate();
-  const { status, sessions, scanning } = useLibraryFields('status', 'sessions', 'scanning');
+  const { status, sessions, scanning, error } = useLibraryFields('status', 'sessions', 'scanning', 'error');
+  // Comme sur l'accueil : dossier à choisir, à rouvrir, ou erreur de la mémoire (la carte compacte la montre).
+  const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
   const backdrop = useFavoriteBackdrop();
   const { activities } = useVisibility();
   /** Le nom ou pseudo de Réglages en titre, « Profil » sans lui. */
@@ -210,6 +213,9 @@ function ProfilePage() {
         value={period} onChange={(key) => rememberView({ periode: key })} />
 
       <MemoryStatus compact />
+      {/* Page d'ouverture (lot 238) : autorisations et pop-up du profil, comme sur l'accueil. Sous la ligne « Niveau » et
+          les périodes, jamais au-dessus : le premier cadre que la racine entoure ne bouge pas. */}
+      <OpeningPrompts memoryNeedsAction={memoryNeedsAction} memoryReady={status === 'ready'} />
 
       {status === 'opening' ? (
         <p className="ui-hint">Lecture de la mémoire…</p>

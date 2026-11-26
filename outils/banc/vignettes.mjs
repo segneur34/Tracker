@@ -150,7 +150,7 @@ await evaluate(`localStorage.removeItem('tracker.theme'); true`);
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
 // 5. 10 000 tuiles gardées : liste au premier chargement, puis au suivant.
-await go('/', 5000);
+await go('/accueil', 5000);
 const filled = await evaluate(`(async () => {
   const cache = await caches.open('tracker-tuiles');
   const body = new Uint8Array(2000);
@@ -167,7 +167,7 @@ const filled = await evaluate(`(async () => {
 })()`);
 console.log('tuiles écrites     :', filled);
 const timeList = async (label) => {
-  await go('/', 5000);
+  await go('/accueil', 5000);
   const r = await evaluate(`(async () => {
     const { tileStore } = await import('/src/platform/tileCache.ts');
     const t = performance.now();

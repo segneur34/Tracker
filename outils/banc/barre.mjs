@@ -151,7 +151,7 @@ const weeks = Number(active.split('/')[1]);
 check('Course sur « Année » : semaines comptées depuis la course', weeks >= 1 && weeks <= 3, active);
 
 // --- 4. Dernier affichage ---
-await go('/', 3000);
+await go('/accueil', 3000);
 await go('/statistiques', 4000);
 check('reprise sans paramètre : Course, Année', (await search()) === '?famille=course&periode=annee', await search());
 check('sous-titre de Course', (await evaluate(`document.querySelector('.ui-page-header')?.innerText ?? ''`)).includes('À pied'));
@@ -161,7 +161,7 @@ await chip('Famille', 'Tout');
 await wait(500);
 await chip('Période', 'Tout');
 await wait(500);
-await go('/', 3000);
+await go('/accueil', 3000);
 await go('/statistiques', 4000);
 check('« Tout » retenu : pas de paramètre', (await search()) === '', await search());
 
