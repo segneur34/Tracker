@@ -52,7 +52,13 @@ Banc : `racine-periodes.mjs` étendu (`data-longueur` identique ligne repliée e
 - Test de FC de repos et FC de nuit : non comptés ; test de FC max : compté comme un effort vigoureux.
 - Sessions cachées et « à classer » écartées, comme dans Statistiques.
 
-## À confirmer par l'utilisateur, sur la planche
+## Réponse de l'utilisateur le 26/11, sur la planche (https://claude.ai/artifact/ScwqYuP13h21w7ZejkYCz5)
+
+« ok pour proposer » : le proposé est retenu, soit la ligne en premier cadre entre le titre et la période, la racine passant autour. Compris par l'orchestrateur comme valant aussi pour la racine plus longue (17 à 20 % à nombre d'étapes égal), qui est ce que montrent les captures « Proposé » ; à rectifier d'un mot sinon (`tourLength` ignorerait alors le cadre du niveau). L'étape B se rapatrie.
+
+Vu sur les captures, déjà là avant : à 390 px les boutons de période se coupent sur deux lignes (388 px de libellés pour 350 px de place).
+
+## Les deux points posés sur la planche
 
 1. La place de la ligne (premier cadre, entre l'en-tête et la période, la racine passant autour).
 2. L'allongement de la racine, une seule fois, à niveau égal (un cadre de plus par tour). Défaut : accepté ; sinon `tourLength` ignore le cadre du niveau.

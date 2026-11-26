@@ -451,11 +451,6 @@
   font-size: var(--text-s);
 }
 
-.plan-saved__confirm {
-  display: flex;
-  gap: var(--space-1);
-}
-
 /* Téléphone : onglets en petites pastilles serrées, comme dans les analyses. */
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .plan-panel > .ui-tabs {

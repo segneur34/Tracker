@@ -7,6 +7,8 @@ interface MoreMenuProps {
   label: string;
   /** Entrées : des `Button`, ou des `label` porteurs d'un sélecteur de fichiers. */
   children: ReactNode;
+  /** Appelé quand le menu se referme, quelle qu'en soit la cause : une confirmation ouverte dedans s'y abandonne. */
+  onClose?: () => void;
 }
 
 /**
@@ -19,11 +21,15 @@ interface MoreMenuProps {
  * fichiers choisis. Tout est en `span`, pour se loger dans un sous-titre
  * (`PageHeader`, un `p`).
  */
-function MoreMenu({ label, children }: MoreMenuProps) {
+function MoreMenu({ label, children, onClose }: MoreMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
+  const close = () => {
+    setOpen(false);
+    onClose?.();
+  };
 
-  useCloseOnOutsideOrEscape(open, () => rootRef.current, () => setOpen(false));
+  useCloseOnOutsideOrEscape(open, () => rootRef.current, close);
 
   return (
     <span className="ui-more" ref={rootRef}>
@@ -33,7 +39,7 @@ function MoreMenu({ label, children }: MoreMenuProps) {
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}>
+        onClick={() => (open ? close() : setOpen(true))}>
         <IconMore />
       </button>
       <span
@@ -44,7 +50,7 @@ function MoreMenu({ label, children }: MoreMenuProps) {
           // Fermé au tour suivant : un `label` doit d'abord ouvrir son sélecteur de fichiers.
           // `data-keep-open` : une entrée qui ne se choisit pas d'un clic (appui long) laisse le menu ouvert.
           const target = e.target as HTMLElement;
-          if (target.closest('button, label') && !target.closest('[data-keep-open]')) setTimeout(() => setOpen(false), 0);
+          if (target.closest('button, label') && !target.closest('[data-keep-open]')) setTimeout(close, 0);
         }}>
         {children}
       </span>

@@ -22,6 +22,9 @@ import { useHelp } from '../components/helpContext';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
+import RouteImageShare from '../components/RouteImageShare';
+import { RouteMenu, RouteRowActions } from '../components/RouteMenu';
+import { shareRouteGpx } from '../components/routeShare';
 import { useRouteProfileChart } from '../components/routeProfileChart';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SurfaceBar from '../components/SurfaceBar';
@@ -57,7 +60,6 @@ import { PLANNING_FAMILIES, resolveTerrainStepM } from '../settings/activitySett
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { routeDisplayName, routeFileLabel, type RouteNameSource } from '../library/routeName';
-import { trashDeleteButton } from '../library/trash';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
 import { shownRoutes } from '../planning/routeShown';
 import { isAbortError } from '../planning/fetchJson';
@@ -72,6 +74,7 @@ import {
 import { wayTypesOf, waysMode } from '../planning/wayTypes';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
+import { END_COLOR, ROUTE_COLOR, START_COLOR } from '../planning/routeColors';
 import { routeSurfacePaths, routeSurfaces, type SurfaceCategory } from '../planning/surface';
 import { beepStartM, simulatedApproachMs, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
 import { gradeColorPaths } from '../land/grade';
@@ -143,7 +146,6 @@ const FALLBACK_COLOR = '#6a1b9a';
  * que soit l'activité : une activité verte ou rouge se confondrait avec le
  * départ ou l'arrivée.
  */
-const ROUTE_COLOR = '#1565c0';
 /** Épaisseur du tracé prêt et des morceaux colorés par la pente. */
 const ROUTE_WEIGHT = 5;
 /** Liseré blanc sous le tracé, sur le fond satellite, le même que celui des analyses. */
@@ -195,9 +197,6 @@ const latLngOf = (w: Waypoint): [number, number] => {
   }
   return position;
 };
-/** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec). */
-const START_COLOR = '#2e7d32';
-const END_COLOR = '#b71c1c';
 /** Sur une boucle, un seul repère au départ, qui est aussi l'arrivée : moitié vert, moitié rouge. */
 const LOOP_FILL = `linear-gradient(90deg, ${START_COLOR} 50%, ${END_COLOR} 50%)`;
 
@@ -415,7 +414,8 @@ function PlanningPage() {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  /** Itinéraire dont l'image de partage est ouverte (« Partager l'image » du menu « … » de la page). */
+  const [sharingImage, setSharingImage] = useState<SavedRoute | null>(null);
   /** Échec du chargement d'un GPX, montré dans le bloc Tracé. */
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -790,7 +790,6 @@ function PlanningPage() {
 
   /** Supprime un itinéraire enregistré ; celui qui est ouvert laisse la place à une carte vide. */
   const deleteSaved = async (saved: SavedRoute) => {
-    setConfirmingDelete(null);
     try {
       await library.remove(saved);
       if (current?.base === saved.base) {
@@ -858,6 +857,19 @@ function PlanningPage() {
   const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly && !computing;
   const waitTitle = computing ? 'Attendez la fin du calcul du tracé' : undefined;
 
+  /**
+   * Menu « … » de l'itinéraire, en haut de la page à droite du titre (lot 236) : il se montre sur un itinéraire
+   * rangé, ou sur ordinateur dès qu'un tracé peut s'exporter. Les partages portent l'itinéraire rangé : jamais
+   * rangé ou modifié, il doit d'abord être enregistré, comme pour « Partir ».
+   */
+  const showMenu = current !== null || (canDownloadFiles() && route.waypoints.length >= 2);
+  const shareBlocked = current === null || dirty;
+  const shareCurrent = async () => {
+    if (!current) return;
+    setMessage(null);
+    setMessage((await shareRouteGpx(current))?.text ?? null);
+  };
+
   /** Onglets sous la carte : en voile et en surf, le parcours et ses balises ; ailleurs, le général, le revêtement et les points. */
   const pointCount = route.waypoints.length;
   const sections: SectionDefinition<PlanningSection>[] = [
@@ -875,6 +887,12 @@ function PlanningPage() {
       <PageHeader
         title="Itinéraires"
         back={{ to: '/', label: 'Accueil' }}
+        aside={showMenu ? (
+          <RouteMenu label="Plus d'actions sur l'itinéraire" blocked={shareBlocked}
+            onShareImage={() => current && setSharingImage(current)} onShareGpx={() => void shareCurrent()}
+            exportGpx={canDownloadFiles() ? { run: exportGpx, disabled: route.waypoints.length < 2 || computing, title: waitTitle } : undefined}
+            onDelete={current ? () => void deleteSaved(current) : undefined} toTrash={toTrash} />
+        ) : undefined}
         subtitle={markCourse
           ? 'Posez les balises sur la carte : le parcours les relie en ligne droite.'
           : 'Posez des points sur la carte : le tracé suit les chemins entre eux.'} />
@@ -1309,18 +1327,7 @@ function PlanningPage() {
                   Partir
                 </Button>
               )}
-              {canDownloadFiles() && (
-                <Button onClick={exportGpx} disabled={route.waypoints.length < 2 || computing} title={waitTitle}>Exporter le GPX</Button>
-              )}
               {(current !== null || route.waypoints.length > 0) && <Button variant="ghost" onClick={startNew}>Nouvel itinéraire</Button>}
-              {current !== null && (confirmingDelete === current.base ? (
-                <>
-                  <Button variant="danger" onClick={() => void deleteSaved(current)}>{trashDeleteButton(toTrash, 'Supprimer définitivement')}</Button>
-                  <Button variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
-                </>
-              ) : (
-                <Button variant="danger" onClick={() => setConfirmingDelete(current.base)}>Supprimer l'itinéraire</Button>
-              ))}
             </div>
             {message && <p className="plan-note">{message}</p>}
           </PlanBlock>
@@ -1336,18 +1343,15 @@ function PlanningPage() {
                 onOpen={openSaved}
                 currentBase={current?.base ?? null}
                 go={false}
-                actions={(saved) => (confirmingDelete === saved.base ? (
-                  <span className="plan-saved__confirm">
-                    <Button size="s" variant="danger" onClick={() => void deleteSaved(saved)}>{trashDeleteButton(toTrash, 'Supprimer')}</Button>
-                    <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
-                  </span>
-                ) : (
-                  <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(saved.base)} aria-label={`Supprimer ${routeDisplayName(saved.record)}`}>Supprimer</Button>
-                ))} />
+                actions={(saved) => (
+                  <RouteRowActions saved={saved} activities={activities} toTrash={toTrash}
+                    onDelete={(s) => void deleteSaved(s)} onNote={(note) => setMessage(note?.text ?? null)} />
+                )} />
             )}
           </PlanBlock>
         </div>
       </div>
+      {sharingImage && <RouteImageShare saved={sharingImage} activities={activities} onClose={() => setSharingImage(null)} />}
     </div>
   );
 }

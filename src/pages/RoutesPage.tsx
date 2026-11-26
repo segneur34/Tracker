@@ -4,10 +4,9 @@ import { Link } from 'react-router-dom';
 import MemoryStatus from '../components/MemoryStatus';
 import ActivityFilterTabs from '../components/ActivityFilterTabs';
 import RouteList from '../components/RouteList';
-import { IconFile, IconRoute, IconShare } from '../components/icons';
-import Button from '../components/ui/Button';
+import { IconFile, IconRoute } from '../components/icons';
+import { RouteRowActions } from '../components/RouteMenu';
 import Card from '../components/ui/Card';
-import MoreMenu from '../components/ui/MoreMenu';
 import PageHeader from '../components/ui/PageHeader';
 import { activityCounts } from '../core/activities';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
@@ -16,10 +15,8 @@ import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, shownRoutes, s
 import { plainError } from '../platform/errorText';
 import { readPickedFile } from '../platform/files';
 import { isNativeApp } from '../platform/runtime';
-import { trashDeleteButton } from '../library/trash';
 import { routeDisplayName } from '../library/routeName';
 import { useDeletesToTrash } from '../hooks/useTrash';
-import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -31,7 +28,9 @@ import { jsonStore } from '../platform/storage';
  *
  * Lot 194 : « Partager » envoie le GPX d'un itinéraire, sa fiche en extension,
  * vers une autre application ; « Importer un itinéraire » range celui d'un GPX
- * choisi dans les fichiers, souligné dans la liste.
+ * choisi dans les fichiers, souligné dans la liste. Lot 236 : le « … » de chaque
+ * ligne (`RouteRowActions`) porte « Partager l'image », « Partager le GPX » et
+ * « Supprimer », confirmé dans le menu.
  */
 
 const PREFS_KEY = 'tracker.routeList';
@@ -44,7 +43,7 @@ const readSort = (): RouteSort => {
 };
 
 function RoutesPage() {
-  const { routes: allRoutes, loaded, error, canSave, importGpx, shareFileOf, remove } = useRouteLibrary();
+  const { routes: allRoutes, loaded, error, canSave, importGpx, remove } = useRouteLibrary();
   /** Programme Windows : l'itinéraire supprimé part à la corbeille, et le bouton le dit. */
   const toTrash = useDeletesToTrash();
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
@@ -84,21 +83,8 @@ function RoutesPage() {
     }
   };
 
-  const share = async (saved: SavedRoute) => {
-    setNote(null);
-    try {
-      const { fileName, text } = await shareFileOf(saved);
-      const outcome = await shareFile(new Blob([text], { type: 'application/gpx+xml' }), fileName, "Partager l'itinéraire");
-      if (outcome === 'downloaded') setNote({ text: 'Ce navigateur ne partage pas de fichier : le GPX est téléchargé.', error: false });
-    } catch (err) {
-      setNote({ text: `Partage impossible : ${plainError(err, 'erreur inconnue')}`, error: true });
-    }
-  };
-
-  /** Itinéraire dont la suppression attend sa confirmation (la même que dans Planifier). */
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  /** Supprime l'itinéraire confirmé dans son menu ; un échec est dit. */
   const deleteRoute = async (saved: SavedRoute) => {
-    setConfirmingDelete(null);
     setNote(null);
     try {
       await remove(saved);
@@ -154,22 +140,10 @@ function RoutesPage() {
       <Card>
         {shown.length > 0 ? (
           <RouteList routes={shown} activities={activities} currentBase={imported}
-            actions={(saved) => (confirmingDelete === saved.base ? (
-              <span className="ui-row-s2 ui-wrap">
-                <Button size="s" variant="danger" onClick={() => void deleteRoute(saved)}>{trashDeleteButton(toTrash, 'Supprimer définitivement')}</Button>
-                <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
-              </span>
-            ) : (
-              <>
-                <Button size="s" variant="ghost" className="route-list__icon-btn" title="Partager"
-                  onClick={() => void share(saved)} aria-label={`Partager ${routeDisplayName(saved.record)}`}>
-                  <IconShare size={24} />
-                </Button>
-                <MoreMenu label={`Plus d'actions sur ${routeDisplayName(saved.record)}`}>
-                  <Button size="s" variant="danger" onClick={() => setConfirmingDelete(saved.base)}>Supprimer</Button>
-                </MoreMenu>
-              </>
-            ))} />
+            actions={(saved) => (
+              <RouteRowActions saved={saved} activities={activities} toTrash={toTrash}
+                onDelete={(s) => void deleteRoute(s)} onNote={setNote} />
+            )} />
         ) : (
           <p className="ui-hint ui-hint--m">
             Aucun itinéraire pour l'instant. <Link to="/itineraires">Planifiez-en un</Link> : il apparaîtra ici, prêt à suivre.

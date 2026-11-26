@@ -3,6 +3,8 @@ import { MAP_BASES, type MapBase } from '../core/mapBase';
 import { tileKey, type TileCoord } from '../core/tiles';
 import { lightToken } from '../theme/lightToken';
 import { loadMapTile, tileImage } from '../platform/mapTiles';
+import type { RouteShareContent, SurfaceBandPart } from '../planning/routeShareImage';
+import { drawNorthArrow, drawSurfaceBand, NORTH_ARROW_ROOM_PX, routeOverlay, SURFACE_BAND_ROOM_PX } from './drawRouteOverlay';
 import { strokeColoredTrack } from './drawTrackPreview';
 import type { TrackSegment } from './TrackSegmentsLayer';
 
@@ -13,6 +15,11 @@ import type { TrackSegment } from './TrackSegmentsLayer';
  * famille, le titre, l'activité et la date ; en bas, les chiffres retenus dans
  * un cartouche blanc, puis le pied. Le cadrage et la mise en page se calculent
  * dans `core/shareImage.ts`.
+ *
+ * Celle d'un itinéraire (lot 236) est la même, son parcours (`course`) dessiné à
+ * la place de la trace et par-dessus le voile, avec en voile et en surf la rose
+ * du nord à droite du titre, et à pied et à vélo la bande du revêtement
+ * au-dessus du cartouche si elle est demandée (`band`, `drawRouteOverlay.ts`).
  */
 
 export interface ShareImageContent {
@@ -30,6 +37,10 @@ export interface ShareImageContent {
   base: MapBase;
   /** Nom ou pseudo du pratiquant, à droite du pied ; `null` : rien. */
   author: string | null;
+  /** Parcours d'un itinéraire, dessiné et cadré à la place des tranches de trace (`segments`, alors vide). */
+  course?: RouteShareContent;
+  /** Bande du revêtement d'un itinéraire, au-dessus du cartouche ; absente : rien. */
+  band?: ReadonlyArray<SurfaceBandPart>;
 }
 
 /** Tuile du fond prête à dessiner, `null` si elle manque. */
@@ -155,7 +166,12 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   // Carte sur toute l'image ; sans fond (muscu, fond décoché), un aplat.
   ctx.fillStyle = token('--surface-sunken', '#e9e7e2');
   ctx.fillRect(0, 0, widthPx, heightPx);
-  const track = drawTrack(ctx, content, count);
+  const course = content.course;
+  const band = course && count > 0 && content.band && content.band.length > 0 ? content.band : null;
+  const routeStyle = { font: family, ink, muted, line: token('--line-strong', '#cfcfcf') };
+  const track = course
+    ? routeOverlay(ctx, course, (count > 0 ? cardTop(count) : SHARE_IMAGE.heightPx - SHARE_IMAGE.footerVeilPx) - (band ? SURFACE_BAND_ROOM_PX : 0), routeStyle)
+    : drawTrack(ctx, content, count);
   if (content.withMap && track.view) {
     const placed = viewTiles(track.view);
     const images = await Promise.all(placed.map((p) => tileImage(p.tile)));
@@ -165,7 +181,8 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
       if (image) ctx.drawImage(image, p.x, p.y, p.sizePx + 1, p.sizePx + 1);
     });
   }
-  track.draw();
+  // Un parcours se dessine après le titre : ses pastilles ne passent pas sous le voile.
+  if (!course) track.draw();
   // Sans trace (muscu), pas de fond de carte : pas de mention non plus.
   if (content.withMap && track.view) {
     // Mention qu'exigent les conditions d'usage des tuiles du fond, au ras du bas, sous le cartouche.
@@ -186,16 +203,23 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   ctx.fillRect(0, 0, widthPx, veilPx);
   ctx.fillStyle = content.accent;
   ctx.fillRect(0, 0, edgePx, veilPx);
+  // La rose du nord d'un parcours de balises prend sa place à droite du titre.
+  const headerWidth = widthPx - 2 * margin - (course?.north ? NORTH_ARROW_ROOM_PX : 0);
   ctx.fillStyle = ink;
   ctx.font = `700 58px ${family}`;
-  ctx.fillText(fitText(ctx, content.title, widthPx - 2 * margin), margin, titleBaselinePx);
+  ctx.fillText(fitText(ctx, content.title, headerWidth), margin, titleBaselinePx);
   ctx.fillStyle = muted;
   ctx.font = `400 32px ${family}`;
-  ctx.fillText(fitText(ctx, content.subtitle, widthPx - 2 * margin), margin, subtitleBaselinePx);
+  ctx.fillText(fitText(ctx, content.subtitle, headerWidth), margin, subtitleBaselinePx);
+  if (course) {
+    track.draw();
+    if (course.north) drawNorthArrow(ctx, routeStyle);
+  }
 
   // Cartouche des chiffres ; sans chiffre, un voile sous le pied seul.
   const cardH = cardHeight(count);
   const cardY = cardTop(count);
+  if (band) drawSurfaceBand(ctx, band, cardY, routeStyle);
   const cardW = widthPx - 2 * cardMarginXPx;
   if (count > 0) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
