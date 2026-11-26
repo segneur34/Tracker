@@ -144,7 +144,7 @@ const gainM = parseFr(gain);
 check('D+ de l\'année : la côte', gain?.endsWith('m') && gainM > 150 && gainM < 230, gain);
 check('nombre de sessions (graphe)', (await chartCount()) === '4 sessions', await chartCount());
 const ordre = await evaluate(`[...document.querySelectorAll('.profile > *')].map((el) => (el.getAttribute('class') ?? '').split(' ')[0] || el.tagName).join(' > ')`);
-check('ordre : fond, en-tête, période, chiffres, répartition, graphe', /^page-backdrop > profile-head > ui-segmented.*profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
+check('ordre : fond, en-tête, niveau, période, chiffres, répartition, graphe', /^page-backdrop > profile-head > profile-level > ui-segmented.*profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
 check('Profil : fond de la famille du sport préféré', (await backdrop()) === 'page-backdrop page-backdrop--course', await backdrop());
 check('détail par activité replié au départ', (await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'false'
   && (await legend()).length === 0);

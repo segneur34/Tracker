@@ -1,7 +1,8 @@
 import { finiteOr, inRange } from '../core/basics';
 import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
 import { heartRateZones, isValidThresholds, isValidZoneBounds, type HeartRateZones } from '../core/heartRate';
-import type { HeartRateProfile } from '../core/sportProfiles';
+import type { Activity } from '../core/activities';
+import { REFERENCE_HEART_RATE, getSportProfile, type HeartRateProfile } from '../core/sportProfiles';
 
 /**
  * Profil du pratiquant, pur (lot 72) : sa forme, ses champs relus avec
@@ -145,6 +146,16 @@ export const runnerHrSource = (profile: Partial<RunnerProfile>, field: 'hrMax' |
  */
 export const runnerHeartRateZones = (profile: RunnerProfile, heartRate: HeartRateProfile, offsetBpm: number): HeartRateZones | null =>
   heartRateZones(profile, runnerAge(profile), heartRate.zoneModel, offsetBpm);
+
+/**
+ * Seuils et zones du pratiquant pour une activité, décalés de son écart
+ * (`offsetOf`, l'écart effectif de l'activité, lu par l'appelant) ; ceux de la
+ * course, sans écart, sans activité. Partagé par Statistiques et le Profil.
+ */
+export const zonesFor = (runner: RunnerProfile, activity: Activity | null, offsetOf: (activity: Activity) => number): HeartRateZones | null =>
+  activity
+    ? runnerHeartRateZones(runner, getSportProfile(activity.base).heartRate, offsetOf(activity))
+    : runnerHeartRateZones(runner, REFERENCE_HEART_RATE, 0);
 
 /**
  * Profil relu champ par champ (fichier de réglages d'un autre appareil, lot

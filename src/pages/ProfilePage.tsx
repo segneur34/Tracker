@@ -6,6 +6,7 @@ import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import { AvatarPicker, ProfileAvatar } from '../components/ProfileAvatar';
 import ProfileRoot, { RootSlot } from '../components/ProfileRoot';
+import SportLevelLine from '../components/SportLevelLine';
 import { IconChevronRight } from '../components/icons';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { activityFamily, type Activity } from '../core/activities';
@@ -16,6 +17,7 @@ import { libraryPath } from '../core/parentPage';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useProfileRoot } from '../hooks/useProfileRoot';
+import { useSportLevel } from '../hooks/useSportLevel';
 import { runnerAvatar, runnerName } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
@@ -35,6 +37,7 @@ import './ProfilePage.css';
  * maquette du 22/10 et un fond de courbes de niveau. En tête, la photo ronde
  * (un dessin d'activité ou une image importée, choisis en la touchant ; sans
  * choix, le dessin du sport préféré de toutes les sessions) et le pseudo. Puis
+ * la ligne « Niveau » (note de niveau sportif, lot 230, hors période), puis
  * la période, qui règle toute la page : semaine, 30 jours, 6 mois, année (les
  * bornes du graphe d'activités et des statistiques) ou depuis le début ; choix
  * retenu sur l'appareil. Puis, dans une seule bande : nombre d'activités (et
@@ -62,8 +65,8 @@ const VIEW_DEFAULTS: ProfileView = { periode: 'annee' };
 /** Détail par activité sous l'anneau : replié au départ, état retenu sur l'appareil. */
 const DETAIL_DEFAULT = { detail: false };
 
-/** Cadres que la racine entoure (`ProfileRoot`), dans l'ordre de la page. */
-const ROOT_CARDS = ['.profile-periods', '.profile-figures', '.profile-split', '.actchart'];
+/** Cadres que la racine entoure (`ProfileRoot`), dans l'ordre de la page : la ligne « Niveau » en tête, toujours rendue. */
+const ROOT_CARDS = ['.profile-level', '.profile-periods', '.profile-figures', '.profile-split', '.actchart'];
 
 /** Au-delà, les plus petites parts se regroupent en « Autres » : un anneau ne se lit plus. */
 const MAX_SLICES = 6;
@@ -123,6 +126,8 @@ function ProfilePage() {
 
   // Racine : toutes les sessions, quelle que soit la période ; son détail s'ouvre sous le carré, non retenu.
   const root = useProfileRoot(all, profile, nowMs);
+  // Note de niveau : fenêtres fixes, toutes les sessions, quelle que soit la période.
+  const level = useSportLevel(all, activityById, profile, nowMs);
   const [rootOpen, setRootOpen] = useState(false);
   const closeRoot = useCallback(() => setRootOpen(false), []);
 
@@ -198,6 +203,8 @@ function ProfilePage() {
         <RootSlot growth={root.growth} open={rootOpen} onToggle={() => setRootOpen(!rootOpen)} />
       </header>
       {picking && <AvatarPicker avatar={avatar} onPick={setAvatar} onClose={() => setPicking(false)} />}
+
+      <SportLevelLine level={level} loading={status === 'opening'} />
 
       <SegmentedControl fit className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
         value={period} onChange={(key) => rememberView({ periode: key })} />

@@ -264,13 +264,16 @@ export const rootRoute = ({ slot, cards }: RootLayout, tail = 0): Route | null =
 };
 
 /**
- * Hauteurs des quatre cadres du Profil (périodes, chiffres, répartition,
- * graphe) sur la page de référence : le Profil en période « Année » à 390 px
- * (relevé du 27/10 : 34, 178, 318 et 273 px, gouttière de 20 px). Elles fixent
- * la longueur d'un tour de racine ; la racine y a l'allure qu'elle avait à
- * cette période avant que la longueur cesse de suivre la page.
+ * Hauteurs des cinq cadres du Profil (ligne « Niveau » repliée, périodes,
+ * chiffres, répartition, graphe) sur la page de référence : le Profil en
+ * période « Année » à 390 px (relevé du 27/10 : 34, 178, 318 et 273 px,
+ * gouttière de 20 px ; la ligne « Niveau » repliée, 46 px, relevée le 26/11,
+ * lot 230). Elles fixent la longueur d'un tour de racine ; la racine y a
+ * l'allure qu'elle avait à cette période avant que la longueur cesse de suivre
+ * la page. La ligne « Niveau » dépliée ne change rien : seul compte le haut
+ * réel du premier cadre.
  */
-export const REFERENCE_CARD_HEIGHTS: readonly number[] = [34, 178, 318, 273];
+export const REFERENCE_CARD_HEIGHTS: readonly number[] = [46, 34, 178, 318, 273];
 /** Gouttière entre deux cadres de la page de référence. */
 export const REFERENCE_GAP = 20;
 

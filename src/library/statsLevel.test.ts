@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { statSession } from '../test/record.fixture';
-import { bestOf, cyclingLevel, levelProfileOf, runningLevel } from './statsLevel';
+import { LEVEL_RULES } from './sportLevel';
+import { bestOf, cyclingLevel, formeForAge, levelProfileOf, runningLevel } from './statsLevel';
 
 const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).getTime();
 
@@ -58,5 +59,39 @@ describe('onglet « niveau » des statistiques (lot 146)', () => {
     expect(noWeight.wkg).toBeNull();
     expect(noWeight.levelLabel).toBeNull();
     expect(cyclingLevel([], man)).toEqual({ best: null, wkg: null, levelLabel: null });
+  });
+});
+
+describe('formeForAge : sources « course » et « vélo » de la note de niveau (lot 230)', () => {
+  const NOW = new Date(2026, 10, 26, 12).getTime();
+  const daysAgo = (d: number) => new Date(2026, 10, 26 - d, 8).getTime();
+
+  it('coureur de 28 ans, 5 km en 20 min : VO2max 49,8, rang 65 parmi les hommes de 20 à 29 ans', () => {
+    const man28 = levelProfileOf({ sex: 'm', birthYear: 1998, weightKg: 70 })!;
+    const run = statSession(daysAgo(40), { bests: { d5kmS: 1200 } });
+    const [source, ...rest] = formeForAge([run], man28, NOW);
+    expect(rest).toEqual([]);
+    expect(source).toMatchObject({ kind: 'course', atMs: run.startMs, file: run.file });
+    expect(source.points).toBeCloseTo(65, 0);
+    expect(source.text).toMatch(/^5 km en 20 min 00 le .+, VO2max estimée 50, mieux que 65 % des hommes de 20 à 29 ans$/);
+  });
+
+  it('vélo, homme de 35 ans, 3,0 W/kg au seuil : VO2max 11 × 3 / 0,75 + 7 = 51, rang 83', () => {
+    const man35 = levelProfileOf({ sex: 'm', birthYear: 1991, weightKg: 80 })!;
+    const ride = statSession(daysAgo(10), { family: 'velo', treatment: 'velo', activityId: 'velo', bests: { p20minW: (3 * 70) / 0.95, powerRiderKg: 70 } });
+    const [source] = formeForAge([ride], man35, NOW);
+    expect(source.kind).toBe('velo');
+    expect(source.points).toBeCloseTo(75 + ((51 - 46.5) / (57.9 - 46.5)) * 20, 6);
+    expect(source.text).toMatch(/3,0 W\/kg au seuil, VO2max estimée 51 \(approximatif\), mieux que 83 % des hommes de 30 à 39 ans$/);
+  });
+
+  it("fenêtre de 365 jours ; marche écartée ; un 5 km d'une séance de fractionné non pris ; sans poids, pas de vélo", () => {
+    const man28 = levelProfileOf({ sex: 'm', birthYear: 1998, weightKg: null })!;
+    const old = statSession(daysAgo(365), { bests: { d5kmS: 1100 } });
+    const walk = statSession(daysAgo(5), { activityId: 'marche', bests: { d5kmS: 3000 } });
+    const intervals = statSession(daysAgo(5), { family: 'fractionne', bests: { d5kmS: 1100 } });
+    const ride = statSession(daysAgo(10), { family: 'velo', treatment: 'velo', bests: { p20minW: 250 } });
+    expect(formeForAge([old, walk, intervals, ride], man28, NOW, LEVEL_RULES, (s) => s.activityId !== 'marche')).toEqual([]);
+    expect(formeForAge([statSession(daysAgo(364), { bests: { d5kmS: 1100 } })], man28, NOW)).toHaveLength(1);
   });
 });

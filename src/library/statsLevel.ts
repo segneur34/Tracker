@@ -4,14 +4,19 @@
  * À pied : la référence de l'âge sur 5 et 10 km (`running/ageGrade.ts`) et la VO2max estimée (`running/vdot.ts`)
  * parmi la population de son âge (`running/vo2maxNorms.ts`) ; à vélo : la puissance au seuil rapportée au poids
  * (`cycling/powerLevels.ts`). Pur : les sessions et le profil sont donnés.
+ * Aussi, pour la note de niveau du Profil (lot 230), les sources « course » et « vélo » de la forme pour l'âge
+ * (`formeForAge`), que `sportLevel.ts`, neutre, ne sait pas calculer.
  */
 
+import { addDays, shortDate, startOfDay } from '../core/calendar';
+import { formatDecimal, formatShortDuration } from '../core/units';
 import { powerLevel, thresholdWkg } from '../cycling/powerLevels';
 import { ageGradeClass, ageGradePercent } from '../running/ageGrade';
 import { AGE_GRADE_DISTANCES_M, type AgeGradeSex } from '../running/ageGradeTables';
 import { runnerAge, type RunnerProfile } from './athleteProfile';
 import { vdotFromRace } from '../running/vdot';
 import { vo2maxPercentile, type Vo2maxStanding } from '../running/vo2maxNorms';
+import { LEVEL_RULES, type FormeSource, type LevelRules } from './sportLevel';
 import type { StatSession } from './stats';
 
 /** Ce que l'onglet lit du pratiquant ; `null` sans sexe ni année de naissance (`levelProfileOf`). */
@@ -109,4 +114,63 @@ export const cyclingLevel = (sessions: readonly StatSession[], profile: LevelPro
   const best = found ? { session: found.session, watts: found.value } : null;
   const wkg = best ? thresholdWkg(best.watts, best.session.bests?.powerRiderKg ?? profile.weightKg) : null;
   return { best, wkg, levelLabel: wkg === null ? null : powerLevel(profile.sex, wkg) };
+};
+
+const SEX_WORD: Record<AgeGradeSex, string> = { h: 'hommes', f: 'femmes' };
+
+/** Place d'une VO2max en clair : « mieux que 65 % des hommes de 20 à 29 ans ». */
+const vo2StandingText = (standing: Vo2maxStanding, sex: AgeGradeSex): string => {
+  const who = `des ${SEX_WORD[sex]} de ${standing.band.fromAge} à ${standing.band.toAge} ans`;
+  if (standing.kind === 'below') return `parmi les ${standing.percentile} % les plus basses ${who}`;
+  if (standing.kind === 'above') return `parmi les ${100 - standing.percentile} % les plus hautes ${who}`;
+  return `mieux que ${Math.round(standing.percentile)} % ${who}`;
+};
+
+const RACE_LABEL: Record<'d5kmS' | 'd10kmS', string> = { d5kmS: '5 km', d10kmS: '10 km' };
+
+/**
+ * Sources « course » et « vélo » de la forme pour l'âge (note de niveau, lot 230), sur les sessions des
+ * `rules.formeWindowDays` derniers jours : la VO2max estimée du meilleur 5 ou 10 km (familles à pied, sans les
+ * sessions que `isRun` écarte, la marche), puis celle du vélo d'après la puissance au seuil rapportée au poids
+ * (équation de l'ACSM pour le pédalage, seuil pris à `rules.ftpShareOfMax` de la puissance maximale :
+ * approximatif), chacune située parmi les tables FRIEND de son âge et de son sexe ; points = ce rang.
+ */
+export const formeForAge = (
+  sessions: readonly StatSession[],
+  profile: LevelProfile,
+  nowMs: number,
+  rules: LevelRules = LEVEL_RULES,
+  isRun: (session: StatSession) => boolean = () => true
+): FormeSource[] => {
+  const fromMs = addDays(startOfDay(nowMs), 1 - rules.formeWindowDays);
+  const recent = sessions.filter((s) => s.startMs >= fromMs && s.startMs <= nowMs);
+  const sources: FormeSource[] = [];
+
+  const running = runningLevel(recent.filter((s) => s.family === 'course' && isRun(s)), profile);
+  const vo2 = running.vo2;
+  const race = vo2 ? (vo2.from === 'd5kmS' ? running.d5km : running.d10km) : null;
+  if (vo2 && race) {
+    sources.push({
+      kind: 'course',
+      points: vo2.standing.percentile,
+      atMs: vo2.session.startMs,
+      file: vo2.session.file,
+      text: `${RACE_LABEL[vo2.from]} en ${formatShortDuration(race.timeS)} le ${shortDate(vo2.session.startMs)}, VO2max estimée ${formatDecimal(vo2.vo2, 0)}, ${vo2StandingText(vo2.standing, profile.sex)}`,
+    });
+  }
+
+  const cycling = cyclingLevel(recent.filter((s) => s.family === 'velo'), profile);
+  if (cycling.best && cycling.wkg !== null) {
+    const { session } = cycling.best;
+    const vo2Bike = rules.acsmCycle.perWkg * (cycling.wkg / rules.ftpShareOfMax) + rules.acsmCycle.restMlKgMin;
+    const standing = vo2maxPercentile(profile.sex, ageAt(profile, session.startMs), vo2Bike);
+    sources.push({
+      kind: 'velo',
+      points: standing.percentile,
+      atMs: session.startMs,
+      file: session.file,
+      text: `Sortie vélo du ${shortDate(session.startMs)}, ${formatDecimal(cycling.wkg, 1)} W/kg au seuil, VO2max estimée ${formatDecimal(vo2Bike, 0)} (approximatif), ${vo2StandingText(standing, profile.sex)}`,
+    });
+  }
+  return sources;
 };

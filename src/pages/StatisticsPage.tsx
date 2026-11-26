@@ -21,7 +21,7 @@ import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE } from '../component
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
-import { REFERENCE_HEART_RATE, SPORT_FAMILIES, getSportProfile, type SportFamily } from '../core/sportProfiles';
+import { REFERENCE_HEART_RATE, SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import {
   formatDistanceAuto, formatDecimal,
   DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatLandSpeed, formatSpeedValue, isInverseUnit,
@@ -33,7 +33,7 @@ import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useNow } from '../hooks/useNow';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { runnerHeartRateZones, type RunnerProfile } from '../library/athleteProfile';
+import { zonesFor } from '../library/athleteProfile';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
@@ -94,11 +94,6 @@ const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, v
 
 /** Coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
 const LOAD_WEIGHTS = REFERENCE_HEART_RATE.loadWeights;
-
-/** Seuils et zones du pratiquant pour une activité (décalés pour elle), ceux de la course sans activité. */
-const zonesFor = (runner: RunnerProfile, activity: Activity | null) => activity
-  ? runnerHeartRateZones(runner, getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))
-  : runnerHeartRateZones(runner, REFERENCE_HEART_RATE, 0);
 
 const STORAGE_ID = 'statistiques';
 
@@ -377,14 +372,14 @@ function StatisticsPage() {
   // Cardio : la FC du résumé, zones et charge recalculées avec le profil du moment.
   const { profile: runner } = useRunnerProfile();
   // Zones montrées : celles de l'activité choisie, de la course sinon ; chaque session compte avec celles de son activité.
-  const hrZones = useMemo(() => zonesFor(runner, activity), [runner, activity]);
+  const hrZones = useMemo(() => zonesFor(runner, activity, effectiveHrOffset), [runner, activity]);
   const zoneBoundsOf = useMemo((): ZoneBoundsOf | null => {
     if (!hrZones) return null;
     const byActivity = new Map<string, readonly number[]>();
     return (s) => {
       let bounds = byActivity.get(s.activityId);
       if (!bounds) {
-        bounds = zonesFor(runner, activityById.get(s.activityId) ?? null)?.bounds ?? hrZones.bounds;
+        bounds = zonesFor(runner, activityById.get(s.activityId) ?? null, effectiveHrOffset)?.bounds ?? hrZones.bounds;
         byActivity.set(s.activityId, bounds);
       }
       return bounds;

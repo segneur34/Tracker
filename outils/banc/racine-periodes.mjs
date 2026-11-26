@@ -5,7 +5,8 @@
 // (semaine, 30 jours, 6 mois, année, depuis le début), à 390×844 et à 1400×1000. Pour chaque période il relève :
 //  - le niveau et la longueur visible de la racine mère (`data-niveau`, `data-longueur` du canevas) ;
 //  - la hauteur de la page et de chacun des cadres entourés ;
-// et il vérifie que la longueur de la racine est la même aux cinq périodes, pour chaque taille d'écran.
+// et il vérifie que la longueur de la racine est la même aux cinq périodes, pour chaque taille d'écran. La ligne
+// « Niveau » (lot 230), premier cadre entouré, est dépliée puis repliée à chaque période : la longueur ne doit pas bouger.
 // Avec un dossier, il y écrit une capture réduite (échelle 0,35) par période et par taille.
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
@@ -68,12 +69,13 @@ await settle({ max: 3000, label: 'import' });
 await setClock(dayAt(13, 0, 12));
 
 const PERIODS = ['semaine', 'trente', 'sixmois', 'annee', 'tout'];
-const SELECTORS = ['.profile-periods', '.profile-figures', '.profile-split', '.actchart'];
+const SELECTORS = ['.profile-level', '.profile-periods', '.profile-figures', '.profile-split', '.actchart'];
 const sizes = [{ name: '390x844', w: 390, h: 844, mobile: true }, { name: '1400x1000', w: 1400, h: 1000, mobile: false }];
 for (const size of sizes) {
   await send('Emulation.setDeviceMetricsOverride', { width: size.w, height: size.h, deviceScaleFactor: 1, mobile: size.mobile });
   const lengths = [];
   const overflows = [];
+  const unfolded = [];
   for (const period of PERIODS) {
     await evaluate(`(() => { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); all.affichage = { periode: ${JSON.stringify(period)} }; localStorage.setItem('tracker.profil', JSON.stringify(all)); })()`);
     await go('/profil', 4500);
@@ -96,12 +98,22 @@ for (const size of sizes) {
     console.log(`${size.name} ${period.padEnd(8)} niveau ${m.niveau} longueur ${m.longueur} px | page ${m.page} | cadres ${m.cadres.join('/')} | hauts ${m.hauts.join('/')} | sous le dernier cadre ${m.sous} | débordement ${m.debordement}`);
     lengths.push(m.longueur);
     overflows.push(m.debordement);
+    // Ligne « Niveau » dépliée : la page s'allonge, la racine se redessine, sa longueur reste.
+    await evaluate(`document.querySelector('.profile-level__toggle')?.click()`);
+    await settle({ max: 1000, label: 'niveau déplié' });
+    const open = await evaluate(`(() => ({ ouvert: document.querySelector('.profile-level__toggle')?.getAttribute('aria-expanded'), longueur: Number(document.querySelector('canvas.profile-root')?.dataset.longueur), debordement: document.documentElement.scrollWidth > window.innerWidth }))()`);
+    console.log(`${size.name} ${period.padEnd(8)} ligne « Niveau » dépliée (${open.ouvert}) : longueur ${open.longueur} px | débordement ${open.debordement}`);
+    unfolded.push(open.ouvert === 'true' && open.longueur === m.longueur);
+    overflows.push(open.debordement);
+    await evaluate(`document.querySelector('.profile-level__toggle')?.click()`);
+    await settle({ max: 1000, label: 'niveau replié' });
     if (shotDir) {
       const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: size.w, height: m.page, scale: 0.35 } });
       writeFileSync(`${shotDir}/racine-periode-${size.name}-${period}.png`, Buffer.from(shot.result.data, 'base64'));
     }
   }
   check(`${size.name} : longueur de la racine identique aux cinq périodes`, lengths.every((l) => l > 0 && l === lengths[0]), lengths.join(', '));
+  check(`${size.name} : longueur identique ligne « Niveau » repliée et dépliée, aux cinq périodes`, unfolded.length === PERIODS.length && unfolded.every(Boolean));
   check(`${size.name} : rien ne déborde`, overflows.every((t) => t === false));
 }
 console.log('\n--- console (erreurs) ---');

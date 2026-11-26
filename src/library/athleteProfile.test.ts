@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { baseActivity, type Activity } from '../core/activities';
+import { REFERENCE_HEART_RATE, getSportProfile } from '../core/sportProfiles';
 import {
-  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHrSource, runnerName, sanitizeRunnerProfile, type RunnerAvatar, type RunnerProfile,
+  EMPTY_RUNNER_PROFILE, RUNNER_NAME_MAX, runnerAge, runnerAvatar, runnerHeartRateZones, runnerHrSource, runnerName, sanitizeRunnerProfile, zonesFor,
+  type RunnerAvatar, type RunnerProfile,
 } from './athleteProfile';
 
 describe('runnerName', () => {
@@ -106,5 +109,27 @@ describe('runnerAge', () => {
 
   it('sans date donnée, prend la date du jour', () => {
     expect(runnerAge(born(2000))).toBe(new Date().getFullYear() - 2000);
+  });
+});
+
+describe('zonesFor (Statistiques et Profil)', () => {
+  const runner: RunnerProfile = { ...EMPTY_RUNNER_PROFILE, birthYear: 1990, hrMax: 190, hrRest: 50 };
+
+  it('sans activité : les zones de la course, sans écart', () => {
+    const offsetOf = () => 99;
+    expect(zonesFor(runner, null, offsetOf)).toEqual(runnerHeartRateZones(runner, REFERENCE_HEART_RATE, 0));
+  });
+
+  it('avec une activité : son profil cardio et son écart', () => {
+    const bike = baseActivity('cycling');
+    const asked: Activity[] = [];
+    const zones = zonesFor(runner, bike, (a) => (asked.push(a), 5));
+    expect(asked).toEqual([bike]);
+    expect(zones).toEqual(runnerHeartRateZones(runner, getSportProfile('cycling').heartRate, 5));
+    expect(zones?.offsetBpm).toBe(5);
+  });
+
+  it('sans âge ni seuils : pas de zones', () => {
+    expect(zonesFor(EMPTY_RUNNER_PROFILE, null, () => 0)).toBeNull();
   });
 });

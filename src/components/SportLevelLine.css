@@ -1,0 +1,208 @@
+/* Ligne « Niveau » du Profil (`SportLevelLine.tsx`), sur les variables de `theme/tokens.css`. Repliée, sa hauteur
+   ne dépend d'aucun texte (une ligne, coupée au besoin) : c'est la hauteur de référence du cadre pour la racine
+   (`REFERENCE_CARD_HEIGHTS`). */
+
+.profile-level {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.profile-level__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-right: var(--space-3);
+}
+
+.profile-level__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  border: none;
+  border-radius: var(--radius-l);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-level__eyebrow {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.profile-level__note {
+  flex: 0 0 auto;
+  min-width: 1.6em;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink);
+}
+
+.profile-level__palier {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.profile-level__caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-m);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Échelle des six paliers : ceux atteints en plein, le palier actuel plus foncé. */
+.profile-level__scale {
+  display: flex;
+  gap: calc(var(--space-1) / 2);
+  max-width: 9em;
+}
+
+.profile-level__step {
+  flex: 1;
+  height: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.profile-level__step.is-on {
+  background: color-mix(in srgb, var(--success) 45%, var(--surface));
+}
+
+.profile-level__step.is-current {
+  background: var(--success);
+}
+
+.profile-level__chevron {
+  flex: 0 0 auto;
+  color: var(--faint);
+  transform: rotate(90deg);
+}
+
+.profile-level__toggle[aria-expanded='true'] .profile-level__chevron {
+  transform: rotate(-90deg);
+}
+
+@media (hover: hover) {
+  .profile-level__toggle:hover {
+    background: var(--surface-hover);
+  }
+}
+
+.profile-level > .help-note {
+  margin: 0 var(--space-5) var(--space-3);
+}
+
+/* Dépliée : les parts empilées au téléphone, en trois colonnes dès 600 px. */
+.profile-level__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.profile-level__body > .ui-hint:first-child {
+  margin-top: var(--space-2);
+}
+
+.profile-level__parts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.profile-level__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.profile-level__part-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.profile-level__part-name {
+  font-size: var(--text-s);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--title-spacing);
+  color: var(--muted);
+}
+
+.profile-level__part-points {
+  font-size: var(--text-l);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.profile-level__bar {
+  display: block;
+  width: 100%;
+  height: var(--space-2);
+}
+
+.profile-level__bar-track {
+  fill: var(--surface-sunken);
+}
+
+.profile-level__bar-fill {
+  fill: var(--success);
+}
+
+.profile-level__weight {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.profile-level__proof {
+  margin: 0;
+  font-size: var(--text-s);
+  line-height: 1.4;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.profile-level__part--absent .profile-level__proof {
+  color: var(--muted);
+}
+
+@media (max-width: 599px) {
+  .profile-level__parts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .profile-level__toggle {
+    padding-left: var(--space-4);
+  }
+
+  .profile-level__body {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .profile-level > .help-note {
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+  }
+}

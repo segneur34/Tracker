@@ -110,6 +110,9 @@ export const SCRIPTS = [
   { nom: 'prereglages', args: ['{port}', '{captures?}'], pages: ['reglages', 'voile', 'course'] },
   { nom: 'profil', args: ['{port}', '{captures?}'], pages: ['profil', 'accueil', 'bibliotheque'] },
   { nom: 'pumping', args: ['{port}', '{captures?}'], pages: ['surf', 'reglages'], dev: true },
+  // Ligne « Niveau » du Profil (lot 230) : coureur et marcheuse synthétiques, note, palier, dépliage, longueur de la racine.
+  // Sessions datées d'après le jour du passage : la date du meilleur 10 km est masquée.
+  { nom: 'niveau', args: ['{port}', '{captures?}'], pages: ['profil'], masques: [[/ le \d{1,2}(?:er)? [a-zéû]+\.?,/g, ' le JOUR,']] },
   { nom: 'racine-periodes', args: ['{port}', '{captures?}'], pages: ['profil'] },
   { nom: 'racine', args: ['{port}', '{captures?}'], pages: ['profil', 'reglages'] },
   { nom: 'recherche-sans-reponse', args: ['{port}', '{travail}'], pages: ['course'], reseau: true },

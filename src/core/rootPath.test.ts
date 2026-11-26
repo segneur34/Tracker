@@ -145,8 +145,11 @@ describe('longueur de la racine indépendante de la page', () => {
     let y = 128;
     return { slot: DESKTOP.slot, cards: heights.map((h) => { const b = box(20, y, 720, h); y += h + 20; return b; }) };
   };
-  /** Année, 30 jours puis semaine sans répartition : des pages de hauteurs très différentes. */
-  const LAYOUTS = { annee: [34, 178, 318, 273], trente: [34, 178, 318, 253], semaine: [34, 174, 150], haute: [34, 300, 600, 500] };
+  /** Ligne « Niveau » repliée puis année, 30 jours, semaine sans répartition : des pages de hauteurs très différentes ; dépliée. */
+  const LAYOUTS = {
+    annee: [46, 34, 178, 318, 273], trente: [46, 34, 178, 318, 253], semaine: [46, 34, 174, 150], haute: [46, 34, 300, 600, 500],
+    niveauDeplie: [436, 34, 178, 318, 273],
+  };
   const front = (heights: number[], level: number) => rootVisibility(buildRootModel(stacked(heights), FLAT)!, level, 26, 1.4)[0]!;
 
   it('à niveau égal, la racine mère a la même longueur sur toutes les pages', () => {
@@ -180,6 +183,8 @@ describe('longueur de la racine indépendante de la page', () => {
   it('la page de référence ne dépend ni de la hauteur ni du nombre des cadres réels', () => {
     expect(tourLength(stacked(LAYOUTS.annee))).toBeCloseTo(tourLength(stacked(LAYOUTS.semaine))!, 6);
     expect(tourLength(stacked(LAYOUTS.haute))).toBeCloseTo(tourLength(stacked(LAYOUTS.annee))!, 6);
+    // La ligne « Niveau » dépliée ne fait que pousser les cadres suivants : le tour ne bouge pas.
+    expect(tourLength(stacked(LAYOUTS.niveauDeplie))).toBeCloseTo(tourLength(stacked(LAYOUTS.annee))!, 6);
     expect(tourLength({ slot: DESKTOP.slot, cards: [] })).toBeNull();
   });
 

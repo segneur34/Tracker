@@ -47,3 +47,15 @@ export const favoriteFamily = (sessions: readonly StatSession[], activityOrder: 
   const id = favoriteActivity(sessions, activityOrder);
   return id === null ? null : sessions.find((s) => s.activityId === id)?.family ?? null;
 };
+
+/**
+ * Temps compté d'une session, pour la racine et la note de niveau : son temps
+ * en mouvement, sinon sa durée ; en surf, tout son temps à l'eau, pauses
+ * déduites (rame, attente et vagues : le temps en mouvement du surf n'est que
+ * la glisse), sinon sa durée.
+ */
+export const rootSessionTimeS = (s: Pick<StatSession, 'family' | 'movingTimeS' | 'waterTimeS' | 'startMs' | 'endMs'>): number => {
+  const duration = (s.endMs - s.startMs) / 1000;
+  if (s.family === 'surf') return s.waterTimeS ?? duration;
+  return s.movingTimeS ?? duration;
+};
