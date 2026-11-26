@@ -71,12 +71,38 @@ export interface WindStats {
   referenceDeg: number;
   /** Points de trace des manœuvres mesurées, dans l'ordre du temps. */
   maneuverIndices: number[];
-  /** Vent interpolé à un instant, ou `null` loin de toute manœuvre. */
+  /** Vent local lu à chaque manœuvre mesurée, dans l'ordre du temps : ce que `windAt` interpole. */
+  samples: TimedDirection[];
+  /** Vent interpolé à un instant, ou `null` loin de toute manœuvre (`windAtOf`). */
   windAt: (timeMs: number) => number | null;
 }
 
 /** Trou maximal, en minutes, à travers lequel on interpole encore entre deux manœuvres : celui du classement. */
 const MAX_INTERPOLATION_GAP_MIN = WIND_LOCAL_MAX_GAP_MIN;
+
+/**
+ * Variations du vent sans leur fonction `windAt` : ce qui traverse un message entre le calcul en arrière-plan et la
+ * page (une fonction ne se clone pas, lot 235). La page la rebâtit par `withWindAt`.
+ */
+export type WindStatsData = Omit<WindStats, 'windAt'>;
+
+/**
+ * Vent interpolé entre les manœuvres mesurées (`samples`, dans l'ordre du temps), autour de la direction de référence
+ * de la courbe ; `null` à travers un trou plus long que celui du classement des manœuvres.
+ */
+export const windAtOf = (samples: TimedDirection[], referenceDeg: number): ((timeMs: number) => number | null) => {
+  const maxGapMs = MAX_INTERPOLATION_GAP_MIN * 60 * 1000;
+  return (timeMs: number) => interpolateDirection(samples, timeMs, referenceDeg, maxGapMs);
+};
+
+/** Variations du vent munies de leur `windAt`, rebâti de leurs échantillons comme `calculateWindStats` le bâtit. */
+export const withWindAt = (data: WindStatsData): WindStats => ({ ...data, windAt: windAtOf(data.samples, data.referenceDeg) });
+
+/** Variations du vent sans leur `windAt`, prêtes à traverser un message (`WindStatsData`). */
+export const withoutWindAt = (stats: WindStats): WindStatsData => {
+  const { windAt: _windAt, ...data } = stats;
+  return data;
+};
 
 /**
  * Manœuvres retenues pour suivre le vent : toutes celles que la détection a
@@ -163,9 +189,6 @@ export const calculateWindStats = (
     direction: m.localWind,
   }));
 
-  const maxGapMs = MAX_INTERPOLATION_GAP_MIN * 60 * 1000;
-  const windAt = (timeMs: number) => interpolateDirection(samples, timeMs, reference, maxGapMs);
-
   // Arrondi puis normalisé : une moyenne à 359,7° s'affiche 0°, jamais 360°.
   return {
     avgWind: normalizeDeg(Math.round(stats.mean)),
@@ -178,7 +201,8 @@ export const calculateWindStats = (
     stableShare: maneuvers.filter((m) => m.stableHeadings).length / maneuvers.length,
     referenceDeg: reference,
     maneuverIndices: maneuvers.map((m) => m.trackIndex),
-    windAt,
+    samples,
+    windAt: windAtOf(samples, reference),
   };
 };
 

@@ -3,21 +3,24 @@ import { kinematicsProfileOf, prepareTrack } from '../core/prepareTrack';
 import { getSportProfile } from '../core/sportProfiles';
 import { sessionRecord } from '../test/record.fixture';
 import { gpxOf, sailRaw, upDownLegs } from '../test/sailing.fixture';
+import { createAnalysisStore, type AnalyzeSailingOptions } from './analysisStore';
 import { summarizeGpx, summarizeGpxOptions } from './summarizeGpx';
-import { resetTrackWorker, runInWorker } from './trackWorkerClient';
-import { handleTrackRequest, type TrackRequest, type TrackResponse } from './trackWorkerProtocol';
+import { TRACK_QUEUE, analyzeOnKeptTrace, resetTrackWorker, runInWorker } from './trackWorkerClient';
+import { analysisMemoryKey, handleTrackRequest, type TrackRequest, type TrackResponse } from './trackWorkerProtocol';
 
 /**
  * Client du worker des traces (lot 126 B), sous node par un faux worker : il répond par le vrai aiguillage
  * (`handleTrackRequest`), messages passés par un clonage structuré à l'aller et au retour, comme un vrai. Un seul
  * worker pour plusieurs demandes, réponses rendues par leur identifiant, worker mort ou refusé : calcul en ligne,
- * mêmes chiffres, mêmes erreurs.
+ * mêmes chiffres, mêmes erreurs. Deux files depuis le lot 235 : l'analyse ouverte et les résumés, chacune son worker.
  */
 
 /** Faux worker : répond au tour suivant, sauf `hold`, où il garde les demandes jusqu'à `release`. */
 class FakeWorker {
   static instances: FakeWorker[] = [];
   static hold = false;
+  /** Toutes les demandes reçues, tous workers confondus. */
+  static sent: TrackRequest[] = [];
   onmessage: ((event: { data: TrackResponse }) => void) | null = null;
   onerror: (() => void) | null = null;
   onmessageerror: (() => void) | null = null;
@@ -34,6 +37,7 @@ class FakeWorker {
 
   postMessage(data: TrackRequest): void {
     const request = structuredClone(data);
+    FakeWorker.sent.push(request);
     if (FakeWorker.hold) this.held.push(request);
     else queueMicrotask(() => this.answer(request));
   }
@@ -86,7 +90,7 @@ describe('runInWorker', () => {
     expect(await runInWorker('prepare', textA, { profile: wing, fileName: 'a.gpx' })).toStrictEqual(prepareTrack(textA, { profile: wing, fileName: 'a.gpx' }));
   });
 
-  it('un seul worker pour plusieurs demandes, module ES, mêmes résultats qu’en ligne', async () => {
+  it('un worker par file pour plusieurs demandes, module ES, mêmes résultats qu’en ligne', async () => {
     vi.stubGlobal('Worker', FakeWorker);
     const record = sessionRecord({ sport: 'wingfoil' });
     const options = summarizeGpxOptions(record, () => ({ thresholdOverride: 8, foil: true }));
@@ -95,9 +99,12 @@ describe('runInWorker', () => {
       runInWorker('prepare', textB, {}),
       runInWorker('summarize', textA, options),
     ]);
-    expect(FakeWorker.instances).toHaveLength(1);
-    expect(FakeWorker.instances[0].url).toMatch(/trackWorker\.ts/);
-    expect(FakeWorker.instances[0].options).toEqual({ type: 'module' });
+    // Les deux lectures dans le worker de l'analyse, le résumé dans celui du fond : le même script, deux fois.
+    expect(FakeWorker.instances).toHaveLength(2);
+    for (const instance of FakeWorker.instances) {
+      expect(instance.url).toMatch(/trackWorker\.ts/);
+      expect(instance.options).toEqual({ type: 'module' });
+    }
     expect(a).toStrictEqual(prepareTrack(textA, { profile: wing }));
     expect(b).toStrictEqual(prepareTrack(textB, {}));
     expect(summary).toStrictEqual(summarizeGpx(textA, options));
@@ -173,5 +180,123 @@ describe('runInWorker', () => {
     first.release();
     await flush();
     expect(await waiting).toStrictEqual(prepareTrack(textB));
+  });
+
+  it('l’analyse ouverte ne passe pas derrière les résumés : chaque file son worker', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    expect(TRACK_QUEUE).toEqual({ prepare: 'analyse', analyzeSailing: 'analyse', release: 'analyse', summarize: 'fond' });
+    FakeWorker.hold = true;
+    const record = sessionRecord({ sport: 'wingfoil' });
+    const summary = runInWorker('summarize', textA, summarizeGpxOptions(record, () => ({ thresholdOverride: 8, foil: true })));
+    const prepared = runInWorker('prepare', textB, {});
+    expect(FakeWorker.instances).toHaveLength(2);
+    const [fond, analyse] = FakeWorker.instances;
+    expect(fond.held.map((r) => r.kind)).toEqual(['summarize']);
+    expect(analyse.held.map((r) => r.kind)).toEqual(['prepare']);
+    // La lecture rendue d'abord, le résumé toujours en attente.
+    analyse.release();
+    expect(await prepared).toStrictEqual(prepareTrack(textB));
+    fond.release();
+    expect(await summary).not.toBeNull();
+  });
+
+  it('un worker mort n’emporte pas l’autre file', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    const record = sessionRecord({ sport: 'wingfoil' });
+    await runInWorker('summarize', textA, summarizeGpxOptions(record, () => ({ thresholdOverride: 8, foil: true })));
+    await runInWorker('prepare', textB, {});
+    const [fond, analyse] = FakeWorker.instances;
+    fond.onerror?.();
+    expect(fond.terminated).toBe(true);
+    expect(analyse.terminated).toBe(false);
+    expect(await runInWorker('prepare', textA, {})).toStrictEqual(prepareTrack(textA));
+    expect(FakeWorker.instances).toHaveLength(2);
+  });
+});
+
+describe('runInWorker : analyse à voile de la session ouverte (lot 235)', () => {
+  const profile = getSportProfile('wingfoil');
+  const prepare = { fileName: 'a.gpx', profile: wing };
+  const options: AnalyzeSailingOptions = {
+    key: 'page', traceId: 1, prepare, sport: 'wingfoil', profile, thresholdKn: 11, windDeg: 25,
+    color: { treatment: 'voile', sessionRange: null, activityRange: null, fallback: profile.speedRange },
+  };
+  /** Le résultat attendu, d'une mémoire neuve en ligne : mêmes fonctions, mêmes arguments. */
+  const expected = () => createAnalysisStore().analyzeSailing(textA, options);
+
+  it('par le worker, après sa lecture gardée : le résultat du calcul en ligne, passé par un message', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    const prepared = await runInWorker('prepare', textA, { ...prepare, analysisKey: 'page', traceId: 1 });
+    // La clé ne change rien à la trace rendue.
+    expect(prepared).toStrictEqual(prepareTrack(textA, prepare));
+    expect(analysisMemoryKey()).toBe('page');
+    expect(await runInWorker('analyzeSailing', textA, options)).toStrictEqual(expected());
+    expect(FakeWorker.instances).toHaveLength(1);
+  });
+
+  it('sans Worker : en ligne, mêmes chiffres', async () => {
+    vi.stubGlobal('Worker', undefined);
+    expect(await runInWorker('analyzeSailing', textA, options)).toStrictEqual(expected());
+  });
+
+  it('worker mort pendant le calcul : refait en ligne, mêmes chiffres', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    await runInWorker('prepare', textA, { ...prepare, analysisKey: 'page', traceId: 1 });
+    FakeWorker.hold = true;
+    const waiting = runInWorker('analyzeSailing', textA, options);
+    FakeWorker.instances[0].onerror?.();
+    expect(await waiting).toStrictEqual(expected());
+  });
+
+  it('release : vide la mémoire de la session, sans jamais créer de worker pour cela', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    await runInWorker('prepare', textB, { analysisKey: 'quittée' });
+    resetTrackWorker();
+    FakeWorker.instances = [];
+    expect(analysisMemoryKey()).toBe('quittée');
+    expect(await runInWorker('release', '', { key: 'quittée' })).toBeNull();
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(analysisMemoryKey()).toBeNull();
+    // Avec un worker vivant, il reçoit la demande aussi.
+    await runInWorker('prepare', textB, { analysisKey: 'ouverte' });
+    expect(await runInWorker('release', '', { key: 'ouverte' })).toBeNull();
+    expect(FakeWorker.instances).toHaveLength(1);
+    expect(analysisMemoryKey()).toBeNull();
+  });
+
+  it('analyzeOnKeptTrace : la trace gardée, la demande part sans le texte du GPX, mêmes chiffres', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    FakeWorker.sent = [];
+    await runInWorker('prepare', textA, { ...prepare, analysisKey: 'page', traceId: 1 });
+    expect(await analyzeOnKeptTrace(textA, options)).toStrictEqual(expected());
+    expect(await analyzeOnKeptTrace(textA, { ...options, windDeg: 40 })).toStrictEqual(createAnalysisStore().analyzeSailing(textA, { ...options, windDeg: 40 }));
+    expect(FakeWorker.sent.filter((r) => r.kind === 'analyzeSailing').map((r) => r.gpxText.length)).toEqual([0, 0]);
+  });
+
+  it('analyzeOnKeptTrace : trace libérée ou worker relancé, le texte repart une fois, mêmes chiffres', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    FakeWorker.sent = [];
+    await runInWorker('prepare', textA, { ...prepare, analysisKey: 'page', traceId: 1 });
+    await runInWorker('release', '', { key: 'page' });
+    expect(await analyzeOnKeptTrace(textA, options)).toStrictEqual(expected());
+    const texts = () => FakeWorker.sent.filter((r) => r.kind === 'analyzeSailing').map((r) => r.gpxText.length);
+    expect(texts()).toEqual([0, textA.length]);
+    // La trace relue est gardée : la suivante repart sans texte.
+    await analyzeOnKeptTrace(textA, options);
+    expect(texts()).toEqual([0, textA.length, 0]);
+    // Worker mort : le suivant ne tient rien, le texte repart une fois.
+    FakeWorker.instances[0].onerror?.();
+    expect(analysisMemoryKey()).toBe('page');
+    await runInWorker('release', '', { key: 'page' });
+    FakeWorker.sent = [];
+    expect(await analyzeOnKeptTrace(textA, options)).toStrictEqual(expected());
+    expect(texts()).toEqual([0, textA.length]);
+  });
+
+  it('analyzeOnKeptTrace sans Worker : en ligne, sans texte si la trace est gardée, avec sinon', async () => {
+    vi.stubGlobal('Worker', undefined);
+    await runInWorker('release', '', { key: 'page' });
+    expect(await analyzeOnKeptTrace(textA, options)).toStrictEqual(expected());
+    expect(await analyzeOnKeptTrace(textA, options)).toStrictEqual(expected());
   });
 });

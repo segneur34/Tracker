@@ -25,7 +25,7 @@ import { useSailingChartRows } from '../hooks/useSailingChartRows';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT } from '../core/activities';
 import { activeRatioLabel } from '../core/sportProfiles';
-import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
+import { effectiveSpeedRange } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatSpeedValue, formatTimeOfDay,
@@ -59,7 +59,7 @@ import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import TrackArrows from '../components/TrackArrows';
-import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
+import TrackSegmentsLayer from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
 import AnalysisShell from '../components/AnalysisShell';
 import { SAILING_GRAPH_FOLDS_DEFAULT, sailingChartReaders } from '../components/sailing/sailingChartParts';
@@ -125,6 +125,7 @@ function SailingModule() {
     track,
     stats,
     currentWindValue,
+    shownWind,
     autoWind,
     loadGpxContent,
     fileName,
@@ -139,6 +140,7 @@ function SailingModule() {
     hasDeviceSpeed,
     loadError,
     reading: trackReading,
+    awaitingAnalysis,
     sessionKey,
     cumulative,
     flights,
@@ -150,7 +152,8 @@ function SailingModule() {
     distanceUnit,
     activeThresholdKn,
     deviceThresholdKn,
-    thresholdPending,
+    analysisPending,
+    mapSegments,
     hasActiveThreshold,
     defaultActiveThresholdKn,
     speedRange,
@@ -165,6 +168,7 @@ function SailingModule() {
     activeThresholdKn: edits.activeThreshold,
     referenceSpeedMs: edits.referenceSpeedMs,
     record: draftRecord,
+    sessionSpeedRange: edits.speedRange,
   });
 
   // Affichage dans l'unité de l'activité ; les analyses voile restent en nœuds (règle 5).
@@ -187,18 +191,18 @@ function SailingModule() {
   const jibeFail = maneuverStats?.jibeFail ?? null;
   // Les manœuvres de sens incertain comptent dans le total, pas dans la réussite des virements et empannages.
   const undecided = maneuverStats?.undecided ?? null;
-  // Pas pendant un brouillon : la liste doit refléter l'état enregistré ; ni avant que les
-  // manœuvres n'aient rejoint le seuil (Q40), qui les classe.
+  // Pas pendant un brouillon : la liste doit refléter l'état enregistré ; ni avant que l'analyse
+  // montrée n'ait rejoint le seuil (Q40), le vent et la trace demandés (`analysisPending`, lot 235).
   const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
   const { dirty } = draft;
   useEffect(() => {
-    if (!loadedFromMemory || !sessionFile || dirty || thresholdPending || currentWindValue === null) return;
+    if (!loadedFromMemory || !sessionFile || dirty || analysisPending || currentWindValue === null) return;
     if (tackSuccess === null || tackFail === null || jibeSuccess === null || jibeFail === null || undecided === null) return;
     updateSessionRecord(sessionFile, {
       maneuverCount: tackSuccess + tackFail + jibeSuccess + jibeFail + undecided,
       maneuverResults: { tackSuccess, tackFail, jibeSuccess, jibeFail },
     });
-  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail, undecided]);
+  }, [loadedFromMemory, sessionFile, dirty, analysisPending, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail, undecided]);
 
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
@@ -261,14 +265,14 @@ function SailingModule() {
   /** Part du vol pompée (capteurs du `.imu`), sur foil avec le pumping mesuré : image de partage et résumé de la fiche (lot 145). */
   const sharedPumpingShare = foil && pumpSummary ? pumpSummary.pumpShare : null;
   // Part du vol pompée et vent retenu recopiés dans le résumé, pour le partage d'une session dont l'analyse n'est pas
-  // ouverte ; mêmes conditions que les manœuvres (fiche de ce fichier, pas de brouillon, seuil rejoint).
+  // ouverte ; mêmes conditions que les manœuvres (fiche de ce fichier, pas de brouillon, analyse à jour).
   useEffect(() => {
-    if (!loadedFromMemory || !sessionFile || dirty || thresholdPending) return;
+    if (!loadedFromMemory || !sessionFile || dirty || analysisPending) return;
     updateSessionRecord(sessionFile, {
       pumpingShare: sharedPumpingShare === null ? null : Math.round(sharedPumpingShare * 1000) / 1000,
       windDirDeg: currentWindValue === null ? null : Math.round(normalizeDeg(currentWindValue)),
     });
-  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, sharedPumpingShare, currentWindValue]);
+  }, [loadedFromMemory, sessionFile, dirty, analysisPending, sharedPumpingShare, currentWindValue]);
   /** Vol ou série montrés sur la carte (onglets « vols » et « pumping »), ou l'un des deux podiums (`PumpingHighlightKey`). */
   const flightShown = highlight.shownIn('vols');
   const pumpingShown = highlight.shownIn('pumping');
@@ -323,14 +327,6 @@ function SailingModule() {
     return maneuverSummary[type]?.tops[metric] ?? [];
   }, [selectedManeuverTop, maneuverSummary]);
 
-  /**
-   * Trace colorée par la vitesse, et ses flèches de cap, chacune mémorisée à
-   * part : montrer un top ou les manœuvres ne les redessine pas.
-   */
-  const mapSegments = useMemo(
-    (): TrackSegment[] => trackColorSegments(track, 'voile', { minMs: colorRange.minMs, maxMs: colorRange.maxMs }),
-    [track, colorRange.minMs, colorRange.maxMs]
-  );
   /** « Temps en vol » sur foil, « Temps actif » sinon : le libellé dit ce qu'il mesure. */
   const activeTimeWord = foil ? 'Temps en vol' : 'Temps actif';
   /**
@@ -367,7 +363,7 @@ function SailingModule() {
         ? { success: maneuverStats.tackSuccess + maneuverStats.jibeSuccess, total: maneuverStats.tackSuccess + maneuverStats.tackFail + maneuverStats.jibeSuccess + maneuverStats.jibeFail }
         : null,
       pumpingShare: sharedPumpingShare,
-      windDeg: currentWindValue,
+      windDeg: shownWind,
       windLevel: edits.notes.windLevel,
       rating: edits.notes.rating,
     }, { foil, units: { speed: speedUnit, distance: distanceUnit } }),
@@ -594,7 +590,7 @@ function SailingModule() {
           )}
         </>
       )}
-      empty={trackData.length === 0 && requestedFile === null}
+      empty={trackData.length === 0 && requestedFile === null && !awaitingAnalysis}
       reading={reading || trackReading}
       map={{
         panelId: 'sailing.carte',
@@ -617,7 +613,7 @@ function SailingModule() {
           if (!next) setWindAdjust(false);
         },
         overlay: windAdjust && trackData.length > 0 ? (
-          <WindAdjustOverlay windDeg={currentWindValue} autoWind={autoWind} confidence={windEstimate?.confidence ?? null}
+          <WindAdjustOverlay windDeg={shownWind} autoWind={autoWind} confidence={windEstimate?.confidence ?? null}
             manual={edits.windDeg !== null} onChange={(deg) => draft.update({ windDeg: deg })} onClose={endWindAdjust}
             polarAt={polarAt} unitSymbol={speedSymbol} />
         ) : undefined,
@@ -636,10 +632,10 @@ function SailingModule() {
                 <GeneralStats stats={overviewStats} pairs={GENERAL_PAIRS} linkOf={generalLinkOf} />
                 {/* Mini-boussole du vent ; « Régler » ouvre la grande sur la carte (22/10). */}
                 <div className="an-sheet__wind" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                  <WindCompass windAngle={currentWindValue ?? autoWind ?? 0} size={64} />
+                  <WindCompass windAngle={shownWind ?? autoWind ?? 0} size={64} />
                   <div style={{ flex: '1 1 0', minWidth: 0 }}>
                     <strong style={{ display: 'block', fontSize: 'var(--text-m)' }}>
-                      {currentWindValue !== null ? `Vent ${Math.round(currentWindValue)}°` : 'Vent inconnu'}
+                      {shownWind !== null ? `Vent ${Math.round(shownWind)}°` : 'Vent inconnu'}
                     </strong>
                     <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
                       {edits.windDeg !== null

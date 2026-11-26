@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
-import { calculateVmgStats, calculateWindStats, vmgBridgedHoles, vmgChartRows, vmgManeuverSpans, vmgSeries, windInputWarning, type VmgStats } from './sailingAnalytics';
+import {
+  calculateVmgStats, calculateWindStats, vmgBridgedHoles, vmgChartRows, vmgManeuverSpans, vmgSeries, windInputWarning, withWindAt, withoutWindAt,
+  type VmgStats,
+} from './sailingAnalytics';
 
 /** Forme des copies gelées : cases en chaînes `toFixed(1)`, comme avant le lot 79. */
 type FrozenVmgStats = Omit<VmgStats, 'upStbd' | 'upPort' | 'downStbd' | 'downPort'> & Record<'upStbd' | 'upPort' | 'downStbd' | 'downPort', { max: string; avg: string }>;
@@ -310,6 +313,31 @@ describe('calculateWindStats', () => {
     expect(wind.count).toBe(2);
     expect(wind.avgWind).toBe(15);
     expect(wind.maneuverIndices).toHaveLength(2);
+  });
+
+  it('sans sa fonction, passé par un message puis rebâti par `withWindAt` : le même vent à chaque instant (lot 235)', () => {
+    const track = buildTrackAt(regularTimes(3600, 1), () => 315, () => 12);
+    const stats: ManeuverStats = {
+      tackSuccess: 4, tackFail: 0, jibeSuccess: 0, jibeFail: 0, undecided: 0,
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
+      // Un trou de 40 min entre la deuxième et la troisième : le vent n'y est pas interpolé.
+      locations: [
+        fakeManeuver(350, START_MS + 60_000), fakeManeuver(10, START_MS + 300_000),
+        fakeManeuver(30, START_MS + 2_700_000), fakeManeuver(20, START_MS + 3_000_000),
+      ],
+    };
+    const wind = calculateWindStats(track, stats, 10)!;
+    const data = withoutWindAt(wind);
+    expect('windAt' in data).toBe(false);
+    expect(data.samples).toHaveLength(4);
+    const rebuilt = withWindAt(structuredClone(data));
+    const times = Array.from({ length: 200 }, (_, i) => START_MS - 300_000 + i * 20_000);
+    const values = times.map((t) => wind.windAt(t));
+    expect(times.map((t) => rebuilt.windAt(t))).toEqual(values);
+    expect(values.some((v) => v === null)).toBe(true);
+    expect(values.some((v) => v !== null)).toBe(true);
+    expect(withoutWindAt(rebuilt)).toStrictEqual(data);
   });
 });
 

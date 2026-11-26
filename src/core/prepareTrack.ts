@@ -35,7 +35,11 @@ export interface PrepareTrackOptions {
 /** Ce que la trace lue donne à l'analyse : des objets simples, sans fonction ni classe (clonage structuré). */
 export interface PreparedTrack {
   trackName: string | null;
-  rawPoints: RawTrackPoint[];
+  /**
+   * Nombre de points lus dans le fichier, avant tout filtrage. Les points bruts eux-mêmes ne sont pas rendus (lot
+   * 235) : la page n'en lit que le nombre, et leur copie d'un fil à l'autre coûtait autant que la trace calculée.
+   */
+  pointCount: number;
   /** Vrai si la vitesse vient de l'appareil (Doppler) et non des positions. */
   hasDeviceSpeed: boolean;
   /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe. */
@@ -78,7 +82,7 @@ export const prepareRawTrack = (
   );
   return {
     trackName,
-    rawPoints,
+    pointCount: rawPoints.length,
     hasDeviceSpeed,
     deviceSpeedUnit,
     referenceSpeedMs,

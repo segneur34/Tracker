@@ -21,9 +21,12 @@ import {
   summarizeManeuvers,
   vmgManeuverSpans,
   vmgSeries,
+  withWindAt,
+  withoutWindAt,
   type ManeuverSummary,
   type VmgStats,
   type WindStats,
+  type WindStatsData,
 } from './sailingAnalytics';
 import {
   resolveSailingThresholds,
@@ -56,6 +59,11 @@ import { buildWindTimeline, polarExcludedPoints, prepareWindPolar, speedPolar, t
  * `analyzeSailingSession` enchaîne les trois, après avoir résolu les seuils
  * (`resolveSailingThresholds`). La lecture de la fiche (seuil de l'activité
  * qu'elle porte, `library/`) reste au hook, qui passe un seuil déjà résolu.
+ *
+ * Depuis le lot 235, le calcul en arrière-plan les enchaîne par
+ * `runSailingAnalysis` (`library/analysisStore.ts`), chaque étape gardée à
+ * part ; il rend à la page `sailingAnalysisResult`, qu'elle relit par
+ * `sailingAnalysisShown`.
  */
 
 /** Ce dont dépend la préparation d'une trace : son calcul et son allure. */
@@ -183,6 +191,19 @@ export interface SailingWindAnalysis {
 }
 
 /**
+ * Vent global retenu : le vent saisi s'il y en a un (ramené dans [0 ; 360[),
+ * sinon l'estimation si elle est fiable, sinon `null`. La page le lit aussi
+ * pour montrer le vent tout de suite (`useSailingSession`, `shownWind`), sans
+ * attendre le calcul en arrière-plan : un vent saisi ne dépend pas de
+ * l'analyse, et l'estimation ne dépend que du seuil.
+ */
+export const retainedWind = (
+  /** Vent saisi, en degrés ; `null` : vent estimé. */
+  windDeg: number | null,
+  windEstimate: WindEstimate | null
+): number | null => (windDeg === null ? null : normalizeDeg(windDeg)) ?? (windEstimate && windEstimate.reliable ? windEstimate.direction : null);
+
+/**
  * Étape 3 : ce qui dépend du vent retenu. Sans vent saisi ni estimation
  * fiable, les analyses qui en dépendent sont suspendues plutôt que calculées
  * sur une direction fausse.
@@ -195,8 +216,7 @@ export const analyzeSailingWind = (
 ): SailingWindAnalysis => {
   const { trackData, detection } = prepared;
   const { windEstimate, computeThresholdKn, flightThresholdKn } = atThreshold;
-  const manualWindValue = windDeg === null ? null : normalizeDeg(windDeg);
-  const currentWindValue = manualWindValue ?? (windEstimate && windEstimate.reliable ? windEstimate.direction : null);
+  const currentWindValue = retainedWind(windDeg, windEstimate);
 
   let maneuverStats: ManeuverStats | null = null;
   if (detection && currentWindValue !== null) {
@@ -289,3 +309,103 @@ export const analyzeSailingSession = (track: TrackPoint[], settings: SailingSess
   const wind = analyzeSailingWind(prepared, atThreshold, settings.windDeg);
   return { ...prepared, ...atThreshold, ...wind, polarGraphData: sailingPolarGraph(prepared, wind.currentWindValue, wind.maneuverStats?.locations), thresholds };
 };
+
+/** Les étapes d'une analyse de session à voile, dans l'ordre où elles s'enchaînent. */
+export interface SailingAnalysisStages {
+  prepared: PreparedSailingTrack;
+  atThreshold: SailingThresholdAnalysis;
+  wind: SailingWindAnalysis;
+  /** Polaire au vent retenu (`sailingPolarGraph`), refaite avec le vent. */
+  polarGraphData: PolarBin[];
+}
+
+/**
+ * Analyse d'une session à voile, étapes enchaînées comme `analyzeSailingSession`
+ * et le hook avant le lot 235 : mêmes fonctions, mêmes arguments, au seuil des
+ * calculs déjà résolu (règle 4 : la mise à l'échelle du seuil reste à
+ * l'appelant). Une étape donnée dans `reuse` est reprise telle quelle : c'est à
+ * l'appelant de ne la donner que si ses entrées n'ont pas changé, avec les
+ * étapes dont elle découle (l'étape au seuil avec sa préparation, le vent et la
+ * polaire avec les deux).
+ */
+export const runSailingAnalysis = (
+  track: TrackPoint[],
+  input: SailingTrackInput,
+  computeThresholdKn: number,
+  /** Vent saisi, en degrés ; `null` : vent estimé. */
+  windDeg: number | null,
+  reuse: Partial<SailingAnalysisStages> = {}
+): SailingAnalysisStages => {
+  const prepared = reuse.prepared ?? prepareSailingTrack(track, input);
+  const atThreshold = reuse.atThreshold ?? analyzeSailingAtThreshold(prepared, computeThresholdKn);
+  const wind = reuse.wind ?? analyzeSailingWind(prepared, atThreshold, windDeg);
+  const polarGraphData = reuse.polarGraphData ?? sailingPolarGraph(prepared, wind.currentWindValue, wind.maneuverStats?.locations);
+  return { prepared, atThreshold, wind, polarGraphData };
+};
+
+/**
+ * Ce qu'une analyse de session à voile rend à la page (lot 235) : sans
+ * fonction, et sans grand tableau par point qu'elle a déjà ou ne lit pas.
+ * Restent dans le calcul : la trace (la page l'a reçue de `prepare`), sa vue
+ * en nœuds (`trackToPointData`, refaite par la page), les tops à part (ils
+ * sont dans les statistiques), les masques d'activité et du ratio, la
+ * détection des virages et l'étage polaire du vent, qui portent des
+ * fonctions. Les variations du vent viennent sans leur `windAt`, et le résumé
+ * des manœuvres n'en vient pas : la page les rebâtit (`sailingAnalysisShown`).
+ */
+export interface SailingAnalysisResult {
+  /** Bornes de couleur suggérées à partir de l'allure de la session et du pic de vitesse. */
+  suggestedSpeedRangeMs: SpeedRangeMs;
+  /** Seuils de manœuvre accordés à l'allure de la session (règle 4). */
+  maneuverThresholds: { minEntrySpeedKn: number; polarMinSpeedKn: number };
+  computeThresholdKn: number;
+  flightThresholdKn: number | undefined;
+  stats: SessionStats | null;
+  flights: FlightSpan[];
+  windEstimate: WindEstimate | null;
+  autoWind: number | null;
+  currentWindValue: number | null;
+  windInputRequired: boolean;
+  maneuverStats: ManeuverStats | null;
+  windStats: WindStatsData | null;
+  vmgStats: VmgStats | null;
+  vmgSeries: (number | null)[];
+  polarGraphData: PolarBin[];
+}
+
+/** Ce qui, des étapes d'une analyse, revient à la page (`SailingAnalysisResult`) : les mêmes objets, rien de recalculé. */
+export const sailingAnalysisResult = ({ prepared, atThreshold, wind, polarGraphData }: SailingAnalysisStages): SailingAnalysisResult => ({
+  suggestedSpeedRangeMs: prepared.suggestedSpeedRangeMs,
+  maneuverThresholds: prepared.maneuverThresholds,
+  computeThresholdKn: atThreshold.computeThresholdKn,
+  flightThresholdKn: atThreshold.flightThresholdKn,
+  stats: atThreshold.stats,
+  flights: atThreshold.flights,
+  windEstimate: atThreshold.windEstimate,
+  autoWind: wind.autoWind,
+  currentWindValue: wind.currentWindValue,
+  windInputRequired: wind.windInputRequired,
+  maneuverStats: wind.maneuverStats,
+  windStats: wind.windStats ? withoutWindAt(wind.windStats) : null,
+  vmgStats: wind.vmgStats,
+  vmgSeries: wind.vmgSeries,
+  polarGraphData,
+});
+
+/** L'analyse telle que la page la lit : le résultat du calcul, avec ce qui en a été ôté rebâti. */
+export type SailingAnalysisShown = Omit<SailingAnalysisResult, 'windStats'> & {
+  windStats: WindStats | null;
+  maneuverSummary: ManeuverSummary;
+};
+
+/**
+ * Rebâtit, côté page, ce que le calcul en arrière-plan n'a pas rendu : la
+ * fonction du vent (`withWindAt`) et le résumé des manœuvres
+ * (`summarizeManeuvers` sur les manœuvres rendues). Mêmes fonctions et mêmes
+ * entrées que la chaîne en ligne : mêmes valeurs.
+ */
+export const sailingAnalysisShown = (result: SailingAnalysisResult): SailingAnalysisShown => ({
+  ...result,
+  windStats: result.windStats ? withWindAt(result.windStats) : null,
+  maneuverSummary: summarizeManeuvers(result.maneuverStats),
+});

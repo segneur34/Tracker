@@ -9,7 +9,7 @@ import { failedState, gpxReading, preparedState, withSource, type GpxSource, typ
  * moins de deux points ou GPX illisible dits en clair, comme avant.
  */
 
-const NOTHING: ShownGpx = { from: null, fileName: null, error: null, prepared: null };
+const NOTHING: ShownGpx = { from: null, fileName: null, error: null, prepared: null, options: null, traceId: null };
 const text = gpxOf(sailRaw({ windDeg: 20, legs: upDownLegs(2, 60) }));
 const a: GpxSource = { text, fileName: 'a.gpx' };
 const b: GpxSource = { text, fileName: 'b.gpx' };

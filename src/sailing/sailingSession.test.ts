@@ -15,6 +15,9 @@ import {
   analyzeSailingSession,
   analyzeSailingWind,
   prepareSailingTrack,
+  runSailingAnalysis,
+  sailingAnalysisResult,
+  sailingAnalysisShown,
   sailingPolarGraph,
   type SailingSessionSettings,
 } from './sailingSession';
@@ -249,6 +252,36 @@ describe('analyzeSailingSession : les trois étapes', () => {
     expect(at6.currentWindValue).toBe(at11.currentWindValue);
     expect(sailingPolarGraph(prepared, at6.currentWindValue)).toEqual(sailingPolarGraph(prepared, at11.currentWindValue));
     expect(sailingPolarGraph(prepared, null)).toEqual([]);
+  });
+
+  it('`runSailingAnalysis` (lot 235) : les mêmes étapes ; une étape reprise ne refait que les suivantes', () => {
+    const settings = settingsOf(fast, 'wingfoil', { sessionThresholdKn: 9, windDeg: 25 });
+    const whole = analyzeSailingSession(fast.track, settings);
+    const stages = runSailingAnalysis(fast.track, settings, 9, 25);
+    expect(plain({ ...stages.prepared, ...stages.atThreshold, ...stages.wind, polarGraphData: stages.polarGraphData, thresholds: whole.thresholds }))
+      .toEqual(plain(whole));
+    // Préparation et seuil repris : seul le vent est refait, sur les mêmes objets.
+    const windChanged = runSailingAnalysis(fast.track, settings, 9, 60, { prepared: stages.prepared, atThreshold: stages.atThreshold });
+    expect(windChanged.prepared).toBe(stages.prepared);
+    expect(windChanged.atThreshold).toBe(stages.atThreshold);
+    expect(windChanged.wind.currentWindValue).toBe(60);
+    expect(plain(windChanged.wind)).toEqual(plain(analyzeSailingWind(stages.prepared, stages.atThreshold, 60)));
+    // Rien n'a changé : tout repris tel quel.
+    expect(runSailingAnalysis(fast.track, settings, 9, 25, stages)).toStrictEqual(stages);
+  });
+
+  it('`sailingAnalysisResult` puis `sailingAnalysisShown` : un message sans fonction, rebâti à l’identique (lot 235)', () => {
+    const stages = runSailingAnalysis(fast.track, settingsOf(fast), 9, 25);
+    const result = sailingAnalysisResult(stages);
+    // Ni trace, ni masque, ni détection : rien de ce que la page a déjà ou qui porte des fonctions.
+    expect(Object.keys(result)).not.toContain('trackData');
+    expect(Object.keys(result)).not.toContain('activityMask');
+    const shown = sailingAnalysisShown(structuredClone(result));
+    expect(shown.stats).toStrictEqual(stages.atThreshold.stats);
+    expect(shown.maneuverSummary).toStrictEqual(stages.wind.maneuverSummary);
+    expect(plain(shown.windStats)).toEqual(plain(stages.wind.windStats));
+    const t0 = fast.track[0].timeMs;
+    for (let k = 0; k < 50; k++) expect(shown.windStats?.windAt(t0 + k * 30_000)).toBe(stages.wind.windStats?.windAt(t0 + k * 30_000));
   });
 
   it('sans cumul donné, il est calculé', () => {

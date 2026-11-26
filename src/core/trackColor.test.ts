@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { TRACK_COLOR_SMOOTHING_S, coloredSegments, effectiveSpeedRange, pathsByColor, trackColorSegments, trackColorSpeedsMs } from './trackColor';
+import {
+  TRACK_COLOR_SMOOTHING_S, coloredSegments, effectiveSpeedRange, pathsByColor, segmentsFromColorCodes, trackColorCodes, trackColorSegments,
+  trackColorSpeedsMs,
+} from './trackColor';
 import type { TrackPoint } from './types';
 import { mPerDegLon } from '../test/geo.fixture';
 
@@ -83,6 +86,37 @@ describe('trackColorSegments', () => {
 
   it('ne trace rien sous deux points', () => {
     expect(trackColorSegments(buildTrack([[0, 2]]), 'course', { minMs: 1, maxMs: 4 })).toEqual([]);
+  });
+});
+
+describe('trackColorCodes et segmentsFromColorCodes (lot 235)', () => {
+  for (const hz of [1, 5]) {
+    for (const treatment of ['voile', 'course'] as const) {
+      it(`les traits refaits des couleurs compactes sont ceux de trackColorSegments, ${treatment} à ${hz} Hz`, () => {
+        const track = buildTrack([[40, 0.5], [30, 4], [20, 9], [40, 2]], hz);
+        for (const range of [{ minMs: 1, maxMs: 9 }, { minMs: 3, maxMs: 3 }, { minMs: 0, maxMs: 20 }]) {
+          const codes = trackColorCodes(track, treatment, range);
+          expect(codes.codes).toHaveLength(track.length - 1);
+          // Chaque couleur une fois : bien moins de couleurs que de traits.
+          expect(new Set(codes.palette).size).toBe(codes.palette.length);
+          expect(codes.palette.length).toBeLessThan(track.length / 2);
+          expect(segmentsFromColorCodes(track, codes)).toStrictEqual(trackColorSegments(track, treatment, range));
+          // Elles traversent un clonage structuré, comme un message du calcul en arrière-plan.
+          expect(segmentsFromColorCodes(track, structuredClone(codes))).toStrictEqual(trackColorSegments(track, treatment, range));
+        }
+      });
+    }
+  }
+
+  it('sous deux points : ni couleur ni trait ; couleurs d’une trace plus courte : seulement les traits qu’elles couvrent', () => {
+    const single = buildTrack([[0, 2]]);
+    const none = trackColorCodes(single, 'voile', { minMs: 1, maxMs: 4 });
+    expect(none.codes).toHaveLength(0);
+    expect(segmentsFromColorCodes(single, none)).toEqual([]);
+    expect(segmentsFromColorCodes([], none)).toEqual([]);
+    const track = buildTrack([[10, 2], [10, 8]]);
+    const short = trackColorCodes(track.slice(0, 5), 'voile', { minMs: 1, maxMs: 9 });
+    expect(segmentsFromColorCodes(track, short)).toHaveLength(4);
   });
 });
 

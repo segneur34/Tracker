@@ -72,6 +72,63 @@ export const trackColorSegments = (
 };
 
 /**
+ * Couleurs des traits d'une trace sous forme compacte (lot 235) : chaque
+ * couleur une fois dans `palette`, et pour chaque trait (paire de points
+ * consécutifs) le rang de la sienne dans `codes`. C'est ce que le calcul en
+ * arrière-plan renvoie à la page, qui refait les traits avec ses propres
+ * points (`segmentsFromColorCodes`) : quelques centaines de couleurs et un
+ * tableau typé au lieu de 54 000 objets à recopier d'un fil à l'autre.
+ */
+export interface TrackColorCodes {
+  palette: string[];
+  /** Rang dans `palette` de la couleur du trait `k` (du point `k` au point `k + 1`). */
+  codes: Uint32Array;
+}
+
+/** Couleurs des traits de la trace, compactes : les mêmes que `trackColorSegments`, trait pour trait. */
+export const trackColorCodes = (
+  track: readonly TrackPoint[],
+  treatment: Treatment,
+  range: SpeedRangeMs
+): TrackColorCodes => {
+  const speeds = trackColorSpeedsMs(track, treatment);
+  const palette: string[] = [];
+  const rankOf = new Map<string, number>();
+  const codes = new Uint32Array(Math.max(0, track.length - 1));
+  for (let k = 1; k < track.length; k++) {
+    const color = speedGradientColor(speeds[k], range.minMs, range.maxMs);
+    let rank = rankOf.get(color);
+    if (rank === undefined) {
+      rank = palette.length;
+      palette.push(color);
+      rankOf.set(color, rank);
+    }
+    codes[k - 1] = rank;
+  }
+  return { palette, codes };
+};
+
+/**
+ * Traits de la trace refaits de ses points et de ses couleurs compactes
+ * (`trackColorCodes`) : les mêmes que `trackColorSegments` sur les mêmes
+ * points. Des couleurs d'une autre trace (moins de traits) n'en donnent que
+ * le nombre qu'elles couvrent.
+ */
+export const segmentsFromColorCodes = (
+  track: readonly { lat: number; lon: number }[],
+  { palette, codes }: TrackColorCodes
+): ColoredSegment[] => {
+  const segments: ColoredSegment[] = [];
+  const count = Math.min(track.length - 1, codes.length);
+  for (let k = 1; k <= count; k++) {
+    const from = track[k - 1];
+    const to = track[k];
+    segments.push({ positions: [[from.lat, from.lon], [to.lat, to.lon]], color: palette[codes[k - 1]] });
+  }
+  return segments;
+};
+
+/**
  * Nombre de tranches de la trace dessinée (carte, image de partage) : traits
  * regroupés par couleur dans chaque tranche, tranches dans l'ordre
  * (`pathsByColor`). Un passage plus récent reste dessiné par-dessus un plus

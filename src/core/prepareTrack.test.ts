@@ -36,6 +36,12 @@ const frozenHookChain = (gpxContent: string, { fileName = null, profile, referen
   return { trackName, rawPoints, hasDeviceSpeed, deviceSpeedUnit, referenceSpeedMs, track, cumulative, samplingS, sessionKey };
 };
 
+/** La copie gelée, rendue comme `prepareTrack` depuis le lot 235 : le nombre de points bruts au lieu des points. */
+const frozenPrepared = (gpxContent: string, options: PrepareTrackOptions) => {
+  const { rawPoints, ...rest } = frozenHookChain(gpxContent, options);
+  return { ...rest, pointCount: rawPoints.length };
+};
+
 const profileOf = (sport: SportType) => kinematicsProfileOf(getSportProfile(sport));
 
 const sailGpx = (hz: number) => gpxOf(sailRaw({ windDeg: 20, legs: upDownLegs(4, 60), hz }));
@@ -47,7 +53,7 @@ describe('prepareTrack : mêmes sorties que l’enchaînement de useGpxSession',
       const wing = profileOf('wingfoil');
       for (const options of [{ profile: wing, fileName: 'a.gpx' }, { profile: wing, referenceSpeedOverrideMs: 4.2, fileName: 'a.gpx' }]) {
         const prepared = prepareTrack(text, options);
-        expect(prepared).toStrictEqual(frozenHookChain(text, options));
+        expect(prepared).toStrictEqual(frozenPrepared(text, options));
         expect(prepared.track.length).toBeGreaterThan(100);
       }
     });
@@ -57,7 +63,7 @@ describe('prepareTrack : mêmes sorties que l’enchaînement de useGpxSession',
       const paused: RawTrackPoint[] = raw.map((p, i) => (i === Math.floor(raw.length * 0.7) ? { ...p, segmentStart: true as const } : p));
       const text = gpxOf(paused);
       for (const options of [{ profile: profileOf('running') }, {}, { profile: profileOf('cycling'), fileName: 'v.gpx' }]) {
-        expect(prepareTrack(text, options)).toStrictEqual(frozenHookChain(text, options));
+        expect(prepareTrack(text, options)).toStrictEqual(frozenPrepared(text, options));
       }
     });
   }
@@ -65,7 +71,7 @@ describe('prepareTrack : mêmes sorties que l’enchaînement de useGpxSession',
   it('sur chaque GPX lisible du corpus, au format de chaque éditeur', () => {
     for (const entry of GPX_CORPUS) {
       for (const options of [{ profile: profileOf('running'), fileName: 'c.gpx' }, { profile: profileOf('kite') }]) {
-        expect(prepareTrack(entry.texte, options), entry.nom).toStrictEqual(frozenHookChain(entry.texte, options));
+        expect(prepareTrack(entry.texte, options), entry.nom).toStrictEqual(frozenPrepared(entry.texte, options));
       }
     }
   });
@@ -88,7 +94,7 @@ describe('prepareTrack : mêmes sorties que l’enchaînement de useGpxSession',
 
   it('sans point : trace vide, ni clé ni cadence, l’allure imposée gardée', () => {
     expect(prepareRawTrack([], { trackName: null, hasDeviceSpeed: false }, { referenceSpeedOverrideMs: 3 })).toStrictEqual({
-      trackName: null, rawPoints: [], hasDeviceSpeed: false, deviceSpeedUnit: null, referenceSpeedMs: 3, track: [],
+      trackName: null, pointCount: 0, hasDeviceSpeed: false, deviceSpeedUnit: null, referenceSpeedMs: 3, track: [],
       cumulative: { cumDist: [0], cumTime: [0] }, samplingS: 0, sessionKey: null,
     });
   });
