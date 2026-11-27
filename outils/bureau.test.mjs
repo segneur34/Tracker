@@ -1,5 +1,47 @@
-import { describe, expect, it } from 'vitest'
-import { environnementPropre, paquetDeLaCoquille, versionBureau } from './bureau.mjs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { PAQUETS_APPAIRAGE, ecartsDeVersion, environnementPropre, paquetDeLaCoquille, versionBureau, versionInstallee } from './bureau.mjs'
+
+describe('versions des paquets de l’appairage', () => {
+  let tmp = ''
+  afterEach(() => {
+    if (tmp) rmSync(tmp, { recursive: true, force: true })
+    tmp = ''
+  })
+
+  /** Une racine et son dossier `bureau/`, chacun avec les paquets donnés (nom → version). */
+  function arbre(racine, bureau) {
+    tmp = mkdtempSync(join(tmpdir(), 'trk-noble-'))
+    const poser = (dossier, paquets) => {
+      for (const [nom, version] of Object.entries(paquets)) {
+        mkdirSync(join(dossier, 'node_modules', nom), { recursive: true })
+        writeFileSync(join(dossier, 'node_modules', nom, 'package.json'), JSON.stringify({ name: nom, version }))
+      }
+    }
+    mkdirSync(join(tmp, 'bureau'), { recursive: true })
+    poser(tmp, racine)
+    poser(join(tmp, 'bureau'), bureau)
+    return { racine: tmp, bureau: join(tmp, 'bureau') }
+  }
+
+  it('vise les deux paquets du calcul de l’appairage', () => {
+    expect(PAQUETS_APPAIRAGE).toEqual(['@noble/curves', '@noble/hashes'])
+  })
+
+  it('accepte une même version, prise dans bureau/ ou remontée de la racine', () => {
+    const { racine, bureau } = arbre({ '@noble/curves': '2.4.0', '@noble/hashes': '2.4.0' }, { '@noble/hashes': '2.4.0' })
+    expect(versionInstallee('@noble/curves', bureau)).toBe('2.4.0')
+    expect(ecartsDeVersion(bureau, racine)).toEqual([])
+  })
+
+  it('arrête la construction sur une autre version dans bureau/, ou sur un paquet absent', () => {
+    const { racine, bureau } = arbre({ '@noble/curves': '2.4.0', '@noble/hashes': '2.4.0' }, { '@noble/hashes': '1.8.0' })
+    expect(ecartsDeVersion(bureau, racine)).toEqual([expect.stringMatching(/^@noble\/hashes : version 1\.8\.0 prise depuis bureau\/, 2\.4\.0 à la racine/)])
+    expect(ecartsDeVersion(bureau, racine, ['@noble/absent'])).toEqual([expect.stringMatching(/version absente prise depuis bureau\/, absente à la racine/)])
+  })
+})
 
 describe('versionBureau', () => {
   it('retire les zéros en tête de chaque nombre', () => {

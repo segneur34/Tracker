@@ -306,6 +306,23 @@ Les trois scripts joués l'un après l'autre prenaient 2 min 44 ; `exe-tous` les
 
 **Risques.** Écart de version de `@noble/*` (contrôlé par la construction). Vecteurs régénérés faux sans que les tests TypeScript le voient : c'est le Java (250-3) qui fait foi, en plus de la RFC.
 
+
+**Fait le 27/11** (commit « Lot 250-1 », à valider sur lecture). Tests : trames 33 (et 1 sauté, l'écriture des vecteurs), spake2 20, appairage 21, sonde 9, certificat 9, telephone +3, `outils/bureau.test.mjs` +3. Un PC Gtracker échoue comme sur un code faux, et ses sondes sont refusées. `node outils/bureau.mjs --compiler --sans-vite` regroupe `spake2.js` par rolldown, après le contrôle d'égalité des versions de `@noble`.
+
+Écarts au plan, acceptés par l'orchestrateur :
+- `lire` accepte aussi les vrais noms rendus par `listerTout` (`cheminBrutAdmis` : toute profondeur, provisoires compris, 4 096 caractères au plus), puisque la copie de sécurité relit par `lire` ce qu'elle liste ;
+- les réponses portent deux types distincts, `listeTout` (champ `ordinaire`, rien d'écarté) et `listeCorbeille { dossiers }`, au lieu de `liste` : avec un seul type, le décodeur ne saurait pas s'il doit filtrer ;
+- `partA` reste facultatif dans `appairer`, comme dans Gtracker ; le PC refuse ensuite avec la raison `version`. Le Java (250-3) garde la même règle ;
+- le générateur ne tourne pas par `node` seul (`bureau/package.json` est en `commonjs`) : il passe par un test sauté. Le relancer depuis cmd : `set TRACKER_ECRIRE_VECTEURS=1&& npx vitest run bureau/trames.test.ts -t "réécrit"`. Un test non sauté vérifie que le fichier commité est celui que produit le générateur.
+
+Réponse de l'utilisateur à Q77, le 27/11 : oui, la corbeille du téléphone. C'est ce qui est codé, avec le dossier racine du dépôt dans une seule constante, `DEPOT_TELEPHONE = 'corbeille'` (`bureau/telephone.ts`).
+
+**À faire dans les lots suivants** (tranché par l'orchestrateur, conséquence de la réponse à Q77) :
+- **250-2** (PC) : `cheminEcrivable` refuse aujourd'hui `corbeille/<dossier>/depose.json`, que le PC doit écrire avant de déplacer (point tranché 1, étape 2). L'admettre, **et ce seul nom**, sous un dossier accepté par `dossierDepotAdmis`, par le câble comme sans câble ; tout autre fichier sous `corbeille/` reste refusé à l'écriture.
+- **250-2** (PC) : le serveur appelle `arrivee(jeton, maintenant)` à chaque `bonjour`, pour poser `vuLe`.
+- **250-3** (Java) : la même exception dans la liste blanche du greffon, contrôlée contre celle de `telephone.ts`.
+- **250-3** (Java), relecture du 250-1 : un fichier `sessions/depose.json` aurait pour destination `corbeille/<dossier>/depose.json`, le nom réservé au dépôt écrit d'abord par le PC. Seul le refus « `vers` déjà pris » du téléphone empêche l'écrasement : un test Java le prouve sur ce cas précis.
+
 ---
 
 ## 250-2 · Le PC écoute et sait lire et écrire le téléphone
@@ -719,7 +736,7 @@ Pour plus tard, à noter dans `docs/BACKLOG.md` :
 
 ## Questions pour l'utilisateur (trois au plus)
 
-Tranché par l'orchestrateur le 26/11 : la question 2 est oui (réponse déjà donnée par l'utilisateur pour Gtracker, Q144 et Q145) ; la question 3 est oui (détail d'implémentation : une seule copie du calcul) ; seule la question 1 est posée à l'utilisateur (Q77 de `docs/BACKLOG.md`), et la corbeille du téléphone du lot 250-4 attend sa réponse.
+Tranché par l'orchestrateur le 26/11 : la question 2 est oui (réponse déjà donnée par l'utilisateur pour Gtracker, Q144 et Q145) ; la question 3 est oui (détail d'implémentation : une seule copie du calcul) ; seule la question 1 est posée à l'utilisateur (Q77 de `docs/BACKLOG.md`), et la corbeille du téléphone du lot 250-4 attend sa réponse. **Réponse du 27/11 : oui, la corbeille du téléphone.**
 
 1. Quand l'ordinateur retire une session du téléphone (parce que tu l'as supprimée sur l'ordinateur), on la garde 30 jours dans une corbeille du téléphone, que tu vois et d'où tu peux la remettre depuis Réglages › Mémoire, comme sur l'ordinateur ? Les sessions que tu supprimes toi-même sur le téléphone ne changent pas. **Par défaut : oui.** Non : elle est mise de côté dans un dossier du téléphone, invisible dans Tracker, comme aujourd'hui par le câble.
 2. Le réglage du pare-feu vaut aussi pour les réseaux que Windows dit « publics » (sans cela, le partage de connexion ne marche pas), limité à Tracker, à ses ports et au réseau local. **Par défaut : oui** (déjà ta réponse pour Gtracker).

@@ -4,18 +4,24 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cableTempName, phoneVisibleNames } from '../src/library/remoteTemps'
 import { PHONE_TRASH_ROOT, phoneTrashDir } from '../src/library/syncBase'
+import { TRASH_DIR, isTrashDirName, trashDirName } from '../src/library/trash'
 import type { Reponse } from './pont'
 import type { DossierDistant, FichierTelephone } from './telephone'
 import {
   CANAUX_TELEPHONE,
   CORBEILLE_PAGE,
+  DEPOT_TELEPHONE,
+  LONGUEUR_MAX_BRUT,
   MESSAGE_ENREGISTREMENT,
   NOM_TELEPHONE_ESSAI,
   cheminAdmis,
+  cheminBrutAdmis,
   cheminEcrivable,
   cheminRetirable,
   commeLeTelephone,
+  destinationCorbeilleAdmise,
   dossierCorbeilleAdmis,
+  dossierDepotAdmis,
   dossierLocal,
   fichiersAdmis,
   gestionnairesTelephone,
@@ -479,6 +485,60 @@ describe('listes fermées', () => {
     for (const noms of cas) {
       const vus = commeLeTelephone(noms.map((n) => ({ chemin: `sessions/${n}`, taille: 1, dateMs: 0 }))).map((v) => ({ name: v.chemin.slice(9), actual: v.reel.slice(9) }))
       expect(vus, noms.join(',')).toEqual(phoneVisibleNames(noms))
+    }
+  })
+})
+
+describe('liaison sans fil : chemins réels et dépôt dans la corbeille du téléphone', () => {
+  const DOSSIER = '1795647914477-1795000000000'
+
+  it('lit un chemin réel du listage complet, à toute profondeur, provisoires compris ; jamais hors du dossier', () => {
+    for (const chemin of ['tracker.json', 'sessions/a.gpx.tracker-new', 'corbeille/x/y/z.gpx', 'Autre/a b.txt', `${'a/'.repeat(2047)}aa`]) {
+      expect(cheminBrutAdmis(chemin), chemin.slice(0, 40)).toBe(true)
+    }
+    for (const chemin of ['', '/a.gpx', '../a.gpx', 'a/../b', 'a/./b', 'a//b', 'a/', 'a\\b', 'C:/a', 'a/con.txt', 'a/b.', 'a/b\u0007', `${'a/'.repeat(2048)}a`, 7, null]) {
+      expect(cheminBrutAdmis(chemin), String(chemin).slice(0, 40)).toBe(false)
+    }
+    expect(`${'a/'.repeat(2047)}aa`).toHaveLength(LONGUEUR_MAX_BRUT)
+  })
+
+  it('dépose dans corbeille/<instant>-<identité>/, sous le nom d’origine, depuis sessions/ ou itineraires/ seulement', () => {
+    expect(destinationCorbeilleAdmise('sessions/a.gpx', `corbeille/${DOSSIER}/a.gpx`)).toBe(true)
+    expect(destinationCorbeilleAdmise('itineraires/Tour du lac.json', 'corbeille/1795647914477-Tour du lac-3/Tour du lac.json')).toBe(true)
+    for (const [chemin, vers] of [
+      ['sessions/a.gpx', `corbeille/${DOSSIER}/b.gpx`],
+      ['sessions/a.gpx', `corbeille/${DOSSIER}/sessions/a.gpx`],
+      ['sessions/a.gpx', 'corbeille/a.gpx'],
+      ['sessions/a.gpx', 'corbeille/2024-vacances/a.gpx'],
+      ['sessions/a.gpx', `Corbeille/${DOSSIER}/a.gpx`],
+      ['sessions/a.gpx', `mis-de-cote/${DOSSIER}/a.gpx`],
+      ['sessions/a.gpx', 'Tracker-corbeille/2026-11-26/sessions/a.gpx'],
+      ['sessions/a.gpx', `corbeille/${DOSSIER}/../a.gpx`],
+      ['sessions/a.gpx', `/corbeille/${DOSSIER}/a.gpx`],
+      ['reglages/a.json', `corbeille/${DOSSIER}/a.json`],
+      ['journaux/a.txt', `corbeille/${DOSSIER}/a.txt`],
+      ['sessions/x/a.gpx', `corbeille/${DOSSIER}/a.gpx`],
+      ['sessions/a.gpx.tracker-new', `corbeille/${DOSSIER}/a.gpx.tracker-new`],
+      ['sessions/a.gpx', `corbeille/${DOSSIER}/${'a'.repeat(600)}`],
+      ['sessions/a.gpx', 7],
+    ]) {
+      expect(destinationCorbeilleAdmise(chemin, vers), `${String(chemin)} → ${String(vers)}`).toBe(false)
+    }
+  })
+
+  it('nomme ses sous-dossiers comme la corbeille de la page, sous le même nom de dossier', () => {
+    expect(DEPOT_TELEPHONE).toBe(TRASH_DIR)
+    const instant = 1_795_647_914_477
+    const identites = ['1795000000000', 'Tour: du lac?', ' Tour  du lac. ', 'Lac.', '', 'é'.repeat(100), 'a\u0001b', 'CON']
+    for (const identite of identites) {
+      const nom = trashDirName(instant, identite, [])
+      expect(isTrashDirName(nom), nom).toBe(true)
+      expect(dossierDepotAdmis(nom), nom).toBe(true)
+      expect(dossierDepotAdmis(trashDirName(instant, identite, [nom])), nom).toBe(true)
+    }
+    for (const nom of ['2024-vacances', '179564791447-a', '1795647914477-', '1795647914477-a  b', '1795647914477-a.', '1795647914477- a', `1795647914477-${'a'.repeat(81)}`, '1795647914477-a:b', '1795647914477-a.tracker-tmp', 3]) {
+      expect(dossierDepotAdmis(nom), String(nom)).toBe(false)
+      if (typeof nom === 'string' && !nom.endsWith('.tracker-tmp')) expect(isTrashDirName(nom), nom).toBe(false)
     }
   })
 })

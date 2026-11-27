@@ -1,0 +1,871 @@
+{
+  "description": "Jeux d'essai de la liaison sans fil entre le programme Windows et le téléphone, relus tels quels par les tests du PC et ceux du téléphone. Fichier produit par bureau/essais/vecteurs.ts (comment le relancer : en tête de ce fichier) : ne pas le retoucher à la main. Les formats sont décrits en tête de bureau/trames.ts (trames et messages), bureau/appairage.ts (jeton), bureau/spake2.ts (échange authentifié par le code) et bureau/sonde.ts (découverte UDP). Tous les octets sont en hexadécimal minuscule. emetteur vaut pc pour un message que le PC envoie au téléphone, telephone pour un message que le téléphone envoie au PC.",
+  "lecture": {
+    "trames": "Décoder octetsHex donne une trame dont l'en-tête, relu en JSON, vaut enTete (comparer les valeurs, pas l'ordre des champs) et dont le corps vaut corpsHex. Encoder enTete et corpsHex redonne octetsHex quand l'en-tête est écrit dans l'ordre des champs donné, sans espace (JSON.stringify). Chaque message est valide : celui qui le reçoit (le téléphone quand emetteur vaut pc, le PC quand emetteur vaut telephone) le lit sans erreur.",
+    "tramesInvalides": "Décoder octetsHex, avec les limites d'une liaison où le téléphone s'est présenté (en-tête 8 388 608 octets, corps 1 048 576), échoue avec erreur ; TRONQUEE seulement quand le flux s'arrête là. Une marque d'ordre d'octets (EF BB BF) en tête de l'en-tête le rend illisible.",
+    "messagesInvalides": "Décoder octetsHex, avec les mêmes limites, donne exactement une trame, sans erreur ; lire son message échoue avec erreur (MESSAGE_INVALIDE ou MESSAGE_INCONNU). Le téléphone vérifie ceux dont emetteur vaut pc (les commandes qu'il reçoit), le PC les vérifie tous. effacer n'existe pas : c'est un message inconnu.",
+    "cheminsListe": "Règle de cheminAdmis (bureau/telephone.ts) : chemins qu'une liste peut porter (racine, sessions/, itineraires/, reglages/, journaux/) ; chaque texte de admis est accepté, chaque texte de refuses refusé. Un téléphone sans la capacité ecriture ne liste que la racine et sessions/, mais le PC accepte la règle entière.",
+    "cheminsLecture": "Règle de cheminLisible (bureau/trames.ts) : chemins qu'une commande lire peut demander, ceux de cheminAdmis et les chemins réels du listage complet (cheminBrutAdmis : relatif, à toute profondeur, provisoires compris, chaque segment ni vide, ni . ou .., sans antislash, deux-points, caractère interdit par Windows ou de contrôle, sans point ni espace finale, ni nom réservé ; 4 096 caractères au plus).",
+    "cheminsEcriture": "Règle de cheminEcrivable (bureau/telephone.ts), seule liste blanche de ecrire, valider et ecrit, des deux côtés : tracker.json et fc-repos.json à la racine, un fichier posé dans sessions/, itineraires/ ou reglages/. Le chemin le plus long admis a 512 caractères, celui de 513 est refusé.",
+    "cheminsRetrait": "Règle de cheminRetirable (bureau/telephone.ts) : chemin qu'une commande deplacer peut retirer, un fichier posé dans sessions/ ou itineraires/.",
+    "destinationsCorbeille": "Règle de destinationCorbeilleAdmise(chemin, vers) (bureau/telephone.ts) : vers vaut depot/<sous-dossier>/<nom>, où <nom> est le nom de chemin, inchangé, et <sous-dossier> a la forme des dossiers de la corbeille du programme Windows : 13 chiffres, un tiret, une identité (sans caractère refusé par Windows ni de contrôle, blancs simples, sans point ni espace finale, 80 caractères au plus), suffixe -n facultatif ; le nom entier sans suffixe provisoire. Chaque paire de admises est acceptée, chaque paire de refusees refusée.",
+    "jetons": "hachageHex est le SHA-256 des 32 octets de jetonHex.",
+    "sondes": "Un seul format de découverte, à l'octet de version 2, signature TRKR (54 52 4B 52), port UDP sondes.port. Encoder une question (nonceHex) redonne octetsHex, et la décoder rend son nonce. Dans une réponse, identifiantSondeHex tient la place de l'identifiant du PC : les 16 premiers octets de HMAC-SHA256(clé = les 16 octets de identifiantPcHex, « tracker-sonde » en ASCII ‖ les 16 octets du nonce de la question), et la longueur du nom vaut 0 ; encoder nonceHex, port et identifiantSondeHex redonne octetsHex, et le décodage rend ces champs. Chaque paquet de etrangers, dont toute question ou réponse à l'octet de version 1 et tout paquet de Gtracker (signature GTRK), est refusé comme question et comme réponse.",
+    "spake2": "Chaque cas de spake2.cas : w tiré de code, puis l'échange de bureau/spake2.ts joué avec x et y fixés (A = le téléphone, idA, B = le PC, idB = les 32 octets de empreinteHex, aad) donne partAHex (pA), partBHex (pB), kHex (K), confirmationAHex (cA, envoyée par le téléphone dans preuve) et confirmationBHex (cB, envoyée par le PC dans appaire). Les trames « appairer, échange SPAKE2 », « defi, échange SPAKE2 », « preuve, confirmation du téléphone » et « appaire, confirmation du PC » portent les octets du premier cas."
+  },
+  "portSansFil": 48247,
+  "trames": [
+    {
+      "nom": "ping",
+      "emetteur": "pc",
+      "enTete": { "type": "ping", "id": 1 },
+      "corpsHex": "",
+      "octetsHex": "00000016000000007b2274797065223a2270696e67222c226964223a317d"
+    },
+    {
+      "nom": "lire, deuxième bloc",
+      "emetteur": "pc",
+      "enTete": { "type": "lire", "id": 7, "chemin": "sessions/2026-11-20.gpx", "debut": 1048576, "longueur": 1048576 },
+      "corpsHex": "",
+      "octetsHex": "0000005c000000007b2274797065223a226c697265222c226964223a372c226368656d696e223a2273657373696f6e732f323032362d31312d32302e677078222c226465627574223a313034383537362c226c6f6e6775657572223a313034383537367d"
+    },
+    {
+      "nom": "bloc de 5 octets",
+      "emetteur": "telephone",
+      "enTete": { "type": "bloc", "id": 7, "debut": 0, "longueur": 5 },
+      "corpsHex": "68656c6c6f",
+      "octetsHex": "0000002d000000057b2274797065223a22626c6f63222c226964223a372c226465627574223a302c226c6f6e6775657572223a357d68656c6c6f"
+    },
+    {
+      "nom": "liste, chemin accentué",
+      "emetteur": "telephone",
+      "enTete": { "type": "liste", "id": 2, "fichiers": [{ "chemin": "sessions/été.gpx", "taille": 1234, "dateMs": 1790000000000 }] },
+      "corpsHex": "",
+      "octetsHex": "00000069000000007b2274797065223a226c69737465222c226964223a322c226669636869657273223a5b7b226368656d696e223a2273657373696f6e732fc3a974c3a92e677078222c227461696c6c65223a313233342c22646174654d73223a313739303030303030303030307d5d7d"
+    },
+    {
+      "nom": "refus",
+      "emetteur": "pc",
+      "enTete": { "type": "refus", "raison": "code" },
+      "corpsHex": "",
+      "octetsHex": "00000020000000007b2274797065223a227265667573222c22726169736f6e223a22636f6465227d"
+    },
+    {
+      "nom": "bonjour avec une capacité inconnue, ignorée",
+      "emetteur": "telephone",
+      "enTete": {
+        "type": "bonjour",
+        "version": 1,
+        "nom": "Pixel 8",
+        "jeton": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "capacites": ["ecriture", "futur"]
+      },
+      "corpsHex": "",
+      "octetsHex": "0000009a000000007b2274797065223a22626f6e6a6f7572222c2276657273696f6e223a312c226e6f6d223a22506978656c2038222c226a65746f6e223a2261306131613261336134613561366137613861396161616261636164616561666230623162326233623462356236623762386239626162626263626462656266222c22636170616369746573223a5b226563726974757265222c226675747572225d7d"
+    },
+    {
+      "nom": "bonjour sans capacité",
+      "emetteur": "telephone",
+      "enTete": { "type": "bonjour", "version": 1, "nom": "Pixel 8", "jeton": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf" },
+      "corpsHex": "",
+      "octetsHex": "00000079000000007b2274797065223a22626f6e6a6f7572222c2276657273696f6e223a312c226e6f6d223a22506978656c2038222c226a65746f6e223a2261306131613261336134613561366137613861396161616261636164616561666230623162326233623462356236623762386239626162626263626462656266227d"
+    },
+    {
+      "nom": "bienvenue",
+      "emetteur": "pc",
+      "enTete": { "type": "bienvenue", "identifiantPc": "101112131415161718191a1b1c1d1e1f", "nomPc": "BUREAU" },
+      "corpsHex": "",
+      "octetsHex": "00000058000000007b2274797065223a226269656e76656e7565222c226964656e74696669616e745063223a223130313131323133313431353136313731383139316131623163316431653166222c226e6f6d5063223a22425552454155227d"
+    },
+    {
+      "nom": "lire, fichier d'itinéraire",
+      "emetteur": "pc",
+      "enTete": { "type": "lire", "id": 8, "chemin": "itineraires/tour du lac.json", "debut": 0, "longueur": 4096 },
+      "corpsHex": "",
+      "octetsHex": "00000058000000007b2274797065223a226c697265222c226964223a382c226368656d696e223a226974696e657261697265732f746f7572206475206c61632e6a736f6e222c226465627574223a302c226c6f6e6775657572223a343039367d"
+    },
+    {
+      "nom": "lire, journal d'enregistrement",
+      "emetteur": "pc",
+      "enTete": { "type": "lire", "id": 9, "chemin": "journaux/2026-11-21 09-30.txt", "debut": 0, "longueur": 300 },
+      "corpsHex": "",
+      "octetsHex": "00000058000000007b2274797065223a226c697265222c226964223a392c226368656d696e223a226a6f75726e6175782f323032362d31312d32312030392d33302e747874222c226465627574223a302c226c6f6e6775657572223a3330307d"
+    },
+    {
+      "nom": "lire, fichier du listage complet, dans la corbeille",
+      "emetteur": "pc",
+      "enTete": { "type": "lire", "id": 20, "chemin": "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx", "debut": 0, "longueur": 11 },
+      "corpsHex": "",
+      "octetsHex": "00000074000000007b2274797065223a226c697265222c226964223a32302c226368656d696e223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f323032362d31312d32312077696e672e677078222c226465627574223a302c226c6f6e6775657572223a31317d"
+    },
+    {
+      "nom": "lire, provisoire du listage complet",
+      "emetteur": "pc",
+      "enTete": { "type": "lire", "id": 21, "chemin": "sessions/2026-11-22.gpx.tracker-new", "debut": 0, "longueur": 7 },
+      "corpsHex": "",
+      "octetsHex": "0000005d000000007b2274797065223a226c697265222c226964223a32312c226368656d696e223a2273657373696f6e732f323032362d31312d32322e6770782e747261636b65722d6e6577222c226465627574223a302c226c6f6e6775657572223a377d"
+    },
+    {
+      "nom": "liste des cinq dossiers",
+      "emetteur": "telephone",
+      "enTete": {
+        "type": "liste",
+        "id": 3,
+        "fichiers": [
+          { "chemin": "itineraires/tour du lac.json", "taille": 2048, "dateMs": 1795000001000 },
+          { "chemin": "journaux/2026-11-21 09-30.txt", "taille": 300, "dateMs": 1795000005000 },
+          { "chemin": "reglages/pixel-8.json", "taille": 512, "dateMs": 1795000002000 },
+          { "chemin": "sessions/2026-11-21 wing.gpx", "taille": 11, "dateMs": 1795000003000 },
+          { "chemin": "tracker.json", "taille": 120, "dateMs": 1795000000000 }
+        ]
+      },
+      "corpsHex": "",
+      "octetsHex": "00000194000000007b2274797065223a226c69737465222c226964223a332c226669636869657273223a5b7b226368656d696e223a226974696e657261697265732f746f7572206475206c61632e6a736f6e222c227461696c6c65223a323034382c22646174654d73223a313739353030303030313030307d2c7b226368656d696e223a226a6f75726e6175782f323032362d31312d32312030392d33302e747874222c227461696c6c65223a3330302c22646174654d73223a313739353030303030353030307d2c7b226368656d696e223a227265676c616765732f706978656c2d382e6a736f6e222c227461696c6c65223a3531322c22646174654d73223a313739353030303030323030307d2c7b226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c227461696c6c65223a31312c22646174654d73223a313739353030303030333030307d2c7b226368656d696e223a22747261636b65722e6a736f6e222c227461696c6c65223a3132302c22646174654d73223a313739353030303030303030307d5d7d"
+    },
+    {
+      "nom": "listerTout",
+      "emetteur": "pc",
+      "enTete": { "type": "listerTout", "id": 22 },
+      "corpsHex": "",
+      "octetsHex": "0000001d000000007b2274797065223a226c6973746572546f7574222c226964223a32327d"
+    },
+    {
+      "nom": "listeTout, dossier entier",
+      "emetteur": "telephone",
+      "enTete": {
+        "type": "listeTout",
+        "id": 22,
+        "fichiers": [
+          { "chemin": "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx", "taille": 11, "dateMs": 1795000003000, "ordinaire": true },
+          { "chemin": "corbeille/corbeille.json", "taille": 90, "dateMs": 1795647914000, "ordinaire": true },
+          { "chemin": "photos/lien", "taille": 0, "dateMs": 1795000000000, "ordinaire": false },
+          { "chemin": "sessions/2026-11-22.gpx.tracker-new", "taille": 7, "dateMs": 1795000006000, "ordinaire": true },
+          { "chemin": "sessions/vieux/a.gpx", "taille": 5, "dateMs": 1790000000000, "ordinaire": true },
+          { "chemin": "tracker.json", "taille": 120, "dateMs": 1795000000000, "ordinaire": true }
+        ]
+      },
+      "corpsHex": "",
+      "octetsHex": "00000253000000007b2274797065223a226c69737465546f7574222c226964223a32322c226669636869657273223a5b7b226368656d696e223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f323032362d31312d32312077696e672e677078222c227461696c6c65223a31312c22646174654d73223a313739353030303030333030302c226f7264696e61697265223a747275657d2c7b226368656d696e223a22636f726265696c6c652f636f726265696c6c652e6a736f6e222c227461696c6c65223a39302c22646174654d73223a313739353634373931343030302c226f7264696e61697265223a747275657d2c7b226368656d696e223a2270686f746f732f6c69656e222c227461696c6c65223a302c22646174654d73223a313739353030303030303030302c226f7264696e61697265223a66616c73657d2c7b226368656d696e223a2273657373696f6e732f323032362d31312d32322e6770782e747261636b65722d6e6577222c227461696c6c65223a372c22646174654d73223a313739353030303030363030302c226f7264696e61697265223a747275657d2c7b226368656d696e223a2273657373696f6e732f76696575782f612e677078222c227461696c6c65223a352c22646174654d73223a313739303030303030303030302c226f7264696e61697265223a747275657d2c7b226368656d696e223a22747261636b65722e6a736f6e222c227461696c6c65223a3132302c22646174654d73223a313739353030303030303030302c226f7264696e61697265223a747275657d5d7d"
+    },
+    {
+      "nom": "ecrire, premier bloc",
+      "emetteur": "pc",
+      "enTete": { "type": "ecrire", "id": 10, "chemin": "sessions/2026-11-21 wing.gpx", "debut": 0, "taille": 11 },
+      "corpsHex": "3c6770783e",
+      "octetsHex": "00000057000000057b2274797065223a22656372697265222c226964223a31302c226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c226465627574223a302c227461696c6c65223a31317d3c6770783e"
+    },
+    {
+      "nom": "ecrire, dernier bloc",
+      "emetteur": "pc",
+      "enTete": { "type": "ecrire", "id": 11, "chemin": "sessions/2026-11-21 wing.gpx", "debut": 5, "taille": 11 },
+      "corpsHex": "3c2f6770783e",
+      "octetsHex": "00000057000000067b2274797065223a22656372697265222c226964223a31312c226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c226465627574223a352c227461696c6c65223a31317d3c2f6770783e"
+    },
+    {
+      "nom": "ecrire, fichier vide",
+      "emetteur": "pc",
+      "enTete": { "type": "ecrire", "id": 12, "chemin": "reglages/pixel-8.json", "debut": 0, "taille": 0 },
+      "corpsHex": "",
+      "octetsHex": "0000004f000000007b2274797065223a22656372697265222c226964223a31322c226368656d696e223a227265676c616765732f706978656c2d382e6a736f6e222c226465627574223a302c227461696c6c65223a307d"
+    },
+    {
+      "nom": "ecrire, fichier de la racine",
+      "emetteur": "pc",
+      "enTete": { "type": "ecrire", "id": 16, "chemin": "tracker.json", "debut": 0, "taille": 2 },
+      "corpsHex": "7b7d",
+      "octetsHex": "00000046000000027b2274797065223a22656372697265222c226964223a31362c226368656d696e223a22747261636b65722e6a736f6e222c226465627574223a302c227461696c6c65223a327d7b7d"
+    },
+    {
+      "nom": "valider",
+      "emetteur": "pc",
+      "enTete": { "type": "valider", "id": 13, "chemin": "sessions/2026-11-21 wing.gpx", "taille": 11 },
+      "corpsHex": "",
+      "octetsHex": "0000004e000000007b2274797065223a2276616c69646572222c226964223a31332c226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c227461696c6c65223a31317d"
+    },
+    {
+      "nom": "deplacer, session vers la corbeille",
+      "emetteur": "pc",
+      "enTete": {
+        "type": "deplacer",
+        "id": 14,
+        "chemin": "sessions/2026-11-21 wing.gpx",
+        "taille": 11,
+        "dateMs": 1795000003000,
+        "vers": "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx"
+      },
+      "corpsHex": "",
+      "octetsHex": "000000a9000000007b2274797065223a226465706c61636572222c226964223a31342c226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c227461696c6c65223a31312c22646174654d73223a313739353030303030333030302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f323032362d31312d32312077696e672e677078227d"
+    },
+    {
+      "nom": "deplacer, itinéraire vers la corbeille",
+      "emetteur": "pc",
+      "enTete": {
+        "type": "deplacer",
+        "id": 17,
+        "chemin": "itineraires/tour du lac.json",
+        "taille": 2048,
+        "dateMs": 1795000001000,
+        "vers": "corbeille/1795647914477-tour du lac/tour du lac.json"
+      },
+      "corpsHex": "",
+      "octetsHex": "000000a6000000007b2274797065223a226465706c61636572222c226964223a31372c226368656d696e223a226974696e657261697265732f746f7572206475206c61632e6a736f6e222c227461696c6c65223a323034382c22646174654d73223a313739353030303030313030302c2276657273223a22636f726265696c6c652f313739353634373931343437372d746f7572206475206c61632f746f7572206475206c61632e6a736f6e227d"
+    },
+    {
+      "nom": "listerCorbeille",
+      "emetteur": "pc",
+      "enTete": { "type": "listerCorbeille", "id": 18 },
+      "corpsHex": "",
+      "octetsHex": "00000022000000007b2274797065223a226c6973746572436f726265696c6c65222c226964223a31387d"
+    },
+    {
+      "nom": "listeCorbeille",
+      "emetteur": "telephone",
+      "enTete": { "type": "listeCorbeille", "id": 18, "dossiers": ["1795647914477-1795000000000", "1795647914477-tour du lac"] },
+      "corpsHex": "",
+      "octetsHex": "00000068000000007b2274797065223a226c69737465436f726265696c6c65222c226964223a31382c22646f737369657273223a5b22313739353634373931343437372d31373935303030303030303030222c22313739353634373931343437372d746f7572206475206c6163225d7d"
+    },
+    {
+      "nom": "ecrit",
+      "emetteur": "telephone",
+      "enTete": { "type": "ecrit", "id": 13, "chemin": "sessions/2026-11-21 wing.gpx", "taille": 11, "dateMs": 1795000004000 },
+      "corpsHex": "",
+      "octetsHex": "00000063000000007b2274797065223a226563726974222c226964223a31332c226368656d696e223a2273657373696f6e732f323032362d31312d32312077696e672e677078222c227461696c6c65223a31312c22646174654d73223a313739353030303030343030307d"
+    },
+    {
+      "nom": "fait",
+      "emetteur": "telephone",
+      "enTete": { "type": "fait", "id": 10 },
+      "corpsHex": "",
+      "octetsHex": "00000017000000007b2274797065223a2266616974222c226964223a31307d"
+    },
+    {
+      "nom": "erreur, téléphone qui enregistre",
+      "emetteur": "telephone",
+      "enTete": { "type": "erreur", "id": 14, "code": "PERMISSION", "message": "Le téléphone enregistre une session : rien n'y est écrit pendant ce temps." },
+      "corpsHex": "",
+      "octetsHex": "00000087000000007b2274797065223a22657272657572222c226964223a31342c22636f6465223a225045524d495353494f4e222c226d657373616765223a224c652074c3a96cc3a970686f6e6520656e726567697374726520756e652073657373696f6e203a207269656e206e27792065737420c3a9637269742070656e64616e742063652074656d70732e227d"
+    },
+    {
+      "nom": "pong, téléphone qui enregistre",
+      "emetteur": "telephone",
+      "enTete": { "type": "pong", "id": 5, "enregistre": true },
+      "corpsHex": "",
+      "octetsHex": "00000028000000007b2274797065223a22706f6e67222c226964223a352c22656e7265676973747265223a747275657d"
+    },
+    {
+      "nom": "pong, téléphone libre",
+      "emetteur": "telephone",
+      "enTete": { "type": "pong", "id": 6, "enregistre": false },
+      "corpsHex": "",
+      "octetsHex": "00000029000000007b2274797065223a22706f6e67222c226964223a362c22656e7265676973747265223a66616c73657d"
+    },
+    {
+      "nom": "appairer, échange SPAKE2",
+      "emetteur": "telephone",
+      "enTete": {
+        "type": "appairer",
+        "version": 1,
+        "nom": "Pixel 8",
+        "nonceTelephone": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "partA": "042033be866b400002ea757073a31b7754a4ac1bc11f12f06c46d120ee582560719cafe7f1f4b8ffdcd5f55851f516b4bab04cddd5378f5621efbfd0813ddfbe03",
+        "capacites": ["ecriture", "spake2"]
+      },
+      "corpsHex": "",
+      "octetsHex": "00000132000000007b2274797065223a226170706169726572222c2276657273696f6e223a312c226e6f6d223a22506978656c2038222c226e6f6e636554656c6570686f6e65223a2230303031303230333034303530363037303830393061306230633064306530663130313131323133313431353136313731383139316131623163316431653166222c227061727441223a2230343230333362653836366234303030303265613735373037336133316237373534613461633162633131663132663036633436643132306565353832353630373139636166653766316634623866666463643566353538353166353136623462616230346364646435333738663536323165666266643038313364646662653033222c22636170616369746573223a5b226563726974757265222c227370616b6532225d7d"
+    },
+    {
+      "nom": "defi, échange SPAKE2",
+      "emetteur": "pc",
+      "enTete": {
+        "type": "defi",
+        "noncePc": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        "partB": "046877e9f047255cf3bd5f2981aedd07efe8a66d16964cdd8abe04bf397fb0914d00e73063f2f7c0ee8637c286b331e3a4142542c9f9e8537bcf51aa50789a877e"
+      },
+      "corpsHex": "",
+      "octetsHex": "000000e9000000007b2274797065223a2264656669222c226e6f6e63655063223a2232303231323232333234323532363237323832393261326232633264326532663330333133323333333433353336333733383339336133623363336433653366222c227061727442223a2230343638373765396630343732353563663362643566323938316165646430376566653861363664313639363463646438616265303462663339376662303931346430306537333036336632663763306565383633376332383662333331653361343134323534326339663965383533376263663531616135303738396138373765227d"
+    },
+    {
+      "nom": "preuve, confirmation du téléphone",
+      "emetteur": "telephone",
+      "enTete": { "type": "preuve", "preuve": "b93894f83ae443b927eaa354c5d9f08c36b8a46116bbdf22c1139ea071bac911" },
+      "corpsHex": "",
+      "octetsHex": "0000005d000000007b2274797065223a22707265757665222c22707265757665223a2262393338393466383361653434336239323765616133353463356439663038633336623861343631313662626466323263313133396561303731626163393131227d"
+    },
+    {
+      "nom": "appaire, confirmation du PC",
+      "emetteur": "pc",
+      "enTete": {
+        "type": "appaire",
+        "preuve": "1d28eae3be6480b3e4b5d741cc29977f3712ed643cfe098d09b5aa9d9beaae8f",
+        "jeton": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+        "identifiantPc": "101112131415161718191a1b1c1d1e1f",
+        "nomPc": "BUREAU"
+      },
+      "corpsHex": "",
+      "octetsHex": "000000ed000000007b2274797065223a2261707061697265222c22707265757665223a2231643238656165336265363438306233653462356437343163633239393737663337313265643634336366653039386430396235616139643962656161653866222c226a65746f6e223a2263306331633263336334633563366337633863396361636263636364636563666430643164326433643464356436643764386439646164626463646464656466222c226964656e74696669616e745063223a223130313131323133313431353136313731383139316131623163316431653166222c226e6f6d5063223a22425552454155227d"
+    }
+  ],
+  "messagesInvalides": [
+    {
+      "nom": "ecrire, chemin hors des dossiers écrivables",
+      "emetteur": "pc",
+      "octetsHex": "00000044000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a2261757472652f612e677078222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, fichier de la racine non écrivable",
+      "emetteur": "pc",
+      "octetsHex": "00000043000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a22696e6465782e6a736f6e222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, lieux.json n'est pas écrivable",
+      "emetteur": "pc",
+      "octetsHex": "00000043000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a226c696575782e6a736f6e222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, journal d'enregistrement",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a226a6f75726e6175782f612e747874222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, dans la corbeille",
+      "emetteur": "pc",
+      "octetsHex": "00000064000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f612e677078222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, chemin qui remonte",
+      "emetteur": "pc",
+      "octetsHex": "00000051000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f2e2e2f747261636b65722e6a736f6e222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, nom provisoire",
+      "emetteur": "pc",
+      "octetsHex": "00000053000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e6770782e747261636b65722d6e6577222c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire sans chemin",
+      "emetteur": "pc",
+      "octetsHex": "0000002d000000017b2274797065223a22656372697265222c226964223a312c226465627574223a302c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, début négatif",
+      "emetteur": "pc",
+      "octetsHex": "00000048000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a2d312c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, taille qui n'est pas un entier",
+      "emetteur": "pc",
+      "octetsHex": "00000049000000017b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a302c227461696c6c65223a312e357d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, bloc qui déborde la taille annoncée",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000047b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a302c227461696c6c65223a337d41424344",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, dernier bloc qui déborde",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000027b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a322c227461696c6c65223a337d4142",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrire, corps vide pour un fichier non vide",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000007b2274797065223a22656372697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a302c227461696c6c65223a357d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "valider avec un corps",
+      "emetteur": "pc",
+      "octetsHex": "0000003e000000017b2274797065223a2276616c69646572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "valider, taille négative",
+      "emetteur": "pc",
+      "octetsHex": "0000003f000000007b2274797065223a2276616c69646572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a2d317d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "valider, chemin hors liste",
+      "emetteur": "pc",
+      "octetsHex": "0000003e000000007b2274797065223a2276616c69646572222c226964223a312c226368656d696e223a226c696575782e6a736f6e2e62616b222c227461696c6c65223a317d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "effacer n'existe pas dans ce protocole",
+      "emetteur": "pc",
+      "octetsHex": "00000033000000007b2274797065223a2265666661636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078227d",
+      "erreur": "MESSAGE_INCONNU"
+    },
+    {
+      "nom": "lire, chemin qui remonte",
+      "emetteur": "pc",
+      "octetsHex": "0000004b000000007b2274797065223a226c697265222c226964223a312c226368656d696e223a2273657373696f6e732f2e2e2f612e677078222c226465627574223a302c226c6f6e6775657572223a31307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "lire, chemin absolu",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000007b2274797065223a226c697265222c226964223a312c226368656d696e223a222f7364636172642f612e677078222c226465627574223a302c226c6f6e6775657572223a31307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "lire, antislash",
+      "emetteur": "pc",
+      "octetsHex": "00000049000000007b2274797065223a226c697265222c226964223a312c226368656d696e223a2273657373696f6e735c5c612e677078222c226465627574223a302c226c6f6e6775657572223a31307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "lire, longueur nulle",
+      "emetteur": "pc",
+      "octetsHex": "00000047000000007b2274797065223a226c697265222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c226465627574223a302c226c6f6e6775657572223a307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ping avec un corps",
+      "emetteur": "pc",
+      "octetsHex": "00000016000000017b2274797065223a2270696e67222c226964223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "commande inconnue",
+      "emetteur": "pc",
+      "octetsHex": "00000034000000007b2274797065223a2272656e6f6d6d6572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078227d",
+      "erreur": "MESSAGE_INCONNU"
+    },
+    {
+      "nom": "listerTout sans id",
+      "emetteur": "pc",
+      "octetsHex": "00000015000000007b2274797065223a226c6973746572546f7574227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listerCorbeille avec un corps",
+      "emetteur": "pc",
+      "octetsHex": "00000021000000017b2274797065223a226c6973746572436f726265696c6c65222c226964223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, depuis reglages/",
+      "emetteur": "pc",
+      "octetsHex": "0000008d000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a227265676c616765732f706978656c2d382e6a736f6e222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f706978656c2d382e6a736f6e227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, depuis un sous-dossier",
+      "emetteur": "pc",
+      "octetsHex": "00000085000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f76696575782f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, un provisoire",
+      "emetteur": "pc",
+      "octetsHex": "00000097000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e6770782e747261636b65722d6e6577222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f612e6770782e747261636b65722d6e6577227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, vers l'ancienne corbeille du câble",
+      "emetteur": "pc",
+      "octetsHex": "0000007f000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22547261636b65722d636f726265696c6c652f323032362d31312d32312f73657373696f6e732f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, vers un autre nom",
+      "emetteur": "pc",
+      "octetsHex": "0000007f000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f622e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, vers un sous-dossier mal nommé",
+      "emetteur": "pc",
+      "octetsHex": "00000071000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f323032342d766163616e6365732f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, vers la racine de la corbeille",
+      "emetteur": "pc",
+      "octetsHex": "00000063000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, vers un dossier trop profond",
+      "emetteur": "pc",
+      "octetsHex": "00000088000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f73657373696f6e732f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer sans vers",
+      "emetteur": "pc",
+      "octetsHex": "0000004a000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c22646174654d73223a307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer sans date",
+      "emetteur": "pc",
+      "octetsHex": "00000074000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a312c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "deplacer, taille négative",
+      "emetteur": "pc",
+      "octetsHex": "00000080000000007b2274797065223a226465706c61636572222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a2d312c22646174654d73223a302c2276657273223a22636f726265696c6c652f313739353634373931343437372d313739353030303030303030302f612e677078227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "bonjour, capacites qui n’est pas un tableau",
+      "emetteur": "telephone",
+      "octetsHex": "00000090000000007b2274797065223a22626f6e6a6f7572222c2276657273696f6e223a312c226e6f6d223a22506978656c2038222c226a65746f6e223a2261306131613261336134613561366137613861396161616261636164616561666230623162326233623462356236623762386239626162626263626462656266222c22636170616369746573223a226563726974757265227d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "appairer, capacité qui n’est pas un texte",
+      "emetteur": "telephone",
+      "octetsHex": "0000009e000000007b2274797065223a226170706169726572222c2276657273696f6e223a312c226e6f6d223a22506978656c2038222c226e6f6e636554656c6570686f6e65223a2230303031303230333034303530363037303830393061306230633064306530663130313131323133313431353136313731383139316131623163316431653166222c22636170616369746573223a5b226563726974757265222c315d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeTout, élément sans ordinaire",
+      "emetteur": "telephone",
+      "octetsHex": "00000058000000007b2274797065223a226c69737465546f7574222c226964223a312c226669636869657273223a5b7b226368656d696e223a22747261636b65722e6a736f6e222c227461696c6c65223a312c22646174654d73223a307d5d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeTout, chemin vide",
+      "emetteur": "telephone",
+      "octetsHex": "0000005d000000007b2274797065223a226c69737465546f7574222c226964223a312c226669636869657273223a5b7b226368656d696e223a22222c227461696c6c65223a312c22646174654d73223a302c226f7264696e61697265223a747275657d5d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeTout, taille négative",
+      "emetteur": "telephone",
+      "octetsHex": "0000006a000000007b2274797065223a226c69737465546f7574222c226964223a312c226669636869657273223a5b7b226368656d696e223a22747261636b65722e6a736f6e222c227461696c6c65223a2d312c22646174654d73223a302c226f7264696e61697265223a747275657d5d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeTout, fichiers qui n'est pas un tableau",
+      "emetteur": "telephone",
+      "octetsHex": "00000029000000007b2274797065223a226c69737465546f7574222c226964223a312c226669636869657273223a7b7d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeCorbeille, dossier qui n'est pas un texte",
+      "emetteur": "telephone",
+      "octetsHex": "0000004d000000007b2274797065223a226c69737465436f726265696c6c65222c226964223a312c22646f737369657273223a5b22313739353634373931343437372d31373935303030303030303030222c375d7d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "listeCorbeille sans dossiers",
+      "emetteur": "telephone",
+      "octetsHex": "00000020000000007b2274797065223a226c69737465436f726265696c6c65222c226964223a317d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrit, chemin hors liste",
+      "emetteur": "telephone",
+      "octetsHex": "00000043000000007b2274797065223a226563726974222c226964223a312c226368656d696e223a22696e6465782e6a736f6e222c227461696c6c65223a312c22646174654d73223a307d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "ecrit sans date",
+      "emetteur": "telephone",
+      "octetsHex": "0000003c000000007b2274797065223a226563726974222c226964223a312c226368656d696e223a2273657373696f6e732f612e677078222c227461696c6c65223a317d",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "fait avec un corps",
+      "emetteur": "telephone",
+      "octetsHex": "00000016000000017b2274797065223a2266616974222c226964223a317d41",
+      "erreur": "MESSAGE_INVALIDE"
+    },
+    {
+      "nom": "pong, enregistre qui n'est pas un booléen",
+      "emetteur": "telephone",
+      "octetsHex": "00000029000000007b2274797065223a22706f6e67222c226964223a312c22656e7265676973747265223a226f7569227d",
+      "erreur": "MESSAGE_INVALIDE"
+    }
+  ],
+  "cheminsListe": {
+    "admis": [
+      "index.json",
+      "tracker.json",
+      "photo.jpg",
+      "sessions",
+      "sessions/2026-11-21 wing.gpx",
+      "sessions/été.gpx",
+      "itineraires/tour du lac.json",
+      "reglages/pixel-8.json",
+      "journaux/2026-11-21 09-30.txt"
+    ],
+    "refuses": [
+      "",
+      "/index.json",
+      "sessions/",
+      "../a.gpx",
+      "sessions/../a.gpx",
+      "sessions/.",
+      "sessions\\a.gpx",
+      "C:/a.gpx",
+      "sessions/a.",
+      "sessions/a ",
+      "sessions/con.gpx",
+      "sessions/a\u0001.gpx",
+      "sessions/a|b.gpx",
+      "sessions/a/b.gpx",
+      "autre/a.gpx",
+      "Sessions/a.gpx",
+      "a.gpx.tracker-tmp",
+      "itineraires/r.json.TRACKER-NEW",
+      "corbeille/corbeille.json",
+      "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx"
+    ]
+  },
+  "cheminsLecture": {
+    "admis": [
+      "index.json",
+      "tracker.json",
+      "photo.jpg",
+      "sessions",
+      "sessions/2026-11-21 wing.gpx",
+      "sessions/été.gpx",
+      "itineraires/tour du lac.json",
+      "reglages/pixel-8.json",
+      "journaux/2026-11-21 09-30.txt",
+      "sessions/a/b.gpx",
+      "autre/a.gpx",
+      "Sessions/a.gpx",
+      "a.gpx.tracker-tmp",
+      "itineraires/r.json.TRACKER-NEW",
+      "corbeille/corbeille.json",
+      "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx",
+      "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/aa"
+    ],
+    "refuses": [
+      "",
+      "/index.json",
+      "sessions/",
+      "../a.gpx",
+      "sessions/../a.gpx",
+      "sessions/.",
+      "sessions\\a.gpx",
+      "C:/a.gpx",
+      "sessions/a.",
+      "sessions/a ",
+      "sessions/con.gpx",
+      "sessions/a\u0001.gpx",
+      "sessions/a|b.gpx",
+      "sessions//a.gpx",
+      "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/aaa"
+    ]
+  },
+  "cheminsEcriture": {
+    "admis": [
+      "tracker.json",
+      "fc-repos.json",
+      "sessions/2026-11-21 wing.gpx",
+      "sessions/été.gpx",
+      "itineraires/tour du lac.json",
+      "reglages/pixel-8.json",
+      "sessions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "refuses": [
+      "",
+      "index.json",
+      "photo.jpg",
+      "lieux.json",
+      "TRACKER.JSON",
+      "tracker.json.tracker-tmp",
+      "sessions",
+      "sessions/",
+      "/tracker.json",
+      "sessions/a/b.gpx",
+      "autre/a.gpx",
+      "Sessions/a.gpx",
+      "journaux/2026-11-21 09-30.txt",
+      "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx",
+      "../tracker.json",
+      "sessions/../tracker.json",
+      "sessions/..",
+      "sessions/.",
+      "sessions\\a.gpx",
+      "sessions/a.gpx.tracker-tmp",
+      "itineraires/r.json.TRACKER-NEW",
+      "sessions/a.",
+      "sessions/a ",
+      "sessions/con.gpx",
+      "reglages/LPT1",
+      "sessions/a\u0001.gpx",
+      "sessions/a\u007f.gpx",
+      "sessions/a:b.gpx",
+      "sessions/a|b.gpx",
+      "sessions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+  },
+  "cheminsRetrait": {
+    "admis": ["sessions/2026-11-21 wing.gpx", "sessions/été.gpx", "itineraires/tour du lac.json"],
+    "refuses": [
+      "",
+      "sessions",
+      "tracker.json",
+      "reglages/pixel-8.json",
+      "journaux/2026-11-21 09-30.txt",
+      "sessions/vieux/a.gpx",
+      "sessions/a.gpx.tracker-new",
+      "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx"
+    ]
+  },
+  "destinationsCorbeille": {
+    "depot": "corbeille",
+    "admises": [
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-1795000000000-2/2026-11-21 wing.gpx" },
+      { "chemin": "itineraires/tour du lac.json", "vers": "corbeille/1795647914477-tour du lac/tour du lac.json" },
+      { "chemin": "sessions/été.gpx", "vers": "corbeille/1795647914477-Tour_ du lac_/été.gpx" }
+    ],
+    "refusees": [
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "Tracker-corbeille/2026-11-21/sessions/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-1795000000000/autre.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/2024-vacances/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/179564791447-1795000000000/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-tour  du lac/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-Lac./2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-a:b/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-a.tracker-new/2026-11-21 wing.gpx" },
+      {
+        "chemin": "sessions/2026-11-21 wing.gpx",
+        "vers": "corbeille/1795647914477-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/2026-11-21 wing.gpx"
+      },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "corbeille/1795647914477-1795000000000/sessions/2026-11-21 wing.gpx" },
+      { "chemin": "sessions/2026-11-21 wing.gpx", "vers": "Corbeille/1795647914477-1795000000000/2026-11-21 wing.gpx" },
+      { "chemin": "reglages/pixel-8.json", "vers": "corbeille/1795647914477-1795000000000/pixel-8.json" },
+      { "chemin": "sessions/vieux/a.gpx", "vers": "corbeille/1795647914477-1795000000000/a.gpx" }
+    ]
+  },
+  "tramesInvalides": [
+    { "nom": "en-tête de longueur nulle", "octetsHex": "0000000000000000", "erreur": "EN_TETE_VIDE" },
+    { "nom": "en-tête de 8 Mio + 1", "octetsHex": "0080000100000000", "erreur": "EN_TETE_TROP_LONG" },
+    { "nom": "corps de 1 Mio + 1", "octetsHex": "0000000f00100001", "erreur": "CORPS_TROP_LONG" },
+    { "nom": "requête HTTP", "octetsHex": "474554202f20485454502f312e310d0a", "erreur": "EN_TETE_TROP_LONG" },
+    { "nom": "ping amputé de son dernier octet", "octetsHex": "00000016000000007b2274797065223a2270696e67222c226964223a31", "erreur": "TRONQUEE" },
+    { "nom": "en-tête qui est un tableau", "octetsHex": "00000003000000005b315d", "erreur": "EN_TETE_ILLISIBLE" },
+    { "nom": "en-tête qui n'est pas de l'UTF-8", "octetsHex": "0000000400000000ff222222", "erreur": "EN_TETE_ILLISIBLE" },
+    { "nom": "en-tête sans type", "octetsHex": "00000008000000007b226964223a317d", "erreur": "EN_TETE_ILLISIBLE" },
+    {
+      "nom": "en-tête précédé d'une marque d'ordre d'octets",
+      "octetsHex": "0000001900000000efbbbf7b2274797065223a2270696e67222c226964223a317d",
+      "erreur": "EN_TETE_ILLISIBLE"
+    }
+  ],
+  "jetons": [
+    {
+      "jetonHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "hachageHex": "630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd"
+    },
+    {
+      "jetonHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "hachageHex": "af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"
+    }
+  ],
+  "sondes": {
+    "port": 48248,
+    "questions": [{ "nonceHex": "000102030405060708090a0b0c0d0e0f", "octetsHex": "54524b520201000102030405060708090a0b0c0d0e0f" }],
+    "reponses": [
+      {
+        "nonceHex": "000102030405060708090a0b0c0d0e0f",
+        "port": 48247,
+        "identifiantPcHex": "101112131415161718191a1b1c1d1e1f",
+        "identifiantSondeHex": "4ff88132c2ff1746ce53959fc264cb63",
+        "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb6300"
+      },
+      {
+        "nonceHex": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+        "port": 48248,
+        "identifiantPcHex": "101112131415161718191a1b1c1d1e1f",
+        "identifiantSondeHex": "1db562fb74f23bd0bed5e05bd47c377d",
+        "octetsHex": "54524b520202f0f1f2f3f4f5f6f7f8f9fafbfcfdfeffbc781db562fb74f23bd0bed5e05bd47c377d00"
+      }
+    ],
+    "etrangers": [
+      { "nom": "question de version 1", "octetsHex": "54524b520101000102030405060708090a0b0c0d0e0f" },
+      {
+        "nom": "réponse de version 1, identifiant du PC en clair",
+        "octetsHex": "54524b520102000102030405060708090a0b0c0d0e0fbc77101112131415161718191a1b1c1d1e1f00"
+      },
+      {
+        "nom": "réponse de version 1 qui porte le nom du PC",
+        "octetsHex": "54524b520102000102030405060708090a0b0c0d0e0fbc77101112131415161718191a1b1c1d1e1f114275726561752064e28099c3896c697365"
+      },
+      { "nom": "question d'un téléphone Gtracker (autre signature)", "octetsHex": "4754524b0201000102030405060708090a0b0c0d0e0f" },
+      {
+        "nom": "réponse d'un PC Gtracker (autre signature)",
+        "octetsHex": "4754524b0202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb6300"
+      },
+      { "nom": "autre version", "octetsHex": "54524b520301000102030405060708090a0b0c0d0e0f" },
+      { "nom": "question amputée", "octetsHex": "54524b520201000102030405060708090a0b0c0d0e" },
+      { "nom": "question allongée", "octetsHex": "54524b520201000102030405060708090a0b0c0d0e0f00" },
+      {
+        "nom": "réponse amputée de son dernier octet",
+        "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb63"
+      },
+      { "nom": "réponse allongée", "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb630000" },
+      { "nom": "réponse au port nul", "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0f00004ff88132c2ff1746ce53959fc264cb6300" },
+      {
+        "nom": "réponse à la bonne taille dont la longueur du nom n'est pas nulle",
+        "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb6301"
+      },
+      {
+        "nom": "réponse qui porte un nom",
+        "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb6306425552454155"
+      },
+      {
+        "nom": "réponse dont le nom est plus court qu'annoncé",
+        "octetsHex": "54524b520202000102030405060708090a0b0c0d0e0fbc774ff88132c2ff1746ce53959fc264cb630250"
+      }
+    ]
+  },
+  "spake2": {
+    "cas": [
+      {
+        "nom": "code 042917",
+        "code": "042917",
+        "empreinteHex": "794b52b389eb92d0301942216091a202ca1589ec7278e58715ab7f73a7226859",
+        "idA": "tracker-telephone",
+        "aad": "tracker-appairage-1",
+        "wHex": "27071df8eb1ea56de99fa367749c955d562a97553250afccef6ee756518b7791",
+        "xHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+        "yHex": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+        "partAHex": "042033be866b400002ea757073a31b7754a4ac1bc11f12f06c46d120ee582560719cafe7f1f4b8ffdcd5f55851f516b4bab04cddd5378f5621efbfd0813ddfbe03",
+        "partBHex": "046877e9f047255cf3bd5f2981aedd07efe8a66d16964cdd8abe04bf397fb0914d00e73063f2f7c0ee8637c286b331e3a4142542c9f9e8537bcf51aa50789a877e",
+        "kHex": "044fe243908f378aa1c2a69538822e6ed908c3225d8692575507c649901245150aaa8513bcd739d8100f64e283d32db26502af6ea9bcaa6bb5b58a6bf20f3228b4",
+        "confirmationAHex": "b93894f83ae443b927eaa354c5d9f08c36b8a46116bbdf22c1139ea071bac911",
+        "confirmationBHex": "1d28eae3be6480b3e4b5d741cc29977f3712ed643cfe098d09b5aa9d9beaae8f"
+      },
+      {
+        "nom": "code 999999",
+        "code": "999999",
+        "empreinteHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "idA": "tracker-telephone",
+        "aad": "tracker-appairage-1",
+        "wHex": "b5fce713e7e9e6f4d64daf147d8c4c820c138e5a19e7a04099ce8872413a52ab",
+        "xHex": "4142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60",
+        "yHex": "6162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80",
+        "partAHex": "046119d7b682fc7c7df160071e7f5a3037c969ed883736d982479adde54f54655ac43306a13f9ce6ce079534b726d5c981886b10ecf335da7af8d8852d35b7e057",
+        "partBHex": "0415c8b73daccfe5fa83094e8636c1fa2ce01396597ac0f8f073d50589b071c11bd0df82e980c53aebf22309c78f7fd2261f2aba906b91bd3a691932288b8a5f67",
+        "kHex": "044a418b195ee7fed6e737803ab53cb8750b71c09335a70b030c70921b221664b7976a38df2c904954c97812fff08c3f0a220900ef48cf01b43f860c1342be991b",
+        "confirmationAHex": "2be77277467632b8befc3606a30f406c468438b3484d33ec5fc945818259eff5",
+        "confirmationBHex": "61a18da4f78a8bc6e701b8915399a40df99efa59250dafdfdb1c0d916876cf37"
+      }
+    ]
+  }
+}

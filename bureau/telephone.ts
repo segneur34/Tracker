@@ -45,7 +45,7 @@
 import { copyFile, lstat, mkdir, open, readFile, readdir, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { copieSecurite, copieValable } from './copieSecurite'
-import { ErreurDisque, SUFFIXE_NEUF, SUFFIXE_REMPLACEMENT, avecEssais, codeDe, segmentAdmis } from './disque'
+import { ErreurDisque, SUFFIXE_NEUF, SUFFIXE_REMPLACEMENT, avecEssais, codeDe, segmentAdmis, segmentCopiable } from './disque'
 import { estOctets } from './memoire'
 import type { Gestionnaire } from './pont'
 import { enReponse } from './pont'
@@ -235,6 +235,64 @@ export function retraitAdmis(chemin: unknown, vers: unknown): DestinationCorbeil
   const [, jour, sous, nom] = segments
   if (sous !== chemin.split('/')[0] || !segmentAdmis(nom)) return null
   return { jour, sous, nom, relatif: `${jour}/${sous}/${nom}` }
+}
+
+// ---------- liaison sans fil : chemins réels et dépôt dans la corbeille du téléphone ----------
+
+/** Longueur au-delà de laquelle un chemin réel (listage complet) est refusé sans examen. */
+export const LONGUEUR_MAX_BRUT = 4096
+
+/**
+ * Vrai pour un chemin réel du dossier mémoire, tel que le rend le listage complet de la liaison sans fil
+ * (`listerTout`) : relatif, à toute profondeur, chaque segment copiable sur le disque de Windows (`segmentCopiable` :
+ * ni vide, ni `.` ou `..`, ni antislash, deux-points ou caractère de contrôle ; provisoires compris). C'est ce qu'une
+ * commande `lire` peut demander en plus des chemins listables (`cheminAdmis`) : la copie de sécurité relit ainsi
+ * tout ce qu'elle liste.
+ */
+export function cheminBrutAdmis(chemin: unknown): chemin is string {
+  if (typeof chemin !== 'string' || chemin.length === 0 || chemin.length > LONGUEUR_MAX_BRUT) return false
+  return chemin.split('/').every(segmentCopiable)
+}
+
+/**
+ * Dossier, à la racine de la mémoire du téléphone, où l'ordinateur dépose par la liaison sans fil ce qu'il retire
+ * de `sessions/` et d'`itineraires/` : la corbeille du téléphone, au format de celle du programme Windows
+ * (`TRASH_DIR` de `src/library/trash.ts`, tenu égal par un test). Seul endroit où ce nom est écrit : `deplacer`,
+ * `listerCorbeille` et leurs tests le lisent ici.
+ */
+export const DEPOT_TELEPHONE = 'corbeille'
+
+/** Plus longue identité dans le nom d'un sous-dossier de la corbeille (`IDENTITY_MAX` de `src/library/trash.ts`). */
+const IDENTITE_DEPOT_MAX = 80
+
+/** Nom d'un sous-dossier de la corbeille : instant sur 13 chiffres, tiret, identité, suffixe `-n` facultatif. */
+const NOM_DOSSIER_DEPOT = /^\d{13}-(.+?)(-\d+)?$/
+
+/**
+ * Vrai pour un sous-dossier de la corbeille tel que le programme Windows les nomme (`trashDirName`, reconnu par
+ * `isTrashDirName` de `src/library/trash.ts`, comparés par un test) : `<instant>-<identité>[-n]`, l'identité sans
+ * caractère refusé, blancs réduits, sans point ni espace finale, de 80 caractères au plus ; et le nom entier admis
+ * (`segmentAdmis`). Un dossier d'une autre forme ne serait pas adopté par la corbeille du téléphone.
+ */
+export function dossierDepotAdmis(nom: unknown): nom is string {
+  if (typeof nom !== 'string' || !segmentAdmis(nom)) return false
+  const m = NOM_DOSSIER_DEPOT.exec(nom)
+  if (m === null) return false
+  const identite = m[1]
+  const propre = identite.replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, IDENTITE_DEPOT_MAX)
+  return propre !== '' && propre === identite
+}
+
+/**
+ * Seule forme admise pour la destination `vers` d'un `deplacer` de `chemin` (liaison sans fil) :
+ * `corbeille/<sous-dossier>/<nom>` (`DEPOT_TELEPHONE`, `dossierDepotAdmis`), où `chemin` est retirable
+ * (`cheminRetirable` : un fichier posé dans `sessions/` ou `itineraires/`) et `<nom>` est son nom, inchangé : la
+ * corbeille garde les fichiers sous leurs noms d'origine.
+ */
+export function destinationCorbeilleAdmise(chemin: unknown, vers: unknown): boolean {
+  if (!cheminRetirable(chemin) || typeof vers !== 'string' || vers.length > LONGUEUR_MAX) return false
+  const segments = vers.split('/')
+  return segments.length === 3 && segments[0] === DEPOT_TELEPHONE && dossierDepotAdmis(segments[1]) && segments[2] === chemin.split('/')[1]
 }
 
 /** Erreur rendue pour un chemin hors des listes fermées. */
