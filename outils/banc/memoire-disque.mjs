@@ -31,13 +31,14 @@ if (!exe) {
   console.error('Usage : node memoire-disque.mjs <Tracker.exe> [<port>]');
   process.exit(1);
 }
-const PORT = Number(portArg ?? 9498);
+const PORT = Number(portArg ?? 9670); // port propre (exe-tous.mjs, SCRIPTS_EXE) : jamais celui d'un autre script ni de Gtracker
 const ORIGINE = 'https://tracker.localhost'; // `bureau/origine.ts`
 /** Marqueur d'une mémoire Tracker (`library/folderLayout.ts`, `MARKER_FILE`). */
 const FICHIER_MARQUEUR = 'tracker.json';
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const vivant = (pid) => spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], { encoding: 'utf8', windowsHide: true }).stdout.includes(` ${pid} `);
-const disparu = async (pid, ms) => { for (let t = 0; t < ms; t += 200) { if (!vivant(pid)) return true; await pause(200); } return !vivant(pid); };
+// Compté en vrai temps : `tasklist` prend lui-même 150 à 250 ms, un compte de tours doublait l'attente.
+const disparu = async (pid, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (!vivant(pid)) return true; await pause(200); } return !vivant(pid); };
 
 let echecs = 0;
 const check = (quoi, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${quoi}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) echecs++; };
@@ -75,8 +76,9 @@ async function lancer(profil, env = {}) {
   child.stdout.on('data', lire);
   child.stderr.on('data', lire);
   let ws = null;
-  for (let k = 0; k < 100 && !ws; k++) {
-    await pause(300);
+  // Interrogé toutes les 100 ms (30 s au plus) : la page est là en moins d'une seconde d'ordinaire.
+  for (let k = 0; k < 300 && !ws; k++) {
+    await pause(100);
     try { ws = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((p) => p.type === 'page')?.webSocketDebuggerUrl ?? null; } catch { /* pas prêt */ }
   }
   if (!ws) { spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }); throw new Error('le programme ne répond pas'); }
@@ -94,7 +96,7 @@ async function fermer(p) {
     spawnSync('taskkill', ['/T', '/F', '/PID', String(p.child.pid)], { stdio: 'ignore', windowsHide: true });
     await disparu(p.child.pid, 5000);
   }
-  await pause(500);
+  await pause(500); // attente fixe voulue : le même profil est souvent rouvert juste après, ses fichiers à peine relâchés
 }
 /** Lance, joue `essai`, ferme toujours (même sur erreur). */
 async function avecProgramme(profil, env, essai) {
@@ -111,6 +113,23 @@ async function avecProgramme(profil, env, essai) {
 }
 
 const texte = (b) => b.evaluate('document.body.innerText');
+/**
+ * Attend la page au repos (le minuteur de 800 ms des réécritures de fiches compris, `recordWrites.ts`) puis le dossier
+ * immobile (aucun fichier écrit depuis 300 ms : l'écriture passe par le pont, que la page ne voit pas), `plafond` ms au
+ * plus : l'ancienne attente fixe des écritures différées, au pire le temps d'avant.
+ */
+async function ecrituresFinies(b, dossier, plafond, quoi) {
+  const t0 = Date.now();
+  await b.settle({ max: plafond, label: quoi });
+  let vu = null;
+  let depuis = Date.now();
+  await b.waitFor(() => {
+    let e;
+    try { e = empreinte(dossier); } catch { depuis = Date.now(); return false; } // un fichier renommé pendant la lecture : il bouge encore
+    if (e !== vu) { vu = e; depuis = Date.now(); return false; }
+    return Date.now() - depuis >= 300;
+  }, { timeout: Math.max(0, plafond - (Date.now() - t0)), every: 100, label: `${quoi}, disque immobile` });
+}
 /** Attend que la page contienne `motif` ; rend le texte de la page. */
 const attendre = async (b, motif, quoi, timeout = 8000) => {
   await b.waitFor(`${motif}.test(document.body.innerText)`, { timeout, label: quoi });
@@ -157,7 +176,7 @@ try {
     await b.go('/voile', 5000);
     check('import du GPX synthétique', (await b.importGpx(gpxSynthetique(1, 'Disque un'), 'disque-un.gpx')) === 'ok');
     await b.waitFor(() => existsSync(join(propose, 'sessions')) && fiches(propose).length >= 1 && gpxs(propose).length >= 1, { timeout: 8000, label: 'fiche sur le disque' });
-    await b.wait(1500); // réécriture différée de la fiche
+    await ecrituresFinies(b, propose, 1500, 'réécriture différée de la fiche');
     await b.settle({ max: 2000 });
     sessionsLancement1 = await pageSessions(b);
   });
@@ -196,13 +215,13 @@ try {
     check('la carte dit que le dossier est introuvable, avec son chemin', t.includes(`Le dossier ${propose} est introuvable`), ligne(t, /introuvable/));
     check('« Rien n\'est recréé à sa place. » est dit', t.includes("Rien n'est recréé à sa place."));
     check('« Réessayer » et « Choisir un autre dossier » sont offerts', contient(t, 'Réessayer') && contient(t, 'Choisir un autre dossier'));
-    await b.wait(1500);
+    await b.wait(1500); // attente fixe voulue : le contrôle qui suit prouve une absence (rien n'est recréé)
     check('rien n\'est recréé : le dossier d\'origine n\'existe toujours pas', !existsSync(propose), (arbre(A.documents) ?? []).join(','));
     const racineDocuments = (arbre(A.documents) ?? []).filter((c) => !/\/./.test(c));
     check('Documents ne porte que le dossier renommé', JSON.stringify(racineDocuments) === JSON.stringify(['Tracker-renomme/']), JSON.stringify(racineDocuments));
     // « Réessayer » sans que le nom soit remis : toujours introuvable, toujours rien de recréé.
     await b.clickText('Réessayer');
-    await b.wait(1500);
+    await b.wait(1500); // attente fixe voulue : le contrôle qui suit prouve une absence (toujours rien de recréé)
     check('« Réessayer » nom absent : toujours introuvable et rien recréé', /introuvable/.test(await texte(b)) && !existsSync(propose));
     renameSync(renomme, propose);
     check('nom remis, clic « Réessayer »', (await b.clickText('Réessayer')) === 'ok');
@@ -260,8 +279,8 @@ try {
     writeFileSync(join(dossierSessions, 'notes-bis.txt.tracker-tmp'), 'seconde reprise');
     writeFileSync(join(dossierSessions, 'brouillon-bis.txt.tracker-new'), 'seconde ecriture');
     check('clic « Mettre à jour » (Réglages)', (await b.clickText('Mettre à jour')) === 'ok');
-    await b.waitFor(() => !temporaires(propose).length, { timeout: 8000, label: 'temporaires réparés' });
-    await b.wait(1000);
+    // Les deux réparations sont faites quand plus aucun temporaire ne reste et que le remplacement a repris son nom (un seul geste).
+    await b.waitFor(() => !temporaires(propose).length && existsSync(join(dossierSessions, 'notes-bis.txt')), { timeout: 8000, label: 'temporaires réparés' });
     await b.settle({ max: 3000 });
     const bis = arbre(propose) ?? [];
     check('« Mettre à jour » : le temporaire de remplacement déposé programme ouvert a repris son nom', bis.includes('sessions/notes-bis.txt') && readFileSync(join(dossierSessions, 'notes-bis.txt'), 'utf8') === 'seconde reprise', bis.filter((c) => /bis/.test(c)).join(','));
@@ -301,7 +320,7 @@ try {
     check('clic « Choisir un autre dossier »', (await b.clickText('Choisir un autre dossier')) === 'ok');
     const t = await attendre(b, /est un dossier de la mémoire Tracker/, 'refus');
     check('refus dit en clair (« est un dossier de la mémoire Tracker, pas la mémoire elle-même »)', /« sessions » est un dossier de la mémoire Tracker, pas la mémoire elle-même/.test(t), ligne(t, /dossier de la mémoire/));
-    await b.wait(1000);
+    await b.wait(1000); // attente fixe voulue : ce contrôle et ceux d'après la fermeture prouvent une absence (rien d'adopté ni d'écrit)
     check('la carte propose toujours un dossier (rien d\'adopté)', (await texte(b)).includes('Dossier proposé'));
   });
   check('rien n\'est écrit dans la mémoire désignée (arbre, tailles et heures inchangés)', empreinte(propose) === avantF);
@@ -338,7 +357,7 @@ try {
   /** Déplie la ligne « Corbeille : … » (si elle est repliée) et rend les lignes de la liste (texte de chacune). */
   const deplierCorbeille = async (b) => {
     await b.evaluate(`(() => { const t = document.querySelector('.trash-zone__toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); })()`);
-    await b.wait(300);
+    await b.waitFor(`document.querySelector('.trash-zone__toggle')?.getAttribute('aria-expanded') === 'true' && document.querySelectorAll('li.trash-zone__row').length > 0`, { timeout: 300, label: 'corbeille dépliée' });
     return b.evaluate(`[...document.querySelectorAll('li.trash-zone__row')].map((li) => li.innerText.replace(/\\n+/g, ' / '))`);
   };
   /** Clique, dans la ligne de la corbeille qui contient `contenu`, le bouton de texte `texte`. */
@@ -381,10 +400,10 @@ try {
     await b.go('/voile', 5000);
     check('import du premier GPX', (await b.importGpx(gpxSynthetique(3, 'Corbeille un'), 'corbeille-un.gpx')) === 'ok');
     await b.waitFor(() => existsSync(join(memG, 'sessions')) && fiches(memG).length >= 1 && gpxs(memG).length >= 1, { timeout: 8000, label: 'première fiche' });
-    await b.wait(1500);
+    await ecrituresFinies(b, memG, 1500, 'première fiche réécrite');
     check('import du second GPX', (await b.importGpx(gpxSynthetique(4, 'Corbeille deux'), 'corbeille-deux.gpx')) === 'ok');
     await b.waitFor(() => fiches(memG).length >= 2 && gpxs(memG).length >= 2, { timeout: 8000, label: 'seconde fiche' });
-    await b.wait(1500);
+    await ecrituresFinies(b, memG, 1500, 'seconde fiche réécrite');
     await b.settle({ max: 2000 });
     check('avant toute suppression : deux GPX, deux fiches, aucun dossier corbeille/ sur le disque', gpxs(memG).length === 2 && fiches(memG).length === 2 && !existsSync(corbeille), JSON.stringify(arbre(memG)));
     await ouvrirMemoire(b);
@@ -394,8 +413,8 @@ try {
     const avantGpx = gpxs(memG);
     const avantFiches = fiches(memG);
     await supprimerPremiereLigne(b, 'g1');
-    await b.waitFor(() => gpxs(memG).length === 1 && Boolean(indexG()?.entries?.length), { timeout: 10000, label: 'session mise à la corbeille' });
-    await b.wait(800);
+    // Tout le geste est fait : GPX et fiche partis, un sous-dossier, l'index écrit.
+    await b.waitFor(() => gpxs(memG).length === 1 && fiches(memG).length === 1 && sousDossiers().length === 1 && Boolean(indexG()?.entries?.length), { timeout: 10000, label: 'session mise à la corbeille' });
     const retiree = avantGpx.find((n) => !gpxs(memG).includes(n));
     premierNom = retiree ?? '';
     const ficheRetiree = avantFiches.find((n) => !fiches(memG).includes(n));
@@ -430,8 +449,9 @@ try {
     check('la liste dépliée montre le nom de la session, pas celui de son fichier', liste?.length === 1 && !liste[0].includes(retiree.replace(/\.gpx$/i, '')), JSON.stringify(liste));
     check('« Vider la corbeille » est offert', (await b.evaluate(`[...document.querySelectorAll('.trash-zone button')].some((x) => x.textContent.trim() === 'Vider la corbeille')`)) === true);
     check('clic « Restaurer »', (await b.clickText('Restaurer')) === 'ok');
-    await b.waitFor(() => gpxs(memG).length === 2 && sousDossiers().length === 0 && indexG()?.entries?.length === 0, { timeout: 10000, label: 'session restaurée' });
-    await b.wait(1000);
+    await b.waitFor(() => gpxs(memG).length === 2 && fiches(memG).length === 2 && sousDossiers().length === 0 && indexG()?.entries?.length === 0, { timeout: 10000, label: 'session restaurée' });
+    // Le compte rendu de la page, au plus 1 s comme avant (le contrôle dit l'échec).
+    await b.waitFor(`/revenue dans la mémoire|Restauration impossible/.test(document.body.innerText)`, { timeout: 1000, label: 'compte rendu de la restauration' });
     const tout = await texte(b);
     console.log(`  après « Restaurer » : ${ligne(tout, /revenue dans la mémoire|Restauration impossible/)}`);
     check('« Restaurer » : la session revient sous son nom (GPX identique octet pour octet, fiche présente)', gpxs(memG).includes(premierNom) && fiches(memG).includes(ficheRetiree) && octetsPremier !== null && gpxBytes(premierNom).equals(octetsPremier), `${gpxs(memG).join(',')} ${fiches(memG).join(',')}`);
@@ -447,8 +467,7 @@ try {
     await b.waitFor(() => gpxs(memG).length === 1 && indexG()?.entries?.length === 1, { timeout: 10000, label: 'première remise à la corbeille' });
     await b.wait(1100); // deux entrées de la même seconde garderaient le même instant : on les veut distinctes
     await supprimerPremiereLigne(b, 'g2b');
-    await b.waitFor(() => gpxs(memG).length === 0 && indexG()?.entries?.length === 2, { timeout: 10000, label: 'seconde mise à la corbeille' });
-    await b.wait(800);
+    await b.waitFor(() => gpxs(memG).length === 0 && fiches(memG).length === 0 && sousDossiers().length === 2 && indexG()?.entries?.length === 2, { timeout: 10000, label: 'seconde mise à la corbeille' });
     const dossiers2 = sousDossiers();
     check('g2 : deux sous-dossiers « <13 chiffres>-… », deux entrées, sessions/ sans GPX', dossiers2.length === 2 && dossiers2.every((d) => /^\d{13}-/.test(d)) && indexG().entries.length === 2 && gpxs(memG).length === 0, dossiers2.join(','));
     await ouvrirMemoire(b);
@@ -477,8 +496,7 @@ try {
     b.onMessage((m) => { if (m.method === 'Page.javascriptDialogOpening') fenetresG.push(m.params.message); });
     await b.go('/', 5000);
     await attendre(b, /session/, 'mémoire prête');
-    await b.waitFor(() => indexG()?.entries?.length === 1, { timeout: 12000, label: 'purge à l\'ouverture' });
-    await b.wait(800);
+    await b.waitFor(() => indexG()?.entries?.length === 1 && !(vieille && existsSync(join(corbeille, vieille.dir))), { timeout: 12000, label: 'purge à l\'ouverture' });
     const idx = indexG();
     check('relance : l\'entrée de 31 jours a disparu de l\'index', Boolean(vieille) && !idx.entries.some((e) => e.dir === vieille.dir), JSON.stringify(idx.entries.map((e) => e.dir)));
     check('relance : son sous-dossier a disparu du disque', Boolean(vieille) && !existsSync(join(corbeille, vieille.dir)), sousDossiers().join(','));
@@ -493,13 +511,13 @@ try {
     await b.go('/itineraires/liste', 5000);
     check('import d\'un itinéraire (« Importer un itinéraire »)', (await b.importGpx(gpxSynthetique(5, 'Parcours corbeille'), 'parcours-corbeille.gpx')) === 'ok');
     await b.waitFor(() => existsSync(join(memG, 'itineraires')) && readdirSync(join(memG, 'itineraires')).some((n) => n.endsWith('.json')) && readdirSync(join(memG, 'itineraires')).some((n) => n.endsWith('.gpx')), { timeout: 10000, label: 'itinéraire sur le disque' });
-    await b.wait(800);
+    await b.waitFor(`[...document.querySelectorAll('button[aria-label]')].some((x) => x.getAttribute('aria-label').startsWith("Plus d'actions sur "))`, { timeout: 800, label: 'ligne de l\'itinéraire' });
     const fichiersRoute = readdirSync(join(memG, 'itineraires')).sort();
     console.log(`  itineraires/ : ${fichiersRoute.join(', ')}`);
     await b.settle({ max: 1500 });
     const menu = await b.evaluate(`(() => { const m = [...document.querySelectorAll('button[aria-label]')].find((x) => x.getAttribute('aria-label').startsWith("Plus d'actions sur ")); if (!m) return 'menu absent'; m.click(); return 'ok'; })()`);
     check('« … » de la ligne de l\'itinéraire', menu === 'ok', menu);
-    await b.wait(150);
+    await b.waitFor(`[...document.querySelectorAll('.ui-more__panel button')].some((y) => y.textContent.trim() === 'Supprimer')`, { timeout: 150, label: 'menu de l\'itinéraire' });
     const sup = await b.evaluate(`(() => { const x = [...document.querySelectorAll('.ui-more__panel button')].find((y) => y.textContent.trim() === 'Supprimer'); if (!x) return 'absent'; x.click(); return 'ok'; })()`);
     check('« Supprimer » du menu de l\'itinéraire', sup === 'ok', sup);
     await b.waitFor(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Garder')`, { timeout: 4000, label: 'confirmation' });
@@ -507,8 +525,11 @@ try {
     console.log(`  boutons de confirmation : ${boutonsRoute}`);
     check('le bouton de confirmation dit « Mettre à la corbeille (30 jours) »', JSON.parse(boutonsRoute).includes('Mettre à la corbeille (30 jours)') && !JSON.parse(boutonsRoute).includes('Supprimer définitivement'), boutonsRoute);
     check('clic « Mettre à la corbeille (30 jours) »', (await b.clickText('Mettre à la corbeille (30 jours)')) === 'ok');
-    await b.waitFor(() => readdirSync(join(memG, 'itineraires')).length === 0 && indexG()?.entries?.length === 2, { timeout: 10000, label: 'itinéraire à la corbeille' });
-    await b.wait(800);
+    await b.waitFor(() => {
+      if (readdirSync(join(memG, 'itineraires')).length !== 0 || indexG()?.entries?.length !== 2) return false;
+      const e = indexG().entries.find((x) => x.kind === 'itineraire');
+      return Boolean(e) && existsSync(join(corbeille, e.dir)) && readdirSync(join(corbeille, e.dir)).length === fichiersRoute.length;
+    }, { timeout: 10000, label: 'itinéraire à la corbeille' });
     const idxR = indexG();
     const eR = idxR.entries.find((e) => e.kind === 'itineraire');
     console.log(`disque (${corbeille}) :\n  ${(arbre(corbeille) ?? []).join('\n  ')}`);
@@ -525,25 +546,25 @@ try {
 
     // -- « Supprimer définitivement » de l'itinéraire : confirmé dans la page.
     check('« Supprimer définitivement » de l\'itinéraire', (await cliquerDansLigne(b, 'itinéraire supprimé le', 'Supprimer définitivement')) === 'ok');
-    await b.wait(300);
+    await b.wait(300); // attente fixe voulue : le contrôle qui suit prouve aussi une absence (rien n'est encore effacé)
     const confirmation = await b.evaluate(`[...document.querySelectorAll('li.trash-zone__row')].find((x) => x.textContent.includes('itinéraire supprimé le'))?.innerText.replace(/\\n+/g, ' / ') ?? null`);
     console.log(`  ligne en attente de confirmation : ${JSON.stringify(confirmation)}`);
     check('la ligne demande confirmation (« Supprimer définitivement » et « Garder »), rien n\'est encore effacé', /Garder/i.test(confirmation ?? '') && indexG().entries.length === 2, JSON.stringify(confirmation));
     check('confirmation « Supprimer définitivement »', (await cliquerDansLigne(b, 'itinéraire supprimé le', 'Supprimer définitivement')) === 'ok');
-    await b.waitFor(() => indexG()?.entries?.length === 1, { timeout: 10000, label: 'itinéraire supprimé définitivement' });
-    await b.wait(800);
+    await b.waitFor(() => indexG()?.entries?.length === 1 && !existsSync(join(corbeille, eR?.dir ?? '-')), { timeout: 10000, label: 'itinéraire supprimé définitivement' });
     check('l\'entrée de l\'itinéraire et son sous-dossier ont disparu, la session reste', !existsSync(join(corbeille, eR.dir)) && indexG().entries.length === 1 && indexG().entries[0].kind === 'session', JSON.stringify(indexG().entries.map((e) => e.kind)));
 
     // -- « Vider la corbeille » : confirmé dans la page.
     await deplierCorbeille(b);
     check('« Vider la corbeille »', (await b.clickText('Vider la corbeille')) === 'ok');
-    await b.wait(300);
+    await b.wait(300); // attente fixe voulue : le contrôle qui suit prouve aussi une absence (rien n'est encore effacé)
     const question = await b.evaluate(`document.querySelector('.trash-zone__confirm')?.innerText.replace(/\\n+/g, ' / ') ?? null`);
     console.log(`  question : ${JSON.stringify(question)}`);
     check('la question dans la page dit « Vider la corbeille ? … sans retour possible », rien n\'est encore effacé', /Vider la corbeille \?/.test(question ?? '') && /sans retour possible/.test(question ?? '') && indexG().entries.length === 1, JSON.stringify(question));
     check('confirmation « Vider la corbeille »', (await b.clickText('Vider la corbeille', '.trash-zone__confirm button')) === 'ok');
-    await b.waitFor(() => indexG()?.entries?.length === 0, { timeout: 10000, label: 'corbeille vidée' });
-    await b.wait(800);
+    // Index vide, sous-dossiers d'entrée partis, et la page l'a dit (au plus 800 ms, l'ancienne attente).
+    await b.waitFor(() => indexG()?.entries?.length === 0 && sousDossiers().every((d) => !/^\d{13}-/.test(d)), { timeout: 10000, label: 'corbeille vidée' });
+    await b.waitFor(`/Corbeille vidée\\./.test(document.body.innerText) && !document.querySelector('.trash-zone__toggle')`, { timeout: 800, label: 'page après le vidage' });
     check('« Vider la corbeille » : l\'index est vide, plus aucun sous-dossier d\'entrée', indexG().entries.length === 0 && sousDossiers().every((d) => !/^\d{13}-/.test(d)), `${sousDossiers().join(',')}`);
     check('« Vider la corbeille » : le dossier posé à la main reste, fichier compris', existsSync(join(corbeille, '2024-vacances', 'photo.txt')), sousDossiers().join(','));
     const apres = await texte(b);
@@ -558,7 +579,7 @@ try {
 } finally {
   // Un programme resté ouvert par une erreur : seuls ceux que ce script a lancés sont tués.
   for (const pid of lances) if (vivant(pid)) spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
-  await pause(800);
+  await pause(800); // attente fixe voulue : les programmes tués relâchent leurs fichiers avant l'effacement
   rmSync(RACINE, { recursive: true, force: true, maxRetries: 8, retryDelay: 400 });
 }
 

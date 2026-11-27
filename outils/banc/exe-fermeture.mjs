@@ -27,11 +27,15 @@ if (!exe) {
   console.error('Usage : node exe-fermeture.mjs <Tracker.exe> [<port>]');
   process.exit(1);
 }
-const PORT = Number(portArg ?? 9497);
+const PORT = Number(portArg ?? 9680); // port propre (exe-tous.mjs, SCRIPTS_EXE) : jamais celui d'un autre script ni de Gtracker
 const ORIGINE = 'https://tracker.localhost'; // `bureau/origine.ts`
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const vivant = (pid) => spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], { encoding: 'utf8', windowsHide: true }).stdout.includes(` ${pid} `);
-/** Attend jusqu'à `ms` que le processus ait disparu. */
+/**
+ * Attend que le processus ait disparu, `ms` tours de 200 ms comptés sans le `tasklist` de chaque tour (soit davantage en
+ * vrai temps). Laissé tel quel exprès, contrairement aux autres scripts du programme (lot 250-0) : les 8 000 de
+ * « le programme se ferme » sont le seuil d'un contrôle, qu'un compte à l'horloge resserrerait.
+ */
 const disparu = async (pid, ms) => { for (let t = 0; t < ms; t += 200) { if (!vivant(pid)) return true; await pause(200); } return !vivant(pid); };
 
 let echecs = 0;
@@ -54,14 +58,19 @@ async function lancerProgramme(quitter, montrer, reprise = null) {
   const lire = (d) => { for (const l of String(d).split(/\r?\n/)) if (l.trim()) journal.push(l.trim()); };
   child.stdout.on('data', lire);
   child.stderr.on('data', lire);
+  // Sorties du processus fermées : tout son journal est lu (la dernière ligne arrive après la fin du processus).
+  const fini = new Promise((r) => child.on('close', r));
   let ws = null;
-  for (let k = 0; k < 100 && !ws; k++) {
-    await pause(300);
+  // Interrogé toutes les 100 ms (30 s au plus) : la page est là en moins d'une seconde d'ordinaire.
+  for (let k = 0; k < 300 && !ws; k++) {
+    await pause(100);
     try { ws = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((p) => p.type === 'page')?.webSocketDebuggerUrl ?? null; } catch { /* pas prêt */ }
   }
   if (!ws) throw new Error('le programme ne répond pas');
-  return { child, journal, ws, profil };
+  return { child, journal, ws, profil, fini };
 }
+/** Attend la fin du journal d'un processus fermé, au plus `ms` (l'ancienne attente fixe). */
+const journalComplet = (p, ms = 1000) => Promise.race([p.fini, pause(ms)]);
 const nettoyer = async ({ child, profil }) => {
   spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
   await disparu(child.pid, 5000);
@@ -72,7 +81,7 @@ const fermerWindows = (pid) => spawnSync('taskkill', ['/PID', String(pid)], { en
 
 /** Importe une session de voile, ouvre son analyse, saisit un vent : un brouillon attend (barre « Enregistrer la session »). */
 async function faireUnBrouillon(b) {
-  const { evaluate, waitFor, wait, blockNetwork, importGpx, records, send, mouse } = b;
+  const { evaluate, waitFor, blockNetwork, importGpx, records, send, mouse } = b;
   await blockNetwork();
   // Navigation interne à l'application : un chargement de document ferait apparaître la seconde fenêtre cachée de
   // Chromium, et la demande de fermeture n'atteindrait plus la fenêtre cachée du mode d'essai (voir l'en-tête).
@@ -81,17 +90,19 @@ async function faireUnBrouillon(b) {
   await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 8000, label: 'champ' });
   await importGpx(traceDroite({ debutMs: Date.UTC(2026, 9, 1, 7, 0, 0), secondes: 600, vitesse: 4, type: 'wingfoil', nom: 'Fermeture' }), 'fermeture.gpx');
   const fiche = await waitFor(async () => (await records())?.[0], { timeout: 6000, label: 'fiche' });
-  await wait(1500);
+  // Réécriture différée de la fiche (minuteur court, compté par `settle`) : le script de page est posé à l'attache (`connect`).
+  await b.settle({ max: 1500, label: 'fiche réécrite' });
   await entrer(`/voile/analyse?session=${encodeURIComponent(fiche?.gpx ?? '')}`);
   await waitFor(`Boolean([...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Régler'))`, { timeout: 15000, label: 'Régler' });
   await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Régler')?.click()`);
-  await wait(800);
+  await waitFor(`Boolean(document.querySelector('input[aria-label="Vent en degrés"]'))`, { timeout: 800, label: 'champ du vent' });
   await evaluate(`(() => { const el = document.querySelector('input[aria-label="Vent en degrés"]'); if (!el) return 'absent'; el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '123'); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: String.fromCharCode(13) });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  await wait(800);
+  // Le vent pris : le brouillon montre sa barre (au plus 800 ms, l'ancienne attente).
+  await waitFor(`Boolean(document.querySelector('.ui-savebar'))`, { timeout: 800, label: 'vent pris' });
   await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Terminé')?.click()`);
-  await wait(500);
+  await waitFor(`![...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Terminé')`, { timeout: 500, label: 'réglage refermé' });
   const barre = await waitFor(`Boolean(document.querySelector('.ui-savebar'))`, { timeout: 4000, label: 'barre' });
   // Chromium ne retient la fermeture (`beforeunload`) que si l'utilisateur a agi sur la page : un vrai clic, par le protocole.
   const coin = await evaluate(`(() => { const r = document.querySelector('.ui-savebar')?.getBoundingClientRect(); return r ? { x: r.left + 3, y: r.top + 3 } : null; })()`);
@@ -111,9 +122,10 @@ async function essai(titre, quitter, avecBrouillon, rechargement = false) {
   process.env.BANC_WS = p.ws;
   const b = await connect({ port: PORT, base: ORIGINE, width: 1400, height: 1000 });
   try {
-    if (rechargement) { await b.wait(1500); check('la page s\'est rechargée', await recharger(b)); }
+    // Page au repos (au plus 1,5 s, l'ancienne attente) : le script de page est posé à l'attache (`connect`), `settle` sert.
+    if (rechargement) { await b.settle({ max: 1500, label: 'page ouverte' }); check('la page s\'est rechargée', await recharger(b)); }
     if (avecBrouillon) check('un brouillon attend (barre « Enregistrer la session »)', await faireUnBrouillon(b));
-    else { await b.wait(1500); check('page ouverte, sans brouillon', await b.evaluate(`document.body.innerText.length > 20 && !document.querySelector('.ui-savebar')`)); }
+    else { await b.settle({ max: 1500, label: 'page ouverte' }); check('page ouverte, sans brouillon', await b.evaluate(`document.body.innerText.length > 20 && !document.querySelector('.ui-savebar')`)); }
     check('le programme tourne avant la fermeture', vivant(p.child.pid));
     const k = fermerWindows(p.child.pid);
     console.log(`demande de fermeture : ${k.status === 0 ? 'envoyée' : `refusée (${String(k.stdout).trim()} ${String(k.stderr).trim()})`}`);
@@ -140,6 +152,8 @@ async function sansBrouillon(titre, rechargement) {
 async function rester(titre, rechargement) {
   const r = await essai(titre, 'non', true, rechargement);
   if (!r) return;
+  // Trois secondes pleines après la demande de fermeture, sans raccourci : le contrôle qui suit prouve une absence (la
+  // fenêtre ne se ferme pas), et une fermeture fautive, tardive, ne se verrait pas dans une attente plus courte.
   await pause(3000);
   check('la fenêtre reste : le programme tourne encore', vivant(r.p.child.pid));
   check('la page répond encore et garde son brouillon', (await r.b.evaluate(`Boolean(document.querySelector('.ui-savebar'))`)) === true);
@@ -152,7 +166,7 @@ async function quitter(titre, rechargement) {
   const r = await essai(titre, 'oui', true, rechargement);
   if (!r) return;
   check('« Quitter » : le programme se ferme', await disparu(r.p.child.pid, 8000));
-  await pause(1000); // le journal de la sortie arrive après la fin du processus
+  await journalComplet(r.p); // le journal de la sortie arrive après la fin du processus
   check('le journal dit que la question a été posée (quitter)', r.p.journal.some((l) => /fermeture retenue par la page : quitter/.test(l)), lignesFermeture(r.p));
   try { await r.b.close(); } catch { /* page déjà fermée */ }
   await nettoyer(r.p);
@@ -171,20 +185,20 @@ async function ecrituresVidees() {
   const b = await connect({ port: PORT, base: ORIGINE, width: 1400, height: 1000 });
   let ferme = false;
   try {
-    const { evaluate, waitFor, wait, blockNetwork, importGpx, records } = b;
+    const { evaluate, waitFor, blockNetwork, importGpx, records } = b;
     await blockNetwork();
     const entrer = (adresse) => evaluate(`(() => { history.pushState({}, '', ${JSON.stringify(adresse)}); dispatchEvent(new PopStateEvent('popstate')); return 'ok'; })()`);
     await entrer('/voile');
     await waitFor(`Boolean(document.querySelector('input[type=file][accept*=".gpx"]'))`, { timeout: 8000, label: 'champ' });
     await importGpx(traceDroite({ debutMs: Date.UTC(2026, 9, 1, 7, 0, 0), secondes: 600, vitesse: 4, type: 'wingfoil', nom: 'Vidage' }), 'vidage.gpx');
     const fiche = await waitFor(async () => (await records())?.[0], { timeout: 6000, label: 'fiche' });
-    await wait(1500);
+    await b.settle({ max: 1500, label: 'fiche réécrite' }); // réécriture différée de la fiche (minuteur court)
     await entrer(`/voile/analyse?session=${encodeURIComponent(fiche?.gpx ?? '')}`);
     await waitFor(`Boolean([...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer'))`, { timeout: 15000, label: 'Renommer' });
     await b.settle({ max: 4000 });
     for (let k = 0; k < 3 && !(await evaluate(`Boolean(document.querySelector('input[aria-label="Nom de la session"]'))`)); k++) {
       await evaluate(`[...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer')?.click()`);
-      await wait(700);
+      await waitFor(`Boolean(document.querySelector('input[aria-label="Nom de la session"]'))`, { timeout: 700, label: 'champ du nom' });
     }
     await waitFor(`Boolean(document.querySelector('input[aria-label="Nom de la session"]'))`, { timeout: 4000, label: 'champ du nom' });
     check('la fiche n\'a pas encore de nom avant la saisie', !(await records())?.[0]?.name);
@@ -199,7 +213,7 @@ async function ecrituresVidees() {
     console.log(`fermeture en ${duree} ms`);
     check('la croix ferme le programme', ferme);
     check('la fermeture ne dépasse pas le plafond de 5 s du vidage', ferme && duree < 6500, `${duree} ms`);
-    await pause(1000); // le journal de la sortie arrive après la fin du processus
+    await journalComplet(p); // le journal de la sortie arrive après la fin du processus
     check('le journal dit « écritures vidées »', p.journal.some((l) => /écritures vidées/.test(l)), lignesFermeture(p) + ' | ' + p.journal.filter((l) => /vidage|écritures/.test(l)).join(' | '));
     check('le journal ne dit pas « écritures non confirmées »', !p.journal.some((l) => /écritures non confirmées/.test(l)));
     const apres = (await records())?.[0];

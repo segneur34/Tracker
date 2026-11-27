@@ -17,7 +17,7 @@
 // `Documents/Tracker-essai-corbeille` du téléphone).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
@@ -25,7 +25,7 @@ import { traceDroite } from './lib/traces.mjs';
 
 const [exe, portArg] = process.argv.slice(2);
 if (!exe) { console.error('Usage : node exe-synchroniser-essai.mjs <Tracker.exe> [<port>]'); process.exit(1); }
-const PORT = Number(portArg ?? 9497);
+const PORT = Number(portArg ?? 9640); // port réservé (exe-tous.mjs, PORTS_RESERVES) : ce script n'entre jamais dans le lanceur
 const ORIGINE = 'https://tracker.localhost';
 const ADB = process.env.ADB ?? join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk', 'platform-tools', 'adb.exe');
 const VRAI = '/sdcard/Documents/Tracker';
@@ -34,6 +34,9 @@ const CORBEILLE = '/sdcard/Documents/Tracker-essai-corbeille';
 const ITINERAIRES = ['Itinéraire du 22 11 2026', 'Itinéraire du 26 09 2026']; // lus sur le vrai dossier : accent et espaces
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const vivant = (pid) => spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], { encoding: 'utf8', windowsHide: true }).stdout.includes(` ${pid} `);
+// Compté en vrai temps : `tasklist` prend lui-même 150 à 250 ms, un compte de tours doublait l'attente.
+const disparu = async (pid, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (!vivant(pid)) return true; await pause(200); } return !vivant(pid); };
 let echecs = 0;
 const check = (quoi, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${quoi}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) echecs++; };
 const adb = (args) => spawnSync(ADB, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
@@ -48,6 +51,14 @@ const RACINE = mkdtempSync(join(tmpdir(), 'trk-sync-essai-'));
 const dossier = (nom) => { const d = join(RACINE, nom); mkdirSync(d, { recursive: true }); return d; };
 const gpxDe = (memoire) => (existsSync(join(memoire, 'sessions')) ? readdirSync(join(memoire, 'sessions')).filter((n) => n.endsWith('.gpx')).sort() : []);
 const fichesDe = (memoire) => (existsSync(join(memoire, 'sessions')) ? readdirSync(join(memoire, 'sessions')).filter((n) => n.endsWith('.json')).sort() : []);
+/** Fichiers d'un dossier de l'ordinateur avec leur taille et leur heure : change si quoi que ce soit est écrit. */
+const empreinteLocale = (racine) => {
+  if (!existsSync(racine)) return '';
+  const sortie = [];
+  const voir = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const c = join(d, e.name); if (e.isDirectory()) voir(c); else { const st = statSync(c); sortie.push(`${c}:${st.size}:${st.mtimeMs}`); } } };
+  voir(racine);
+  return sortie.sort().join('|');
+};
 const corbeilleDe = (memoire) => { try { return JSON.parse(readFileSync(join(memoire, 'corbeille', 'corbeille.json'), 'utf8')).entries ?? []; } catch { return []; } };
 
 const lances = new Set();
@@ -64,8 +75,9 @@ async function lancer(profil, memoire, env = {}) {
   child.stdout.on('data', lire);
   child.stderr.on('data', lire);
   let ws = null;
-  for (let k = 0; k < 100 && !ws; k++) {
-    await pause(300);
+  // Interrogé toutes les 100 ms (30 s au plus) : la page est là en moins d'une seconde d'ordinaire.
+  for (let k = 0; k < 300 && !ws; k++) {
+    await pause(100);
     try { ws = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((p) => p.type === 'page')?.webSocketDebuggerUrl ?? null; } catch { /* pas prêt */ }
   }
   if (!ws) { spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }); throw new Error(`le programme ne répond pas : ${journal.slice(-5).join(' | ')}`); }
@@ -74,12 +86,15 @@ async function lancer(profil, memoire, env = {}) {
   await b.blockNetwork();
   return { child, journal, b };
 }
+/** Ferme le programme, de force s'il le faut ; attend sa disparition (au lieu de 3 s puis 1 s fixes). */
 async function fermer(p) {
   try { await p.b.close(); } catch { /* déjà fermée */ }
   spawnSync('taskkill', ['/PID', String(p.child.pid)], { stdio: 'ignore', windowsHide: true });
-  await pause(3000);
-  spawnSync('taskkill', ['/T', '/F', '/PID', String(p.child.pid)], { stdio: 'ignore', windowsHide: true });
-  await pause(1000);
+  if (!(await disparu(p.child.pid, 6000))) {
+    spawnSync('taskkill', ['/T', '/F', '/PID', String(p.child.pid)], { stdio: 'ignore', windowsHide: true });
+    await disparu(p.child.pid, 5000);
+  }
+  await pause(500); // attente fixe voulue : le même profil est rouvert juste après, ses fichiers à peine relâchés
 }
 async function avecProgramme(profil, memoire, env, quoi, essai) {
   let p = null;
@@ -118,22 +133,50 @@ async function reglages(b) {
   await b.go('/parametres', 5000);
   await b.waitFor(`Boolean(document.querySelector(${JSON.stringify(BOUTON)}))`, { timeout: 10000, label: 'bouton Synchroniser' });
 }
+/**
+ * Marque la rangée de boutons montrée avant un clic : `attendre` ne prend que celle d'après, jamais l'ancienne (un résultat
+ * neuf, pas un texte « différent », qui peut rester le même). Entre deux, l'étape en cours n'a pas de rangée de boutons.
+ */
+const marquer = (b) => b.evaluate(`(() => { const r = document.querySelector('${PANNEAU} .phone-sync__actions'); if (r) r.dataset.bancAncien = '1'; return true; })()`);
 async function attendre(b, quoi) {
-  await b.waitFor(`[...document.querySelectorAll('${PANNEAU} .phone-sync__actions button')].some((x) => ['Annuler', 'Fermer'].includes(x.textContent.trim()))`, { timeout: 180000, label: quoi });
-  await b.wait(300);
+  await b.waitFor(`[...document.querySelectorAll('${PANNEAU} .phone-sync__actions:not([data-banc-ancien]) button')].some((x) => ['Annuler', 'Fermer'].includes(x.textContent.trim()))`, { timeout: 180000, label: quoi });
+  await b.settle({ max: 300, label: `${quoi}, relevé` }); // le panneau fini de dessiner (l'ancienne attente fixe pour plafond)
   const r = await releve(b);
   montrer(quoi, r);
   return r;
 }
 async function synchroniser(b, quoi) {
+  await marquer(b);
   check(`${quoi} : clic sur « Synchroniser avec le téléphone »`, (await b.click(BOUTON)) === 'ok');
   return attendre(b, `${quoi}, aperçu`);
 }
 const repondre = async (b, texte, quoi) => {
+  await marquer(b);
   check(`${quoi} : clic sur « ${texte} »`, (await b.clickText(texte, '.phone-sync__actions button')) === 'ok');
   return attendre(b, quoi);
 };
-const fermerPanneau = async (b) => { await b.clickText('Fermer', '.phone-sync__actions button'); await b.wait(300); };
+const fermerPanneau = async (b) => {
+  await b.clickText('Fermer', '.phone-sync__actions button');
+  await b.waitFor(`!document.querySelector(${JSON.stringify(PANNEAU)})`, { timeout: 300, label: 'panneau refermé' });
+};
+/**
+ * Attend la page au repos (le minuteur de 800 ms des réécritures de fiches compris, `recordWrites.ts`) puis les dossiers
+ * de l'ordinateur immobiles (aucun fichier écrit depuis 300 ms), `plafond` ms au plus : l'ancienne attente fixe des
+ * écritures différées, au pire le temps d'avant. Le téléphone n'est pas sondé (un `find` par le câble à chaque tour) :
+ * ses écritures sont finies quand le compte rendu s'affiche.
+ */
+async function ecrituresFinies(b, dossiers, plafond, quoi) {
+  const t0 = Date.now();
+  await b.settle({ max: plafond, label: quoi });
+  let vu = null;
+  let depuis = Date.now();
+  await b.waitFor(() => {
+    let e;
+    try { e = dossiers.map(empreinteLocale).join('#'); } catch { depuis = Date.now(); return false; } // un fichier renommé pendant la lecture : il bouge encore
+    if (e !== vu) { vu = e; depuis = Date.now(); return false; }
+    return Date.now() - depuis >= 300;
+  }, { timeout: Math.max(0, plafond - (Date.now() - t0)), every: 100, label: `${quoi}, disque immobile` });
+}
 
 const gpxSynthetique = (jour) => traceDroite({ debutMs: Date.UTC(2026, 9, jour, 8, 0, 0), secondes: 300, vitesse: 4, type: 'wingfoil', nom: `Session ${jour}` });
 async function preparer(memoire, jours, quoi) {
@@ -141,7 +184,7 @@ async function preparer(memoire, jours, quoi) {
     await b.go('/voile', 5000);
     for (const j of jours) check(`préparation ${quoi} : import de la session du ${j}`, (await b.importGpx(gpxSynthetique(j), `s${j}.gpx`)) === 'ok');
     await b.waitFor(() => gpxDe(memoire).length >= jours.length && fichesDe(memoire).length >= jours.length, { timeout: 20000, label: 'fiches' });
-    await b.wait(2000);
+    await ecrituresFinies(b, [memoire], 2000, `préparation ${quoi}`);
   });
 }
 
@@ -195,12 +238,12 @@ try {
     check('a. l’aperçu n’a rien écrit sur le téléphone (dossier d’essai)', empreinte(ESSAI) === essaiAvant);
     check('a. l’aperçu annonce la copie de sécurité', (r?.phrases ?? []).some((x) => x.includes('copie de sécurité')), JSON.stringify(r?.phrases));
     check('a. « Annuler »', (await b.clickText('Annuler', '.phone-sync__actions button')) === 'ok');
-    await b.wait(400);
+    await b.wait(400); // attente fixe voulue : le contrôle qui suit prouve aussi une absence (rien d'écrit sur le téléphone)
     check('a. « Annuler » referme sans rien écrire', (await releve(b)) === null && empreinte(ESSAI) === essaiAvant);
     r = await synchroniser(b, 'a, de nouveau');
     r = await repondre(b, 'Synchroniser sans rien supprimer', 'a. compte rendu');
     check('a. titre « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
-    await b.wait(1500);
+    await ecrituresFinies(b, [MC], 1500, 'a. après la synchronisation');
     const tel = liste(ESSAI);
     console.log(`  téléphone après : ${tel.join(' ; ')}`);
     check('a. cinq sessions entières sur le téléphone', tel.filter((c) => /^sessions\/.*\.gpx$/.test(c)).length === 5 && tel.filter((c) => /^sessions\/.*\.json$/.test(c)).length === 5);
@@ -235,7 +278,7 @@ try {
     if (retirer) {
       r = await repondre(b, retirer, 'b. compte rendu');
       check('b. titre « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
-      await b.wait(1500);
+      await ecrituresFinies(b, [MC], 1500, 'b. après les retraits');
       const tel = liste(ESSAI);
       console.log(`  téléphone après : ${tel.join(' ; ')}`);
       console.log(`  corbeille du téléphone : ${liste(CORBEILLE).join(' ; ')}`);
@@ -254,7 +297,7 @@ try {
   check(`script interrompu : ${e.message}`, false);
 } finally {
   for (const pid of lances) spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
-  await pause(500);
+  await pause(500); // attente fixe voulue : les programmes tués relâchent leurs fichiers avant l'effacement
   try { rmSync(RACINE, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* gardé */ }
 }
 console.log(`\n${echecs === 0 ? 'tout est ok' : `${echecs} échec(s)`}`);

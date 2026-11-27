@@ -201,7 +201,11 @@ const openSocket = async (url) => {
  */
 // `lieux` : laisser partir les requêtes de lieu des sessions (lot 215), que le banc fait échouer d'ordinaire (`LIEUX_SCRIPT`).
 // `horlogeVariable` (lot 235) : horloge dont le facteur se lit et se change en route par `window.__bancFacteur` (`lib/horloge.mjs`), même sans `TEMPS` ; hors cette option, rien ne change.
-export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1', lieux = false, horlogeVariable = false } = {}) => {
+// `ignorerWorkers` (lot 250-0, repris du lot 535 de Gtracker) : vrai sur une page à laquelle on s'attache (`BANC_WS`, le
+// programme Windows), faux sur un onglet ouvert ici (le banc du navigateur) : `settle` n'y attend plus le script principal
+// d'un worker, dont la fin ne lui parvient jamais. Sur une page à laquelle on s'attache, le script de page est aussi posé
+// dans le document déjà chargé.
+export const connect = async ({ port, base = BASE, width, height, shotDir, logEntries = false, isolated = process.env.BANC_CONTEXTE === '1', lieux = false, horlogeVariable = false, ignorerWorkers = Boolean(process.env.BANC_WS) } = {}) => {
   const startedAt = Date.now();
   const ownTab = !process.env.BANC_WS;
   if (ownTab && !port) throw new Error('connect : port Chrome manquant');
@@ -259,6 +263,10 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
         }
         break;
       case 'Network.requestWillBeSent':
+        // Script principal d'un worker (`new Worker`, le calcul de fond de `library/trackWorkerClient.ts`) : sans `loaderId`,
+        // sa fin n'est annoncée qu'à la session du worker, où le banc ne s'attache pas. Compté, il retiendrait `settle`
+        // jusqu'à son plafond tant que le document vit (2 à 3 s à chaque visite d'une bibliothèque, mesuré le 27/11).
+        if (ignorerWorkers && !p.loaderId && p.type === 'Script') break;
         if (WAITED_TYPES.has(p.type)) requests.set(p.requestId, { loaderId: p.loaderId, url: p.request.url });
         break;
       case 'Network.loadingFinished':
@@ -296,6 +304,12 @@ export const connect = async ({ port, base = BASE, width, height, shotDir, logEn
     }
     return r?.result?.value;
   };
+
+  // Page déjà chargée, à laquelle on s'attache (le programme Windows) : son document n'a pas le script de page, posé pour
+  // les documents à venir seulement, et tout `settle` irait à son plafond (« pas de script de page »). Il y est posé
+  // maintenant (sans effet s'il y est déjà) ; il ne voit ni les fetch ni les minuteurs lancés avant lui. L'horloge
+  // accélérée, elle, ne s'y pose pas : elle ne vaut que pour les documents à venir, comme avant.
+  if (!ownTab) await evaluate(PAGE_SCRIPT);
 
   // Le premier contexte audio du navigateur s'ouvre en 0,6 s de vrai temps (les suivants en 15 ms, mesuré le 29/10) : sous l'horloge
   // accélérée, le premier son de l'application figerait la page plusieurs secondes (×TEMPS). Il est ouvert ici, une fois par onglet.
