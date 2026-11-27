@@ -3,6 +3,7 @@ import {
   TRASH_KEEP_MS, deletesToTrash, expiredTrashEntries, trashDeleteButton, sessionDiscardText, isTrashDirName, orphanTrashDirs, parseTrashIndex, reusableRouteEntry, reusableTrashEntry,
   groupedTrashEntries, routeRestorePlan, serializeTrashIndex, sessionRestorePlan, sessionTrashEntries, trashCounts, trashDirName, trashGroupOf,
   shownTrashEntries, trashSummaryText, withoutTrashEntries, isTrashPath, rebuiltEntryRecord, rebuiltTrashEntry, type TrashEntry,
+  DEPOSIT_FILE, depositAdoption, depositEntry, depositMissing, parseDeposit, returnedTrashGroups, serializeDeposit, type TrashDeposit,
 } from './trash';
 
 const NOW = Date.UTC(2026, 10, 20, 12);
@@ -71,6 +72,8 @@ describe('sous-dossiers', () => {
       { name: 'corbeille.json', kind: 'file' as const },
     ];
     expect(orphanTrashDirs([session(`${NOW}-100`, 100)], listing)).toEqual([`${NOW}-200`]);
+    // Un dépôt de l'ordinateur pas encore adopté n'est jamais un reste.
+    expect(orphanTrashDirs([session(`${NOW}-100`, 100)], listing, [`${NOW}-200`])).toEqual([]);
   });
 });
 
@@ -165,13 +168,14 @@ describe('restauration', () => {
 });
 
 describe('confirmations', () => {
-  it('la corbeille n\'est promise que pour le dossier du disque en écriture ; mémoire du navigateur du programme Windows : suppression définitive', () => {
+  it('la corbeille n\'est promise que pour le dossier du disque et celui du téléphone, en écriture ; navigateur : suppression définitive', () => {
     expect(deletesToTrash('disk', false)).toBe(true);
-    for (const [kind, readOnly] of [['browser', false], ['disk', true], ['picked', false], ['device', false], [null, false]] as const) {
+    expect(deletesToTrash('device', false)).toBe(true);
+    for (const [kind, readOnly] of [['browser', false], ['disk', true], ['device', true], ['picked', false], ['phone', false], [null, false]] as const) {
       expect(deletesToTrash(kind, readOnly), `${kind} ${readOnly}`).toBe(false);
     }
-    // Téléphone, navigateur, dossier choisi : les textes d'aujourd'hui, mot pour mot.
-    for (const kind of ['browser', 'picked', 'device'] as const) {
+    // Navigateur, dossier choisi : les textes d'aujourd'hui, mot pour mot.
+    for (const kind of ['browser', 'picked'] as const) {
       const toTrash = deletesToTrash(kind, false);
       for (const text of ['Confirmer', 'Supprimer', 'Supprimer définitivement', 'Jeter définitivement']) {
         expect(trashDeleteButton(toTrash, text)).toBe(text);
@@ -180,7 +184,7 @@ describe('confirmations', () => {
       expect(sessionDiscardText(toTrash, today)).toBe(today);
     }
     expect(trashDeleteButton(true, 'Supprimer')).toBe('Mettre à la corbeille (30 jours)');
-    expect(sessionDiscardText(true, 'x')).toContain('corbeille de cet ordinateur');
+    expect(sessionDiscardText(true, 'x')).toContain('corbeille de cet appareil');
     expect(sessionDiscardText(true, 'x')).toContain('30 jours');
   });
 });
@@ -232,5 +236,56 @@ describe('index disparu', () => {
     expect(rebuiltEntryRecord(DIR, [{ name: 'b.json', size: 7 }])).toBeNull();
     expect(rebuiltTrashEntry(DIR, [], null)).toBeNull();
     expect(rebuiltTrashEntry('2024-vacances', [{ name: 'a.gpx', size: 1 }], null)).toBeNull();
+  });
+});
+
+describe('dépôts de l’ordinateur dans la corbeille du téléphone', () => {
+  const deposit: TrashDeposit = {
+    origin: 'ordinateur', kind: 'session', startMs: 100, routeBase: null, createdAt: null, name: 'Wing · Carnon',
+    files: [{ name: 'a.gpx', size: 120 }, { name: 'a.json', size: 30 }, { name: 'a.imu', size: 900 }],
+  };
+
+  it('depose.json se relit tel qu’écrit ; illisible, d’un autre format ou d’une version plus récente : rien', () => {
+    expect(DEPOSIT_FILE).toBe('depose.json');
+    expect(parseDeposit(serializeDeposit(deposit))).toEqual(deposit);
+    const route: TrashDeposit = { ...deposit, kind: 'itineraire', startMs: null, routeBase: 'Tour', createdAt: '2026-11-01T10:00:00.000Z', files: [{ name: 'Tour.json', size: 40 }] };
+    expect(parseDeposit(serializeDeposit(route))).toEqual(route);
+    expect(serializeDeposit(deposit)).toContain('"origine": "ordinateur"');
+    for (const text of [null, '{abîmé', '{"format":"autre","version":1}', serializeDeposit(deposit).replace('"version": 1', '"version": 2'),
+      serializeDeposit(deposit).replace('"origine": "ordinateur"', '"origine": "telephone"'), serializeDeposit(deposit).replace('"kind": "session"', '"kind": "photo"')]) {
+      expect(parseDeposit(text), String(text)).toBeNull();
+    }
+  });
+
+  it('adoption : complet tout de suite ; partiel seulement quand aucun fichier manquant n’est plus à sa place ; aucune horloge', () => {
+    expect(depositAdoption(deposit, ['a.gpx', 'a.json', 'a.imu'], [])).toBe('adopt');
+    expect(depositMissing(deposit, ['A.GPX', 'a.json'])).toEqual(['a.imu']);
+    // GPX arrivé, la fiche encore dans sessions/ : il attend.
+    expect(depositAdoption(deposit, ['a.gpx'], ['a.json'])).toBe('wait');
+    // Partie ailleurs (un dépôt neuf de la passe suivante) : adopté tel quel.
+    expect(depositAdoption(deposit, ['a.gpx'], [])).toBe('adopt');
+    // Rien d'arrivé, tout encore en place : il attend ; rien d'arrivé et plus rien en place : adopté (vide).
+    expect(depositAdoption(deposit, [], ['a.gpx', 'a.json', 'a.imu'])).toBe('wait');
+    expect(depositAdoption(deposit, [], [])).toBe('adopt');
+  });
+
+  it('entrée adoptée : à l’horloge de l’appareil, origine « cette mémoire » ; restes sans GPX ; rien sans fichier', () => {
+    const files = [{ name: 'a.gpx', size: 120 }, { name: 'a.json', size: 30 }];
+    expect(depositEntry(`${NOW}-100`, deposit, files, NOW + 5)).toEqual({
+      dir: `${NOW}-100`, kind: 'session', startMs: 100, routeBase: null, createdAt: null, name: 'Wing · Carnon', deletedAtMs: NOW + 5,
+      origin: 'ordinateur', reason: 'supprimee', main: 'a.gpx', files,
+    });
+    expect(depositEntry(`${NOW}-100`, deposit, [{ name: 'a.json', size: 30 }], NOW)).toMatchObject({ kind: 'restes', startMs: 100, main: 'a.json' });
+    expect(depositEntry(`${NOW}-100`, deposit, [], NOW)).toBeNull();
+    const route: TrashDeposit = { ...deposit, kind: 'itineraire', startMs: null, routeBase: 'Tour', createdAt: '2026-11-01T10:00:00.000Z', files: [{ name: 'Tour.gpx', size: 400 }, { name: 'Tour.json', size: 40 }] };
+    expect(depositEntry(`${NOW}-Tour`, route, [{ name: 'Tour.gpx', size: 400 }, { name: 'Tour.json', size: 40 }], NOW))
+      .toMatchObject({ kind: 'itineraire', routeBase: 'Tour', createdAt: '2026-11-01T10:00:00.000Z', main: 'Tour.json' });
+    expect(depositEntry(`${NOW}-Tour`, route, [{ name: 'Tour.gpx', size: 400 }], NOW)).toMatchObject({ kind: 'restes', main: 'Tour.gpx' });
+  });
+
+  it('lignes revenues : seulement les sessions de nouveau dans la mémoire, jamais un itinéraire ni des restes', () => {
+    const entries = [session(`${NOW}-100`, 100), session(`${NOW}-200`, 200), route(`${NOW}-Tour`, 'Tour'), { ...session(`${NOW}-300`, 300), kind: 'restes' as const }];
+    expect(returnedTrashGroups(entries, new Set([100, 300])).map((g) => g.entry.dir)).toEqual([`${NOW}-100`]);
+    expect(returnedTrashGroups(entries, new Set())).toEqual([]);
   });
 });

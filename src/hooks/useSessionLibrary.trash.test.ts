@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FolderEntry, MemoryFolder } from '../platform/memoryFolder';
 import {
-  TRASH_INDEX_PATH, TRASH_KEEP_MS, deletesToTrash, parseTrashIndex, serializeTrashIndex, sessionDiscardText, trashDeleteButton,
+  TRASH_INDEX_PATH, TRASH_KEEP_MS, deletesToTrash, parseTrashIndex, serializeDeposit, serializeTrashIndex, sessionDiscardText, trashDeleteButton,
   type TrashEntry,
 } from '../library/trash';
 import { gpxAt, settle, tick, trackTestTimers } from '../test/library.fixture';
+import { ROUTE_FORMAT, ROUTE_VERSION, serializeRouteRecord } from '../planning/routeRecord';
 
 /**
  * Corbeille du programme Windows, de la bibliothèque au dossier (élément 217, sous-lot 3a) : une session supprimée y
@@ -59,7 +60,7 @@ const folder = (): MemoryFolder => ({
     log.push(`remove ${path}`);
     files.delete(path);
   },
-  ...(shell.kind === 'disk' ? {
+  ...(shell.kind === 'disk' || shell.kind === 'device' ? {
     removeDir: async (path: string) => {
       if ([...files.keys()].some((p) => p.startsWith(`${path}/`))) throw new Error('pas vide');
       dirs.delete(path);
@@ -254,7 +255,7 @@ describe('corbeille du programme Windows', () => {
     expect(library.readLibraryState().error).toContain('Suppression impossible');
   });
 
-  it.each(['device', 'browser', 'picked'] as const)('mémoire « %s » (téléphone, navigateur) : la suppression efface comme avant, sans corbeille, aux mêmes textes', async (kind) => {
+  it.each(['browser', 'picked'] as const)('mémoire « %s » (navigateur) : la suppression efface comme avant, sans corbeille, aux mêmes textes', async (kind) => {
     shell.kind = kind;
     const library = await openFresh();
     const { folderKind, memoryReadOnly } = library.readLibraryState();
@@ -277,6 +278,51 @@ describe('corbeille du programme Windows', () => {
     const f = (await library.currentMemoryFolder())!;
     await library.stashRoute(f, { base: 'Lac', name: 'Lac', createdAt: 'x' }, ['itineraires/Lac.json'], 'itineraires/Lac.json');
     expect([...files.keys()].some((p) => p.startsWith('corbeille/'))).toBe(false);
+  });
+
+  it('téléphone : la suppression passe à sa corbeille, promise par la confirmation ; restaurée puis revenue d’elle-même, elle la quitte', async () => {
+    shell.kind = 'device';
+    const library = await openFresh();
+    const { folderKind, memoryReadOnly } = library.readLibraryState();
+    expect(trashDeleteButton(deletesToTrash(folderKind, memoryReadOnly), 'Confirmer')).toBe('Mettre à la corbeille (30 jours)');
+    expect(sessionDiscardText(deletesToTrash(folderKind, memoryReadOnly), 'x')).toContain('corbeille de cet appareil');
+    await library.removeSession(FIRST);
+    await drain(library);
+    const [entry] = index().entries;
+    expect(entry).toMatchObject({ kind: 'session', main: FIRST, origin: 'ordinateur' });
+    expect(files.has(GPX)).toBe(false);
+    expect(library.trashStore.get().entries).toEqual([entry]);
+    // Restaurée sur l'ordinateur puis recopiée ici par la synchronisation : à la relecture, le jumeau quitte la corbeille.
+    for (const name of [FIRST, FIRST.replace('.gpx', '.json'), FIRST.replace('.gpx', '.imu')]) put(`sessions/${name}`, files.get(`corbeille/${entry.dir}/${name}`)!);
+    await library.refreshLibrary();
+    await drain(library);
+    expect(library.readLibraryState().sessions.map((s) => s.file).sort()).toEqual([FIRST, SECOND]);
+    expect(index().entries).toEqual([]);
+    expect(library.trashStore.get().entries).toEqual([]);
+  });
+
+  it('téléphone : un dépôt de l’ordinateur est adopté à la relecture, et montré dans sa corbeille', async () => {
+    shell.kind = 'device';
+    const library = await openFresh();
+    const second = library.readLibraryState().sessions.find((s) => s.file === SECOND)!;
+    const startMs = second.record.summary.startMs;
+    const dir = `1795647914477-${startMs}`;
+    const json = SECOND.replace('.gpx', '.json');
+    // Comme le câble : la fiche du dépôt, puis le GPX et la fiche de la session déplacés.
+    put(`corbeille/${dir}/depose.json`, serializeDeposit({
+      origin: 'ordinateur', kind: 'session', startMs, routeBase: null, createdAt: null, name: 'Course du matin',
+      files: [{ name: SECOND, size: files.get(`sessions/${SECOND}`)!.length }, { name: json, size: files.get(`sessions/${json}`)!.length }],
+    }));
+    for (const name of [SECOND, json]) {
+      put(`corbeille/${dir}/${name}`, files.get(`sessions/${name}`)!);
+      files.delete(`sessions/${name}`);
+    }
+    await library.refreshLibrary();
+    await drain(library);
+    expect(library.readLibraryState().sessions.map((s) => s.file)).toEqual([FIRST]);
+    expect(index().entries).toMatchObject([{ dir, kind: 'session', startMs, main: SECOND, name: 'Course du matin', origin: 'ordinateur' }]);
+    expect(files.has(`corbeille/${dir}/depose.json`)).toBe(false);
+    expect(library.trashStore.get().entries.map((e) => e.dir)).toEqual([dir]);
   });
 
   it('dossier du disque : la confirmation promet la corbeille, que la suppression tient', async () => {
@@ -372,5 +418,78 @@ describe('session de la corbeille qui revient par un import (programme Windows)'
     await drain(library);
     expect(library.readLibraryState().sessions.map((s) => s.file)).toEqual([SECOND]);
     expect(index().entries).toHaveLength(1);
+  });
+});
+
+describe('réglage automatique des sessions revenues (corbeilles jumelles)', () => {
+  /** Une entrée de session posée dans la corbeille, programme ouvert, avec ces fichiers. */
+  const putEntry = (startMs: number, main: string, content: Record<string, string>): TrashEntry => {
+    const dir = `1763000000000-${startMs}`;
+    for (const [name, text] of Object.entries(content)) put(`corbeille/${dir}/${name}`, text);
+    const entry: TrashEntry = {
+      dir, kind: 'session', startMs, routeBase: null, createdAt: null, name: 'revenue', deletedAtMs: 1763000000000, origin: 'ordinateur',
+      reason: 'supprimee', main, files: Object.entries(content).map(([name, text]) => ({ name, size: text.length })),
+    };
+    put(TRASH_INDEX_PATH, serializeTrashIndex([...index().entries, entry]));
+    return entry;
+  };
+  const tools = async () => ({ ...(await import('./sessionLibrary/trash')), ...(await import('./sessionLibrary/trashSettle')) });
+
+  it('la passe tient la corbeille : une synchronisation lancée pendant elle attend sa fin', async () => {
+    shell.kind = 'device';
+    const library = await openFresh();
+    await drain(library);
+    const first = library.readLibraryState().sessions.find((x) => x.file === FIRST)!;
+    const json = FIRST.replace('.gpx', '.json');
+    putEntry(first.record.summary.startMs, FIRST, { [FIRST]: files.get(GPX)!, [json]: files.get(`sessions/${json}`)! });
+    const { holdTrashDuring, settleReturnedTrash } = await tools();
+    const pass = settleReturnedTrash();
+    let seen = -1;
+    await holdTrashDuring(async () => {
+      seen = index().entries.length;
+    });
+    await pass;
+    // La synchronisation n'a commencé qu'une fois la session revenue réglée.
+    expect(seen).toBe(0);
+  });
+
+  it('une autre trace du même départ ne reçoit ni fiche ni capteurs, et l’entrée reste', async () => {
+    shell.kind = 'device';
+    const library = await openFresh();
+    await drain(library);
+    const second = library.readLibraryState().sessions.find((x) => x.file === SECOND)!;
+    const other = gpxAt(30).replace(/lon="([\d.]+)"/, 'lon="9.99"');
+    expect(other).not.toBe(gpxAt(30));
+    putEntry(second.record.summary.startMs, 'autre.gpx', { 'autre.gpx': other, 'autre.imu': 'autres capteurs' });
+    const { settleReturnedTrash } = await tools();
+    await settleReturnedTrash();
+    await drain(library);
+    expect(files.has(`sessions/${SECOND.replace('.gpx', '.imu')}`)).toBe(false);
+    expect(index().entries.map((e) => e.main)).toEqual(['autre.gpx']);
+  });
+
+  it('itinéraire revenu : il ne quitte la corbeille que si sa fiche et son GPX sont identiques', async () => {
+    shell.kind = 'device';
+    const createdAt = '2026-11-01T10:00:00.000Z';
+    const record = serializeRouteRecord({
+      format: ROUTE_FORMAT, version: ROUTE_VERSION, name: 'Lac', activityId: null, createdAt, updatedAt: createdAt,
+      waypoints: [{ lat: 43.5, lon: 3.9 }, { lat: 43.51, lon: 3.91 }], legs: [],
+    });
+    put('itineraires/Lac.json', record);
+    put('itineraires/Lac.gpx', '<gpx>ici</gpx>');
+    const library = await openFresh();
+    await drain(library);
+    const routeEntry = (dir: string, gpx: string): TrashEntry => {
+      put(`corbeille/${dir}/Lac.json`, record);
+      put(`corbeille/${dir}/Lac.gpx`, gpx);
+      return {
+        dir, kind: 'itineraire', startMs: null, routeBase: 'Lac', createdAt, name: 'Lac', deletedAtMs: 1763000000000, origin: 'ordinateur', reason: 'supprimee',
+        main: 'Lac.json', files: [{ name: 'Lac.json', size: record.length }, { name: 'Lac.gpx', size: gpx.length }],
+      };
+    };
+    put(TRASH_INDEX_PATH, serializeTrashIndex([routeEntry('1763000000000-Lac', '<gpx>autre tracé</gpx>'), routeEntry('1763000000001-Lac', '<gpx>ici</gpx>')]));
+    const { settleReturnedTrash } = await tools();
+    await settleReturnedTrash();
+    expect(index().entries.map((e) => e.dir)).toEqual(['1763000000000-Lac']);
   });
 });

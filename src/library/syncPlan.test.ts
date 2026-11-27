@@ -14,7 +14,7 @@ import type { SyncFirstReason } from './syncPlan';
 import { sessionRecord } from '../test/record.fixture';
 import {
   SYNC_TRASH_DIR, deleteSyncSession, editSyncRecord, hasSyncFiles, putSyncSession, readFixtureBase, readSyncRecord, restoreSyncSession,
-  runFixtureSync, syncGpxName, syncMemoryFolder, syncSessionFiles, trashSyncSession,
+  SYNC_NOW_MS, runFixtureSync, syncGpxName, syncMemoryFolder, syncSessionFiles, trashSyncSession,
   type SyncFolder, type SyncRun, type SyncRunOptions, type SyncSessionSetup,
 } from '../test/syncFolder.fixture';
 
@@ -270,10 +270,12 @@ describe('suppressions', () => {
     const pair = await syncedPair(4, { imuBytes: 8 });
     trashSyncSession(pair.computer, at(1), fileOf(1));
     const run = await sync(pair);
-    expect(itemAt(run, 1)).toMatchObject({ case: 'deletedOnComputer', ops: [{ kind: 'removeFromPhone', keep: 'none', moveTo: 'Tracker-corbeille/2026-11-25' }] });
-    expect(pair.phone.paths().filter((p) => p.includes(fileOf(1).replace('.gpx', '')))).toEqual([]);
-    // Rien n'est effacé du téléphone : ses trois fichiers sont dans sa corbeille datée, GPX d'abord.
-    expect([...pair.phone.aside().keys()]).toEqual([fileOf(1), recordFileName(fileOf(1)), imuFileName(fileOf(1))].map((name) => `Tracker-corbeille/2026-11-25/sessions/${name}`));
+    expect(itemAt(run, 1)).toMatchObject({ case: 'deletedOnComputer', ops: [{ kind: 'removeFromPhone', keep: 'none', moveTo: String(at(1)) }] });
+    expect(pair.phone.paths().filter((p) => p.startsWith('sessions/') && p.includes(fileOf(1).replace('.gpx', '')))).toEqual([]);
+    // Rien n'est effacé du téléphone : ses trois fichiers sont dans un dépôt de sa corbeille, GPX d'abord, après depose.json.
+    const dir = `corbeille/${SYNC_NOW_MS}-${at(1)}`;
+    expect([...pair.phone.aside().keys()]).toEqual([fileOf(1), recordFileName(fileOf(1)), imuFileName(fileOf(1))].map((name) => `${dir}/${name}`));
+    expect(pair.phone.written().filter((p) => p.startsWith('corbeille/'))).toEqual([`${dir}/depose.json`]);
     expect(await syncSessionFiles(pair.phone)).toEqual([fileOf(0), fileOf(2), fileOf(3)]);
     expect(baseStarts(pair)).toEqual([at(0), at(2), at(3)]);
     expect((await sync(pair)).plan?.items).toEqual([]);
@@ -330,7 +332,7 @@ describe('suppressions', () => {
     await sync(pair);
     restoreSyncSession(pair.computer, at(1));
     const run = await sync(pair);
-    expect(itemAt(run, 1)?.case).toBe('newOnComputer');
+    expect(itemAt(run, 1)).toMatchObject({ case: 'newOnComputer', restored: true });
     expect(await syncSessionFiles(pair.phone)).toEqual([fileOf(0), fileOf(1), fileOf(2), fileOf(3)]);
     expect(baseStarts(pair)).toEqual([at(0), at(1), at(2), at(3)]);
   });
@@ -360,8 +362,18 @@ describe('suppressions', () => {
     await sync(pair);
     putSyncSession(pair.phone, at(1));
     const run = await sync(pair);
-    expect(itemAt(run, 1)).toMatchObject({ case: 'newOnPhone', left: null });
+    // Restaurée sur le téléphone (sans ligne, dans `removed`) : recopiée sans question, et dite revenue.
+    expect(itemAt(run, 1)).toMatchObject({ case: 'newOnPhone', left: null, restored: true });
+    expect(run.plan?.guard.tripped).toBe(false);
     expect(await syncSessionFiles(pair.computer)).toHaveLength(4);
+  });
+
+  it('neuve sur le téléphone sans rien dans la base : pas « revenue »', async () => {
+    const pair = await syncedPair(2);
+    putSyncSession(pair.phone, at(5));
+    const run = await sync(pair);
+    expect(itemAt(run, 5)?.case).toBe('newOnPhone');
+    expect(itemAt(run, 5)?.restored).toBe(false);
   });
 
   it('dans la corbeille de l’ordinateur et encore sur le téléphone, sans que la synchronisation l’y ait mise : ni ramenée ni supprimée', async () => {
@@ -494,8 +506,8 @@ describe('suppressions', () => {
   it('suppression coupée sur le téléphone après le GPX : la reprise retire la fiche et les capteurs restés', async () => {
     const pair = await syncedPair(6, { imuBytes: 8 });
     trashSyncSession(pair.computer, at(1), fileOf(1));
-    // Une suppression est un pas par fichier : le GPX part, puis la liaison tombe.
-    pair.phone.cutAfter(1);
+    // La fiche du dépôt (deux pas : provisoire, puis renommage), puis un pas par fichier : le GPX part, puis la liaison tombe.
+    pair.phone.cutAfter(3);
     expect((await sync(pair)).cut).toBe(true);
     expect(pair.phone.text(sessionPath(recordFileName(fileOf(1))))).not.toBeNull();
     pair.phone.cutAfter(null);
@@ -905,7 +917,7 @@ describe('plan restreint à une moitié', () => {
     expect(syncRecordsToRead(computer, pair.base, 'computer', (_startMs, side) => side !== 'computer')).toEqual(['a.json']);
     expect(syncRecordsToRead(computer, pair.base, 'computer', (_startMs, side) => side !== 'phone')).toEqual([]);
     expect(syncRecordsToRead(computer, null, 'computer', () => true)).toEqual(['a.json']);
-    const plan = planSync({ pair, computer: syncSide(computer, new Map()), phone: syncSide(syncListing([]), new Map()), ancestors: new Map([[at(0), { computer: '{}', phone: '{}' }]]), trash: [], nowMs: 0 });
+    const plan = planSync({ pair, computer: syncSide(computer, new Map()), phone: syncSide(syncListing([]), new Map()), ancestors: new Map([[at(0), { computer: '{}', phone: '{}' }]]), trash: [] });
     expect(plan.guard).toMatchObject({ tripped: true, toTrash: 1 });
     const kept = restrictSyncPlan(plan, { computer: true, phone: true, deletions: false });
     expect(kept.guard.tripped).toBe(false);
@@ -943,7 +955,8 @@ describe('coupure à chaque pas, puis reprise', () => {
       computer: await side(pair.computer), phone: await side(pair.phone), trash: trashFiles(pair), base: baseStarts(pair),
       names: { computer: await names(pair.computer), phone: await names(pair.phone) },
       // Ce qui a quitté le téléphone, et sous quel nom : rien de déplacé deux fois, rien de perdu.
-      phoneAside: [...pair.phone.aside().keys()].sort(),
+      // Un dépôt coupé avant ses fichiers est refait sous un nom neuf (`-2`) : seul compte ce qui y est arrivé.
+      phoneAside: [...pair.phone.aside().keys()].map((p) => p.replace(/^(corbeille\/\d{13}-\d+)-\d+\//, '$1/')).sort(),
     };
   };
 
@@ -1046,7 +1059,6 @@ describe('première rencontre : rien ne se retire, d’aucun côté, quel que so
       ancestors: new Map(),
       trash: [{ startMs: at(0), files: [{ name: file, size: 900 }] }],
       heldOnPhone: 'remove',
-      nowMs: 0,
     });
     const removals = (p: typeof plan) => p.items.flatMap((i) => i.ops).filter((op) => op.kind === 'removeFromPhone' || op.kind === 'trash');
     expect(removals(plan)).toEqual([]);
@@ -1056,7 +1068,7 @@ describe('première rencontre : rien ne se retire, d’aucun côté, quel que so
     const routeListing = syncRouteListing([entry('Tour.json', routeText.length)]);
     const routes = planRouteSync({
       base: null, computer: syncRouteSide(syncRouteListing([]), new Map()), phone: syncRouteSide(routeListing, new Map([['Tour.json', routeText]])),
-      trash: [{ id: '2026-11-01T10:00:00.000Z', text: routeText }], heldOnPhone: 'remove', nowMs: 0,
+      trash: [{ id: '2026-11-01T10:00:00.000Z', text: routeText }], heldOnPhone: 'remove',
     });
     const routeRemovals = (p: typeof routes) => p.items.flatMap((i) => i.ops).filter((op) => op.kind === 'removeFromPhone' || op.kind === 'trash');
     expect(routeRemovals(routes)).toEqual([]);

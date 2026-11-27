@@ -20,9 +20,15 @@
 //     arrêtée », « Réessayer », qui termine la synchronisation coupée et le dit ;
 //  e. copie de sécurité impossible (le dossier des copies est pris par un fichier) : « Synchronisation impossible »,
 //     rien d'écrit d'aucun côté, puis « Réessayer » une fois la place libérée : la copie est faite, la session arrive ;
-//  f. à chaque lancement, la console de la page sans erreur ; aucun temporaire laissé d'aucun côté.
+//  f. corbeilles jumelles (lot 242-1) : une session supprimée par l'application du téléphone (dans sa corbeille, son
+//     index écrit par lui) arrive dans la corbeille de l'ordinateur ; l'index du téléphone n'est pas touché ;
+//  g. une session supprimée sur l'ordinateur est déposée dans `Documents/Tracker/corbeille/<dépôt>/` du faux téléphone
+//     (`depose.json`, GPX, fiche), plus rien dans `Documents/Tracker-corbeille` ;
+//  h. « Restaurer » sur l'ordinateur, puis la synchronisation suivante : « Restauré », la session revient sur le
+//     téléphone, sans question ;
+//  à chaque lancement, la console de la page sans erreur ; aucun temporaire laissé d'aucun côté.
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from './lib/cdp.mjs';
@@ -218,6 +224,31 @@ const supprimerSurTelephone = (tel, gpx) => {
 const corbeilleDe = (memoire) => {
   try { return JSON.parse(readFileSync(join(memoire, 'corbeille', 'corbeille.json'), 'utf8')).entries ?? []; } catch { return []; }
 };
+/**
+ * Met une session d'une mémoire à sa corbeille comme l'application de cet appareil, programme fermé : GPX et fiche
+ * déplacés dans `corbeille/<instant>-<startMs>/`, puis l'entrée ajoutée à l'index (format de `src/library/trash.ts`).
+ */
+const mettreALaCorbeille = (memoire, gpx, nom, instant) => {
+  const startMs = JSON.parse(readFileSync(join(memoire, 'sessions', gpx.replace(/\.gpx$/, '.json')), 'utf8')).summary.startMs;
+  const dir = `${instant}-${startMs}`;
+  mkdirSync(join(memoire, 'corbeille', dir), { recursive: true });
+  const files = [];
+  for (const n of [gpx, gpx.replace(/\.gpx$/, '.json')]) {
+    files.push({ name: n, size: statSync(join(memoire, 'sessions', n)).size });
+    renameSync(join(memoire, 'sessions', n), join(memoire, 'corbeille', dir, n));
+  }
+  const entries = [...corbeilleDe(memoire), { dir, kind: 'session', startMs, routeBase: null, createdAt: null, name: nom, deletedAtMs: instant, origin: 'ordinateur', reason: 'supprimee', main: gpx, files }];
+  writeFileSync(join(memoire, 'corbeille', 'corbeille.json'), `${JSON.stringify({ format: 'tracker-corbeille', version: 1, entries }, null, 2)}\n`);
+  return { dir, startMs };
+};
+/** Clique « Restaurer » sur la ligne de la corbeille (Réglages › Mémoire) qui porte ce nom. */
+const restaurer = (b, nom) => b.evaluate(`(() => {
+  const ligne = [...document.querySelectorAll('.trash-zone__row')].find((li) => li.querySelector('.trash-zone__name')?.textContent.trim() === ${JSON.stringify(nom)});
+  const bouton = ligne && [...ligne.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Restaurer');
+  if (!bouton) return 'absent';
+  bouton.click();
+  return 'ok';
+})()`);
 
 try {
   console.log('\n== Préparation : sessions écrites par le programme');
@@ -322,6 +353,71 @@ try {
     check('d. la sixième session est entière sur le téléphone', gpxDe(racineDe(tel)).length === 4 && entieres(racineDe(tel)), arbre(racineDe(tel)).join(' | '));
     check('d. aucun temporaire d’aucun côté', temporaires(MC).length + temporaires(tel).length === 0);
   });
+
+  // ---------- f, g, h ----------
+  console.log('\n== f, g, h. Corbeilles jumelles : une suppression de chaque côté, puis « Restaurer » sur l’ordinateur');
+  {
+    const Z = gpxDe(racineDe(tel))[0];
+    const Y = gpxDe(MC)[1];
+    const instant = Date.now();
+    const SUR_TEL = 'Supprimée sur le téléphone';
+    const SUR_PC = 'Supprimée sur l’ordinateur';
+    const z = mettreALaCorbeille(racineDe(tel), Z, SUR_TEL, instant - 120_000);
+    const y = mettreALaCorbeille(MC, Y, SUR_PC, instant - 60_000);
+    const indexTel = join(racineDe(tel), 'corbeille', 'corbeille.json');
+    const indexTelAvant = readFileSync(indexTel, 'utf8');
+    console.log(`supprimée sur le téléphone : ${Z} ; sur l'ordinateur : ${Y}`);
+    await avecProgramme(PC, MC, { TRACKER_BANC_TELEPHONE: tel }, 'f, g, h', async (b) => {
+      await reglages(b);
+      let r = await synchroniser(b, 'f, g');
+      check('f, g. l’aperçu dit « 2 à retirer »', r?.titre === '2 à retirer', r?.titre);
+      r = await repondre(b, 'Synchroniser et retirer les 2 éléments', 'f, g. compte rendu');
+      check('f, g. « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
+      check('f. ligne « Mis à la corbeille : 1 session supprimée sur le téléphone… »', (r?.lignes ?? []).some((l) => l.startsWith('Mis à la corbeille : 1 session supprimée sur le téléphone')), JSON.stringify(r?.lignes));
+      check('g. ligne « … retirée de la mémoire du téléphone, dans sa corbeille pour 30 jours »',
+        (r?.lignes ?? []).includes("Mis de côté sur le téléphone : 1 session supprimée sur l'ordinateur : retirée de la mémoire du téléphone, dans sa corbeille pour 30 jours"), JSON.stringify(r?.lignes));
+      await ecrituresFinies(b, [MC, tel], 1500, 'f, g. après la synchronisation');
+      check('f. la session supprimée sur le téléphone est dans la corbeille de l’ordinateur', !gpxDe(MC).includes(Z) && corbeilleDe(MC).some((e) => e.kind === 'session' && e.startMs === z.startMs), JSON.stringify(corbeilleDe(MC).map((e) => e.main)));
+      check('f, g. l’index de la corbeille du téléphone n’est pas touché par l’ordinateur', readFileSync(indexTel, 'utf8') === indexTelAvant);
+      const corbeilleTel = join(racineDe(tel), 'corbeille');
+      const depots = readdirSync(corbeilleTel).filter((n) => n.endsWith(`-${y.startMs}`));
+      const depot = depots.length === 1 ? join(corbeilleTel, depots[0]) : null;
+      check('g. un dépôt dans Documents/Tracker/corbeille/ du faux téléphone : depose.json, GPX et fiche',
+        depot !== null && ['depose.json', Y, Y.replace(/\.gpx$/, '.json')].every((n) => existsSync(join(depot, n))), arbre(corbeilleTel).join(' | '));
+      if (depot !== null) {
+        const depose = JSON.parse(readFileSync(join(depot, 'depose.json'), 'utf8'));
+        check('g. depose.json dit la session, l’ordinateur et ses fichiers', depose.format === 'tracker-depot' && depose.origine === 'ordinateur' && depose.kind === 'session' && depose.startMs === y.startMs && depose.files.length === 2, JSON.stringify(depose));
+      }
+      check('g. la session n’est plus dans sessions/ du téléphone', !gpxDe(racineDe(tel)).includes(Y));
+      check('g. plus rien dans Documents/Tracker-corbeille', !existsSync(join(tel, 'Documents', 'Tracker-corbeille')));
+      check('f, g. aucun temporaire d’aucun côté', temporaires(MC).length + temporaires(tel).length === 0, [...temporaires(MC), ...temporaires(tel)].join(','));
+      await fermerPanneau(b);
+
+      // h
+      // Comme memoire-disque.mjs : la carte Mémoire dépliée (repliée, elle ne montre que sa ligne d'état et la
+      // synchronisation), puis la ligne « Corbeille : … » dépliée par la page elle-même.
+      const ouverte = `/Emplacement : .*, sur ce PC\\./.test(document.body.innerText)`;
+      if (!(await b.evaluate(ouverte))) await b.click(`[...document.querySelectorAll('[role=button]')].find((x) => x.textContent.trim() === 'Mémoire')`);
+      await b.waitFor(ouverte, { timeout: 8000, label: 'carte Mémoire dépliée' });
+      await b.evaluate(`(() => { const t = document.querySelector('.trash-zone__toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); })()`);
+      check('h. la corbeille de l’ordinateur se déplie sur la session supprimée sur l’ordinateur', Boolean(await b.waitFor(`[...document.querySelectorAll('.trash-zone__name')].some((x) => x.textContent.trim() === ${JSON.stringify(SUR_PC)})`, { timeout: 5000, label: 'ligne de la corbeille' })),
+        String(await b.evaluate(`document.querySelector('.trash-zone')?.innerText ?? 'pas de corbeille'`)));
+      check('h. « Restaurer » sur la session supprimée sur l’ordinateur', (await restaurer(b, SUR_PC)) === 'ok');
+      await b.waitFor(`[...document.querySelectorAll('.trash-zone__text')].some((p) => p.textContent.includes('est revenue dans la mémoire'))`, { timeout: 15000, label: 'restauration' });
+      await ecrituresFinies(b, [MC], 1500, 'h. après « Restaurer »');
+      check('h. la session est revenue sur l’ordinateur, et a quitté sa corbeille', gpxDe(MC).includes(Y) && !corbeilleDe(MC).some((e) => e.startMs === y.startMs), gpxDe(MC).join(' ; '));
+      r = await synchroniser(b, 'h');
+      check('h. l’aperçu dit « 1 à copier vers le téléphone », rien à retirer', r?.titre === '1 à copier vers le téléphone', r?.titre);
+      const bouton = (r?.boutons ?? []).find((x) => x !== 'Annuler');
+      if (bouton) r = await repondre(b, bouton, 'h. compte rendu');
+      check('h. « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
+      check('h. ligne « Restauré : 1 session sortie de la corbeille… »', (r?.lignes ?? []).some((l) => l.startsWith('Restauré : 1 session')), JSON.stringify(r?.lignes));
+      await ecrituresFinies(b, [MC, tel], 1500, 'h. après la synchronisation');
+      check('h. la session revient sur le téléphone, entière', gpxDe(racineDe(tel)).includes(Y) && entieres(racineDe(tel)), arbre(join(racineDe(tel), 'sessions')).join(' | '));
+      check('h. aucun temporaire d’aucun côté', temporaires(MC).length + temporaires(tel).length === 0);
+      await fermerPanneau(b);
+    });
+  }
 
   // ---------- e ----------
   console.log('\n== e. Copie de sécurité impossible, puis « Réessayer »');

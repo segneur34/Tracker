@@ -680,13 +680,13 @@ Ce que ni les tests ni le banc ne voient : le vrai pare-feu, la diffusion UDP su
 **Recommandation.** Une seule corbeille, que l'utilisateur connaît déjà. Ce que l'ordinateur retire du téléphone, **par le câble comme par le Wi-Fi**, va dans la corbeille du téléphone, `Tracker/corbeille/`, au format du PC, et y reste 30 jours, visible et restaurable dans Réglages › Mémoire du téléphone. Mécanique :
 1. le PC choisit un dossier libre `corbeille/<instant>-<identité>/` (`trashDirName`, d'après `listerCorbeille`) ;
 2. il y écrit d'abord `depose.json` : origine `ordinateur`, raison `synchronisation`, nom montré ;
-3. puis il y déplace les fichiers, GPX en dernier : `deplacer` par le Wi-Fi, `mv` par le câble ;
+3. puis il y déplace les fichiers, **GPX d'abord** (corrigé le 27/11 au plan du 242 : un retrait coupé laisserait sinon un GPX sans fiche, qui en recevrait une neuve) : `deplacer` par le Wi-Fi, `mv` par le câble ;
 4. le téléphone, à l'ouverture de sa mémoire et à chaque relecture (dont celle de `syncWatch`), adopte les dossiers qui portent `depose.json` : il les inscrit à son index par `rebuiltTrashEntry` (qui existe), puis efface `depose.json` ;
 5. la purge ne prend jamais un tel dossier pour un reste.
 
 Pourquoi le téléphone tient seul son index : aucune écriture concurrente de `corbeille.json` entre deux appareils. Une coupure entre `depose.json` et le déplacement laisse un dossier partiel, adopté tel quel ; l'original non déplacé reste sur le téléphone, et la passe suivante le refait.
 
-Les suppressions faites sur le téléphone même restent directes, comme aujourd'hui. L'ancien `Documents/Tracker-corbeille/` n'est plus alimenté et reste tel quel : le dire une fois à l'utilisateur.
+~~Les suppressions faites sur le téléphone même restent directes, comme aujourd'hui.~~ **Changé par l'utilisateur le 27/11 (deux corbeilles jumelles)** : supprimer sur le téléphone met aussi à la corbeille du téléphone ; une session supprimée d'un côté finit dans les deux corbeilles, restaurée d'un côté elle revient des deux ; chaque corbeille se vide seule après 30 jours, et « Supprimer définitivement » ou « Vider la corbeille » ne valent que pour l'appareil où on les fait (tranché par l'orchestrateur). Comme le câble en a besoin, la corbeille du téléphone (adoption de `depose.json`, retrait par le câble dans `Tracker/corbeille/`) passe dans le lot 242 ; 250-4 n'en garde que le branchement du Wi-Fi. L'ancien `Documents/Tracker-corbeille/` n'est plus alimenté et reste tel quel : le dire une fois à l'utilisateur.
 
 **Repli** si l'utilisateur répond non : même mécanique, dans un dossier `Tracker/mis-de-cote/AAAA-MM-JJ/…` jamais purgé et invisible dans l'application, ce qui reproduit la mise de côté actuelle du câble. Pas d'effacement réel dans aucun cas.
 

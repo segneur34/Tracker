@@ -84,8 +84,8 @@ export interface MemoryFolder {
   /** Efface un fichier ; sans effet s'il n'existe pas. */
   remove(path: string): Promise<void>;
   /**
-   * Efface un sous-dossier vide ; sans effet s'il n'existe pas, lève s'il contient encore quelque chose. Seul le
-   * dossier du disque du programme Windows le sait (sa corbeille) : ailleurs, absent.
+   * Efface un sous-dossier vide ; sans effet s'il n'existe pas, lève s'il contient encore quelque chose. Seuls le
+   * dossier du disque du programme Windows et celui du téléphone le savent (leur corbeille) : ailleurs, absent.
    */
   removeDir?(path: string): Promise<void>;
 }
@@ -414,6 +414,13 @@ const createDeviceFolder = ({ uri, base, label }: DeviceFolderChoice): MemoryFol
       await inPlainWords(nativeFolder.writeBase64({ uri, path: full(path), data: bytesToBase64(bytes) }));
     },
     remove: async (path) => {
+      await inPlainWords(nativeFolder.remove({ uri, path: full(path) }));
+    },
+    // Le greffon efface un dossier avec tout ce qu'il tient : il n'est appelé que sur un dossier relu vide.
+    removeDir: async (path) => {
+      const { entries } = await inPlainWords(nativeFolder.list({ uri, path: full(path) }));
+      if (entries.length > 0) throw new Error(`Le dossier « ${path} » n'est pas vide : il n'est pas effacé.`);
+      // Absent : le greffon ne fait rien.
       await inPlainWords(nativeFolder.remove({ uri, path: full(path) }));
     },
   };

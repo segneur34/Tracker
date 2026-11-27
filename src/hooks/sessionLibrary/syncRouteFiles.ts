@@ -2,7 +2,7 @@ import { errorMessage } from '../../core/basics';
 import { ROUTES_DIR, routePath } from '../../library/folderLayout';
 import { routeDisplayName } from '../../library/routeName';
 import {
-  SYNC_SIDES, hasRouteMemory, otherSyncSide, phoneTrashPaths, withRouteHeld, withRouteLine, withoutRouteLine, withoutRouteMemory,
+  SYNC_SIDES, hasRouteMemory, otherSyncSide, phoneDepositPaths, withRouteHeld, withRouteLine, withoutRouteLine, withoutRouteMemory,
   type SyncBase, type SyncSideName, type SyncStamp,
 } from '../../library/syncBase';
 import type { SyncRoutesOutcome } from '../../library/syncOutcome';
@@ -10,7 +10,9 @@ import {
   routeRecordsToRead, syncRouteId, syncRouteLineOf, syncRouteListing, syncRouteSide,
   type RouteSyncInput, type RouteSyncItem, type RouteSyncOp, type RouteSyncPlan, type SyncRouteListed, type SyncTrashedRoute,
 } from '../../library/syncRoutes';
-import { routeRestorePlan, trashFilePath, type TrashEntry, type TrashOrigin } from '../../library/trash';
+import {
+  DEPOSIT_FILE, routeRestorePlan, serializeDeposit, trashDirName, trashFilePath, type TrashDeposit, type TrashEntry, type TrashOrigin,
+} from '../../library/trash';
 import { copyFromTrash, dropTrashEntries, readTrashIndex, stashFilesInTrash, trashHoldsCopies, trashLeftoversIn } from '../../library/trashFolder';
 import { isWritableRouteRecord, parseRouteRecord } from '../../planning/routeRecord';
 import type { FileStat, MemoryFolder } from '../../platform/memoryFolder';
@@ -26,7 +28,7 @@ import type { FileStat, MemoryFolder } from '../../platform/memoryFolder';
  * - Un retrait commence par la fiche. Avant de retirer, le fichier doit être celui du plan (taille, date) ; avant de
  *   retirer quoi que ce soit du téléphone, son listage est relu, et sa copie est rangée dans la corbeille de
  *   l'ordinateur sauf si celle-ci, relue, tient déjà la même fiche au contenu près. Rien n'est effacé du téléphone :
- *   l'itinéraire y est mis de côté dans le dossier du jour de sa corbeille (`moveAside`).
+ *   l'itinéraire est déposé dans sa corbeille (`depositOnPhone`), GPX puis fiche.
  * - La ligne de base d'un itinéraire est réécrite une fois ses opérations faites, d'après les tampons relus, et
  *   seulement si les fichiers sont encore ceux que la synchronisation a lus ou écrits.
  * - Un itinéraire dont l'état a changé depuis le listage est laissé ; une erreur sur l'ordinateur arrête cet
@@ -35,13 +37,31 @@ import type { FileStat, MemoryFolder } from '../../platform/memoryFolder';
 
 /**
  * Le dossier du téléphone tel que la synchronisation le demande : un dossier mémoire qui ne s'efface jamais (`remove`
- * n'y sert pas), et qui met un fichier de côté hors de sa mémoire (`moveAside`, `to` depuis `Documents/`) en disant
- * ce que tient déjà un jour de sa corbeille (`asideTaken`). `phoneMemoryFolder` de `platform/phoneCable.ts`.
+ * n'y sert pas), qui déplace un fichier de `sessions/` ou d'`itineraires/` dans un dépôt de sa corbeille (`moveAside`,
+ * `to` : `corbeille/<dépôt>/<nom>`, refusé si le dépôt ne tient pas `depose.json`), et qui dit les sous-dossiers que
+ * tient déjà sa corbeille (`asideTaken`). `phoneMemoryFolder` de `platform/phoneCable.ts`.
  */
 export interface SyncRemote extends MemoryFolder {
   moveAside(path: string, to: string): Promise<void>;
-  asideTaken(dir: string): Promise<string[]>;
+  asideTaken(): Promise<string[]>;
 }
+
+/**
+ * Dépose dans la corbeille du téléphone les fichiers `paths` (depuis la racine de sa mémoire, dans l'ordre où ils
+ * partent) : un sous-dossier neuf nommé d'après `identity` (`trashDirName`, à l'heure de l'ordinateur), `depose.json`
+ * d'abord, puis chaque fichier sous son nom. Une coupure laisse un dépôt partiel, que le téléphone adopte une fois les
+ * fichiers manquants partis de leur place (`trash.ts`, `depositAdoption`) ; ce qui reste en place repart à la passe
+ * suivante, dans un dépôt neuf. Rend le sous-dossier.
+ */
+export const depositOnPhone = async (
+  phone: SyncRemote, identity: string, deposit: TrashDeposit, paths: readonly string[], nowMs: number,
+): Promise<string> => {
+  const dir = trashDirName(nowMs, identity, await phone.asideTaken());
+  await phone.writeText(trashFilePath(dir, DEPOSIT_FILE), serializeDeposit(deposit));
+  const targets = phoneDepositPaths(dir, paths);
+  for (const path of paths) await phone.moveAside(path, targets.get(path) as string);
+  return dir;
+};
 
 /** Une opération à laquelle l'exécutant renonce : l'état du moment n'est pas celui du plan. */
 class StaleRouteError extends Error {}
@@ -60,7 +80,7 @@ export const trashedRouteIds = (entries: readonly TrashEntry[]): Set<string> => 
  * connaître, et la fiche de chaque itinéraire de la corbeille de l'ordinateur (pour comparer leur contenu).
  */
 export const readRouteSyncInput = async (
-  folders: Record<SyncSideName, MemoryFolder>, base: SyncBase | null, nowMs: number,
+  folders: Record<SyncSideName, MemoryFolder>, base: SyncBase | null,
 ): Promise<Omit<RouteSyncInput, 'heldOnPhone'>> => {
   const trash: SyncTrashedRoute[] = [];
   for (const entry of routeEntriesOf((await readTrashIndex(folders.computer)).entries)) {
@@ -73,7 +93,7 @@ export const readRouteSyncInput = async (
     for (const name of routeRecordsToRead(listing, base, side, alsoRead)) texts.set(name, await folders[side].readText(routePath(name)));
     return syncRouteSide(listing, texts);
   };
-  return { base, computer: await sideOf('computer'), phone: await sideOf('phone'), trash, nowMs };
+  return { base, computer: await sideOf('computer'), phone: await sideOf('phone'), trash };
 };
 
 /** Fichiers d'itinéraires que touche une opération, pour l'avancement. */
@@ -274,18 +294,22 @@ export const executeRoutePlan = async (
     expected.computer.delete(file.name);
   };
   /**
-   * Met de côté sur le téléphone, hors de sa mémoire, des fichiers encore tels que le plan les a vus, fiche d'abord,
-   * ensemble dans le dossier du jour de sa corbeille (`moveTo`), sous le même suffixe si un nom y est pris.
+   * Dépose dans la corbeille du téléphone des fichiers encore tels que le plan les a vus, GPX d'abord : la fiche, partie
+   * la dernière, fait paraître l'itinéraire jusqu'au bout, et une coupure ne laisse pas de GPX seul que rien ne
+   * retirerait plus (le dépôt l'attendrait sans fin). `read` : leurs octets, lus pour la corbeille de l'ordinateur.
    */
-  const moveAsideOnPhone = async (moveTo: string, files: readonly SyncStamp[]): Promise<void> => {
+  const depositRoute = async (item: RouteSyncItem, op: Extract<RouteSyncOp, { kind: 'removeFromPhone' }>, read: { name: string; bytes: Uint8Array }[]): Promise<void> => {
+    const files = op.files.gpx ? [op.files.gpx, op.files.json] : [op.files.json];
     for (const file of files) await expect('phone', file);
     ctx.onPhoneChange();
-    const paths = files.map((file) => routePath(file.name));
-    const targets = phoneTrashPaths(moveTo, paths, await ctx.phone.asideTaken(moveTo));
-    for (const [k, path] of paths.entries()) {
-      await ctx.phone.moveAside(path, targets.get(path) as string);
-      expected.phone.delete(files[k].name);
-    }
+    const record = parseRouteRecord(new TextDecoder().decode(read[0].bytes));
+    const deposit: TrashDeposit = {
+      origin: 'ordinateur', kind: 'itineraire', startMs: null, routeBase: op.files.base, createdAt: item.createdAt,
+      name: record ? routeDisplayName(record) : op.files.base,
+      files: read.map((file) => ({ name: file.name, size: file.bytes.byteLength })),
+    };
+    await depositOnPhone(ctx.phone, op.moveTo, deposit, files.map((file) => routePath(file.name)), ctx.now());
+    for (const file of files) expected.phone.delete(file.name);
   };
 
   /** Fiche et GPX d'un côté, lus pour être rangés : la fiche doit être celle du plan, le GPX est pris tel qu'il est. */
@@ -359,7 +383,7 @@ export const executeRoutePlan = async (
         const read = await readFiles('phone', op.files);
         // La corbeille relue doit tenir encore la même fiche ; sinon la copie du téléphone y entre d'abord.
         if (op.keep || !(await trashHolds(item.id, read[0].bytes))) await stash(item, 'telephone', op.files, read);
-        await moveAsideOnPhone(op.moveTo, op.files.gpx ? [op.files.json, op.files.gpx] : [op.files.json]);
+        await depositRoute(item, op, read);
         return;
       }
       case 'loserToTrash': {

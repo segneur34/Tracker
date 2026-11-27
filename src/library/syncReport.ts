@@ -110,7 +110,7 @@ export const describeSyncPreview = (plans: SyncPlans, full: SyncPlans = plans, n
     notes.push(`${plural(sessions.guard.toTrash, 'session')} supprimée${sessions.guard.toTrash > 1 ? 's' : ''} sur le téléphone : elle${sessions.guard.toTrash > 1 ? 's iront' : ' ira'} dans la corbeille de l'ordinateur (30 jours).`);
   }
   if (sessions.items.some((i) => i.ops.some((op) => op.kind === 'removeFromPhone')) || routes?.items.some((i) => i.ops.some((op) => op.kind === 'removeFromPhone'))) {
-    notes.push("Rien n'est effacé du téléphone : ce qui en est retiré est mis de côté dans son dossier Documents/Tracker-corbeille.");
+    notes.push("Rien n'est effacé du téléphone : ce qui en est retiré va dans sa corbeille, où il reste 30 jours (Réglages › Mémoire du téléphone).");
   }
 
   for (const side of ['phone', 'computer'] as const) {
@@ -295,7 +295,7 @@ const gestureRows = (outcome: SyncOutcome): SyncReportRow[] => {
   add('Mis de côté sur le téléphone',
     sessions.filter((i) => hasSessionOp(i, (op) => op.kind === 'removeFromPhone')),
     routes.filter((i) => hasRouteOp(i, (op) => op.kind === 'removeFromPhone')),
-    (s, r) => `${both(s, r)} ${agreed(s, r, 'supprimé')} sur l'ordinateur : ${s + r > 1 ? 'retirés' : agreed(s, r, 'retiré')} de la mémoire du téléphone, rangé${s + r > 1 ? 's' : r === 0 ? 'e' : ''} dans son dossier Documents/Tracker-corbeille (rien n'y est effacé)`);
+    (s, r) => `${both(s, r)} ${agreed(s, r, 'supprimé')} sur l'ordinateur : ${s + r > 1 ? 'retirés' : agreed(s, r, 'retiré')} de la mémoire du téléphone, dans sa corbeille pour 30 jours`);
   add('Restauré',
     sessions.filter((i) => i.restored === true),
     routes.filter((i) => i.restored === true),

@@ -7,9 +7,10 @@
 //   (`nomProvisoire`) ; jamais sous `.tracker-tmp`, que l'application du téléphone prendrait, resté seul, pour un
 //   remplacement achevé. Un `.tracker-new` resté seul est caché puis effacé par le téléphone ; le seul effacement
 //   que ce code connaisse est celui de ce provisoire, juste après un envoi raté ;
-// - un fichier retiré est déplacé hors de la mémoire, dans la corbeille du téléphone, `Documents/Tracker-corbeille/
-//   AAAA-MM-JJ/` (`nomCorbeille` : `Documents/<racine>-corbeille` pour une racine d'essai), sous le même chemin
-//   relatif ; rien ne la purge ;
+// - un fichier retiré est déplacé dans la corbeille de la mémoire du téléphone, dans un dépôt `corbeille/<dossier>/`
+//   que la page a ouvert en y écrivant `depose.json` (`FICHIER_DEPOT`), sous son nom d'origine ; l'application du
+//   téléphone adopte ensuite ce dépôt dans sa corbeille, qu'elle seule tient (son index `corbeille/corbeille.json`
+//   n'est jamais écrit d'ici). L'ancien `Documents/Tracker-corbeille/` n'est plus rempli ;
 // - rien n'est écrit ni déplacé pendant que l'application du téléphone tient un service de premier plan
 //   (enregistrement, ceinture cardio, compteur du fractionné) : `enregistrement`, relu avant chaque écriture.
 //
@@ -18,9 +19,10 @@
 //   refusé, si bien qu'elle ne peut pas atteindre un fichier quelconque du téléphone ; un retrait relit le fichier et
 //   refuse s'il a changé depuis (taille, date) ;
 // - elle n'écrit que dans la liste fermée `cheminEcrivable` (un fichier posé dans `sessions/`, `itineraires/` ou
-//   `reglages/`, ou `tracker.json`, `fc-repos.json`), ne retire que de `sessions/` et d'`itineraires/`
-//   (`cheminRetirable`), et ne vise dans la corbeille qu'un fichier de même sous-dossier, sous un jour bien formé
-//   (`retraitAdmis`) ; tout est vérifié ici avant toute commande au téléphone ;
+//   `reglages/`, `tracker.json`, `fc-repos.json`, et le seul `corbeille/<dossier>/depose.json`, jamais par-dessus un
+//   autre), ne retire que de `sessions/` et d'`itineraires/` (`cheminRetirable`), et ne vise dans la corbeille que le
+//   même nom dans un dossier de dépôt bien formé (`destinationCorbeilleAdmise`) qui tient déjà `depose.json` ; tout est
+//   vérifié ici avant toute commande au téléphone ;
 // - les chemins sont relatifs à `Documents/Tracker`, séparés par `/`, sans `.` ni `..`, sans caractère de contrôle
 //   ni nom provisoire (`segmentAdmis`) ; un lien ou un dossier à la place d'un fichier est refusé ;
 // - une lecture dont la taille diffère de celle du listage échoue, et son fichier temporaire est effacé ;
@@ -28,8 +30,8 @@
 //
 // Mode d'essai (`TRACKER_BANC=1`) seulement, `telephoneDepuisEnvironnement` lit :
 //   TRACKER_BANC_TELEPHONE          dossier local qui joue la mémoire partagée du téléphone (son `/sdcard`) ;
-//                                   son sous-dossier `Documents/Tracker` est celui qui est lu, écrit, et dont on met
-//                                   de côté dans `Documents/Tracker-corbeille`
+//                                   son sous-dossier `Documents/Tracker` est celui qui est lu, écrit, et dont on dépose
+//                                   dans `Documents/Tracker/corbeille`
 //   TRACKER_BANC_TELEPHONE_ETAT     état imposé : pret, absent, autorisation, horsLigne, adbIntrouvable, occupe ou plusieurs
 //   TRACKER_BANC_TELEPHONE_COUPURE  téléphone débranché après ce nombre d'opérations réussies (lectures, écritures,
 //                                   mises de côté) ; une écriture coupée laisse son provisoire à moitié écrit
@@ -39,7 +41,7 @@
 //   TRACKER_BANC_RACINE_TELEPHONE   racine déplacée vers `Documents/<valeur>`, valeur bornée à `Tracker-essai` ou
 //                                   `Tracker-essai-<minuscules et chiffres>` (`RACINE_ESSAI`) ; sans dossier local,
 //                                   c'est le vrai téléphone qui est lu et écrit, sur cette racine seulement, sa
-//                                   corbeille étant `Documents/<valeur>-corbeille`
+//                                   corbeille étant `Documents/<valeur>/corbeille`
 // Hors de ce mode, aucune de ces variables n'est lue : le vrai téléphone, sur `Documents/Tracker`.
 
 import { copyFile, lstat, mkdir, open, readFile, readdir, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises'
@@ -101,16 +103,15 @@ export interface DossierDistant {
    */
   ecrire(chemin: string, fichierLocal: string, taille: number): Promise<FichierTelephone>
   /**
-   * Déplace le fichier `fichier` du dernier listage (`cheminRetirable`) dans la corbeille du téléphone, sous `vers`
-   * (`Tracker-corbeille/AAAA-MM-JJ/<sessions ou itineraires>/<nom>`, admis par `retraitAdmis`), sans jamais écraser
-   * ce qui y est. Refusé s'il a changé depuis le listage, ou pendant un enregistrement ; sans effet s'il n'est plus là.
+   * Déplace le fichier `fichier` du dernier listage (`cheminRetirable`) dans un dépôt de la corbeille de la mémoire,
+   * sous `vers` (`corbeille/<dossier>/<même nom>`, admis par `destinationCorbeilleAdmise`), sans jamais écraser ce qui y
+   * est. Refusé si le dépôt ne tient pas `depose.json` (écrit avant tout déplacement : la purge du téléphone ne le
+   * prend jamais pour un reste), s'il a changé depuis le listage, ou pendant un enregistrement ; sans effet s'il n'est
+   * plus là.
    */
   mettreDeCote(fichier: FichierTelephone, vers: string): Promise<void>
-  /**
-   * Fichiers déjà dans un dossier du jour de la corbeille (`dossier` : `Tracker-corbeille/AAAA-MM-JJ`), sous
-   * `sessions/` et `itineraires/`, en chemins de la même forme ; vide si le dossier n'existe pas.
-   */
-  listerCorbeille(dossier: string): Promise<string[]>
+  /** Noms des sous-dossiers de la corbeille de la mémoire (`corbeille/`) ; vide si elle n'existe pas. */
+  listerCorbeille(): Promise<string[]>
   /**
    * Tout ce que porte le dossier, à toute profondeur, sous les noms réels (provisoires compris), pour la copie de
    * sécurité : lecture seule. `ordinaire` faux pour ce qui n'est pas un fichier ordinaire (lien…). Lève si le listage
@@ -183,13 +184,16 @@ const LONGUEUR_MAX = 512
 
 /**
  * Seule liste des écritures sur le téléphone, appliquée dans la coquille avant toute commande : un fichier posé
- * directement dans `sessions/`, `itineraires/` ou `reglages/` (nom admis par `segmentAdmis`), ou l'un des
- * `FICHIERS_RACINE_ECRIVABLES`. Tout le reste est refusé : chemin absolu, sous-dossier, autre dossier, barre finale.
+ * directement dans `sessions/`, `itineraires/` ou `reglages/` (nom admis par `segmentAdmis`), l'un des
+ * `FICHIERS_RACINE_ECRIVABLES`, ou la fiche d'un dépôt dans la corbeille (`ficheDepot` :
+ * `corbeille/<dossier>/depose.json`, ce seul nom). Tout le reste est refusé : chemin absolu, sous-dossier, autre
+ * dossier, barre finale, l'index de la corbeille (que seul le téléphone écrit), tout autre fichier sous `corbeille/`.
  */
 export function cheminEcrivable(chemin: unknown): chemin is string {
   if (typeof chemin !== 'string' || chemin.length === 0 || chemin.length > LONGUEUR_MAX) return false
   const segments = chemin.split('/')
   if (segments.length === 1) return FICHIERS_RACINE_ECRIVABLES.includes(chemin)
+  if (segments.length === 3) return ficheDepot(chemin)
   return segments.length === 2 && DOSSIERS_ECRIVABLES.includes(segments[0]) && segmentAdmis(segments[1])
 }
 
@@ -198,43 +202,6 @@ export function cheminRetirable(chemin: unknown): chemin is string {
   if (typeof chemin !== 'string' || chemin.length === 0 || chemin.length > LONGUEUR_MAX) return false
   const segments = chemin.split('/')
   return segments.length === 2 && DOSSIERS_RETIRABLES.includes(segments[0]) && segmentAdmis(segments[1])
-}
-
-/**
- * Nom de la corbeille vu de la page, sous `Documents/` (`PHONE_TRASH_ROOT` de `src/library/syncBase.ts`, tenu égal
- * par un test) : la page désigne toujours `Tracker-corbeille/…`, la coquille la place à côté de la racine lue.
- */
-export const CORBEILLE_PAGE = 'Tracker-corbeille'
-
-/** Dossier de la corbeille du téléphone sous `Documents`, à côté de la racine : `Tracker-corbeille`, ou `Tracker-essai-corbeille`. */
-export function nomCorbeille(nomRacine: string): string {
-  return `${nomRacine}-corbeille`
-}
-
-/** Un jour de la corbeille, `AAAA-MM-JJ`. */
-const JOUR = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
-
-/** Jour d'un dossier de la corbeille vu de la page (`Tracker-corbeille/AAAA-MM-JJ`), `null` s'il est mal formé. */
-export function dossierCorbeilleAdmis(dossier: unknown): string | null {
-  if (typeof dossier !== 'string') return null
-  const segments = dossier.split('/')
-  return segments.length === 2 && segments[0] === CORBEILLE_PAGE && JOUR.test(segments[1]) ? segments[1] : null
-}
-
-/** Destination d'un retrait, relative à la corbeille : son jour, son sous-dossier et son nom. */
-export type DestinationCorbeille = { jour: string; sous: string; nom: string; relatif: string }
-
-/**
- * Destination d'un retrait de `chemin` vers `vers` (`Tracker-corbeille/AAAA-MM-JJ/<sous>/<nom>`) : `chemin` retirable,
- * même sous-dossier des deux côtés, nom admis ; `null` sinon.
- */
-export function retraitAdmis(chemin: unknown, vers: unknown): DestinationCorbeille | null {
-  if (!cheminRetirable(chemin) || typeof vers !== 'string' || vers.length > LONGUEUR_MAX) return null
-  const segments = vers.split('/')
-  if (segments.length !== 4 || segments[0] !== CORBEILLE_PAGE || !JOUR.test(segments[1])) return null
-  const [, jour, sous, nom] = segments
-  if (sous !== chemin.split('/')[0] || !segmentAdmis(nom)) return null
-  return { jour, sous, nom, relatif: `${jour}/${sous}/${nom}` }
 }
 
 // ---------- liaison sans fil : chemins réels et dépôt dans la corbeille du téléphone ----------
@@ -255,12 +222,19 @@ export function cheminBrutAdmis(chemin: unknown): chemin is string {
 }
 
 /**
- * Dossier, à la racine de la mémoire du téléphone, où l'ordinateur dépose par la liaison sans fil ce qu'il retire
- * de `sessions/` et d'`itineraires/` : la corbeille du téléphone, au format de celle du programme Windows
+ * Dossier, à la racine de la mémoire du téléphone, où l'ordinateur dépose, par le câble comme sans fil, ce qu'il
+ * retire de `sessions/` et d'`itineraires/` : la corbeille du téléphone, au format de celle du programme Windows
  * (`TRASH_DIR` de `src/library/trash.ts`, tenu égal par un test). Seul endroit où ce nom est écrit : `deplacer`,
- * `listerCorbeille` et leurs tests le lisent ici.
+ * `mettreDeCote`, `listerCorbeille` et leurs tests le lisent ici.
  */
 export const DEPOT_TELEPHONE = 'corbeille'
+
+/**
+ * Fiche d'un dépôt (`DEPOSIT_FILE` de `src/library/trash.ts`, tenu égal par un test), seul fichier que la page écrit
+ * dans la corbeille du téléphone, avant tout déplacement : elle fait du dossier un dépôt à adopter, que la purge du
+ * téléphone ne prend jamais pour un reste.
+ */
+export const FICHIER_DEPOT = 'depose.json'
 
 /** Plus longue identité dans le nom d'un sous-dossier de la corbeille (`IDENTITY_MAX` de `src/library/trash.ts`). */
 const IDENTITE_DEPOT_MAX = 80
@@ -295,6 +269,13 @@ export function destinationCorbeilleAdmise(chemin: unknown, vers: unknown): bool
   return segments.length === 3 && segments[0] === DEPOT_TELEPHONE && dossierDepotAdmis(segments[1]) && segments[2] === chemin.split('/')[1]
 }
 
+/** Vrai pour la fiche d'un dépôt : `corbeille/<dossier>/depose.json`, `<dossier>` admis par `dossierDepotAdmis`. */
+export function ficheDepot(chemin: unknown): chemin is string {
+  if (typeof chemin !== 'string' || chemin.length > LONGUEUR_MAX) return false
+  const segments = chemin.split('/')
+  return segments.length === 3 && segments[0] === DEPOT_TELEPHONE && dossierDepotAdmis(segments[1]) && segments[2] === FICHIER_DEPOT
+}
+
 /** Erreur rendue pour un chemin hors des listes fermées. */
 export function cheminRefuse(chemin: unknown): ErreurDisque {
   const texte = typeof chemin === 'string' ? chemin.slice(0, 200) : typeof chemin
@@ -317,6 +298,11 @@ export function changeDepuisListage(chemin: string): ErreurDisque {
 /** Erreur rendue quand la place visée dans la corbeille est déjà prise. */
 export function corbeillePrise(vers: string): ErreurDisque {
   return new ErreurDisque('UNKNOWN', `« ${vers} » est déjà pris dans la corbeille du téléphone.`)
+}
+
+/** Erreur rendue quand un fichier est déplacé vers un dossier de la corbeille qui ne tient pas `depose.json`. */
+export function depotSansFiche(vers: string): ErreurDisque {
+  return new ErreurDisque('PERMISSION', `« ${vers.slice(0, 200)} » n'est pas dans un dépôt ouvert de la corbeille du téléphone (${FICHIER_DEPOT} manque).`)
 }
 
 // ---------- noms provisoires, comme l'application du téléphone ----------
@@ -430,16 +416,15 @@ async function sorteDe(absolu: string): Promise<'fichier' | 'dossier' | 'autre' 
 
 /**
  * Un dossier local qui joue la mémoire partagée du téléphone (`stockage`, son `/sdcard`) : le dossier lu est
- * `stockage/Documents/Tracker`, sa corbeille `stockage/Documents/Tracker-corbeille`. Il liste comme le câble
- * (provisoires vus comme le téléphone les voit), écrit comme lui (`.tracker-new`, taille relue, renommage) et met de
- * côté comme lui (fichier relu, place libre, déplacement) ; il n'efface jamais un fichier du téléphone. Stockage
- * absent : téléphone absent.
+ * `stockage/Documents/Tracker`, sa corbeille `stockage/Documents/Tracker/corbeille`. Il liste comme le câble
+ * (provisoires vus comme le téléphone les voit), écrit comme lui (`.tracker-new`, taille relue, renommage, jamais
+ * par-dessus une fiche de dépôt) et dépose comme lui (fichier relu, dépôt ouvert, place libre, déplacement) ; il
+ * n'efface jamais un fichier du téléphone. Stockage absent : téléphone absent.
  */
 export function dossierLocal(stockage: string | null, options: OptionsDossierLocal = {}): DossierDistant {
   const nomRacine = options.nomRacine ?? NOM_RACINE
   const documents = stockage === null ? null : path.join(path.resolve(stockage), 'Documents')
   const racine = documents === null ? null : path.join(documents, nomRacine)
-  const corbeille = documents === null ? null : path.join(documents, nomCorbeille(nomRacine))
   const coupure = options.coupureApres ?? null
   let operations = 0
   let debranche = false
@@ -459,17 +444,17 @@ export function dossierLocal(stockage: string | null, options: OptionsDossierLoc
     }
   }
 
-  async function exigerPret(): Promise<{ r: string; c: string }> {
+  async function exigerPret(): Promise<{ r: string }> {
     const e = await etat()
-    if (e.etat !== 'pret' || racine === null || corbeille === null) {
+    if (e.etat !== 'pret' || racine === null) {
       reels = null
       throw pasPret(e.etat)
     }
-    return { r: racine, c: corbeille }
+    return { r: racine }
   }
 
   /** Comme une écriture ou un retrait du câble : prêt, listé, et pas d'enregistrement en cours. */
-  async function exigerEcriture(): Promise<{ r: string; c: string; vus: Map<string, string> }> {
+  async function exigerEcriture(): Promise<{ r: string; vus: Map<string, string> }> {
     const lieux = await exigerPret()
     if (reels === null) throw pasListe()
     if (options.enregistrement) throw enregistrementEnCours()
@@ -597,6 +582,9 @@ export function dossierLocal(stockage: string | null, options: OptionsDossierLoc
       await exigerDossier(path.dirname(cible))
       const sorte = await sorteDe(cible)
       if (sorte !== null && sorte !== 'fichier') throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un fichier sur le téléphone.`)
+      // Une fiche de dépôt ne s'écrit que dans un dépôt neuf : jamais par-dessus une autre.
+      if (sorte !== null && ficheDepot(chemin)) throw corbeillePrise(chemin)
+      if (ficheDepot(chemin)) await exigerDossier(absolu(r, DEPOT_TELEPHONE))
       const provisoire = nomProvisoire(cible)
       await mkdir(path.dirname(cible), { recursive: true })
       if (coupe()) {
@@ -622,9 +610,8 @@ export function dossierLocal(stockage: string | null, options: OptionsDossierLoc
     },
 
     async mettreDeCote(fichier, vers) {
-      const destination = retraitAdmis(fichier.chemin, vers)
-      if (destination === null) throw cheminRefuse(`${fichier.chemin} → ${String(vers)}`)
-      const { r, c, vus } = await exigerEcriture()
+      if (!destinationCorbeilleAdmise(fichier.chemin, vers)) throw cheminRefuse(`${fichier.chemin} → ${String(vers)}`)
+      const { r, vus } = await exigerEcriture()
       const reel = vus.get(fichier.chemin)
       if (reel === undefined) throw new ErreurDisque('UNKNOWN', `Fichier absent du dernier listage du téléphone : « ${fichier.chemin} ».`)
       if (coupe()) throw debrancheErreur()
@@ -640,32 +627,26 @@ export function dossierLocal(stockage: string | null, options: OptionsDossierLoc
       // Le remplacement interrompu caché à côté part aussi, et d'abord : seul, le téléphone lui rendrait le nom de l'original.
       const cache = reel === fichier.chemin ? source + SUFFIXE_REMPLACEMENT : null
       const avecCache = cache !== null && (await sorteDe(cache)) === 'fichier'
-      const cible = absolu(c, destination.relatif)
-      for (const d of [c, path.join(c, destination.jour), path.dirname(cible)]) await exigerDossier(d)
+      const cible = absolu(r, vers)
+      for (const d of [absolu(r, DEPOT_TELEPHONE), path.dirname(cible)]) await exigerDossier(d)
+      // Le dépôt doit être ouvert : sa fiche, écrite avant tout déplacement, le garde de la purge du téléphone.
+      if ((await sorteDe(path.join(path.dirname(cible), FICHIER_DEPOT))) !== 'fichier') throw depotSansFiche(vers)
       if ((await sorteDe(cible)) !== null || (avecCache && (await sorteDe(cible + SUFFIXE_REMPLACEMENT)) !== null)) throw corbeillePrise(vers)
-      await mkdir(path.dirname(cible), { recursive: true })
       if (avecCache && cache !== null) await rename(cache, cible + SUFFIXE_REMPLACEMENT)
       await rename(source, cible)
       vus.delete(fichier.chemin)
       operations++
     },
 
-    async listerCorbeille(dossier) {
-      const jour = dossierCorbeilleAdmis(dossier)
-      if (jour === null) throw cheminRefuse(dossier)
-      const { c } = await exigerPret()
+    async listerCorbeille() {
+      const { r } = await exigerPret()
       if (reels === null) throw pasListe()
-      const chemins: string[] = []
-      for (const sous of DOSSIERS_RETIRABLES) {
-        try {
-          for (const entree of await readdir(path.join(c, jour, sous), { withFileTypes: true })) {
-            if (entree.isFile()) chemins.push(`${CORBEILLE_PAGE}/${jour}/${sous}/${entree.name}`)
-          }
-        } catch (e) {
-          if (codeDe(e) !== 'NOT_FOUND') throw e
-        }
+      try {
+        return (await readdir(absolu(r, DEPOT_TELEPHONE), { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort()
+      } catch (e) {
+        if (codeDe(e) === 'NOT_FOUND') return []
+        throw e
       }
-      return chemins.sort()
     },
   }
 }
@@ -751,9 +732,10 @@ function champs(argument: unknown): Record<string, unknown> {
  * - `telephone:enregistrement()` rend vrai si l'application du téléphone enregistre (rien n'est alors écrit) ;
  * - `telephone:ecrireOctets({ chemin, octets })` écrit un fichier de la liste fermée (`cheminEcrivable`) après un
  *   listage réussi, et rend le `FichierTelephone` écrit ; le fichier temporaire est effacé, réussite ou échec ;
- * - `telephone:listerCorbeille({ dossier })` rend les chemins déjà pris dans un jour de la corbeille du téléphone ;
- * - `telephone:mettreDeCote({ chemin, vers })` déplace un fichier du dernier listage (`cheminRetirable`) dans la
- *   corbeille du téléphone, sous `vers` (`retraitAdmis`) ;
+ * - `telephone:listerCorbeille({ dossier })` rend les noms des sous-dossiers de la corbeille du téléphone (`dossier` :
+ *   `DEPOT_TELEPHONE`, seule valeur admise) ;
+ * - `telephone:mettreDeCote({ chemin, vers })` déplace un fichier du dernier listage (`cheminRetirable`) dans un dépôt
+ *   ouvert de la corbeille du téléphone, sous `vers` (`destinationCorbeilleAdmise`) ;
  * - `telephone:copieSecurite()` copie le dossier mémoire retenu et ce que liste le téléphone dans un dossier neuf des
  *   copies de sécurité (`copieSecurite.ts`), et rend son chemin absolu ; rien n'est écrit sur le téléphone ;
  * - `telephone:copieExiste({ chemin })` rend vrai si `chemin` est une copie de sécurité encore là, sous le dossier
@@ -878,9 +860,9 @@ export function gestionnairesTelephone(dossier: DossierDistant, dossierTemp: str
       enReponse(() =>
         serie(async (): Promise<string[]> => {
           const d = champs(argument).dossier
-          if (dossierCorbeilleAdmis(d) === null) throw cheminRefuse(d)
+          if (d !== DEPOT_TELEPHONE) throw cheminRefuse(d)
           exigerListe()
-          return dossier.listerCorbeille(d as string)
+          return dossier.listerCorbeille()
         }),
       ),
 
@@ -888,7 +870,7 @@ export function gestionnairesTelephone(dossier: DossierDistant, dossierTemp: str
       enReponse(() =>
         serie(async (): Promise<null> => {
           const { chemin, vers } = champs(argument)
-          if (retraitAdmis(chemin, vers) === null) throw cheminRefuse(typeof chemin === 'string' ? chemin : vers)
+          if (!destinationCorbeilleAdmise(chemin, vers)) throw cheminRefuse(typeof chemin === 'string' ? `${chemin} → ${String(vers)}` : vers)
           exigerListe()
           const fichier = dernier.get(chemin as string)
           if (!fichier) throw new ErreurDisque('UNKNOWN', `Fichier absent du dernier listage du téléphone : « ${String(chemin).slice(0, 200)} ».`)

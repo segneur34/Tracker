@@ -2,7 +2,7 @@ import { uniqueSessionFileName } from './naming';
 import { dedupeSessions, imuFileName, isGpxFileName, recordFileName, type SessionRecord } from './record';
 import { sameStamp } from './recordMerge';
 import {
-  SYNC_SIDES, otherSyncSide, phoneTrashDir, syncBaseLine,
+  SYNC_SIDES, otherSyncSide, syncBaseLine,
   type SyncBase, type SyncBaseSession, type SyncFiles, type SyncSideName, type SyncStamp,
 } from './syncBase';
 import type { TrashEntry } from './trash';
@@ -28,10 +28,11 @@ import { inspectSyncRecord, mergeSyncRecords, renamedSyncRecord, syncRecordChang
  * Rien ne se supprime sans ligne dans la base : une première rencontre (pas de base, dossier sans identifiant parce
  * qu'il a été remis à zéro, autre dossier) ne fait que réunir. Une session n'est tenue pour supprimée d'un côté que
  * si plus aucun fichier n'y porte le nom que la base donnait à son GPX. Une suppression couvre toutes les copies de
- * la session du côté où elle s'applique. Le téléphone n'a pas de corbeille : rien n'en est retiré qui ne soit déjà,
- * à la même taille, dans la corbeille de l'ordinateur ; sinon la copie du téléphone y est d'abord rangée. Et ce qui
- * quitte le téléphone n'y est jamais effacé : il est déplacé dans `Documents/Tracker-corbeille/AAAA-MM-JJ/`
- * (`phoneTrashDir`), hors de la mémoire.
+ * la session du côté où elle s'applique. Rien n'est retiré du téléphone qui ne soit déjà, à la même taille, dans la
+ * corbeille de l'ordinateur ; sinon la copie du téléphone y est d'abord rangée. Et ce qui quitte le téléphone n'y est
+ * jamais effacé : il est déposé dans la corbeille de sa mémoire (`phoneDepositPaths`), qu'il tient lui-même. Une
+ * session revenue d'une corbeille d'un côté (neuve de ce côté, et dans `SyncBase.removed`) est recopiée de l'autre
+ * sans question (`SyncItem.restored`).
  *
  * Chaque opération est sans effet si elle est déjà faite, et la ligne de base d'une session n'est réécrite qu'une
  * fois toutes ses opérations faites : une synchronisation coupée, ou restreinte à une partie du plan
@@ -221,8 +222,6 @@ export interface SyncInput {
    * l'ordinateur. Sans effet sur une identité qui n'est dans aucun de ces cas.
    */
   keep?: readonly number[];
-  /** Heure de l'ordinateur : elle date le dossier de la corbeille du téléphone (`phoneTrashDir`), rien d'autre. */
-  nowMs: number;
   /** Seuils du garde-fou ; par défaut `SYNC_GUARD_LIMITS`. */
   guardLimits?: SyncGuardLimits;
 }
@@ -258,9 +257,9 @@ export type SyncOp =
    */
   | { kind: 'trash'; files: SyncStamp[]; absent: string | null }
   /**
-   * Fichiers retirés du téléphone, GPX d'abord : une copie de la session, ou des restes. Jamais effacés : déplacés dans
-   * `moveTo` (`phoneTrashDir`, depuis `Documents/`), sous `sessions/` et leur nom (`phoneTrashPaths` y choisit un nom
-   * libre). `absent` : le GPX qui ne doit plus être sur l'ordinateur, même vérification. `keep` : ce que la corbeille
+   * Fichiers retirés du téléphone, GPX d'abord : une copie de la session, ou des restes. Jamais effacés : déposés dans
+   * la corbeille du téléphone, dans un sous-dossier neuf nommé d'après l'identité `moveTo` (`startMs`, `trashDirName`),
+   * sous leur nom (`phoneDepositPaths`). `absent` : le GPX qui ne doit plus être sur l'ordinateur, même vérification. `keep` : ce que la corbeille
    * de l'ordinateur doit d'abord recevoir du téléphone : `all`, tous ces fichiers (elle ne les tient pas à
    * l'identique) ; `record`, la fiche (`recordText`), changée sur le téléphone depuis, à fondre dans celle de la
    * corbeille ; `none`, rien. Avant de déplacer, l'exécutant relit le listage : un fichier dont la taille ou la date
@@ -318,9 +317,9 @@ export interface SyncItem {
   /** Session suivie dont une fiche gardée manquait ou ne valait plus : fondue comme à une première rencontre. */
   withoutAncestor: boolean;
   /**
-   * Revenue de la corbeille de l'ordinateur : neuve sur l'ordinateur alors que la synchronisation avait mené sa
-   * suppression au bout (`SyncBase.removed`), ou retrouvée des deux côtés sans ligne alors que le téléphone la tenait
-   * pendant qu'elle était à la corbeille (`SyncBase.held`). Absent : faux.
+   * Revenue d'une corbeille : neuve d'un côté (restaurée sur l'ordinateur ou sur le téléphone) alors que la
+   * synchronisation avait mené sa suppression au bout (`SyncBase.removed`), ou retrouvée des deux côtés sans ligne
+   * alors que le téléphone la tenait pendant qu'elle était à la corbeille (`SyncBase.held`). Absent : faux.
    */
   restored?: boolean;
   /**
@@ -488,12 +487,13 @@ export const planSync = (input: SyncInput): SyncPlan => {
   const refused = new Set(input.keep ?? []);
   const ancestorsOf = (startMs: number): SyncAncestors => ancestors.get(startMs) ?? { computer: null, phone: null };
   const trashedFiles = (startMs: number) => trash.filter((entry) => entry.startMs === startMs).flatMap((entry) => entry.files);
-  const moveTo = phoneTrashDir(input.nowMs);
+  const moveTo = (startMs: number): string => String(startMs);
 
   const itemOf = (startMs: number, kind: SyncCase, o: Seen | null, t: Seen | null): SyncItem => ({
     startMs, case: kind, files: { computer: o?.files.gpx.name ?? null, phone: t?.files.gpx.name ?? null },
     ops: [], base: { kind: 'keep' }, left: null, conflicts: [], twoTracks: false, withoutAncestor: false,
-    restored: (kind === 'newOnComputer' && base?.removed.includes(startMs) === true) || (kind === 'firstMeeting' && base?.held.includes(startMs) === true),
+    restored: ((kind === 'newOnComputer' || kind === 'newOnPhone') && base?.removed.includes(startMs) === true)
+      || (kind === 'firstMeeting' && base?.held.includes(startMs) === true),
   });
 
   /** Restes d'une session d'un côté (fiche ou capteurs sans GPX) que la base nomme, à faire partir avec elle. */
@@ -548,7 +548,7 @@ export const planSync = (input: SyncInput): SyncPlan => {
     if (files.length === 0) return [];
     const kept = trashedFiles(startMs);
     const safe = files.every((f) => (/\.imu$/i.test(f.name) ? kept.some((k) => /\.imu$/i.test(k.name) && k.size === f.size) : sameFile(line?.phone.record ?? null, f)));
-    return [{ kind: 'removeFromPhone', files, absent: null, keep: safe ? 'none' : 'all', recordText: null, moveTo }];
+    return [{ kind: 'removeFromPhone', files, absent: null, keep: safe ? 'none' : 'all', recordText: null, moveTo: moveTo(startMs) }];
   };
 
   /** Restes de l'ordinateur : à sa corbeille, comme tout ce qui en disparaît. */
@@ -677,7 +677,8 @@ export const planSync = (input: SyncInput): SyncPlan => {
     const removals = (phone.copies.get(startMs) ?? []).map((copy): SyncOp => {
       const keep = keepOf(startMs, copy, line);
       return {
-        kind: 'removeFromPhone', files: stampsOf(copy.files), absent: line?.computer.gpx.name ?? null, keep, recordText: keep === 'record' ? copy.text : null, moveTo,
+        kind: 'removeFromPhone', files: stampsOf(copy.files), absent: line?.computer.gpx.name ?? null, keep, recordText: keep === 'record' ? copy.text : null,
+        moveTo: moveTo(startMs),
       };
     });
     return {

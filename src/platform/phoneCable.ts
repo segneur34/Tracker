@@ -3,12 +3,15 @@ import { bridgeValue } from './diskMemory';
 import type { FolderEntry, ImportEntry, MemoryFolder } from './memoryFolder';
 import { isDesktopApp } from './runtime';
 
+/** Dossier de la corbeille à la racine de la mémoire (`TRASH_DIR` de `library/trash.ts`, tenu égal par un test). */
+export const PHONE_TRASH_DIR = 'corbeille';
+
 /**
  * Le téléphone branché par câble au programme Windows : son état, le contenu de son dossier `Documents/Tracker`
  * (racine, `sessions/`, `itineraires/`, `reglages/`, `journaux/`), ses fichiers à importer, lus un par un au moment
  * de les ranger, et ce dossier sous la forme d'un dossier mémoire (`phoneMemoryFolder`, sorte `phone`) qui écrit par
- * la coquille et met de côté dans la corbeille du téléphone. Rien n'efface jamais un fichier du téléphone : le pont
- * n'en a pas le moyen. Ailleurs (navigateur, téléphone, coquille plus ancienne), rien de cela n'existe.
+ * la coquille et dépose dans la corbeille de la mémoire du téléphone. Rien n'efface jamais un fichier du téléphone :
+ * le pont n'en a pas le moyen. Ailleurs (navigateur, téléphone, coquille plus ancienne), rien de cela n'existe.
  */
 
 export type PhoneState = DesktopPhoneState;
@@ -123,18 +126,19 @@ export const phoneIsRecording = (): Promise<boolean> => phoneValue(requireWriter
 
 /**
  * Le dossier `Documents/Tracker` du téléphone branché, sous la forme d'un dossier mémoire, et ce qu'il sait de plus :
- * mettre un fichier de côté dans la corbeille du téléphone, dire ce qu'elle tient déjà, dire si le téléphone enregistre.
+ * déposer un fichier dans la corbeille de sa mémoire, dire les sous-dossiers qu'elle tient, dire si le téléphone
+ * enregistre.
  */
 export interface PhoneMemoryFolder extends MemoryFolder {
   kind: 'phone';
   /**
-   * Déplace un fichier du dernier listage (`sessions/` ou `itineraires/`) hors de la mémoire, sous `to` (chemin depuis
-   * `Documents/`, `Tracker-corbeille/AAAA-MM-JJ/<même sous-dossier>/<nom>`, voir `phoneTrashDir` et `phoneTrashPaths`),
-   * sans jamais écraser ce qui y est ; sans effet pour un fichier que le dernier listage ne porte pas.
+   * Déplace un fichier du dernier listage (`sessions/` ou `itineraires/`) dans un dépôt de la corbeille, sous `to`
+   * (`corbeille/<dépôt>/<même nom>`, voir `phoneDepositPaths`), sans jamais écraser ce qui y est ; la coquille le
+   * refuse si le dépôt ne tient pas déjà `depose.json`. Sans effet pour un fichier que le dernier listage ne porte pas.
    */
   moveAside(path: string, to: string): Promise<void>;
-  /** Chemins déjà pris dans un jour de la corbeille (`dir` : `Tracker-corbeille/AAAA-MM-JJ`), depuis `Documents/`. */
-  asideTaken(dir: string): Promise<string[]>;
+  /** Noms des sous-dossiers de la corbeille de la mémoire du téléphone, pour y choisir un dépôt neuf (`trashDirName`). */
+  asideTaken(): Promise<string[]>;
   /** Vrai si l'application du téléphone enregistre une session : rien n'y est alors écrit ni retiré. */
   recording(): Promise<boolean>;
 }
@@ -156,8 +160,8 @@ const exactBytes = (bytes: Uint8Array): Uint8Array =>
  *   listage à jour, date du téléphone comprise ;
  * - `remove` lève toujours : rien ne s'efface du téléphone, un retrait passe par `moveAside`.
  * La coquille n'admet l'écriture que dans sa liste fermée (`sessions/`, `itineraires/`, `reglages/`, `tracker.json`,
- * `fc-repos.json`), le retrait que de `sessions/` et d'`itineraires/`, et rien pendant un enregistrement : ailleurs,
- * ces appels lèvent. Lève dans une coquille trop ancienne pour écrire (`phoneCanWrite`).
+ * `fc-repos.json`, et `corbeille/<dépôt>/depose.json` seul), le retrait que de `sessions/` et d'`itineraires/` vers un
+ * dépôt qui tient `depose.json`, et rien pendant un enregistrement : ailleurs, ces appels lèvent. Lève dans une coquille trop ancienne pour écrire (`phoneCanWrite`).
  */
 export const phoneMemoryFolder = (label: string): PhoneMemoryFolder => {
   const phone = requireWriter();
@@ -222,7 +226,7 @@ export const phoneMemoryFolder = (label: string): PhoneMemoryFolder => {
       await phoneValue(phone.mettreDeCote({ chemin, vers: to }));
       files.delete(chemin);
     },
-    asideTaken: (dir) => phoneValue(phone.listerCorbeille({ dossier: dir })),
+    asideTaken: () => phoneValue(phone.listerCorbeille({ dossier: PHONE_TRASH_DIR })),
     recording: async () => {
       await current();
       return phoneValue(phone.enregistrement());

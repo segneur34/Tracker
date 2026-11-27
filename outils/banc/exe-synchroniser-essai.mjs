@@ -9,12 +9,14 @@
 //   des noms avec accent et espace) ; son empreinte (noms, tailles, dates) est relevée avant et après, et le script
 //   échoue si elle a bougé ;
 // - ce script n'écrit, par `adb push` et `rm`, que sous `/sdcard/Documents/Tracker-essai` (`sousEssai`) ;
-// - il refuse de partir si `Tracker-essai` ou `Tracker-essai-corbeille` existent déjà : rien n'est écrasé. Il ne les
-//   retire pas à la fin : à effacer à la main une fois le relevé lu ;
+// - il refuse de partir si `Tracker-essai` (ou l'ancien `Tracker-essai-corbeille`, que plus rien ne remplit depuis le
+//   lot 242-1) existe déjà : rien n'est écrasé. Il ne retire pas `Tracker-essai` à la fin : à effacer à la main une fois
+//   le relevé lu ;
 // - il s'arrête si la coquille n'annonce pas « vrai téléphone, racine d'essai : Documents/Tracker-essai ».
 // Joué : aperçu sans écriture, « Annuler », première synchronisation avec copie de sécurité (sessions et itinéraires
-// dans les deux sens), puis une suppression de chaque côté et les retraits confirmés (corbeille de l'ordinateur,
-// `Documents/Tracker-essai-corbeille` du téléphone).
+// dans les deux sens), puis une suppression de chaque côté et les retraits confirmés (corbeille de l'ordinateur ; sur le
+// téléphone, un dépôt dans la corbeille de sa mémoire, `Documents/Tracker-essai/corbeille/<dépôt>/`, ouvert par
+// `depose.json` : corbeilles jumelles, lot 242-1).
 
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -30,7 +32,10 @@ const ORIGINE = 'https://tracker.localhost';
 const ADB = process.env.ADB ?? join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk', 'platform-tools', 'adb.exe');
 const VRAI = '/sdcard/Documents/Tracker';
 const ESSAI = '/sdcard/Documents/Tracker-essai';
-const CORBEILLE = '/sdcard/Documents/Tracker-essai-corbeille';
+/** La corbeille de la mémoire d'essai du téléphone, où l'ordinateur dépose ce qu'il retire (lot 242-1). */
+const CORBEILLE = `${ESSAI}/corbeille`;
+/** L'ancienne corbeille du câble, hors de la mémoire : plus jamais remplie. */
+const ANCIENNE_CORBEILLE = '/sdcard/Documents/Tracker-essai-corbeille';
 const ITINERAIRES = ['Itinéraire du 22 11 2026', 'Itinéraire du 26 09 2026']; // lus sur le vrai dossier : accent et espaces
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -194,7 +199,7 @@ try {
   check('un seul téléphone branché et autorisé', appareils.length === 1, appareils.join(' ; '));
   if (appareils.length !== 1) throw new Error('pas de téléphone');
   check('le vrai dossier Documents/Tracker existe', existe(VRAI));
-  if (existe(ESSAI) || existe(CORBEILLE)) throw new Error(`${ESSAI} ou ${CORBEILLE} existe déjà : à retirer à la main avant de rejouer`);
+  if (existe(ESSAI) || existe(ANCIENNE_CORBEILLE)) throw new Error(`${ESSAI} ou ${ANCIENNE_CORBEILLE} existe déjà : à retirer à la main avant de rejouer`);
   const vraiAvant = empreinte(VRAI);
   console.log(`vrai dossier : ${vraiAvant.split('\n').length} fichiers relevés`);
 
@@ -285,14 +290,16 @@ try {
       console.log(`  ordinateur après : ${gpxDe(MC).join(' ; ')} ; corbeille : ${JSON.stringify(corbeilleDe(MC).map((e) => e.main))}`);
       check('b. la session supprimée sur le téléphone a quitté l’ordinateur pour sa corbeille', !gpxDe(MC).includes(surTel[0]) && corbeilleDe(MC).some((e) => e.kind === 'session'));
       check('b. la session supprimée sur l’ordinateur a quitté le dossier d’essai…', !tel.includes(`sessions/${surPc[0]}`));
-      check('b. … pour Documents/Tracker-essai-corbeille', liste(CORBEILLE).some((c) => c.endsWith(surPc[0])));
+      check('b. … pour un dépôt de Documents/Tracker-essai/corbeille, ouvert par depose.json', liste(CORBEILLE).some((c) => c.endsWith(`/${surPc[0]}`)) && liste(CORBEILLE).some((c) => c.endsWith('/depose.json')));
+      check('b. l’ordinateur n’a pas écrit l’index de la corbeille du téléphone', !tel.includes('corbeille/corbeille.json'));
+      check('b. rien dans l’ancien Documents/Tracker-essai-corbeille', !existe(ANCIENNE_CORBEILLE));
       await fermerPanneau(b);
     }
   });
 
   console.log('\n== Vrai dossier');
   check('le vrai Documents/Tracker n’a pas bougé (noms, tailles, dates)', empreinte(VRAI) === vraiAvant);
-  console.log(`dossiers d'essai laissés sur le téléphone : ${ESSAI} et ${CORBEILLE}`);
+  console.log(`dossier d'essai laissé sur le téléphone (sa corbeille comprise) : ${ESSAI}`);
 } catch (e) {
   check(`script interrompu : ${e.message}`, false);
 } finally {

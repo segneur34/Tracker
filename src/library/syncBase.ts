@@ -2,6 +2,7 @@ import { isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basi
 import {
   JOURNALS_DIR, MARKER_FILE, MEMORY_FORMAT, MEMORY_VERSION, RESTING_HR_FILE, ROUTES_DIR, SESSIONS_DIR, SETTINGS_DIR, readMarkerVersion,
 } from './folderLayout';
+import { trashFilePath } from './trash';
 
 /**
  * Base de la synchronisation entre l'ordinateur et un téléphone : l'état des deux dossiers à la fin de la dernière
@@ -196,37 +197,14 @@ export const syncFileRole = (path: string): SyncFileRole => {
 };
 
 /**
- * Où va ce qu'on retire du téléphone : jamais effacé, il est déplacé hors de la mémoire, dans un dossier frère
- * (`Documents/Tracker-corbeille/AAAA-MM-JJ/`), sous le même chemin relatif (`sessions/…`, `itineraires/…`). Rien ne le
- * purge : l'utilisateur le vide à la main.
+ * Où va ce qu'on retire du téléphone : jamais effacé, il est déplacé dans la corbeille de sa mémoire, dans un dépôt
+ * neuf (`corbeille/<dir>/`, `dir` choisi par `trashDirName` parmi les sous-dossiers déjà là), sous son nom d'origine,
+ * après que `depose.json` y a été écrit (`trash.ts`, `TrashDeposit`). Le téléphone adopte ensuite le dépôt dans sa
+ * propre corbeille. Destinations des fichiers `paths` (depuis la racine de la mémoire, `sessions/…` ou
+ * `itineraires/…`), dans l'ordre donné.
  */
-export const PHONE_TRASH_ROOT = 'Tracker-corbeille';
-
-/** Dossier du jour de `nowMs` (date locale de l'ordinateur) dans la corbeille du téléphone, chemin depuis `Documents/`. */
-export const phoneTrashDir = (nowMs: number): string => {
-  const d = new Date(nowMs);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${PHONE_TRASH_ROOT}/${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
-/**
- * Destinations, dans le dossier du jour `dir`, des fichiers d'un même retrait (`paths`, depuis la racine de la
- * mémoire), qui y restent ensemble : leur chemin tel quel, ou, si l'un des noms est déjà pris (`taken`, chemins depuis
- * `Documents/`, sans égard à la casse), le même suffixe `-2`, `-3`… pour tous, avant l'extension. Une session retirée
- * deux fois le même jour n'écrase donc jamais la première.
- */
-export const phoneTrashPaths = (dir: string, paths: readonly string[], taken: Iterable<string>): Map<string, string> => {
-  const used = new Set([...taken].map((p) => p.toLowerCase()));
-  const target = (path: string, n: number): string => {
-    if (n === 1) return `${dir}/${path}`;
-    const dot = path.lastIndexOf('.');
-    const slash = path.lastIndexOf('/');
-    return dot > slash ? `${dir}/${path.slice(0, dot)}-${n}${path.slice(dot)}` : `${dir}/${path}-${n}`;
-  };
-  for (let n = 1; ; n++) {
-    if (paths.every((p) => !used.has(target(p, n).toLowerCase()))) return new Map(paths.map((p) => [p, target(p, n)]));
-  }
-};
+export const phoneDepositPaths = (dir: string, paths: readonly string[]): Map<string, string> =>
+  new Map(paths.map((p) => [p, trashFilePath(dir, p.slice(p.lastIndexOf('/') + 1))]));
 
 const readMarker = (text: string | null): Record<string, unknown> | null => {
   const marker = text === null ? undefined : parseJson(text);

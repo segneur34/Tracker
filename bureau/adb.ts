@@ -8,10 +8,11 @@
 //   passés en arguments, par le protocole de copie d'adb, sans shell) ;
 // - `shell` avec un texte que seul `texteShell` fabrique, d'après une `CommandeShell` dont chaque chemin est vérifié :
 //   les textes fixes du listage, `dumpsys activity services <paquet>`, `stat -c` d'un fichier ou de dossiers,
-//   `mv -f nom.tracker-new nom` sous la racine, `mv` d'un fichier de la racine vers la corbeille du téléphone,
-//   `mkdir -p` d'un dossier de la corbeille, le listage d'un jour de la corbeille, le listage entier de la racine pour la
-//   copie de sécurité (`listageTout`, lecture seule, lu par `pull` fichier par fichier), et `rm -f` d'un seul
-//   `nom.tracker-new` sous la racine, le provisoire d'un envoi raté, jamais un fichier de l'utilisateur.
+//   `mv -f nom.tracker-new nom` sous la racine, `mv` d'un fichier de `sessions/` ou d'`itineraires/` vers un dépôt de
+//   la corbeille de la racine (`corbeille/<dossier>/`, qui tient déjà `depose.json`), le listage des sous-dossiers de
+//   cette corbeille, le listage entier de la racine pour la copie de sécurité (`listageTout`, lecture seule, lu par
+//   `pull` fichier par fichier), et `rm -f` d'un seul `nom.tracker-new` sous la racine, le provisoire d'un envoi raté,
+//   jamais un fichier de l'utilisateur. Rien n'est écrit hors de la racine.
 // Les sorties d'`adb shell` sont lues en UTF-8 (`lanceurReel`), comme le téléphone les écrit : un nom accentué se
 // relit tel quel.
 // Le shell du téléphone recolle la commande : chaque nom y passe entre apostrophes (`citerShell`). Jamais
@@ -19,8 +20,9 @@
 //
 // Écriture d'un fichier : relue l'activité de l'application (aucun service de premier plan, `lireServices`), `push`
 // vers `nom.tracker-new`, taille relue par `stat`, puis `mv -f` sur le nom. Sur un échec, le provisoire est retiré et
-// le fichier d'arrivée n'a pas été touché. Retrait : `mv` vers la corbeille du téléphone, après relecture du fichier
-// (taille et date du listage) et de la place visée (libre), puis relecture des deux.
+// le fichier d'arrivée n'a pas été touché. Retrait : `mv` vers un dépôt de la corbeille du téléphone, après relecture
+// du fichier (taille et date du listage), du dépôt (sa fiche `depose.json` présente) et de la place visée (libre),
+// puis relecture des deux.
 //
 // Liaison tenue par un autre : un seul serveur adb tient le téléphone. Un client d'une autre version que le serveur en
 // place l'arrête pour lancer le sien, ce qui couperait l'outil de l'utilisateur (Android Studio, scrcpy, la coquille de
@@ -41,11 +43,11 @@ import { execFile } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { connect } from 'node:net'
 import path from 'node:path'
-import { ErreurDisque, SUFFIXE_NEUF, SUFFIXE_REMPLACEMENT } from './disque'
+import { ErreurDisque, SUFFIXE_NEUF, SUFFIXE_REMPLACEMENT, segmentAdmis } from './disque'
 import type { DossierDistant, EtatTelephone, FichierBrut, FichierTelephone, FichierVu } from './telephone'
 import {
-  CORBEILLE_PAGE,
-  DOSSIERS_RETIRABLES,
+  DEPOT_TELEPHONE,
+  FICHIER_DEPOT,
   NOM_RACINE,
   PAQUET_APPLICATION,
   RACINE_ESSAI,
@@ -56,19 +58,20 @@ import {
   cheminRetirable,
   commeLeTelephone,
   corbeillePrise,
-  dossierCorbeilleAdmis,
+  depotSansFiche,
+  destinationCorbeilleAdmise,
+  dossierDepotAdmis,
   enregistrementEnCours,
+  ficheDepot,
   fichiersAdmis,
-  nomCorbeille,
   nomProvisoire,
   pasListe,
   pasPret,
   racineAbsente,
-  retraitAdmis,
   sansReel,
 } from './telephone'
 
-/** Dossier sous lequel vivent la mémoire du téléphone et sa corbeille. */
+/** Dossier sous lequel vit la mémoire du téléphone. */
 const DOCUMENTS = '/sdcard/Documents'
 
 /** Dossier du téléphone lu par défaut, dans sa mémoire partagée. */
@@ -80,12 +83,12 @@ export function racineDistante(nomRacine: string = NOM_RACINE): string {
   return `${DOCUMENTS}/${nomRacine}`
 }
 
-/** Les deux seuls lieux où une commande peut écrire : la racine lue et la corbeille du téléphone, chemins absolus. */
-export type LieuxDistants = { racine: string; corbeille: string }
+/** Le seul lieu où une commande peut écrire : la racine lue (sa corbeille comprise, `corbeille/`), chemin absolu. */
+export type LieuxDistants = { racine: string }
 
-/** Racine et corbeille d'un nom de racine admis (`racineDistante`). */
+/** Racine d'un nom de racine admis (`racineDistante`). */
 export function lieuxDistants(nomRacine: string = NOM_RACINE): LieuxDistants {
-  return { racine: racineDistante(nomRacine), corbeille: `${DOCUMENTS}/${nomCorbeille(nomRacine)}` }
+  return { racine: racineDistante(nomRacine) }
 }
 
 /** Sous-dossier où l'utilisateur peut poser l'outil, dans le profil du programme ou à côté de `Tracker.exe`. */
@@ -163,23 +166,21 @@ export function citerShell(texte: string): string {
  * chemin (absolu, sur le téléphone) :
  * - `listage`, `racine`, `repli` : les textes fixes du listage de la racine (`commandesListage`) ;
  * - `services` : `dumpsys activity services <paquet>` ;
- * - `stat` : mode, taille et date d'un fichier de la racine (écrivable ou retirable, provisoires compris) ou de la corbeille ;
- * - `statDossiers` : mode de la corbeille, d'un de ses jours, ou d'un sous-dossier retirable d'un jour ;
+ * - `stat` : mode, taille et date d'un fichier de la racine (écrivable ou retirable, ou d'un dépôt de la corbeille,
+ *   provisoires compris) ;
+ * - `statDossiers` : mode de la corbeille de la racine ou d'un de ses dépôts ;
  * - `renommer` : `mv -f nom.tracker-new nom`, `nom` écrivable sous la racine ;
- * - `deplacer` : `mv` d'un fichier retirable de la racine (ou de son `.tracker-tmp`) vers la corbeille, même
- *   sous-dossier, même suffixe ;
- * - `creerDossier` : `mkdir -p` d'un sous-dossier retirable d'un jour de la corbeille ;
- * - `listageCorbeille`, `repliCorbeille` : les fichiers d'un jour de la corbeille ;
+ * - `deplacer` : `mv` d'un fichier retirable de la racine (ou de son `.tracker-tmp`) vers un dépôt de la corbeille,
+ *   même nom, même suffixe ;
+ * - `listageCorbeille`, `repliCorbeille` : ce que tient la corbeille de la racine, à son premier niveau ;
  * - `effacerProvisoire` : `rm -f` d'un seul `nom.tracker-new`, `nom` écrivable sous la racine.
  */
 export type CommandeShell =
-  | { sorte: 'listage' | 'racine' | 'repli' | 'services' | 'listageTout' }
+  | { sorte: 'listage' | 'racine' | 'repli' | 'services' | 'listageTout' | 'listageCorbeille' | 'repliCorbeille' }
   | { sorte: 'stat'; chemin: string }
   | { sorte: 'statDossiers'; chemins: readonly string[] }
   | { sorte: 'renommer'; de: string; vers: string }
   | { sorte: 'deplacer'; de: string; vers: string }
-  | { sorte: 'creerDossier'; chemin: string }
-  | { sorte: 'listageCorbeille' | 'repliCorbeille'; jour: string }
   | { sorte: 'effacerProvisoire'; chemin: string }
 
 /** Le chemin relatif à `dossier` d'un chemin absolu du téléphone, `null` s'il n'est pas dessous. */
@@ -192,30 +193,27 @@ function sansSuffixe(nom: string, suffixe: string): { base: string; avec: boolea
   return nom.endsWith(suffixe) && nom.length > suffixe.length ? { base: nom.slice(0, -suffixe.length), avec: true } : { base: nom, avec: false }
 }
 
-/** Le relatif d'un fichier de la racine admis pour `stat` : écrivable ou retirable, avec ou sans suffixe provisoire. */
+/** Un fichier d'un dépôt de la corbeille, relatif à la racine (`corbeille/<dossier>/<nom>`, `.tracker-tmp` admis). */
+function relatifDepotAdmis(relatif: string): { base: string; avec: boolean } | null {
+  const segments = relatif.split('/')
+  if (segments.length !== 3 || segments[0] !== DEPOT_TELEPHONE || !dossierDepotAdmis(segments[1])) return null
+  const { base, avec } = sansSuffixe(segments[2], SUFFIXE_REMPLACEMENT)
+  return segmentAdmis(base) ? { base: `${segments[0]}/${segments[1]}/${base}`, avec } : null
+}
+
+/** Le relatif d'un fichier de la racine admis pour `stat` : écrivable, retirable ou d'un dépôt, avec ou sans suffixe provisoire. */
 function relatifRacineAdmis(relatif: string): boolean {
   const neuf = sansSuffixe(relatif, SUFFIXE_NEUF)
   const base = neuf.avec ? neuf.base : sansSuffixe(relatif, SUFFIXE_REMPLACEMENT).base
-  return cheminEcrivable(base) || cheminRetirable(base)
+  return cheminEcrivable(base) || cheminRetirable(base) || relatifDepotAdmis(relatif) !== null
 }
 
-/** Le relatif d'un fichier de la corbeille (`AAAA-MM-JJ/<sous>/<nom>`, `.tracker-tmp` admis) : sa destination, ou `null`. */
-function relatifCorbeilleAdmis(relatif: string): { sous: string; avec: boolean } | null {
-  const segments = relatif.split('/')
-  if (segments.length !== 3) return null
-  const { base, avec } = sansSuffixe(segments[2], SUFFIXE_REMPLACEMENT)
-  const d = retraitAdmis(`${segments[1]}/${base}`, `${CORBEILLE_PAGE}/${segments[0]}/${segments[1]}/${base}`)
-  return d === null ? null : { sous: d.sous, avec }
-}
-
-/** Un dossier de la corbeille admis : elle-même, un de ses jours, ou un sous-dossier retirable d'un jour. */
-function dossierCorbeilleOuJour(chemin: string, corbeille: string): boolean {
-  if (chemin === corbeille) return true
-  const relatif = sous(chemin, corbeille)
+/** Un dossier de la corbeille admis : elle-même (`<racine>/corbeille`), ou un de ses dépôts. */
+function dossierCorbeilleOuDepot(chemin: string, racine: string): boolean {
+  const relatif = sous(chemin, racine)
   if (relatif === null) return false
-  const [jour, sousDossier, ...reste] = relatif.split('/')
-  if (reste.length > 0 || dossierCorbeilleAdmis(`${CORBEILLE_PAGE}/${jour}`) === null) return false
-  return sousDossier === undefined || DOSSIERS_RETIRABLES.includes(sousDossier)
+  const [corbeille, depot, ...reste] = relatif.split('/')
+  return corbeille === DEPOT_TELEPHONE && reste.length === 0 && (depot === undefined || dossierDepotAdmis(depot))
 }
 
 /**
@@ -224,7 +222,8 @@ function dossierCorbeilleOuJour(chemin: string, corbeille: string): boolean {
  * hors liste, sans rien lancer.
  */
 export function texteShell(commande: CommandeShell, lieux: LieuxDistants): string {
-  const { racine, corbeille } = lieux
+  const { racine } = lieux
+  const corbeille = `${racine}/${DEPOT_TELEPHONE}`
   const refus = (detail: string) => cheminRefuse(detail)
   switch (commande.sorte) {
     case 'listage':
@@ -237,13 +236,11 @@ export function texteShell(commande: CommandeShell, lieux: LieuxDistants): strin
       return `find ${racine} ! -type d -exec stat -c '%f %s %Y %n' {} +`
     case 'stat': {
       const dansRacine = sous(commande.chemin, racine)
-      const dansCorbeille = sous(commande.chemin, corbeille)
-      const admis = dansRacine !== null ? relatifRacineAdmis(dansRacine) : dansCorbeille !== null && relatifCorbeilleAdmis(dansCorbeille) !== null
-      if (!admis) throw refus(commande.chemin)
+      if (dansRacine === null || !relatifRacineAdmis(dansRacine)) throw refus(commande.chemin)
       return `stat -c '%f %s %Y' ${citerShell(commande.chemin)}`
     }
     case 'statDossiers': {
-      if (commande.chemins.length === 0 || commande.chemins.some((c) => !dossierCorbeilleOuJour(c, corbeille))) throw refus(commande.chemins.join(' '))
+      if (commande.chemins.length === 0 || commande.chemins.some((c) => !dossierCorbeilleOuDepot(c, racine))) throw refus(commande.chemins.join(' '))
       return `stat -c '%f %n' ${commande.chemins.map(citerShell).join(' ')}`
     }
     case 'renommer': {
@@ -253,10 +250,10 @@ export function texteShell(commande: CommandeShell, lieux: LieuxDistants): strin
     }
     case 'deplacer': {
       const de = sous(commande.de, racine)
-      const vers = sous(commande.vers, corbeille)
+      const vers = sous(commande.vers, racine)
       const source = de === null ? null : sansSuffixe(de, SUFFIXE_REMPLACEMENT)
-      const destination = vers === null ? null : relatifCorbeilleAdmis(vers)
-      if (source === null || destination === null || !cheminRetirable(source.base) || source.base.split('/')[0] !== destination.sous) {
+      const destination = vers === null ? null : relatifDepotAdmis(vers)
+      if (source === null || destination === null || !destinationCorbeilleAdmise(source.base, destination.base)) {
         throw refus(`${commande.de} → ${commande.vers}`)
       }
       // Un remplacement interrompu caché ne part que sous un nom qui le reste ; l'original, sous un nom ordinaire, ou
@@ -264,19 +261,10 @@ export function texteShell(commande: CommandeShell, lieux: LieuxDistants): strin
       if (destination.avec && !source.avec) throw refus(`${commande.de} → ${commande.vers}`)
       return `mv ${citerShell(commande.de)} ${citerShell(commande.vers)}`
     }
-    case 'creerDossier': {
-      const relatif = sous(commande.chemin, corbeille)
-      if (relatif === null || relatif.split('/').length !== 2 || !dossierCorbeilleOuJour(commande.chemin, corbeille)) throw refus(commande.chemin)
-      return `mkdir -p ${citerShell(commande.chemin)}`
-    }
     case 'listageCorbeille':
-    case 'repliCorbeille': {
-      if (dossierCorbeilleAdmis(`${CORBEILLE_PAGE}/${commande.jour}`) === null) throw refus(commande.jour)
-      const jour = `${corbeille}/${commande.jour}`
-      return commande.sorte === 'listageCorbeille'
-        ? `find ${jour} -maxdepth 2 -type f -exec stat -c '%f %s %Y %n' {} +`
-        : `stat -c '%f %s %Y %n' ${DOSSIERS_RETIRABLES.map((d) => `${jour}/${d}/*`).join(' ')}`
-    }
+      return `find ${corbeille} -maxdepth 1 -exec stat -c '%f %s %Y %n' {} +`
+    case 'repliCorbeille':
+      return `stat -c '%f %s %Y %n' ${corbeille}/*`
     case 'effacerProvisoire': {
       const relatif = sous(commande.chemin, racine)
       const nom = relatif === null ? null : sansSuffixe(relatif, SUFFIXE_NEUF)
@@ -671,7 +659,8 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
   const { env, profil, programme } = options
   const nomRacine = options.nomRacine ?? NOM_RACINE
   const lieux = lieuxDistants(nomRacine)
-  const { racine, corbeille } = lieux
+  const { racine } = lieux
+  const corbeille = `${racine}/${DEPOT_TELEPHONE}`
   const lancer = options.lanceur ?? lanceurReel
   const sonder = options.sonde ?? ((cible: CibleServeur) => sonderServeur(cible))
   const existe = options.existe ?? estUnFichier
@@ -859,6 +848,14 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     return lu
   }
 
+  /** Lève si l'un de ces dossiers existe sans être un vrai dossier (un lien, un fichier) : rien n'est écrit à travers. */
+  async function exigerDossiers(o: Outil, s: string, chemins: readonly string[]): Promise<void> {
+    const modes = lireModes((await shell(o, s, { sorte: 'statDossiers', chemins })).stdout)
+    for (const [chemin, mode] of modes) {
+      if (!estDossier(mode)) throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un dossier sur le téléphone.`)
+    }
+  }
+
   /** Mode, taille et date d'un fichier du téléphone ; `null` s'il n'existe pas. */
   async function statDistant(o: Outil, s: string, distant: string): Promise<{ mode: number; taille: number; dateMs: number } | null> {
     const sortie = await shell(o, s, { sorte: 'stat', chemin: distant })
@@ -892,17 +889,17 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     }
   }
 
-  /** Les fichiers d'un jour de la corbeille, lus dans une sortie de `stat -c '%f %s %Y %n'`, en chemins vus de la page. */
-  function lireCorbeille(sortie: string, jour: string): string[] {
-    const prefixe = `${corbeille}/${jour}/`
-    const chemins: string[] = []
+  /** Les sous-dossiers de la corbeille, lus dans une sortie de `stat -c '%f %s %Y %n'` : leurs noms. */
+  function lireCorbeille(sortie: string): string[] {
+    const prefixe = `${corbeille}/`
+    const noms: string[] = []
     for (const brute of sortie.split('\n')) {
       const m = /^([0-9a-fA-F]+) \d+ \d+ (.+?)\r?$/.exec(brute)
-      if (!m || !estFichierOrdinaire(parseInt(m[1], 16)) || !m[2].startsWith(prefixe)) continue
-      const [sousDossier, nom, ...reste] = m[2].slice(prefixe.length).split('/')
-      if (reste.length === 0 && nom !== undefined && nom !== '' && DOSSIERS_RETIRABLES.includes(sousDossier)) chemins.push(`${CORBEILLE_PAGE}/${jour}/${sousDossier}/${nom}`)
+      if (!m || !estDossier(parseInt(m[1], 16)) || !m[2].startsWith(prefixe)) continue
+      const nom = m[2].slice(prefixe.length)
+      if (nom !== '' && !nom.includes('/')) noms.push(nom)
     }
-    return chemins
+    return noms
   }
 
   return {
@@ -973,9 +970,16 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
       // Vérifiés avant toute commande : le texte du renommage et celui de l'effacement du provisoire.
       texteShell({ sorte: 'renommer', de: provisoire, vers: distant }, lieux)
       texteShell({ sorte: 'effacerProvisoire', chemin: provisoire }, lieux)
+      const depot = ficheDepot(chemin) ? distant.slice(0, distant.lastIndexOf('/')) : null
+      if (depot !== null) texteShell({ sorte: 'statDossiers', chemins: [corbeille, depot] }, lieux)
       const { o, s } = await liaisonPourEcrire(false)
       const avant = await statDistant(o, s, distant)
       if (avant !== null && !estFichierOrdinaire(avant.mode)) throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un fichier sur le téléphone.`)
+      if (depot !== null) {
+        // Une fiche de dépôt ne s'écrit que dans un dépôt neuf, jamais par-dessus une autre, ni à travers un lien.
+        if (avant !== null) throw corbeillePrise(chemin)
+        await exigerDossiers(o, s, [corbeille, depot])
+      }
       try {
         const envoi = await parLeServeur(o, ['-s', s, 'push', fichierLocal, provisoire], delaiLecture(taille))
         if (envoi === null) throw pasPret('occupe')
@@ -997,21 +1001,21 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
     },
 
     async mettreDeCote(fichier, vers) {
-      const destination = retraitAdmis(fichier.chemin, vers)
-      if (destination === null) throw cheminRefuse(`${fichier.chemin} → ${String(vers)}`)
+      if (!destinationCorbeilleAdmise(fichier.chemin, vers)) throw cheminRefuse(`${fichier.chemin} → ${String(vers)}`)
       const reel = reels.get(fichier.chemin)
       if (reel === undefined) throw pasListe()
       const source = `${racine}/${reel}`
-      const cible = `${corbeille}/${destination.relatif}`
-      const jour = `${corbeille}/${destination.jour}`
-      const dossier = `${jour}/${destination.sous}`
+      const cible = `${racine}/${vers}`
+      const dossier = cible.slice(0, cible.lastIndexOf('/'))
+      const fiche = `${dossier}/${FICHIER_DEPOT}`
       // Le remplacement interrompu caché à côté (`nom.tracker-tmp` à côté de `nom`) part aussi, et d'abord : seul, le
       // téléphone lui rendrait le nom de l'original.
       const cache = reel === fichier.chemin ? `${source}${SUFFIXE_REMPLACEMENT}` : null
       // Vérifiés avant toute commande : chaque texte que ce retrait peut envoyer.
       texteShell({ sorte: 'deplacer', de: source, vers: cible }, lieux)
       if (cache !== null) texteShell({ sorte: 'deplacer', de: cache, vers: `${cible}${SUFFIXE_REMPLACEMENT}` }, lieux)
-      texteShell({ sorte: 'creerDossier', chemin: dossier }, lieux)
+      texteShell({ sorte: 'stat', chemin: fiche }, lieux)
+      texteShell({ sorte: 'statDossiers', chemins: [corbeille, dossier] }, lieux)
       const { o, s } = await liaisonPourEcrire(true)
       const lu = await statDistant(o, s, source)
       if (lu === null) {
@@ -1022,14 +1026,13 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
       if (lu.taille !== fichier.taille || lu.dateMs !== fichier.dateMs) throw changeDepuisListage(fichier.chemin)
       const luCache = cache === null ? null : await statDistant(o, s, cache)
       if (luCache !== null && !estFichierOrdinaire(luCache.mode)) throw new ErreurDisque('PERMISSION', `« ${fichier.chemin} » a à côté autre chose qu'un fichier.`)
+      // Le dépôt doit être ouvert : sa fiche, écrite avant tout déplacement, le garde de la purge du téléphone.
+      const ouvert = await statDistant(o, s, fiche)
+      if (ouvert === null || !estFichierOrdinaire(ouvert.mode)) throw depotSansFiche(String(vers))
       if ((await statDistant(o, s, cible)) !== null) throw corbeillePrise(String(vers))
       if (luCache !== null && (await statDistant(o, s, `${cible}${SUFFIXE_REMPLACEMENT}`)) !== null) throw corbeillePrise(`${String(vers)}${SUFFIXE_REMPLACEMENT}`)
-      // La corbeille, son jour et son sous-dossier : absents, ou de vrais dossiers (rien n'est écrit à travers un lien).
-      const modes = lireModes((await shell(o, s, { sorte: 'statDossiers', chemins: [corbeille, jour, dossier] })).stdout)
-      for (const [chemin, mode] of modes) {
-        if (!estDossier(mode)) throw new ErreurDisque('PERMISSION', `« ${chemin} » n'est pas un dossier sur le téléphone.`)
-      }
-      await shellMuet(o, s, { sorte: 'creerDossier', chemin: dossier }, 'Corbeille du téléphone impossible à créer')
+      // La corbeille et le dépôt : de vrais dossiers (rien n'est écrit à travers un lien).
+      await exigerDossiers(o, s, [corbeille, dossier])
       if (luCache !== null && cache !== null) {
         await shellMuet(o, s, { sorte: 'deplacer', de: cache, vers: `${cible}${SUFFIXE_REMPLACEMENT}` }, `Mise de côté de « ${fichier.chemin} » impossible`)
       }
@@ -1043,21 +1046,19 @@ export function dossierAdb(options: OptionsAdb): DossierDistant {
       }
     },
 
-    async listerCorbeille(dossierJour) {
-      const jour = dossierCorbeilleAdmis(dossierJour)
-      if (jour === null) throw cheminRefuse(dossierJour)
+    async listerCorbeille() {
       const { o, s } = liaison()
-      const sortie = await shell(o, s, { sorte: 'listageCorbeille', jour })
-      const chemins = lireCorbeille(sortie.stdout, jour)
-      if (sortie.code === 0 && !sortie.delaiDepasse) return chemins.sort()
+      const sortie = await shell(o, s, { sorte: 'listageCorbeille' })
+      const noms = lireCorbeille(sortie.stdout)
+      if (sortie.code === 0 && !sortie.delaiDepasse) return noms.sort()
       const texte = `${sortie.stderr}\n${sortie.stdout}`
       const rienLu = sortie.stdout.trim() === ''
       if (rienLu && dossierManquant(texte)) return []
       if (!rienLu || !commandeInconnue(texte)) throw listageIncomplet(texte)
       journal(`listage de la corbeille par find impossible, repli sur stat : ${texte.trim().slice(0, 200)}`)
-      const repli = await shell(o, s, { sorte: 'repliCorbeille', jour })
+      const repli = await shell(o, s, { sorte: 'repliCorbeille' })
       if (!repliComplet(repli)) throw listageIncomplet(`${repli.stderr}\n${repli.stdout}`)
-      return lireCorbeille(repli.stdout, jour).sort()
+      return lireCorbeille(repli.stdout).sort()
     },
   }
 }

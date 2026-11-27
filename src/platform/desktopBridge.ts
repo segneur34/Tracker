@@ -116,7 +116,7 @@ export interface DesktopPhoneFile {
 /**
  * Le dossier `Documents/Tracker` du téléphone branché. La lecture est là depuis le lot 2 ; l'écriture et la mise de
  * côté (élément 217, sous-lot 3c) manquent à une coquille plus ancienne. Rien n'y efface un fichier : un retrait est
- * un déplacement dans la corbeille du téléphone (`Documents/Tracker-corbeille/AAAA-MM-JJ/`).
+ * un déplacement dans un dépôt de la corbeille de la mémoire du téléphone (`corbeille/<dépôt>/`, lot 242-1).
  */
 export interface DesktopPhoneBridge {
   etat(): Promise<BridgeAnswer<DesktopPhoneState>>;
@@ -128,16 +128,16 @@ export interface DesktopPhoneBridge {
   enregistrement?(): Promise<BridgeAnswer<boolean>>;
   /**
    * Écrit un fichier de la liste fermée de la coquille (`sessions/`, `itineraires/`, `reglages/`, `tracker.json`,
-   * `fc-repos.json`) après un `lister`, et rend le fichier tel qu'il est sur le téléphone ; `PERMISSION` hors liste
-   * ou pendant un enregistrement.
+   * `fc-repos.json`, et le seul `corbeille/<dépôt>/depose.json`, jamais par-dessus un autre) après un `lister`, et rend
+   * le fichier tel qu'il est sur le téléphone ; `PERMISSION` hors liste ou pendant un enregistrement.
    */
   ecrireOctets?(argument: { chemin: string; octets: Uint8Array }): Promise<BridgeAnswer<DesktopPhoneFile>>;
-  /** Chemins déjà pris dans un jour de la corbeille (`dossier` : `Tracker-corbeille/AAAA-MM-JJ`), depuis `Documents/`. */
+  /** Noms des sous-dossiers de la corbeille du téléphone (`dossier` : `corbeille`, seule valeur admise). */
   listerCorbeille?(argument: { dossier: string }): Promise<BridgeAnswer<string[]>>;
   /**
-   * Déplace un fichier du dernier `lister` (`sessions/` ou `itineraires/`) dans la corbeille du téléphone, sous `vers`
-   * (`Tracker-corbeille/AAAA-MM-JJ/<même sous-dossier>/<nom>`), sans jamais écraser ; refusé s'il a changé depuis le
-   * listage ou pendant un enregistrement.
+   * Déplace un fichier du dernier `lister` (`sessions/` ou `itineraires/`) dans un dépôt de la corbeille du téléphone,
+   * sous `vers` (`corbeille/<dépôt>/<même nom>`), sans jamais écraser ; refusé si le dépôt ne tient pas `depose.json`,
+   * si le fichier a changé depuis le listage, ou pendant un enregistrement.
    */
   mettreDeCote?(argument: { chemin: string; vers: string }): Promise<BridgeAnswer<null>>;
   /**

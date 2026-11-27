@@ -358,7 +358,7 @@ function MemoryStatus({
 
         <SettingsOfferBanner />
         {detailed && status === 'ready' && <SettingsFiles />}
-        {detailed && status === 'ready' && folderKind === 'disk' && <TrashZone />}
+        {detailed && status === 'ready' && (folderKind === 'disk' || folderKind === 'device') && <TrashZone />}
 
         {alert}
       </div>

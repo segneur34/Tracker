@@ -4,7 +4,7 @@ import { sessionDisplayName } from '../../library/sessionName';
 import {
   deletesToTrash, sessionTrashEntries, shownTrashEntries, trashFilePath, trashRestoreOrder, type TrashEntry,
 } from '../../library/trash';
-import { dropTrashEntries, purgeTrash, readTrashIndex, stashInTrash, type TrashRequest } from '../../library/trashFolder';
+import { adoptDeposits, dropTrashEntries, purgeTrash, readTrashIndex, stashInTrash, type TrashRequest } from '../../library/trashFolder';
 import {
   imuFileName, parseRecordWithRaw, recordFileName, type LibrarySession, type RecordUnreadable, type RecordWithoutSummary,
 } from '../../library/record';
@@ -15,13 +15,15 @@ import { readStoredActivities } from '../useSportSettings';
 import { lib } from './memory';
 
 /**
- * Corbeille du programme Windows, côté mémoire (`library/trash.ts`, `library/trashFolder.ts`) : purgée à
- * l'ouverture du dossier, remplie par la suppression d'une session ou d'un itinéraire, allégée d'une session qui
- * revient par un import. Seul le dossier du disque en a une ; ailleurs, rien ne change.
+ * Corbeille du programme Windows et du téléphone, côté mémoire (`library/trash.ts`, `library/trashFolder.ts`) :
+ * purgée à l'ouverture du dossier, remplie par la suppression d'une session ou d'un itinéraire, et, sur le téléphone,
+ * par les dépôts de l'ordinateur qu'elle adopte à l'ouverture et à chaque relecture ; allégée d'une session qui revient
+ * (`settleReturnedTrash`, `trashRestore.ts`). Seuls le dossier du disque et celui du téléphone en ont une ; ailleurs,
+ * rien ne change.
  */
 
 export interface TrashState {
-  /** Entrées de la corbeille du dossier ouvert (sans les restes d'une session) ; vide hors du programme Windows. */
+  /** Entrées de la corbeille du dossier ouvert (sans les restes d'une session) ; vide sans corbeille (navigateur). */
   entries: TrashEntry[];
   /** L'index ne se lit pas : rien n'entre ni ne sort de la corbeille. */
   error: string | null;
@@ -29,7 +31,7 @@ export interface TrashState {
 
 export const trashStore = createStore<TrashState>({ entries: [], error: null });
 
-/** Le dossier ouvert s'il a une corbeille (`deletesToTrash` : dossier du disque, en écriture) ; `null` sinon. */
+/** Le dossier ouvert s'il a une corbeille (`deletesToTrash` : dossier du disque ou du téléphone, en écriture) ; `null` sinon. */
 export const trashFolderOf = (f: MemoryFolder | null): MemoryFolder | null => (f && deletesToTrash(f.kind, f.readOnly === true) ? f : null);
 
 /** Phrase d'une corbeille illisible ou d'une version plus récente. */
@@ -41,19 +43,21 @@ const lockedText = (state: string): string | null =>
 let trashGate: Promise<void> = Promise.resolve();
 
 /**
- * Tient la corbeille pendant `action` (une synchronisation, qui compte sur ce qu'elle tient pour retirer une session
- * du téléphone) : « Restaurer », « Supprimer définitivement », « Vider la corbeille » et la purge attendent sa fin.
+ * Tient la corbeille pendant `action`, un seul à la fois et dans l'ordre d'arrivée : une synchronisation (qui compte
+ * sur ce qu'elle tient pour retirer une session du téléphone), « Restaurer », « Supprimer définitivement », « Vider la
+ * corbeille », la purge et l'adoption des dépôts, le réglage des sessions revenues. Aucun ne croise un autre. Une
+ * action tenue n'attend jamais `trashReleased` (elle s'attendrait elle-même).
  */
 export const holdTrashDuring = <T,>(action: () => Promise<T>): Promise<T> => {
-  const running = action();
+  const running = trashGate.then(action, action);
   trashGate = running.then(() => undefined, () => undefined);
   return running;
 };
 
-/** Attend qu'aucune synchronisation ne tienne la corbeille. */
+/** Attend qu'aucun geste ne tienne la corbeille (ceux déjà lancés compris). */
 export const trashReleased = (): Promise<void> => trashGate;
 
-/** Relit l'index de la corbeille du dossier ouvert ; vide hors du programme Windows. */
+/** Relit l'index de la corbeille du dossier ouvert ; vide sans corbeille. */
 export const reloadTrash = async (): Promise<void> => {
   const f = trashFolderOf(lib.folder);
   if (!f) {
@@ -70,21 +74,29 @@ export const reloadTrash = async (): Promise<void> => {
 };
 
 /**
- * À l'ouverture d'un dossier : purge des entrées de plus de 30 jours et des restes, puis lecture de la corbeille.
- * Sans effet hors du programme Windows ; un échec n'empêche rien d'autre.
+ * À l'ouverture d'un dossier (`purge`) et à chaque relecture : purge des entrées de plus de 30 jours et des restes
+ * (ouverture seulement), adoption des dépôts de l'ordinateur (téléphone), puis lecture de la corbeille. Les sessions
+ * revenues se règlent ensuite (`settleReturnedTrash`), une fois la mémoire lue. Sans effet sans corbeille ; un échec
+ * n'empêche rien d'autre.
  */
-export const startTrash = async (opened: MemoryFolder): Promise<void> => {
+export const startTrash = async (opened: MemoryFolder, purge = true): Promise<void> => {
   const f = trashFolderOf(opened);
   if (!f) {
     trashStore.set({ entries: [], error: null });
     return;
   }
-  try {
-    await trashReleased();
-    await purgeTrash(f, Date.now());
-  } catch {
-    // Purge reprise au lancement suivant ; la corbeille se lit quand même.
-  }
+  await holdTrashDuring(async () => {
+    try {
+      if (purge) await purgeTrash(f, Date.now());
+    } catch {
+      // Purge reprise au lancement suivant ; la corbeille se lit quand même.
+    }
+    try {
+      await adoptDeposits(f, Date.now());
+    } catch {
+      // Dépôts repris à la relecture suivante : ils restent sur le disque, rien n'est perdu.
+    }
+  });
   if (f === lib.folder) await reloadTrash();
 };
 

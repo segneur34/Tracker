@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cableTempName, phoneVisibleNames } from '../src/library/remoteTemps'
-import { PHONE_TRASH_ROOT, phoneTrashDir } from '../src/library/syncBase'
-import { TRASH_DIR, isTrashDirName, trashDirName } from '../src/library/trash'
+import { phoneDepositPaths } from '../src/library/syncBase'
+import { DEPOSIT_FILE, TRASH_DIR, isTrashDirName, trashDirName } from '../src/library/trash'
 import type { Reponse } from './pont'
 import type { DossierDistant, FichierTelephone } from './telephone'
 import {
   CANAUX_TELEPHONE,
-  CORBEILLE_PAGE,
   DEPOT_TELEPHONE,
+  FICHIER_DEPOT,
   LONGUEUR_MAX_BRUT,
   MESSAGE_ENREGISTREMENT,
   NOM_TELEPHONE_ESSAI,
@@ -20,14 +20,12 @@ import {
   cheminRetirable,
   commeLeTelephone,
   destinationCorbeilleAdmise,
-  dossierCorbeilleAdmis,
   dossierDepotAdmis,
   dossierLocal,
+  ficheDepot,
   fichiersAdmis,
   gestionnairesTelephone,
-  nomCorbeille,
   nomProvisoire,
-  retraitAdmis,
   telephoneDepuisEnvironnement,
   viderLectures,
 } from './telephone'
@@ -440,10 +438,20 @@ async function contenus(): Promise<string[]> {
 }
 
 describe('listes fermées', () => {
-  it('écrit dans sessions/, itineraires/, reglages/, et tracker.json et fc-repos.json à la racine ; rien d’autre', () => {
-    for (const chemin of ['sessions/sortie d’été é.gpx', 'itineraires/tour.json', 'reglages/pc.json', 'tracker.json', 'fc-repos.json']) expect(cheminEcrivable(chemin), chemin).toBe(true)
-    for (const chemin of [...REFUSES, 'reglages', 'itineraires/sous/a.json']) expect(cheminEcrivable(chemin), chemin).toBe(false)
+  it('écrit dans sessions/, itineraires/, reglages/, tracker.json et fc-repos.json à la racine, et la seule fiche d’un dépôt ; rien d’autre', () => {
+    const depot = 'corbeille/1795647914477-1795000000000'
+    for (const chemin of ['sessions/sortie d’été é.gpx', 'itineraires/tour.json', 'reglages/pc.json', 'tracker.json', 'fc-repos.json', `${depot}/depose.json`, 'corbeille/1795647914477-Tour du lac-2/depose.json']) {
+      expect(cheminEcrivable(chemin), chemin).toBe(true)
+    }
+    for (const chemin of [
+      ...REFUSES, 'reglages', 'itineraires/sous/a.json',
+      // L'index de la corbeille n'est écrit que par le téléphone ; aucun autre fichier d'un dépôt n'est écrit (il y est déplacé).
+      'corbeille/corbeille.json', `${depot}/a.gpx`, `${depot}/corbeille.json`, `${depot}/Depose.json`, `${depot}/depose.json.tracker-new`,
+      'corbeille/depose.json', 'corbeille/2024-vacances/depose.json', `${depot}/x/depose.json`, `Corbeille/1795647914477-1795000000000/depose.json`,
+    ]) expect(cheminEcrivable(chemin), chemin).toBe(false)
     expect(cheminEcrivable(3)).toBe(false)
+    expect(ficheDepot(`${depot}/depose.json`)).toBe(true)
+    expect(ficheDepot('sessions/depose.json')).toBe(false)
   })
 
   it('ne retire que de sessions/ et d’itineraires/', () => {
@@ -452,33 +460,13 @@ describe('listes fermées', () => {
     for (const chemin of [...REFUSES, 'reglages/pc.json', 'tracker.json', 'fc-repos.json']) expect(cheminRetirable(chemin), chemin).toBe(false)
   })
 
-  it('ne vise dans la corbeille qu’un jour bien formé, le même sous-dossier et un nom admis', () => {
-    expect(retraitAdmis('sessions/a.gpx', 'Tracker-corbeille/2026-11-26/sessions/a-2.gpx')).toEqual({ jour: '2026-11-26', sous: 'sessions', nom: 'a-2.gpx', relatif: '2026-11-26/sessions/a-2.gpx' })
-    for (const vers of [
-      'Tracker-corbeille/2026-11-26/itineraires/a.gpx',
-      'Tracker-corbeille/2026-13-01/sessions/a.gpx',
-      'Tracker-corbeille/26-11-2026/sessions/a.gpx',
-      'Tracker-corbeille/2026-11-26/sessions/../a.gpx',
-      'Tracker-corbeille/2026-11-26/sessions/x/a.gpx',
-      'Tracker-corbeille/2026-11-26/sessions/a.gpx.tracker-new',
-      'Tracker-corbeille/2026-11-26/sessions/',
-      'Tracker/2026-11-26/sessions/a.gpx',
-      'Tracker-essai-corbeille/2026-11-26/sessions/a.gpx',
-      '../Tracker-corbeille/2026-11-26/sessions/a.gpx',
-      '/sdcard/Documents/Tracker-corbeille/2026-11-26/sessions/a.gpx',
-    ]) {
-      expect(retraitAdmis('sessions/a.gpx', vers), vers).toBeNull()
+  it('parle comme le moteur de la page : même corbeille, même fiche de dépôt, mêmes destinations, mêmes provisoires', () => {
+    expect(DEPOT_TELEPHONE).toBe(TRASH_DIR)
+    expect(FICHIER_DEPOT).toBe(DEPOSIT_FILE)
+    const dossier = trashDirName(1_795_647_914_477, '1795000000000', [])
+    for (const [chemin, vers] of phoneDepositPaths(dossier, ['sessions/a.gpx', 'sessions/a.json', 'itineraires/Tour.json'])) {
+      expect(destinationCorbeilleAdmise(chemin, vers), vers).toBe(true)
     }
-    expect(retraitAdmis('reglages/pc.json', 'Tracker-corbeille/2026-11-26/reglages/pc.json')).toBeNull()
-    expect(dossierCorbeilleAdmis('Tracker-corbeille/2026-11-26')).toBe('2026-11-26')
-    for (const d of ['Tracker-corbeille', 'Tracker-corbeille/2026-11-26/sessions', 'Tracker-corbeille/..', 'Tracker/2026-11-26', 3]) expect(dossierCorbeilleAdmis(d)).toBeNull()
-  })
-
-  it('parle comme le moteur de la page : même nom de corbeille, même dossier du jour, mêmes provisoires', () => {
-    expect(CORBEILLE_PAGE).toBe(PHONE_TRASH_ROOT)
-    expect(dossierCorbeilleAdmis(phoneTrashDir(new Date(2026, 10, 26, 12).getTime()))).toBe('2026-11-26')
-    expect(nomCorbeille('Tracker')).toBe('Tracker-corbeille')
-    expect(nomCorbeille('Tracker-essai')).toBe('Tracker-essai-corbeille')
     expect(nomProvisoire('sessions/a.gpx')).toBe(cableTempName('sessions/a.gpx'))
     expect(nomProvisoire('sessions/a.gpx')).toBe('sessions/a.gpx.tracker-new')
     const cas = [['a.gpx', 'a.gpx.tracker-new'], ['a.gpx', 'a.gpx.tracker-tmp'], ['a.gpx.tracker-tmp'], ['a.gpx.tracker-new'], ['b.json', 'a.gpx.tracker-tmp', 'c.imu']]
@@ -622,56 +610,71 @@ describe('écriture sur le téléphone d’essai', () => {
   })
 })
 
-describe('mise de côté sur le téléphone d’essai', () => {
-  const JOUR = 'Tracker-corbeille/2026-11-26'
+describe('dépôt dans la corbeille du téléphone d’essai', () => {
+  const D = '1795647914477-1795000000000'
+  const DEPOT = `corbeille/${D}`
 
   function canaux(t: DossierDistant) {
     const g = gestionnairesTelephone(t, lectures, { memoire: async () => null })
     return {
       lister: () => g['telephone:lister'](undefined) as Promise<Reponse<FichierTelephone[]>>,
       lire: (chemin: string) => g['telephone:lireOctets']({ chemin }) as Promise<Reponse<Uint8Array>>,
-      corbeille: (dossier: unknown) => g['telephone:listerCorbeille']({ dossier }) as Promise<Reponse<string[]>>,
+      ecrire: (chemin: unknown, texte: string) => g['telephone:ecrireOctets']({ chemin, octets: new TextEncoder().encode(texte) }) as Promise<Reponse<FichierTelephone>>,
+      corbeille: (dossier: unknown = 'corbeille') => g['telephone:listerCorbeille']({ dossier }) as Promise<Reponse<string[]>>,
       deCote: (chemin: unknown, vers: unknown) => g['telephone:mettreDeCote']({ chemin, vers }) as Promise<Reponse<null>>,
     }
   }
-  const corbeille = (relatif: string) => path.join(stockage, 'Documents', 'Tracker-corbeille', ...relatif.split('/'))
+  const dansCorbeille = (relatif: string) => path.join(racine, 'corbeille', ...relatif.split('/'))
 
-  it('déplace le fichier dans Documents/Tracker-corbeille/<jour>/, sous le même chemin, sans rien effacer', async () => {
+  it('dépose dans Documents/Tracker/corbeille/<dépôt>/, sous le même nom, après depose.json, sans rien effacer ni écrire l’index', async () => {
     await poser('sessions/a.gpx', '<gpx>a</gpx>')
     await poser('sessions/a.json', '{"a":1}')
+    await poser('corbeille/corbeille.json', '{"index":"du téléphone"}')
     const tout = await contenus()
     const c = canaux(dossierLocal(stockage))
-    expect(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('pas été listé') })
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('pas été listé') })
     valeur(await c.lister())
-    expect(valeur(await c.corbeille(JOUR))).toEqual([])
-    valeur(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`))
-    expect(await readFile(corbeille('2026-11-26/sessions/a.gpx'), 'utf8')).toBe('<gpx>a</gpx>')
-    expect(await readdir(path.join(racine, 'sessions'))).toEqual(['a.json'])
-    expect(valeur(await c.corbeille(JOUR))).toEqual([`${JOUR}/sessions/a.gpx`])
-    // Plus au listage : ni relu, ni remis de côté.
+    expect(valeur(await c.corbeille())).toEqual([])
+    // Sans sa fiche, le dépôt n'est pas ouvert : rien ne part.
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toMatchObject({ ok: false, code: 'PERMISSION', message: expect.stringContaining('depose.json') })
+    valeur(await c.ecrire(`${DEPOT}/depose.json`, '{"depot":1}'))
+    expect(valeur(await c.corbeille())).toEqual([D])
+    valeur(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`))
+    valeur(await c.deCote('sessions/a.json', `${DEPOT}/a.json`))
+    expect(await readFile(dansCorbeille(`${D}/a.gpx`), 'utf8')).toBe('<gpx>a</gpx>')
+    expect((await readdir(dansCorbeille(D))).sort()).toEqual(['a.gpx', 'a.json', 'depose.json'])
+    expect(await readdir(path.join(racine, 'sessions'))).toEqual([])
+    expect(await readFile(dansCorbeille('corbeille.json'), 'utf8')).toBe('{"index":"du téléphone"}')
+    // Plus au listage : ni relu, ni redéposé.
     expect(await c.lire('sessions/a.gpx')).toMatchObject({ ok: false })
-    expect(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a-2.gpx`)).toMatchObject({ ok: false })
-    expect(await contenus()).toEqual(tout)
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toMatchObject({ ok: false })
+    expect(await contenus()).toEqual([...tout, '{"depot":1}'].sort())
+    // Rien hors de la racine : l'ancienne corbeille datée n'est plus remplie.
+    expect((await readdir(path.join(stockage, 'Documents'))).sort()).toEqual(['Tracker'])
   })
 
-  it('n’écrase jamais une place prise dans la corbeille', async () => {
+  it('n’écrase jamais : ni une place prise dans le dépôt, ni une fiche de dépôt déjà là', async () => {
     await poser('sessions/a.gpx', 'nouveau')
-    await poser('2026-11-26/sessions/a.gpx', 'ancien', path.join(stockage, 'Documents', 'Tracker-corbeille'))
+    await poser(`${D}/depose.json`, '{"premier":1}', path.join(racine, 'corbeille'))
+    await poser(`${D}/a.gpx`, 'ancien', path.join(racine, 'corbeille'))
     const c = canaux(dossierLocal(stockage))
     valeur(await c.lister())
-    expect(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('déjà pris') })
-    expect(await readFile(corbeille('2026-11-26/sessions/a.gpx'), 'utf8')).toBe('ancien')
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('déjà pris') })
+    expect(await readFile(dansCorbeille(`${D}/a.gpx`), 'utf8')).toBe('ancien')
     expect(await readFile(path.join(racine, 'sessions', 'a.gpx'), 'utf8')).toBe('nouveau')
-    valeur(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a-2.gpx`))
-    expect(valeur(await c.corbeille(JOUR))).toEqual([`${JOUR}/sessions/a-2.gpx`, `${JOUR}/sessions/a.gpx`])
+    expect(await c.ecrire(`${DEPOT}/depose.json`, '{"second":1}')).toMatchObject({ ok: false, message: expect.stringContaining('déjà pris') })
+    expect(await readFile(dansCorbeille(`${D}/depose.json`), 'utf8')).toBe('{"premier":1}')
+    expect(await c.ecrire('corbeille/corbeille.json', '{}')).toMatchObject({ ok: false, code: 'PERMISSION' })
+    expect(await c.ecrire(`${DEPOT}/a.gpx`, 'x')).toMatchObject({ ok: false, code: 'PERMISSION' })
   })
 
   it('refuse un fichier changé depuis le listage', async () => {
     await poser('sessions/a.gpx', 'court')
+    await poser(`${D}/depose.json`, '{}', path.join(racine, 'corbeille'))
     const c = canaux(dossierLocal(stockage))
     valeur(await c.lister())
     await poser('sessions/a.gpx', 'plus long maintenant')
-    expect(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('changé') })
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toMatchObject({ ok: false, message: expect.stringContaining('changé') })
     expect(await readFile(path.join(racine, 'sessions', 'a.gpx'), 'utf8')).toBe('plus long maintenant')
   })
 
@@ -679,15 +682,16 @@ describe('mise de côté sur le téléphone d’essai', () => {
     await poser('sessions/b.gpx', 'original')
     await poser('sessions/b.gpx.tracker-tmp', 'interrompu')
     await poser('sessions/c.gpx.tracker-tmp', 'repris')
+    await poser(`${D}/depose.json`, '{}', path.join(racine, 'corbeille'))
     const tout = await contenus()
     const c = canaux(dossierLocal(stockage))
     expect(valeur(await c.lister()).map((f) => f.chemin)).toEqual(['sessions/b.gpx', 'sessions/c.gpx'])
-    valeur(await c.deCote('sessions/b.gpx', `${JOUR}/sessions/b.gpx`))
-    valeur(await c.deCote('sessions/c.gpx', `${JOUR}/sessions/c.gpx`))
+    valeur(await c.deCote('sessions/b.gpx', `${DEPOT}/b.gpx`))
+    valeur(await c.deCote('sessions/c.gpx', `${DEPOT}/c.gpx`))
     expect(await readdir(path.join(racine, 'sessions'))).toEqual([])
-    expect(await readFile(corbeille('2026-11-26/sessions/b.gpx'), 'utf8')).toBe('original')
-    expect(await readFile(corbeille('2026-11-26/sessions/b.gpx.tracker-tmp'), 'utf8')).toBe('interrompu')
-    expect(await readFile(corbeille('2026-11-26/sessions/c.gpx'), 'utf8')).toBe('repris')
+    expect(await readFile(dansCorbeille(`${D}/b.gpx`), 'utf8')).toBe('original')
+    expect(await readFile(dansCorbeille(`${D}/b.gpx.tracker-tmp`), 'utf8')).toBe('interrompu')
+    expect(await readFile(dansCorbeille(`${D}/c.gpx`), 'utf8')).toBe('repris')
     expect(valeur(await c.lister())).toEqual([])
     expect(await contenus()).toEqual(tout)
   })
@@ -696,37 +700,42 @@ describe('mise de côté sur le téléphone d’essai', () => {
     await poser('sessions/a.gpx', 'a')
     await poser('reglages/pc.json', '{}')
     await poser('tracker.json', '{}')
+    await poser(`${D}/depose.json`, '{}', path.join(racine, 'corbeille'))
     const c = canaux(dossierLocal(stockage))
     valeur(await c.lister())
     const avant = await empreinte(stockage)
     for (const chemin of [...REFUSES, 'reglages/pc.json', 'tracker.json']) {
-      expect(await c.deCote(chemin, `${JOUR}/sessions/a.gpx`), JSON.stringify(chemin)).toMatchObject({ ok: false, code: 'PERMISSION' })
+      expect(await c.deCote(chemin, `${DEPOT}/a.gpx`), JSON.stringify(chemin)).toMatchObject({ ok: false, code: 'PERMISSION' })
     }
-    for (const vers of ['Tracker-corbeille/2026-11-26/itineraires/a.gpx', '../a.gpx', 'Tracker-corbeille/2026-11-26/sessions/../../Tracker/x.gpx', '/sdcard/Download/a.gpx', 3]) {
+    for (const vers of [`${DEPOT}/b.gpx`, `${DEPOT}/sessions/a.gpx`, 'corbeille/a.gpx', 'corbeille/2024-vacances/a.gpx', 'Tracker-corbeille/2026-11-26/sessions/a.gpx', '../a.gpx', `${DEPOT}/../../x.gpx`, '/sdcard/Download/a.gpx', 3]) {
       expect(await c.deCote('sessions/a.gpx', vers), String(vers)).toMatchObject({ ok: false, code: 'PERMISSION' })
     }
-    for (const d of ['Tracker-corbeille', '../Documents', 'Tracker-corbeille/2026-11-26/sessions']) expect(await c.corbeille(d)).toMatchObject({ ok: false, code: 'PERMISSION' })
+    for (const d of ['Tracker-corbeille', '../Documents', 'Tracker-corbeille/2026-11-26', DEPOT, null]) expect(await c.corbeille(d)).toMatchObject({ ok: false, code: 'PERMISSION' })
     expect(await empreinte(stockage)).toEqual(avant)
   })
 
-  it('ne met rien de côté pendant un enregistrement', async () => {
+  it('ne dépose rien pendant un enregistrement', async () => {
     await poser('sessions/a.gpx', 'a')
+    await poser(`${D}/depose.json`, '{}', path.join(racine, 'corbeille'))
     const avant = await empreinte(stockage)
     const c = canaux(dossierLocal(stockage, { enregistrement: true }))
     valeur(await c.lister())
-    expect(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`)).toEqual({ ok: false, code: 'PERMISSION', message: MESSAGE_ENREGISTREMENT })
+    expect(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`)).toEqual({ ok: false, code: 'PERMISSION', message: MESSAGE_ENREGISTREMENT })
+    expect(await c.ecrire(`corbeille/${D}-2/depose.json`, '{}')).toEqual({ ok: false, code: 'PERMISSION', message: MESSAGE_ENREGISTREMENT })
     expect(await empreinte(stockage)).toEqual(avant)
   })
 
-  it('sur une racine d’essai, met de côté dans Documents/Tracker-essai-corbeille, sans toucher au vrai dossier', async () => {
+  it('sur une racine d’essai, dépose dans Documents/Tracker-essai/corbeille, sans toucher au vrai dossier', async () => {
     const essai = path.join(stockage, 'Documents', 'Tracker-essai')
     await poser('sessions/a.gpx', 'vrai')
     await poser('sessions/a.gpx', 'essai', essai)
     const c = canaux(dossierLocal(stockage, { nomRacine: 'Tracker-essai' }))
     valeur(await c.lister())
-    valeur(await c.deCote('sessions/a.gpx', `${JOUR}/sessions/a.gpx`))
-    expect(await readFile(path.join(stockage, 'Documents', 'Tracker-essai-corbeille', '2026-11-26', 'sessions', 'a.gpx'), 'utf8')).toBe('essai')
+    valeur(await c.ecrire(`${DEPOT}/depose.json`, '{}'))
+    valeur(await c.deCote('sessions/a.gpx', `${DEPOT}/a.gpx`))
+    expect(await readFile(path.join(essai, 'corbeille', D, 'a.gpx'), 'utf8')).toBe('essai')
     expect(await readFile(path.join(racine, 'sessions', 'a.gpx'), 'utf8')).toBe('vrai')
-    expect((await readdir(path.join(stockage, 'Documents'))).sort()).toEqual(['Tracker', 'Tracker-essai', 'Tracker-essai-corbeille'])
+    expect(await readdir(path.join(racine))).not.toContain('corbeille')
+    expect((await readdir(path.join(stockage, 'Documents'))).sort()).toEqual(['Tracker', 'Tracker-essai'])
   })
 })

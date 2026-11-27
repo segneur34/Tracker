@@ -1,6 +1,6 @@
 import { isWritableRouteRecord, parseRouteRecord, routeFileBase } from '../planning/routeRecord';
 import { sameStamp } from './recordMerge';
-import { SYNC_SIDES, otherSyncSide, phoneTrashDir, syncRouteBaseLine, type SyncBase, type SyncBaseRoute, type SyncSideName, type SyncStamp } from './syncBase';
+import { SYNC_SIDES, otherSyncSide, syncRouteBaseLine, type SyncBase, type SyncBaseRoute, type SyncSideName, type SyncStamp } from './syncBase';
 import {
   SYNC_GUARD_LIMITS, SYNC_HELD_ON_PHONE, syncGuardOf,
   type SyncCase, type SyncGuard, type SyncGuardLimits, type SyncHeldChoice, type SyncListedEntry, type SyncScope,
@@ -28,10 +28,11 @@ import {
  *        non         oui      oui    supprimé sur l'ordinateur : retiré du téléphone, sauf s'il y a été changé depuis
  *        non         non      oui    supprimé des deux côtés : la base l'oublie
  *
- * Rien ne se supprime sans ligne dans la base. Le téléphone n'a pas de corbeille dans sa mémoire : un itinéraire n'en
- * est retiré qu'une fois sa fiche tenue, au contenu près, par la corbeille de l'ordinateur ; sinon sa copie y est
- * rangée d'abord. Et il n'y est jamais effacé : il est déplacé dans `Documents/Tracker-corbeille/AAAA-MM-JJ/`
- * (`phoneTrashDir`). Une fiche d'une version plus récente de l'application n'est jamais écrasée.
+ * Rien ne se supprime sans ligne dans la base. Un itinéraire n'est retiré du téléphone qu'une fois sa fiche tenue, au
+ * contenu près, par la corbeille de l'ordinateur ; sinon sa copie y est rangée d'abord. Et il n'y est jamais effacé :
+ * il est déposé dans la corbeille de la mémoire du téléphone (`phoneDepositPaths`). Un itinéraire revenu d'une
+ * corbeille d'un côté (neuf de ce côté, et dans `removedRoutes`) est recopié de l'autre sans question. Une fiche d'une
+ * version plus récente de l'application n'est jamais écrasée.
  *
  * Une suppression que l'utilisateur a refusée (`RouteSyncInput.keep`) ne se fait pas : l'itinéraire est traité comme
  * neuf du côté qui l'a encore, donc recopié de l'autre, et sa ligne reposée ; il n'est pas non plus retenu sur le
@@ -144,8 +145,6 @@ export interface RouteSyncInput {
    * la corbeille ferait retenir est recopié sur l'ordinateur. Sans effet hors de ces cas.
    */
   keep?: readonly string[];
-  /** Heure de l'ordinateur : elle date le dossier de la corbeille du téléphone (`phoneTrashDir`), rien d'autre. */
-  nowMs: number;
   /** Seuils du garde-fou ; par défaut `SYNC_GUARD_LIMITS`, ceux des sessions. */
   guardLimits?: SyncGuardLimits;
 }
@@ -168,8 +167,9 @@ export type RouteSyncOp =
    */
   | { kind: 'trash'; files: SyncRouteListed; absent: string | null }
   /**
-   * Itinéraire retiré du téléphone, fiche puis GPX : supprimé sur l'ordinateur. Jamais effacé : déplacé dans `moveTo`
-   * (`phoneTrashDir`), sous `itineraires/`. `keep` : sa copie doit d'abord être rangée dans la corbeille de
+   * Itinéraire retiré du téléphone : supprimé sur l'ordinateur. Jamais effacé : déposé dans la corbeille du téléphone,
+   * dans un sous-dossier neuf nommé d'après l'identité `moveTo` (la base de ses fichiers sur le téléphone,
+   * `trashDirName`), GPX puis fiche. `keep` : sa copie doit d'abord être rangée dans la corbeille de
    * l'ordinateur (origine `telephone`), qui ne tient pas la même fiche. `absent` : la fiche qui ne doit plus être sur
    * l'ordinateur, même vérification.
    */
@@ -224,9 +224,9 @@ export interface RouteSyncItem {
   /** Changé d'un côté, supprimé de l'autre : la modification revient. */
   revived: boolean;
   /**
-   * Revenu de la corbeille de l'ordinateur : neuf sur l'ordinateur alors que la synchronisation avait mené sa
-   * suppression au bout (`removedRoutes`), ou retrouvé des deux côtés sans ligne alors que le téléphone le tenait
-   * pendant qu'il était à la corbeille (`heldRoutes`). Absent : faux.
+   * Revenu d'une corbeille : neuf d'un côté (restauré sur l'ordinateur ou sur le téléphone) alors que la
+   * synchronisation avait mené sa suppression au bout (`removedRoutes`), ou retrouvé des deux côtés sans ligne alors
+   * que le téléphone le tenait pendant qu'il était à la corbeille (`heldRoutes`). Absent : faux.
    */
   restored?: boolean;
 }
@@ -399,13 +399,13 @@ export const planRouteSync = (input: RouteSyncInput): RouteSyncPlan => {
   const phone = oneByIdentity(seen.phone);
   const taken: Record<SyncSideName, string[]> = { computer: [...input.computer.names], phone: [...input.phone.names] };
   const refused = new Set(input.keep ?? []);
-  const moveTo = phoneTrashDir(input.nowMs);
 
   const itemOf = (id: string, kind: SyncCase, o: Seen | null, t: Seen | null): RouteSyncItem => ({
     id, createdAt: id.startsWith(ROUTE_NAME_ID_PREFIX) ? null : id, case: kind,
     files: { computer: o?.files.base ?? null, phone: t?.files.base ?? null },
     ops: [], base: { kind: 'keep' }, left: null, conflict: false, revived: false,
-    restored: (kind === 'newOnComputer' && base?.removedRoutes.includes(id) === true) || (kind === 'firstMeeting' && base?.heldRoutes.includes(id) === true),
+    restored: ((kind === 'newOnComputer' || kind === 'newOnPhone') && base?.removedRoutes.includes(id) === true)
+      || (kind === 'firstMeeting' && base?.heldRoutes.includes(id) === true),
   });
 
   /**
@@ -454,7 +454,7 @@ export const planRouteSync = (input: RouteSyncInput): RouteSyncPlan => {
   const removedFromPhone = (id: string, line: SyncBaseRoute | null): RouteSyncItem => ({
     ...itemOf(id, 'deletedOnComputer', null, phone.kept.get(id) ?? null),
     ops: followedCopies('phone', id, line).map((copy): RouteSyncOp =>
-      ({ kind: 'removeFromPhone', files: copy.files, absent: line?.computer.json.name ?? null, keep: keepOf(id, copy), moveTo })),
+      ({ kind: 'removeFromPhone', files: copy.files, absent: line?.computer.json.name ?? null, keep: keepOf(id, copy), moveTo: copy.files.base })),
     base: { kind: 'forget' },
   });
 

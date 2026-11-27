@@ -3,7 +3,7 @@ import { MARKER_FILE, SESSIONS_DIR, markerText, sessionPath } from '../library/f
 import { isCompleteGpxText } from '../library/pendingTemps';
 import { imuFileName, recordFileName, serializeRecord, type SessionRecord } from '../library/record';
 import {
-  SYNC_DIR, SYNC_SIDES, emptySyncBase, markerTextWithId, otherSyncSide, parseSyncBase, phoneTrashPaths, readMarkerId, readMarkerPass,
+  SYNC_DIR, SYNC_SIDES, emptySyncBase, markerTextWithId, otherSyncSide, parseSyncBase, phoneDepositPaths, readMarkerId, readMarkerPass,
   serializeSyncBase, syncAncestorPath,
   syncBaseLine, syncBasePath, syncRefusal, withSyncDone, withSyncHeld, withSyncLine, withoutSyncLine,
   type SyncBase, type SyncFiles, type SyncRefusal, type SyncSideName, type SyncStamp,
@@ -14,6 +14,7 @@ import {
 } from '../library/syncPlan';
 import { mergeSyncRecords } from '../library/syncRecordMerge';
 import { REPLACE_SUFFIX, cableTempName, phoneVisibleNames, type VisibleName } from '../library/remoteTemps';
+import { DEPOSIT_FILE, TRASH_DIR, serializeDeposit, trashDirName, trashFilePath } from '../library/trash';
 import { sessionRecord } from './record.fixture';
 
 /** Fichier de test seulement : le code de l'application ne l'importe pas. */
@@ -23,14 +24,17 @@ export class SyncCutError extends Error {}
 
 export interface SyncFolder extends MemoryFolder {
   /**
-   * Téléphone : déplace un fichier hors de la mémoire, sous `to` (chemin depuis `Documents/`, dans
-   * `Tracker-corbeille/…`), sans jamais écraser ce qui y est ; une opération élémentaire, comptée dans la coupure.
+   * Téléphone : déplace un fichier de la mémoire dans un dépôt de sa corbeille, sous `to` (`corbeille/<dépôt>/<nom>`),
+   * sans jamais écraser ce qui y est, et seulement si le dépôt tient `depose.json` (comme la coquille) ; une opération
+   * élémentaire, comptée dans la coupure.
    */
   moveAside(path: string, to: string): Promise<void>;
-  /** Ce qui a été déplacé hors de la mémoire du téléphone, par chemin depuis `Documents/`. */
+  /** Ce qui a été déposé dans la corbeille du téléphone par `moveAside`, par chemin d'arrivée, avec son texte. */
   aside(): Map<string, string>;
-  /** Chemins déjà pris dans un jour de la corbeille du téléphone ('dir', depuis Documents/), comme phoneMemoryFolder. */
-  asideTaken(dir: string): Promise<string[]>;
+  /** Noms des sous-dossiers de la corbeille, comme `phoneMemoryFolder`. */
+  asideTaken(): Promise<string[]>;
+  /** Chemins écrits par `writeBytes` ou `writeText` depuis la création (pas par `put`), dans l'ordre. */
+  written(): string[];
   /** Pose un fichier sans passer par le protocole d'écriture, ni compter dans la coupure : la mise en place d'un essai. */
   put(path: string, content: string | Uint8Array): void;
   /** Efface un fichier de même, comme le ferait l'application de l'appareil ou un gestionnaire de fichiers. */
@@ -56,7 +60,7 @@ interface Stored {
  * Faux dossier mémoire fidèle, en mémoire vive : octets gardés, date qui avance d'une seconde à chaque écriture,
  * sous-dossiers listés. `phone` : il écrit comme le câble écrira sur le téléphone (temporaire `.tracker-new`, puis
  * renommage qui remplace l'original d'un coup, `mv -f`), ne supprime jamais (`remove` y lève : seul `moveAside` retire
- * un fichier) et montre ses fichiers comme l'application du téléphone les verrait après une coupure : un
+ * un fichier, vers un dépôt de sa corbeille) et montre ses fichiers comme l'application du téléphone les verrait après une coupure : un
  * `.tracker-tmp` seul sous le nom de son fichier, les autres temporaires cachés.
  * `clockMs` : son horloge de départ, propre à chaque appareil.
  * `cable` : il répond comme le téléphone vu par le câble (`phoneMemoryFolder`) : `stat` et la lecture d'après le
@@ -68,6 +72,7 @@ export const createSyncFolder = (
 ): SyncFolder => {
   const files = new Map<string, Stored>();
   const moved = new Map<string, string>();
+  const writes: string[] = [];
   const lagging = new Set<string>();
   /** Le dernier listage du câble : nom vu, et taille et date à ce moment-là. */
   let listed: Map<string, { size: number; mtimeMs: number }> | null = null;
@@ -104,6 +109,7 @@ export const createSyncFolder = (
     if (cable && listed && at) listed.set(path, { size: (files.get(at) as Stored).bytes.length, mtimeMs: (files.get(at) as Stored).mtimeMs });
   };
   const writeBytes = async (path: string, bytes: Uint8Array): Promise<void> => {
+    writes.push(path);
     await writeRaw(path, bytes);
     noteWritten(path);
   };
@@ -160,18 +166,25 @@ export const createSyncFolder = (
     },
     moveAside: async (path, to) => {
       if (!phone) throw new Error('seul le téléphone met de côté');
+      const parts = to.split('/');
+      if (parts.length !== 3 || parts[0] !== TRASH_DIR) throw new Error(`hors de la corbeille : ${to}`);
       if (unlisted(path)) return;
       const at = resolve(path);
       if (at === null) return;
-      if ([...moved.keys()].some((p) => p.toLowerCase() === to.toLowerCase())) throw new Error(`déjà pris : ${to}`);
+      if (!files.has(`${TRASH_DIR}/${parts[1]}/${DEPOSIT_FILE}`)) throw new Error(`dépôt sans depose.json : ${to}`);
+      if ([...files.keys()].some((p) => p.toLowerCase() === to.toLowerCase())) throw new Error(`déjà pris : ${to}`);
       step(() => {
-        moved.set(to, new TextDecoder().decode((files.get(at) as Stored).bytes));
+        const file = files.get(at) as Stored;
+        moved.set(to, new TextDecoder().decode(file.bytes));
         files.delete(at);
+        files.set(to, file);
       });
       listed?.delete(path);
+      noteWritten(to);
     },
     aside: () => new Map(moved),
-    asideTaken: async (dir) => [...moved.keys()].filter((p) => p.startsWith(dir + '/')),
+    asideTaken: async () => [...new Set([...files.keys()].filter((p) => p.startsWith(`${TRASH_DIR}/`) && p.split('/').length > 2).map((p) => p.split('/')[1]))],
+    written: () => [...writes],
     put: (path, content) => store(path, encode(content)),
     drop: (path) => void files.delete(path),
     text: (path) => {
@@ -387,7 +400,7 @@ export const runFixtureSync = async (computer: SyncFolder, phone: SyncFolder, op
     const trashedNow = async (): Promise<Set<number>> => new Set((await syncTrashOf(computer)).map((entry) => entry.startMs));
     let plan = planSync({
       pair, computer: await sideOf('computer'), phone: await sideOf('phone'), ancestors, trash: await syncTrashOf(computer), heldOnPhone: options.heldOnPhone,
-      keep: options.keep, nowMs: options.nowMs ?? SYNC_NOW_MS, guardLimits: options.guardLimits,
+      keep: options.keep, guardLimits: options.guardLimits,
     });
     run.held = plan.guard.tripped && !options.confirmDeletions;
     plan = restrictSyncPlan(plan, { ...scope, deletions: scope.deletions && !run.held });
@@ -462,8 +475,14 @@ export const runFixtureSync = async (computer: SyncFolder, phone: SyncFolder, op
           }
           // Rien ne part qui ait changé depuis le listage : taille et date relues.
           for (const file of op.files) await expect('phone', file);
+          // Dépôt dans la corbeille du téléphone : `depose.json` d'abord, puis les fichiers, GPX d'abord.
           const paths = op.files.map((file) => sessionPath(file.name));
-          const targets = phoneTrashPaths(op.moveTo, paths, phone.aside().keys());
+          const dir = trashDirName(options.nowMs ?? SYNC_NOW_MS, op.moveTo, await phone.asideTaken());
+          await phone.writeText(trashFilePath(dir, DEPOSIT_FILE), serializeDeposit({
+            origin: 'ordinateur', kind: op.files.some((f) => f.name.endsWith('.gpx')) ? 'session' : 'restes', startMs: item.startMs, routeBase: null,
+            createdAt: null, name: op.files[0].name, files: op.files.map((f) => ({ name: f.name, size: f.size })),
+          }));
+          const targets = phoneDepositPaths(dir, paths);
           for (const path of paths) await phone.moveAside(path, targets.get(path) as string);
         }
       }

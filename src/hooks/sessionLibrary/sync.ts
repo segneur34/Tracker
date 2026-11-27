@@ -3,8 +3,7 @@ import { JOURNALS_DIR, MARKER_FILE, RESTING_HR_FILE, SESSIONS_DIR, SETTINGS_DIR,
 import { isCompleteGpxText } from '../../library/pendingTemps';
 import type { SessionRecord } from '../../library/record';
 import {
-  SYNC_DIR, SYNC_SIDES, emptySyncBase, hasSyncMemory, markerTextWithId, markerTextWithPass, otherSyncSide, parseSyncBase, phoneTrashPaths,
-  readMarkerDevice, readMarkerId, readMarkerPass,
+  SYNC_DIR, SYNC_SIDES, emptySyncBase, hasSyncMemory, markerTextWithId, markerTextWithPass, otherSyncSide, parseSyncBase, readMarkerDevice, readMarkerId, readMarkerPass,
   serializeSyncBase, syncAncestorPath, syncBaseLine, syncBasePath, syncRefusal, withSyncDone, withSyncHeld, withSyncLine, withoutSyncLine,
   withoutSyncMemory,
   type SyncBase, type SyncFiles, type SyncSideName, type SyncStamp,
@@ -18,8 +17,8 @@ import {
 import { planSyncExtras, unknownSyncActivity, type SyncExtrasPlan, type SyncNamedText } from '../../library/syncExtras';
 import { inspectSyncRecord, mergeSyncRecords } from '../../library/syncRecordMerge';
 import {
-  deletesToTrash, isWritableTrash, sessionRestorePlan, sessionTrashEntries, trashFilePath, trashRestoreOrder, type TrashCopy, type TrashEntry,
-  type TrashOrigin,
+  deletesToTrash, isWritableTrash, sessionRestorePlan, sessionTrashEntries, trashFilePath, trashRestoreOrder, type TrashCopy, type TrashDeposit,
+  type TrashEntry, type TrashOrigin,
 } from '../../library/trash';
 import {
   addFilesToTrashEntry, copyFromTrash, dropTrashEntries, readTrashIndex, rewriteTrashText, stashFilesInTrash, trashHoldsCopies, trashLeftoversIn,
@@ -36,7 +35,7 @@ import { refreshLibrary } from './lifecycle';
 import { lib } from './memory';
 import { libraryState, setState } from './store';
 import {
-  executeRoutePlan, keepRoutes, readRouteSyncInput, routeDeletionKeysOf, routeOpWritesPhone, routePlanFiles, routeRemovalsOf, trashedRouteIds,
+  depositOnPhone, executeRoutePlan, keepRoutes, readRouteSyncInput, routeDeletionKeysOf, routeOpWritesPhone, routePlanFiles, routeRemovalsOf, trashedRouteIds,
   type RouteKeepAnswer, type SyncRemote, type SyncRouteDeletionKey,
 } from './syncRouteFiles';
 import { holdTrashDuring, recordShownName, reloadTrash, trashFolderOf } from './trash';
@@ -52,7 +51,8 @@ import { holdTrashDuring, recordShownName, reloadTrash, trashFolderOf } from './
  *   fichier doit être celui du plan (taille, date) ; sinon la session est laissée pour la fois suivante.
  * - Ce qui quitte l'ordinateur passe par sa corbeille ; ce qu'il faut sauver du téléphone avant de l'en retirer y
  *   entre aussi, dans une entrée à part, d'origine « telephone ». Rien n'est jamais effacé du téléphone : un retrait
- *   y est une mise de côté dans `Documents/Tracker-corbeille/AAAA-MM-JJ/` (`moveAside`), hors de sa mémoire.
+ *   y est un dépôt dans la corbeille de sa mémoire (`depositOnPhone` : `depose.json` d'abord, puis le GPX), que le
+ *   téléphone adopte ensuite dans son propre index ; l'ordinateur n'écrit jamais l'index du téléphone.
  * - La ligne de base d'une session n'est réécrite qu'une fois toutes ses opérations faites, et seulement si ses
  *   fichiers sont encore ceux que la synchronisation a lus ou écrits : la reprise ne refait rien en double et ne
  *   prend rien pour supprimé à tort. `synchro/en-cours.json`, posé au départ et retiré à la fin, dit qu'une
@@ -294,7 +294,7 @@ const linkedFolder = (folder: SyncRemote): SyncRemote => {
     // Jamais appelé par l'exécutant : rien ne s'efface du téléphone.
     remove: (path) => guard(() => folder.remove(path)),
     moveAside: (path, to) => guard(() => folder.moveAside(path, to)),
-    asideTaken: (dir) => guard(() => folder.asideTaken(dir)),
+    asideTaken: () => guard(() => folder.asideTaken()),
   };
 };
 
@@ -529,11 +529,11 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
     const heldChoice: SyncHeldChoice | undefined = options.heldOnPhone === 'keep' ? undefined : options.heldOnPhone;
     /** Le plan entier des sessions ; `keep` : les identités que l'utilisateur garde. */
     const sessionPlanOf = (keep: readonly number[]): SyncPlan => {
-      const whole = planSync({ ...input, pair, heldOnPhone: heldChoice, keep, nowMs: now() });
+      const whole = planSync({ ...input, pair, heldOnPhone: heldChoice, keep });
       if (heldChoice !== 'remove' || !options.heldToRemove) return whole;
       // Retirer seulement les sessions montrées : une autre apparue depuis la question les fait toutes laisser.
       const shown = new Set(options.heldToRemove);
-      const heldNow = planSync({ ...input, pair, heldOnPhone: 'leave', keep, nowMs: now() });
+      const heldNow = planSync({ ...input, pair, heldOnPhone: 'leave', keep });
       return heldNow.items.some((item) => item.left === 'inTrash' && !shown.has(item.startMs)) ? heldNow : whole;
     };
     /** Le plan entier des itinéraires, de même. */
@@ -676,7 +676,7 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
     // Itinéraires : leur plan est fait maintenant, pour que le garde-fou et sa confirmation les comptent avec les
     // sessions ; ils ne sont exécutés qu'après elles. Rien ne les touche (ni lecture ni écriture) sans `phoneRoutes`.
     outcome.routes.waiting = options.phoneRoutes === false;
-    let routeInput = options.phoneRoutes === true ? await readRouteSyncInput(folders, pair.base, now()) : null;
+    let routeInput = options.phoneRoutes === true ? await readRouteSyncInput(folders, pair.base) : null;
     const routeAnswer: RouteKeepAnswer = {
       refused: options.keepRefused?.routes ?? [],
       held: !keepHeld ? null : heldLists ? options.heldRoutesToKeep ?? [] : 'all',
@@ -687,7 +687,7 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
       outcome.kept.routes = kept.kept;
       nameRoutes(asked.items.filter((item) => kept.kept.includes(item.id)));
       outcome.kept.fromTrash.routes = kept.fromTrash;
-      if (kept.changed) routeInput = await readRouteSyncInput(folders, pair.base, now());
+      if (kept.changed) routeInput = await readRouteSyncInput(folders, pair.base);
     }
     const routeFull: RouteSyncPlan | null = routeInput ? routePlanOf(routeInput, outcome.kept.routes) : null;
     if (routeFull) nameRoutes(routeFull.items);
@@ -761,17 +761,19 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
       expected.computer.delete(name);
     };
     /**
-     * Met des fichiers du téléphone de côté, hors de sa mémoire, dans le dossier du jour de sa corbeille (`moveTo`),
-     * ensemble sous le même suffixe si un nom y est déjà pris (`phoneTrashPaths`) ; le GPX d'abord.
+     * Dépose des fichiers du téléphone dans sa corbeille (`depositOnPhone`), GPX d'abord : un dépôt neuf nommé d'après
+     * l'identité `moveTo`, son `depose.json` (nom montré, fichiers et tailles) écrit avant tout déplacement.
      */
-    const moveAsideOnPhone = async (moveTo: string, names: readonly string[]): Promise<void> => {
+    const depositSession = async (item: SyncItem, moveTo: string, files: readonly SyncStamp[]): Promise<void> => {
       phoneChanged = true;
-      const paths = names.map(sessionPath);
-      const targets = phoneTrashPaths(moveTo, paths, await phone.asideTaken(moveTo));
-      for (const path of paths) {
-        await phone.moveAside(path, targets.get(path) as string);
-        expected.phone.delete(path.slice(SESSIONS_DIR.length + 1));
-      }
+      const main = mainOf(files);
+      const deposit: TrashDeposit = {
+        origin: 'ordinateur', kind: files.some((f) => /\.gpx$/i.test(f.name)) ? 'session' : 'restes', startMs: item.startMs, routeBase: null,
+        createdAt: null, name: outcome.names.sessions[item.startMs] ?? main.replace(/\.gpx$/i, ''),
+        files: files.map((f) => ({ name: f.name, size: f.size })),
+      };
+      await depositOnPhone(phone, moveTo, deposit, files.map((f) => sessionPath(f.name)), now());
+      for (const file of files) expected.phone.delete(file.name);
     };
     /** Fichiers d'un côté à poser dans la base : présents, et tels que la synchronisation les a lus ou écrits. */
     const filesOf = async (side: SyncSideName, names: SyncTargetNames): Promise<SyncFiles> => {
@@ -972,7 +974,7 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
           const held = await trashStillHolds(item.startMs, op.files, op.keep === 'all' ? 'same' : op.keep === 'none' ? 'present' : 'any');
           if (!held) await keepFromPhone(item.startMs, op.files);
           else if (op.keep === 'record') await keepPhoneRecord(item, op);
-          await moveAsideOnPhone(op.moveTo, op.files.map((file) => file.name));
+          await depositSession(item, op.moveTo, op.files);
         }
       }
     };

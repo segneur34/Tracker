@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MEMORY_VERSION, markerText } from './folderLayout';
 import {
-  PHONE_TRASH_ROOT, SYNC_BASE_FORMAT, SYNC_BASE_VERSION, emptySyncBase, hasRouteMemory, hasSyncMemory, isSyncId, markerTextWithId,
-  markerTextWithPass, parseSyncBase, phoneTrashDir, phoneTrashPaths, readMarkerDevice, readMarkerId, readMarkerPass, serializeSyncBase,
+  SYNC_BASE_FORMAT, SYNC_BASE_VERSION, emptySyncBase, hasRouteMemory, hasSyncMemory, isSyncId, markerTextWithId,
+  markerTextWithPass, parseSyncBase, phoneDepositPaths, readMarkerDevice, readMarkerId, readMarkerPass, serializeSyncBase,
   syncAncestorPath, syncBaseLine, syncBasePath, syncFileRole, syncRefusal, syncRouteBaseLine, withRouteHeld, withRouteLine, withSyncDone,
   withSyncHeld, withSyncLine, withoutRouteLine, withoutRouteMemory, withoutSyncLine, withoutSyncMemory,
   type SyncBaseRoute, type SyncBaseSession, type SyncFiles,
@@ -91,18 +91,11 @@ describe('ce que la synchronisation regarde dans le dossier', () => {
 });
 
 describe('corbeille du téléphone', () => {
-  it('un dossier par jour, à côté de la mémoire, à la date locale de l’ordinateur', () => {
-    const noon = new Date(2026, 10, 5, 12, 0, 0).getTime();
-    expect(phoneTrashDir(noon)).toBe(`${PHONE_TRASH_ROOT}/2026-11-05`);
-    expect(phoneTrashDir(new Date(2026, 0, 31, 23, 59, 0).getTime())).toBe('Tracker-corbeille/2026-01-31');
-  });
-
-  it('les fichiers d’un retrait gardent leur chemin, ou prennent ensemble le même suffixe si l’un est pris', () => {
-    const dir = 'Tracker-corbeille/2026-11-05';
+  it('un retrait va dans un dépôt de la corbeille de la mémoire, chaque fichier sous son nom, dans l’ordre donné', () => {
     const paths = ['sessions/a.gpx', 'sessions/a.json', 'sessions/a.imu'];
-    expect([...phoneTrashPaths(dir, paths, []).values()]).toEqual([`${dir}/sessions/a.gpx`, `${dir}/sessions/a.json`, `${dir}/sessions/a.imu`]);
-    const taken = [`${dir}/sessions/A.json`, `${dir}/sessions/a-2.gpx`];
-    expect([...phoneTrashPaths(dir, paths, taken).values()]).toEqual([`${dir}/sessions/a-3.gpx`, `${dir}/sessions/a-3.json`, `${dir}/sessions/a-3.imu`]);
+    const dir = '1795647914477-1795000000000';
+    expect([...phoneDepositPaths(dir, paths).entries()]).toEqual(paths.map((p) => [p, `corbeille/${dir}/${p.slice('sessions/'.length)}`]));
+    expect([...phoneDepositPaths(dir, ['itineraires/Tour.gpx', 'itineraires/Tour.json']).values()]).toEqual([`corbeille/${dir}/Tour.gpx`, `corbeille/${dir}/Tour.json`]);
   });
 });
 

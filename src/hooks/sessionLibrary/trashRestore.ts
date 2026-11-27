@@ -1,71 +1,26 @@
 import { errorMessage } from '../../core/basics';
-import { ROUTES_DIR, SESSIONS_DIR, sessionPath } from '../../library/folderLayout';
-import { imuFileName, recordFileName } from '../../library/record';
-import { isBlankRecordText } from '../../library/recordText';
-import { routeRestorePlan, sessionRestorePlan, trashFilePath, trashGroupOf, type TrashEntry } from '../../library/trash';
+import { ROUTES_DIR, SESSIONS_DIR } from '../../library/folderLayout';
+import { routeRestorePlan, sessionRestorePlan, trashGroupOf, type TrashEntry } from '../../library/trash';
 import { copyFromTrash, dropTrashEntries, emptyTrash } from '../../library/trashFolder';
 import type { MemoryFolder } from '../../platform/memoryFolder';
-import { addGpx, type AddOptions } from './addSession';
 import { refreshLibrary } from './lifecycle';
 import { findSessionAt, lib } from './memory';
-import { writeRecordNow } from './recordWrites';
-import { recordOptionsFromText, reloadTrash, trashFolderOf, trashReleased, trashStore } from './trash';
+import { holdTrashDuring, reloadTrash, trashFolderOf, trashStore } from './trash';
+import { completeFromTrash } from './trashSettle';
 
 /**
- * Gestes de Réglages › Mémoire sur la corbeille du programme Windows : restaurer une ligne, la supprimer
- * définitivement, vider la corbeille. Chacun rend la phrase à montrer, ou lève avec elle.
+ * Gestes de Réglages › Mémoire sur la corbeille de l'appareil (programme Windows ou téléphone) : restaurer une ligne,
+ * la supprimer définitivement, vider la corbeille. Chacun rend la phrase à montrer, ou lève avec elle. « Supprimer
+ * définitivement » et « Vider » ne valent que pour l'appareil où on les fait. Les sessions revenues d'elles-mêmes se
+ * règlent à part (`trashSettle.ts`).
  */
 
+/** Le dossier de la corbeille, à appeler dans un geste tenu (`holdTrashDuring`) : il n'en croise aucun autre. */
 const openTrash = async (): Promise<MemoryFolder> => {
   await lib.opening;
-  // Une synchronisation compte sur ce que tient la corbeille : le geste attend sa fin.
-  await trashReleased();
   const f = trashFolderOf(lib.folder);
   if (!f) throw new Error("La corbeille n'est pas ouverte : le dossier mémoire ne répond pas.");
   return f;
-};
-
-const sameBytes = (a: Uint8Array | null, b: Uint8Array): boolean => a !== null && a.byteLength === b.byteLength && a.every((byte, k) => byte === b[k]);
-
-/** Ce qu'une copie de la corbeille a fait pour une session déjà dans la mémoire. */
-interface TrashCompletion {
-  message: string;
-  /**
-   * Vrai seulement si la copie n'a plus rien que la mémoire ne tienne : la même trace, sa fiche lue et reçue (écrite
-   * sur le disque quand elle a complété quelque chose), ses capteurs déjà là. Faux : elle doit rester dans la corbeille.
-   */
-  merged: boolean;
-}
-
-/**
- * Session déjà revenue dans la mémoire (par un import, par « Récupérer ») : la copie de la corbeille complète sa
- * fiche et ses capteurs sans rien écraser (`addGpx`, comme un import), et dit si elle peut quitter la corbeille sans
- * rien perdre.
- */
-const completeFromTrash = async (f: MemoryFolder, entry: TrashEntry): Promise<TrashCompletion> => {
-  const gpx = await f.readText(trashFilePath(entry.dir, entry.main));
-  if (gpx === null) throw new Error(`${entry.main} manque dans la corbeille.`);
-  const recordText = await f.readText(trashFilePath(entry.dir, recordFileName(entry.main)));
-  const options: Pick<AddOptions, 'record' | 'unreadable' | 'keepRecordText'> = recordOptionsFromText(recordText);
-  const motion = await f.readBytes(trashFilePath(entry.dir, imuFileName(entry.main)));
-  const source = options.record?.source ?? options.keepRecordText?.parts?.source ?? 'import';
-  // `fromTrash` vide : la corbeille est déjà ce qu'on lit, `addGpx` n'a pas à la consulter.
-  const result = await addGpx(gpx, source, { ...options, motion: motion ?? undefined, fromTrash: [] });
-  if (result.status !== 'duplicate' || result.file === null) {
-    // GPX illisible ou trop court, ou relu comme une autre session : rien n'a été repris.
-    return { message: result.message ?? `« ${entry.name} » était déjà dans la mémoire : rien à reprendre de la corbeille.`, merged: false };
-  }
-  const file = result.file;
-  // Une fiche gardée telle quelle, ou dont un champ ne se lit pas, n'a pas pu être reprise en entier.
-  const recordWhole = recordText === null || isBlankRecordText(recordText)
-    || (options.record !== null && Object.keys(options.unreadable ?? {}).length === 0);
-  const recordTaken = recordWhole && !result.recordNotRead && !result.recordReadOnly && (!result.recordCompleted || (await writeRecordNow(file)));
-  const sameTrack = (await f.readText(sessionPath(file))) === gpx;
-  const motionHeld = motion === null || result.motionAdded === true || sameBytes(await f.readBytes(sessionPath(imuFileName(file))), motion);
-  const message = result.recordCompleted || result.motionAdded
-    ? `« ${entry.name} » était déjà dans la mémoire : sa fiche a reçu ce qui lui manquait.`
-    : `« ${entry.name} » était déjà dans la mémoire : rien à reprendre de la corbeille.`;
-  return { message, merged: sameTrack && recordTaken && motionHeld };
 };
 
 /**
@@ -75,7 +30,9 @@ const completeFromTrash = async (f: MemoryFolder, entry: TrashEntry): Promise<Tr
  * corbeille ; déjà revenue, elle n'est que complétée. Une entrée qui ne peut pas compléter reste dans la corbeille.
  * Un itinéraire revient dans `itineraires/` sous une base libre. Rend la phrase du compte rendu ; lève en clair.
  */
-export const restoreFromTrash = async (entry: TrashEntry): Promise<string> => {
+export const restoreFromTrash = (entry: TrashEntry): Promise<string> => holdTrashDuring(() => restoreLine(entry));
+
+const restoreLine = async (entry: TrashEntry): Promise<string> => {
   const f = await openTrash();
   try {
     if (entry.kind === 'itineraire') {
@@ -121,21 +78,21 @@ export const restoreFromTrash = async (entry: TrashEntry): Promise<string> => {
 };
 
 /** « Supprimer définitivement » la ligne qui tient `entry`, toutes ses entrées : l'index d'abord, puis leurs fichiers. */
-export const deleteFromTrash = async (entry: TrashEntry): Promise<void> => {
+export const deleteFromTrash = (entry: TrashEntry): Promise<void> => holdTrashDuring(async () => {
   const f = await openTrash();
   try {
     await dropTrashEntries(f, trashGroupOf(trashStore.get().entries, entry).entries.map((e) => e.dir));
   } finally {
     await reloadTrash();
   }
-};
+});
 
 /** « Vider la corbeille ». */
-export const emptyWholeTrash = async (): Promise<void> => {
+export const emptyWholeTrash = (): Promise<void> => holdTrashDuring(async () => {
   const f = await openTrash();
   try {
     await emptyTrash(f);
   } finally {
     await reloadTrash();
   }
-};
+});

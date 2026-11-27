@@ -130,7 +130,7 @@ describe('ce qu’on dit avant de synchroniser', () => {
     }, undefined, { [T0 + 1]: 'Sortie du matin' });
     expect(preview.headline).toBe('1 à copier vers le téléphone, 1 à retirer');
     expect(preview.notes).toEqual([
-      "Rien n'est effacé du téléphone : ce qui en est retiré est mis de côté dans son dossier Documents/Tracker-corbeille.",
+      "Rien n'est effacé du téléphone : ce qui en est retiré va dans sa corbeille, où il reste 30 jours (Réglages › Mémoire du téléphone).",
       "« Sortie du matin » : nom, notes changés sur les deux appareils. La version de l'ordinateur est gardée.",
     ]);
   });
@@ -172,7 +172,7 @@ describe('ce qu’on dit avant de synchroniser', () => {
 
 describe('compte rendu et confirmation', () => {
   const outcomeOf = (patch: Partial<SyncOutcome>): SyncOutcome => ({ ...emptySyncOutcome(null), phoneWritable: true, ...patch });
-  const removeOp: SyncOp = { kind: 'removeFromPhone', files: [stamp('2.gpx')], absent: null, keep: 'none', recordText: null, moveTo: 'Tracker-corbeille/2026-11-26' };
+  const removeOp: SyncOp = { kind: 'removeFromPhone', files: [stamp('2.gpx')], absent: null, keep: 'none', recordText: null, moveTo: '2' };
 
   it('dit ce qui a été copié dans chaque sens, mis de côté, et rappelle « Mettre à jour » sur le téléphone', () => {
     const done = [item(1, { case: 'newOnComputer', ops: [copyTo('phone', 1)] }), item(2, { case: 'deletedOnComputer', ops: [removeOp] }), item(3, { case: 'newOnPhone', ops: [copyTo('computer', 3)] })];
@@ -181,7 +181,7 @@ describe('compte rendu et confirmation', () => {
     expect(report.rows.map((r) => `${r.label} : ${r.text}`)).toEqual([
       'Copié vers l’ordinateur : 1 session',
       'Copié vers le téléphone : 1 session',
-      "Mis de côté sur le téléphone : 1 session supprimée sur l'ordinateur : retirée de la mémoire du téléphone, rangée dans son dossier Documents/Tracker-corbeille (rien n'y est effacé)",
+      "Mis de côté sur le téléphone : 1 session supprimée sur l'ordinateur : retirée de la mémoire du téléphone, dans sa corbeille pour 30 jours",
     ]);
     expect(report.notes).toEqual(['Sur le téléphone, touchez « Mettre à jour » dans Réglages › Mémoire (ou relancez Tracker) pour voir les changements.']);
   });

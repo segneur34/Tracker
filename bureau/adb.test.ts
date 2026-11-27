@@ -527,10 +527,12 @@ describe('dossier du téléphone par adb', () => {
 // ---------- écriture, mise de côté et corbeille, sur un faux adb ----------
 
 const R = '/sdcard/Documents/Tracker'
-const C = '/sdcard/Documents/Tracker-corbeille'
+/** La corbeille de la mémoire du téléphone, et un de ses dépôts (`D`), vu du téléphone et de la page (`DEPOT`). */
+const C = `${R}/corbeille`
+const D = '1795647914477-1795000000000'
+const DEPOT = `corbeille/${D}`
 const LIEUX = lieuxDistants()
 const LOCAL = 'C:\\profil\\telephone-lecture\\1.tracker-tmp'
-const JOUR = 'Tracker-corbeille/2026-11-26'
 const ABSENT = (distant: string): Partial<Sortie> => ({ code: 1, stderr: `stat: '${distant}': No such file or directory` })
 
 /** Clé du faux adb pour une commande `shell`. */
@@ -637,11 +639,14 @@ describe('texteShell, seul passage des commandes au téléphone', () => {
   it('fabrique les textes voulus, noms cités', () => {
     expect(texteShell({ sorte: 'stat', chemin: `${R}/sessions/l'eau.gpx` }, LIEUX)).toBe(`stat -c '%f %s %Y' '${R}/sessions/l'\\''eau.gpx'`)
     expect(texteShell({ sorte: 'renommer', de: `${R}/tracker.json.tracker-new`, vers: `${R}/tracker.json` }, LIEUX)).toBe(`mv -f '${R}/tracker.json.tracker-new' '${R}/tracker.json'`)
-    expect(texteShell({ sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/2026-11-26/sessions/a-2.gpx` }, LIEUX)).toBe(`mv '${R}/sessions/a.gpx' '${C}/2026-11-26/sessions/a-2.gpx'`)
-    expect(texteShell({ sorte: 'creerDossier', chemin: `${C}/2026-11-26/itineraires` }, LIEUX)).toBe(`mkdir -p '${C}/2026-11-26/itineraires'`)
+    expect(texteShell({ sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/${D}/a.gpx` }, LIEUX)).toBe(`mv '${R}/sessions/a.gpx' '${C}/${D}/a.gpx'`)
+    expect(texteShell({ sorte: 'deplacer', de: `${R}/itineraires/b.json.tracker-tmp`, vers: `${C}/${D}/b.json.tracker-tmp` }, LIEUX)).toBe(`mv '${R}/itineraires/b.json.tracker-tmp' '${C}/${D}/b.json.tracker-tmp'`)
+    expect(texteShell({ sorte: 'stat', chemin: `${C}/${D}/depose.json` }, LIEUX)).toBe(`stat -c '%f %s %Y' '${C}/${D}/depose.json'`)
+    expect(texteShell({ sorte: 'renommer', de: `${C}/${D}/depose.json.tracker-new`, vers: `${C}/${D}/depose.json` }, LIEUX)).toBe(`mv -f '${C}/${D}/depose.json.tracker-new' '${C}/${D}/depose.json'`)
     expect(texteShell({ sorte: 'effacerProvisoire', chemin: `${R}/reglages/pc.json.tracker-new` }, LIEUX)).toBe(`rm -f '${R}/reglages/pc.json.tracker-new'`)
-    expect(texteShell({ sorte: 'statDossiers', chemins: [C, `${C}/2026-11-26`, `${C}/2026-11-26/sessions`] }, LIEUX)).toBe(`stat -c '%f %n' '${C}' '${C}/2026-11-26' '${C}/2026-11-26/sessions'`)
-    expect(texteShell({ sorte: 'listageCorbeille', jour: '2026-11-26' }, LIEUX)).toBe(`find ${C}/2026-11-26 -maxdepth 2 -type f -exec stat -c '%f %s %Y %n' {} +`)
+    expect(texteShell({ sorte: 'statDossiers', chemins: [C, `${C}/${D}`] }, LIEUX)).toBe(`stat -c '%f %n' '${C}' '${C}/${D}'`)
+    expect(texteShell({ sorte: 'listageCorbeille' }, LIEUX)).toBe(`find ${C} -maxdepth 1 -exec stat -c '%f %s %Y %n' {} +`)
+    expect(texteShell({ sorte: 'repliCorbeille' }, LIEUX)).toBe(`stat -c '%f %s %Y %n' ${C}/*`)
     expect(texteShell({ sorte: 'services' }, LIEUX)).toBe(COMMANDE_SERVICES)
   })
 
@@ -652,44 +657,50 @@ describe('texteShell, seul passage des commandes au téléphone', () => {
       { sorte: 'stat', chemin: `${R}/synchro/a.json` },
       { sorte: 'stat', chemin: `${R}/journaux/a.json` },
       { sorte: 'stat', chemin: `${R}/sessions/sous/a.gpx` },
-      { sorte: 'stat', chemin: `${C}/2026-11-26/reglages/a.json` },
-      { sorte: 'stat', chemin: `${C}/../Tracker/sessions/a.gpx` },
+      { sorte: 'stat', chemin: `${C}/corbeille.json` },
+      { sorte: 'stat', chemin: `${C}/2024-vacances/a.gpx` },
+      { sorte: 'stat', chemin: `${C}/${D}/x/a.gpx` },
+      { sorte: 'stat', chemin: '/sdcard/Documents/Tracker-corbeille/2026-11-26/sessions/a.gpx' },
       { sorte: 'renommer', de: `${R}/sessions/a.gpx.tracker-tmp`, vers: `${R}/sessions/a.gpx` },
       { sorte: 'renommer', de: `${R}/sessions/b.gpx.tracker-new`, vers: `${R}/sessions/a.gpx` },
       { sorte: 'renommer', de: `${R}/journaux/a.tracker-new`, vers: `${R}/journaux/a` },
-      { sorte: 'renommer', de: `${C}/2026-11-26/sessions/a.gpx.tracker-new`, vers: `${C}/2026-11-26/sessions/a.gpx` },
-      { sorte: 'deplacer', de: `${R}/reglages/pc.json`, vers: `${C}/2026-11-26/reglages/pc.json` },
-      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/2026-11-26/itineraires/a.gpx` },
+      { sorte: 'renommer', de: `${C}/${D}/a.gpx.tracker-new`, vers: `${C}/${D}/a.gpx` },
+      { sorte: 'renommer', de: `${C}/corbeille.json.tracker-new`, vers: `${C}/corbeille.json` },
+      { sorte: 'deplacer', de: `${R}/reglages/pc.json`, vers: `${C}/${D}/pc.json` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/${D}/b.gpx` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/${D}/sessions/a.gpx` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/2024-vacances/a.gpx` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/a.gpx` },
       { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${R}/sessions/b.gpx` },
-      { sorte: 'deplacer', de: `${C}/2026-11-26/sessions/a.gpx`, vers: `${R}/sessions/a.gpx` },
-      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/2026-11-26/sessions/a.gpx.tracker-tmp` },
+      { sorte: 'deplacer', de: `${C}/${D}/a.gpx`, vers: `${R}/sessions/a.gpx` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: `${C}/${D}/a.gpx.tracker-tmp` },
       { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: '/sdcard/Download/a.gpx' },
-      { sorte: 'deplacer', de: `${R}/tracker.json`, vers: `${C}/2026-11-26/tracker.json` },
-      { sorte: 'creerDossier', chemin: C },
-      { sorte: 'creerDossier', chemin: `${C}/2026-11-26` },
-      { sorte: 'creerDossier', chemin: `${C}/2026-11-26/reglages` },
-      { sorte: 'creerDossier', chemin: `${C}/2026-11-26/sessions/x` },
-      { sorte: 'creerDossier', chemin: `${R}/sessions` },
+      { sorte: 'deplacer', de: `${R}/sessions/a.gpx`, vers: '/sdcard/Documents/Tracker-corbeille/2026-11-26/sessions/a.gpx' },
+      { sorte: 'deplacer', de: `${R}/tracker.json`, vers: `${C}/${D}/tracker.json` },
       { sorte: 'statDossiers', chemins: [] },
       { sorte: 'statDossiers', chemins: [R] },
-      { sorte: 'listageCorbeille', jour: '2026-11-26/..' },
-      { sorte: 'repliCorbeille', jour: '*' },
+      { sorte: 'statDossiers', chemins: [`${R}/sessions`] },
+      { sorte: 'statDossiers', chemins: [`${C}/2024-vacances`] },
+      { sorte: 'statDossiers', chemins: [`${C}/${D}/x`] },
+      { sorte: 'statDossiers', chemins: ['/sdcard/Documents/Tracker-corbeille'] },
       { sorte: 'effacerProvisoire', chemin: `${R}/sessions/a.gpx` },
       { sorte: 'effacerProvisoire', chemin: `${R}/sessions/a.gpx.tracker-tmp` },
       { sorte: 'effacerProvisoire', chemin: `${R}/journaux/a.tracker-new` },
-      { sorte: 'effacerProvisoire', chemin: `${C}/2026-11-26/sessions/a.gpx.tracker-new` },
+      { sorte: 'effacerProvisoire', chemin: `${C}/${D}/a.gpx.tracker-new` },
+      { sorte: 'effacerProvisoire', chemin: `${C}/corbeille.json.tracker-new` },
       { sorte: 'effacerProvisoire', chemin: '/sdcard/x.tracker-new' },
       { sorte: 'effacerProvisoire', chemin: `${R}/sessions/*.tracker-new` },
     ]
     for (const c of refusees) expect(() => texteShell(c, LIEUX), JSON.stringify(c)).toThrow(expect.objectContaining({ code: 'PERMISSION' }))
   })
 
-  it('sur une racine d’essai, ni le vrai dossier ni la vraie corbeille', () => {
+  it('sur une racine d’essai, ni le vrai dossier ni sa corbeille', () => {
     const essai = lieuxDistants('Tracker-essai')
-    expect(essai).toEqual({ racine: '/sdcard/Documents/Tracker-essai', corbeille: '/sdcard/Documents/Tracker-essai-corbeille' })
+    expect(essai).toEqual({ racine: '/sdcard/Documents/Tracker-essai' })
     expect(() => texteShell({ sorte: 'stat', chemin: `${R}/sessions/a.gpx` }, essai)).toThrow()
-    expect(() => texteShell({ sorte: 'creerDossier', chemin: `${C}/2026-11-26/sessions` }, essai)).toThrow()
-    expect(() => texteShell({ sorte: 'deplacer', de: `${essai.racine}/sessions/a.gpx`, vers: `${C}/2026-11-26/sessions/a.gpx` }, essai)).toThrow()
+    expect(() => texteShell({ sorte: 'statDossiers', chemins: [C] }, essai)).toThrow()
+    expect(() => texteShell({ sorte: 'deplacer', de: `${essai.racine}/sessions/a.gpx`, vers: `${C}/${D}/a.gpx` }, essai)).toThrow()
+    expect(texteShell({ sorte: 'listageCorbeille' }, essai)).toBe(`find ${essai.racine}/corbeille -maxdepth 1 -exec stat -c '%f %s %Y %n' {} +`)
   })
 })
 
@@ -760,6 +771,27 @@ describe('écriture d’un fichier sur le téléphone', () => {
     expect(echecDuShell({ code: 0, stderr: '', stdout: '' })).toBe(false)
   })
 
+  it('écrit la fiche d’un dépôt dans un dépôt neuf : corbeille et dépôt relus (de vrais dossiers), jamais par-dessus une autre', async () => {
+    const distant = `${C}/${D}/depose.json`
+    const provisoire = `${distant}.tracker-new`
+    const dossiers = cle({ sorte: 'statDossiers', chemins: [C, `${C}/${D}`] })
+    const f = faux({ ...PRET_A_ECRIRE, [statCle(distant)]: ABSENT(distant), [statCle(provisoire)]: { stdout: '81b0 5 1763495000\n' } }, NOTRE_SERVEUR)
+    await f.t.lister()
+    expect(await f.t.ecrire(`${DEPOT}/depose.json`, LOCAL, 5)).toEqual({ chemin: `${DEPOT}/depose.json`, taille: 5, dateMs: 1763495000000 })
+    expect(auTelephone(f)).toEqual([`shell:${COMMANDE_SERVICES}`, statCle(distant), dossiers, 'push', statCle(provisoire), cle({ sorte: 'renommer', de: provisoire, vers: distant })])
+    const deja = faux({ ...PRET_A_ECRIRE, [statCle(distant)]: { stdout: '81b0 9 1763400000\n' } }, NOTRE_SERVEUR)
+    await deja.t.lister()
+    await expect(deja.t.ecrire(`${DEPOT}/depose.json`, LOCAL, 5)).rejects.toThrow('déjà pris')
+    expect(deja.verbes()).not.toContain('push')
+    const lien = faux({ ...PRET_A_ECRIRE, [statCle(distant)]: ABSENT(distant), [dossiers]: { stdout: `a1ff ${C}\n` } }, NOTRE_SERVEUR)
+    await lien.t.lister()
+    await expect(lien.t.ecrire(`${DEPOT}/depose.json`, LOCAL, 5)).rejects.toMatchObject({ code: 'PERMISSION' })
+    expect(lien.verbes()).not.toContain('push')
+    for (const chemin of ['corbeille/corbeille.json', `${DEPOT}/a.gpx`, 'corbeille/2024-vacances/depose.json']) {
+      await expect(f.t.ecrire(chemin, LOCAL, 1), chemin).rejects.toMatchObject({ code: 'PERMISSION' })
+    }
+  })
+
   it('refuse d’écrire sur un dossier ou un lien, sans rien envoyer', async () => {
     const distant = `${R}/sessions/x.gpx`
     for (const mode of ['41f9', 'a1ff']) {
@@ -774,7 +806,7 @@ describe('écriture d’un fichier sur le téléphone', () => {
     const f = faux({ ...ADB_OK, [`shell:${COMMANDE_SERVICES}`]: { stdout: SERVICES_ENREGISTREMENT } }, NOTRE_SERVEUR)
     await f.t.lister()
     await expect(f.t.ecrire('sessions/a.gpx', LOCAL, 5)).rejects.toEqual(expect.objectContaining({ code: 'PERMISSION', message: MESSAGE_ENREGISTREMENT }))
-    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${JOUR}/sessions/a.gpx`)).rejects.toThrow()
+    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${DEPOT}/a.gpx`)).rejects.toThrow()
     expect(auTelephone(f)).toEqual([`shell:${COMMANDE_SERVICES}`])
     const muet = faux({ ...ADB_OK, [`shell:${COMMANDE_SERVICES}`]: { stdout: 'Permission Denial' } }, NOTRE_SERVEUR)
     await muet.t.lister()
@@ -785,8 +817,8 @@ describe('écriture d’un fichier sur le téléphone', () => {
   it('ne lance rien sans listage, ni si la liaison est prise par un autre', async () => {
     const f = faux(PRET_A_ECRIRE, NOTRE_SERVEUR)
     await expect(f.t.ecrire('sessions/a.gpx', LOCAL, 5)).rejects.toThrow("pas été listé")
-    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${JOUR}/sessions/a.gpx`)).rejects.toThrow("pas été listé")
-    await expect(f.t.listerCorbeille(JOUR)).rejects.toThrow("pas été listé")
+    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${DEPOT}/a.gpx`)).rejects.toThrow("pas été listé")
+    await expect(f.t.listerCorbeille()).rejects.toThrow("pas été listé")
     expect(f.appels).toEqual([])
     // Sondes 1 et 2 : notre serveur (appareils, listage) ; à partir de la 3, un autre.
     const pris = faux(PRET_A_ECRIRE, (n) => (n <= 2 ? NOTRE_SERVEUR : { etat: 'version', version: 40 }))
@@ -812,7 +844,7 @@ describe('écriture d’un fichier sur le téléphone', () => {
     await f.t.lister()
     appareils = 'List of devices attached\nSERIE2 device usb:1 model:Autre transport_id:2\n'
     await expect(f.t.ecrire('sessions/a.gpx', LOCAL, 5)).rejects.toThrow("pas été listé")
-    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${JOUR}/sessions/a.gpx`)).rejects.toThrow("pas été listé")
+    await expect(f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${DEPOT}/a.gpx`)).rejects.toThrow("pas été listé")
     expect(auTelephone(f)).toEqual([])
     for (const { args } of f.appels.filter((a) => a.args[0] === '-s')) expect(args[1]).toBe('SERIE1')
   })
@@ -846,7 +878,7 @@ describe('écriture d’un fichier sur le téléphone', () => {
     await f.t.ecrire('sessions/4.json', LOCAL, 5)
     expect(dumpsys()).toBe(4)
     // Une mise de côté relit toujours, même juste après une écriture.
-    await f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${JOUR}/sessions/a.gpx`).catch(() => undefined)
+    await f.t.mettreDeCote(liste('sessions/a.gpx').fichier, `${DEPOT}/a.gpx`).catch(() => undefined)
     expect(dumpsys()).toBe(5)
   })
 
@@ -861,7 +893,8 @@ describe('écriture d’un fichier sur le téléphone', () => {
 describe('mise de côté sur le téléphone', () => {
   /** Le faux adb, dont les `stat` et `mv` suivent les fichiers présents. */
   function fauxTelephone(fichiers: string[], extra: Reponses = {}, lieux: LieuxDistants = LIEUX) {
-    const presents = new Map(fichiers.map((r) => [`${lieux.racine}/${r}`, 4]))
+    // Le dépôt est ouvert : sa fiche y est déjà.
+    const presents = new Map([...fichiers, `${DEPOT}/depose.json`].map((r) => [`${lieux.racine}/${r}`, 4]))
     const dynamique = (args: readonly string[]): Partial<Sortie> => {
       const texte = args[3] ?? ''
       const stat = /^stat -c '%f %s %Y' '(.+)'$/.exec(texte)
@@ -883,50 +916,59 @@ describe('mise de côté sur le téléphone', () => {
     return { f, presents }
   }
 
-  it('relit le fichier, la place visée et la corbeille, crée le dossier du jour, déplace, puis relit les deux', async () => {
+  it('relit le fichier, la fiche du dépôt, la place visée et la corbeille, déplace dans la racine, puis relit les deux', async () => {
     const { f, presents } = fauxTelephone(['sessions/a.gpx'])
     const [fichier] = await f.t.lister()
-    await f.t.mettreDeCote(fichier, `${JOUR}/sessions/a.gpx`)
+    await f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)
     const source = `${R}/sessions/a.gpx`
-    const cible = `${C}/2026-11-26/sessions/a.gpx`
+    const cible = `${C}/${D}/a.gpx`
     expect(auTelephone(f)).toEqual([
       `shell:${COMMANDE_SERVICES}`,
       statCle(source),
       statCle(`${source}.tracker-tmp`),
+      statCle(`${C}/${D}/depose.json`),
       statCle(cible),
-      cle({ sorte: 'statDossiers', chemins: [C, `${C}/2026-11-26`, `${C}/2026-11-26/sessions`] }),
-      cle({ sorte: 'creerDossier', chemin: `${C}/2026-11-26/sessions` }),
+      cle({ sorte: 'statDossiers', chemins: [C, `${C}/${D}`] }),
       cle({ sorte: 'deplacer', de: source, vers: cible }),
       statCle(cible),
       statCle(source),
       statCle(`${source}.tracker-tmp`),
     ])
     expect(f.appels.filter((a) => a.args[3]?.startsWith('mv ')).map((a) => a.args)).toEqual([['-s', 'SERIE1', 'shell', `mv '${source}' '${cible}'`]])
-    expect([...presents.keys()]).toEqual([cible])
+    expect([...presents.keys()].sort()).toEqual([cible, `${C}/${D}/depose.json`])
     // Plus au listage : une seconde mise de côté ne lance rien.
-    await expect(f.t.mettreDeCote(fichier, `${JOUR}/sessions/a-2.gpx`)).rejects.toThrow("pas été listé")
-    for (const { args } of f.appels) expect(args.join(' ')).not.toMatch(/\brm\b|kill-server/)
+    await expect(f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)).rejects.toThrow("pas été listé")
+    for (const { args } of f.appels) expect(args.join(' ')).not.toMatch(/\brm\b|kill-server|mkdir/)
+  })
+
+  it('refuse un dépôt sans sa fiche : rien de déplacé', async () => {
+    const { f, presents } = fauxTelephone(['sessions/a.gpx'])
+    presents.delete(`${C}/${D}/depose.json`)
+    const [fichier] = await f.t.lister()
+    await expect(f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)).rejects.toMatchObject({ code: 'PERMISSION', message: expect.stringContaining('depose.json') })
+    expect(f.appels.filter((a) => /^mv\b/.test(a.args[3] ?? ''))).toEqual([])
+    expect(presents.has(`${R}/sessions/a.gpx`)).toBe(true)
   })
 
   it('emporte d’abord le remplacement interrompu caché, sous le même nom suffixé', async () => {
     const { f, presents } = fauxTelephone(['sessions/b.gpx', 'sessions/b.gpx.tracker-tmp'])
     const vus = await f.t.lister()
     expect(vus.map((v) => v.chemin)).toEqual(['sessions/b.gpx'])
-    await f.t.mettreDeCote(vus[0], `${JOUR}/sessions/b.gpx`)
+    await f.t.mettreDeCote(vus[0], `${DEPOT}/b.gpx`)
     expect(f.appels.filter((a) => a.args[3]?.startsWith('mv ')).map((a) => a.args[3])).toEqual([
-      `mv '${R}/sessions/b.gpx.tracker-tmp' '${C}/2026-11-26/sessions/b.gpx.tracker-tmp'`,
-      `mv '${R}/sessions/b.gpx' '${C}/2026-11-26/sessions/b.gpx'`,
+      `mv '${R}/sessions/b.gpx.tracker-tmp' '${C}/${D}/b.gpx.tracker-tmp'`,
+      `mv '${R}/sessions/b.gpx' '${C}/${D}/b.gpx'`,
     ])
-    expect([...presents.keys()].sort()).toEqual([`${C}/2026-11-26/sessions/b.gpx`, `${C}/2026-11-26/sessions/b.gpx.tracker-tmp`])
+    expect([...presents.keys()].sort()).toEqual([`${C}/${D}/b.gpx`, `${C}/${D}/b.gpx.tracker-tmp`, `${C}/${D}/depose.json`])
   })
 
   it('met de côté sous son nom un .tracker-tmp que le téléphone montre à la place de l’original', async () => {
     const { f, presents } = fauxTelephone(['sessions/c.gpx.tracker-tmp'])
     const vus = await f.t.lister()
     expect(vus.map((v) => v.chemin)).toEqual(['sessions/c.gpx'])
-    await f.t.mettreDeCote(vus[0], `${JOUR}/sessions/c.gpx`)
-    expect(f.appels.filter((a) => a.args[3]?.startsWith('mv ')).map((a) => a.args[3])).toEqual([`mv '${R}/sessions/c.gpx.tracker-tmp' '${C}/2026-11-26/sessions/c.gpx'`])
-    expect([...presents.keys()]).toEqual([`${C}/2026-11-26/sessions/c.gpx`])
+    await f.t.mettreDeCote(vus[0], `${DEPOT}/c.gpx`)
+    expect(f.appels.filter((a) => a.args[3]?.startsWith('mv ')).map((a) => a.args[3])).toEqual([`mv '${R}/sessions/c.gpx.tracker-tmp' '${C}/${D}/c.gpx'`])
+    expect([...presents.keys()].sort()).toEqual([`${C}/${D}/c.gpx`, `${C}/${D}/depose.json`])
   })
 
   it('refuse un fichier changé depuis le listage, une place prise, une corbeille qui n’est pas un dossier : rien de déplacé', async () => {
@@ -934,14 +976,14 @@ describe('mise de côté sur le téléphone', () => {
     const change = fauxTelephone(['sessions/a.gpx'])
     const [fichier] = await change.f.t.lister()
     change.presents.set(source, 9)
-    await expect(change.f.t.mettreDeCote(fichier, `${JOUR}/sessions/a.gpx`)).rejects.toThrow('changé')
+    await expect(change.f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)).rejects.toThrow('changé')
     const prise = fauxTelephone(['sessions/a.gpx'])
     const [f2] = await prise.f.t.lister()
-    prise.presents.set(`${C}/2026-11-26/sessions/a.gpx`, 4)
-    await expect(prise.f.t.mettreDeCote(f2, `${JOUR}/sessions/a.gpx`)).rejects.toThrow('déjà pris')
-    const lien = fauxTelephone(['sessions/a.gpx'], { [cle({ sorte: 'statDossiers', chemins: [C, `${C}/2026-11-26`, `${C}/2026-11-26/sessions`] })]: { stdout: `a1ff ${C}\n` } })
+    prise.presents.set(`${C}/${D}/a.gpx`, 4)
+    await expect(prise.f.t.mettreDeCote(f2, `${DEPOT}/a.gpx`)).rejects.toThrow('déjà pris')
+    const lien = fauxTelephone(['sessions/a.gpx'], { [cle({ sorte: 'statDossiers', chemins: [C, `${C}/${D}`] })]: { stdout: `a1ff ${C}\n` } })
     const [f3] = await lien.f.t.lister()
-    await expect(lien.f.t.mettreDeCote(f3, `${JOUR}/sessions/a.gpx`)).rejects.toMatchObject({ code: 'PERMISSION' })
+    await expect(lien.f.t.mettreDeCote(f3, `${DEPOT}/a.gpx`)).rejects.toMatchObject({ code: 'PERMISSION' })
     for (const t of [change, prise, lien]) {
       expect(t.f.appels.filter((a) => /^(mv|mkdir|rm)\b/.test(a.args[3] ?? ''))).toEqual([])
       expect(t.presents.has(source)).toBe(true)
@@ -952,16 +994,16 @@ describe('mise de côté sur le téléphone', () => {
     const { f, presents } = fauxTelephone(['sessions/a.gpx'])
     const [fichier] = await f.t.lister()
     presents.clear()
-    await f.t.mettreDeCote(fichier, `${JOUR}/sessions/a.gpx`)
+    await f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)
     expect(f.appels.filter((a) => /^(mv|mkdir)\b/.test(a.args[3] ?? ''))).toEqual([])
   })
 
   it('un mv en échec arrête tout et le dit', async () => {
     const source = `${R}/sessions/a.gpx`
-    const cible = `${C}/2026-11-26/sessions/a.gpx`
+    const cible = `${C}/${D}/a.gpx`
     const { f, presents } = fauxTelephone(['sessions/a.gpx'], { [cle({ sorte: 'deplacer', de: source, vers: cible })]: { code: 1, stderr: 'mv: Permission denied' } })
     const [fichier] = await f.t.lister()
-    await expect(f.t.mettreDeCote(fichier, `${JOUR}/sessions/a.gpx`)).rejects.toThrow('Permission denied')
+    await expect(f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)).rejects.toThrow('Permission denied')
     expect(auTelephone(f).at(-1)).toBe(cle({ sorte: 'deplacer', de: source, vers: cible }))
     expect(presents.has(source)).toBe(true)
   })
@@ -971,12 +1013,11 @@ describe('mise de côté sur le téléphone', () => {
     await f.t.lister()
     const avant = f.appels.length
     const fichier = (chemin: string): FichierTelephone => ({ chemin, taille: 4, dateMs: 1763495000000 })
-    for (const chemin of [...REFUSES, 'reglages/pc.json', 'tracker.json']) await expect(f.t.mettreDeCote(fichier(chemin), `${JOUR}/sessions/a.gpx`), chemin).rejects.toMatchObject({ code: 'PERMISSION' })
-    for (const vers of [`${JOUR}/itineraires/a.gpx`, '../a.gpx', `${JOUR}/sessions/../../Tracker/a.gpx`, 'Tracker-corbeille/2026-02-30x/sessions/a.gpx']) {
+    for (const chemin of [...REFUSES, 'reglages/pc.json', 'tracker.json']) await expect(f.t.mettreDeCote(fichier(chemin), `${DEPOT}/a.gpx`), chemin).rejects.toMatchObject({ code: 'PERMISSION' })
+    for (const vers of [`${DEPOT}/b.gpx`, '../a.gpx', `${DEPOT}/../../Tracker/a.gpx`, 'Tracker-corbeille/2026-11-26/sessions/a.gpx', 'corbeille/2024-vacances/a.gpx', 'corbeille/a.gpx']) {
       await expect(f.t.mettreDeCote(fichier('sessions/a.gpx'), vers), vers).rejects.toMatchObject({ code: 'PERMISSION' })
     }
-    for (const chemin of REFUSES) await expect(f.t.ecrire(chemin, LOCAL, 1), chemin).rejects.toMatchObject({ code: 'PERMISSION' })
-    for (const d of ['Tracker-corbeille', 'Tracker-corbeille/2026-11-26/sessions', '../x']) await expect(f.t.listerCorbeille(d)).rejects.toMatchObject({ code: 'PERMISSION' })
+    for (const chemin of [...REFUSES, 'corbeille/corbeille.json', `${DEPOT}/a.gpx`]) await expect(f.t.ecrire(chemin, LOCAL, 1), chemin).rejects.toMatchObject({ code: 'PERMISSION' })
     expect(f.appels.length).toBe(avant)
   })
 
@@ -984,41 +1025,51 @@ describe('mise de côté sur le téléphone', () => {
     const essai = lieuxDistants('Tracker-essai')
     const { f, presents } = fauxTelephone(['sessions/a.gpx'], {}, essai)
     const [fichier] = await f.t.lister()
-    await f.t.mettreDeCote(fichier, `${JOUR}/sessions/a.gpx`)
-    expect([...presents.keys()]).toEqual(['/sdcard/Documents/Tracker-essai-corbeille/2026-11-26/sessions/a.gpx'])
+    await f.t.mettreDeCote(fichier, `${DEPOT}/a.gpx`)
+    expect([...presents.keys()].sort()).toEqual([`/sdcard/Documents/Tracker-essai/${DEPOT}/a.gpx`, `/sdcard/Documents/Tracker-essai/${DEPOT}/depose.json`])
     for (const a of f.appels) expect(a.args.join(' ')).not.toMatch(/Documents\/Tracker(?!-essai)/)
   })
 })
 
 describe('corbeille du téléphone', () => {
-  it('liste un jour : fichiers de sessions/ et itineraires/, en chemins vus de la page', async () => {
+  it('liste les sous-dossiers de la corbeille de la racine, rien d’autre', async () => {
     const sortie = [
-      `81b0 3 1763495000 ${C}/2026-11-26/sessions/a.gpx`,
-      `41f9 3452 1763495000 ${C}/2026-11-26/sessions`,
-      `81b0 3 1763495000 ${C}/2026-11-26/itineraires/t.json`,
-      `81b0 3 1763495000 ${C}/2026-11-26/sessions/b.gpx.tracker-tmp`,
-      `81b0 1 1763495000 ${C}/2026-11-26/autre/x`,
-      `81b0 1 1763495000 ${C}/2026-11-25/sessions/y.gpx`,
+      `41f9 3452 1763495000 ${C}`,
+      `81b0 90 1763495000 ${C}/corbeille.json`,
+      `41f9 3452 1763495000 ${C}/1795647914477-Tour du lac`,
+      `41f9 3452 1763495000 ${C}/${D}`,
+      `81b0 3 1763495000 ${C}/${D}/a.gpx`,
+      `41f9 3452 1763495000 ${R}/sessions`,
     ].join('\n')
-    const f = faux({ ...ADB_OK, [cle({ sorte: 'listageCorbeille', jour: '2026-11-26' })]: { stdout: sortie } }, NOTRE_SERVEUR)
+    const f = faux({ ...ADB_OK, [cle({ sorte: 'listageCorbeille' })]: { stdout: sortie } }, NOTRE_SERVEUR)
     await f.t.lister()
-    expect(await f.t.listerCorbeille(JOUR)).toEqual([`${JOUR}/itineraires/t.json`, `${JOUR}/sessions/a.gpx`, `${JOUR}/sessions/b.gpx.tracker-tmp`])
+    expect(await f.t.listerCorbeille()).toEqual([D, '1795647914477-Tour du lac'])
   })
 
-  it('rend une liste vide si le jour n’existe pas, et se replie sur stat si find ne connaît pas -exec … +', async () => {
-    const absent = faux({ ...ADB_OK, [cle({ sorte: 'listageCorbeille', jour: '2026-11-26' })]: { code: 1, stderr: `find: ${C}/2026-11-26: No such file or directory` } }, NOTRE_SERVEUR)
+  it('rend une liste vide sans corbeille, et se replie sur stat si find ne connaît pas -exec … +', async () => {
+    const absent = faux({ ...ADB_OK, [cle({ sorte: 'listageCorbeille' })]: { code: 1, stderr: `find: ${C}: No such file or directory` } }, NOTRE_SERVEUR)
     await absent.t.lister()
-    expect(await absent.t.listerCorbeille(JOUR)).toEqual([])
+    expect(await absent.t.listerCorbeille()).toEqual([])
     const repli = faux(
       {
         ...ADB_OK,
-        [cle({ sorte: 'listageCorbeille', jour: '2026-11-26' })]: { code: 1, stderr: 'find: Unknown option -exec' },
-        [cle({ sorte: 'repliCorbeille', jour: '2026-11-26' })]: { code: 1, stdout: `81b0 3 1763495000 ${C}/2026-11-26/sessions/a.gpx\n`, stderr: `stat: ${C}/2026-11-26/itineraires/*: No such file or directory` },
+        [cle({ sorte: 'listageCorbeille' })]: { code: 1, stderr: 'find: Unknown option -exec' },
+        [cle({ sorte: 'repliCorbeille' })]: { stdout: `41f9 3452 1763495000 ${C}/${D}\n81b0 9 1763495000 ${C}/corbeille.json\n` },
       },
       NOTRE_SERVEUR,
     )
     await repli.t.lister()
-    expect(await repli.t.listerCorbeille(JOUR)).toEqual([`${JOUR}/sessions/a.gpx`])
+    expect(await repli.t.listerCorbeille()).toEqual([D])
+    const vide = faux(
+      {
+        ...ADB_OK,
+        [cle({ sorte: 'listageCorbeille' })]: { code: 1, stderr: 'find: Unknown option -exec' },
+        [cle({ sorte: 'repliCorbeille' })]: { code: 1, stderr: `stat: ${C}/*: No such file or directory` },
+      },
+      NOTRE_SERVEUR,
+    )
+    await vide.t.lister()
+    expect(await vide.t.listerCorbeille()).toEqual([])
   })
 })
 
@@ -1056,7 +1107,7 @@ describe('liste fermée des commandes et liaison respectée', () => {
         [statCle(`${R}/tracker.json.tracker-new`)]: { stdout: '81b0 2 1763495000\n' },
         [statCle(`${R}/fc-repos.json`)]: ABSENT(`${R}/fc-repos.json`),
         push: (args) => (args[4].includes('fc-repos') ? { code: 1, stderr: 'adb: error: failed to copy' } : {}),
-        [cle({ sorte: 'listageCorbeille', jour: '2026-11-26' })]: { code: 1, stderr: 'find: Unknown option' },
+        [cle({ sorte: 'listageCorbeille' })]: { code: 1, stderr: 'find: Unknown option' },
       },
       { etat: 'aucun' },
     )
@@ -1065,7 +1116,7 @@ describe('liste fermée des commandes et liaison respectée', () => {
     await pret.t.enregistrement()
     await pret.t.ecrire('tracker.json', LOCAL, 2)
     await pret.t.ecrire('fc-repos.json', LOCAL, 2).catch(() => undefined)
-    await pret.t.listerCorbeille(JOUR)
+    await pret.t.listerCorbeille()
     noter(pret)
     const retrait = faux(
       {
@@ -1073,13 +1124,14 @@ describe('liste fermée des commandes et liaison respectée', () => {
         [`shell:${COMMANDE_LISTAGE}`]: { stdout: `81b0 4 1763495000 ${R}/sessions/b.gpx\n` },
         [statCle(`${R}/sessions/b.gpx`)]: { stdout: '81b0 4 1763495000\n' },
         [statCle(`${R}/sessions/b.gpx.tracker-tmp`)]: { stdout: '81b0 9 1763495000\n' },
-        [statCle(`${C}/2026-11-26/sessions/b.gpx`)]: ABSENT(`${C}/2026-11-26/sessions/b.gpx`),
-        [statCle(`${C}/2026-11-26/sessions/b.gpx.tracker-tmp`)]: ABSENT(`${C}/2026-11-26/sessions/b.gpx.tracker-tmp`),
+        [statCle(`${C}/${D}/depose.json`)]: { stdout: '81b0 9 1763495000\n' },
+        [statCle(`${C}/${D}/b.gpx`)]: ABSENT(`${C}/${D}/b.gpx`),
+        [statCle(`${C}/${D}/b.gpx.tracker-tmp`)]: ABSENT(`${C}/${D}/b.gpx.tracker-tmp`),
       },
       NOTRE_SERVEUR,
     )
     const [b] = await retrait.t.lister()
-    await retrait.t.mettreDeCote(b, `${JOUR}/sessions/b.gpx`).catch(() => undefined)
+    await retrait.t.mettreDeCote(b, `${DEPOT}/b.gpx`).catch(() => undefined)
     noter(retrait)
     for (const serveur of [{ etat: 'version', version: 40 }, { etat: 'etranger' }] as Sonde[]) {
       const f = faux(ADB_OK, serveur)
@@ -1092,11 +1144,10 @@ describe('liste fermée des commandes et liaison respectée', () => {
       /^stat -c '%f %s %Y' '[^']+'$/,
       /^stat -c '%f %n'( '[^']+')+$/,
       /^mv -f '[^']+\.tracker-new' '[^']+'$/,
-      /^mv '\/sdcard\/Documents\/Tracker\/[^']+' '\/sdcard\/Documents\/Tracker-corbeille\/[^']+'$/,
-      /^mkdir -p '\/sdcard\/Documents\/Tracker-corbeille\/[^']+'$/,
+      /^mv '\/sdcard\/Documents\/Tracker\/(sessions|itineraires)\/[^'/]+' '\/sdcard\/Documents\/Tracker\/corbeille\/[^'/]+\/[^'/]+'$/,
       /^rm -f '\/sdcard\/Documents\/Tracker\/[^']+\.tracker-new'$/,
-      /^find \/sdcard\/Documents\/Tracker-corbeille\/\d{4}-\d{2}-\d{2} -maxdepth 2 -type f -exec stat -c '%f %s %Y %n' \{\} \+$/,
-      /^stat -c '%f %s %Y %n' \/sdcard\/Documents\/Tracker-corbeille\/\d{4}-\d{2}-\d{2}\/sessions\/\* \/sdcard\/Documents\/Tracker-corbeille\/\d{4}-\d{2}-\d{2}\/itineraires\/\*$/,
+      /^find \/sdcard\/Documents\/Tracker\/corbeille -maxdepth 1 -exec stat -c '%f %s %Y %n' \{\} \+$/,
+      /^stat -c '%f %s %Y %n' \/sdcard\/Documents\/Tracker\/corbeille\/\*$/,
     ]
     for (const args of vues) {
       const verbe = args[0] === '-s' ? args[2] : args[0]
@@ -1143,7 +1194,7 @@ describe('liste fermée des commandes et liaison respectée', () => {
     expect(adb).not.toMatch(/\brm -r|\brm -rf|-exec rm|\bunlink\b|\brmdir\b/)
     expect([...adb.matchAll(/`mv -f /g)]).toHaveLength(1)
     expect([...adb.matchAll(/`mv \$\{/g)]).toHaveLength(1)
-    expect([...adb.matchAll(/`mkdir -p /g)]).toHaveLength(1)
+    expect(adb).not.toMatch(/`mkdir\b/)
     expect(adb).not.toMatch(/['"`](cp|touch|chmod|chown|dd|tee|install|uninstall|reboot|root|remount|sideload|tcpip|forward|reverse)['"`\s]/)
     // Le téléphone : aucun lancement de programme, et le seul effacement est celui du provisoire du téléphone d'essai
     // (`unlink(provisoire)`) ou d'un fichier du dossier temporaire du PC (`effacer`).
@@ -1220,11 +1271,11 @@ describe('listages complets ou rien', () => {
     await expect(refuse.t.lister()).rejects.toThrow('incomplet')
   })
 
-  it('la corbeille du jour : listage partiel refusé, jour absent vide', async () => {
-    const jour = cle({ sorte: 'listageCorbeille', jour: '2026-11-26' })
-    const partiel = faux({ ...ADB_OK, [jour]: { code: 1, stdout: `81b0 3 1763495000 ${C}/2026-11-26/sessions/a.gpx\n`, stderr: 'find: Permission denied' } }, NOTRE_SERVEUR)
+  it('la corbeille : listage partiel refusé', async () => {
+    const corbeille = cle({ sorte: 'listageCorbeille' })
+    const partiel = faux({ ...ADB_OK, [corbeille]: { code: 1, stdout: `41f9 3 1763495000 ${C}/${D}\n`, stderr: 'find: Permission denied' } }, NOTRE_SERVEUR)
     await partiel.t.lister()
-    await expect(partiel.t.listerCorbeille(JOUR)).rejects.toThrow('incomplet')
+    await expect(partiel.t.listerCorbeille()).rejects.toThrow('incomplet')
   })
 
   it('listage entier pour la copie de sécurité : toute profondeur, provisoires et liens dits, ligne illisible refusée ; lecture du seul listé', async () => {

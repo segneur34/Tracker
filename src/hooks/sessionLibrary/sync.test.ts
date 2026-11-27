@@ -3,10 +3,13 @@ import { sessionPath } from '../../library/folderLayout';
 import { restingHrFileText, type StoredRestingResult } from '../../library/restingHrStore';
 import { buildSettingsFile, serializeSettingsFile } from '../../library/settingsFile';
 import { imuFileName, recordFileName, type SessionRecord, type StoredSessionNotes } from '../../library/record';
-import { PHONE_TRASH_ROOT, parseSyncBase, readMarkerId, readMarkerPass, syncBasePath } from '../../library/syncBase';
+import { parseSyncBase, readMarkerId, readMarkerPass, syncBasePath } from '../../library/syncBase';
 import { describeSyncConfirmation, describeSyncOutcome, describeSyncQuestion } from '../../library/syncReport';
-import { TRASH_INDEX_PATH, parseTrashIndex, sessionRestorePlan, sessionTrashEntries, shownTrashEntries, type TrashEntry } from '../../library/trash';
-import { copyFromTrash, dropTrashEntries, emptyTrash, stashInTrash } from '../../library/trashFolder';
+import {
+  DEPOSIT_FILE, TRASH_DIR, TRASH_INDEX_PATH, parseDeposit, parseTrashIndex, returnedTrashGroups, sessionRestorePlan, sessionTrashEntries,
+  shownTrashEntries, type TrashEntry,
+} from '../../library/trash';
+import { adoptDeposits, copyFromTrash, dropTrashEntries, emptyTrash, stashInTrash, type TrashFolder } from '../../library/trashFolder';
 import type { MemoryFolder } from '../../platform/memoryFolder';
 import {
   SyncCutError, deleteSyncSession, editSyncRecord, putSyncSession, readSyncRecord, syncGpxName, syncMemoryFolder, syncSessionFiles,
@@ -236,7 +239,7 @@ describe('exécutant de la synchronisation', () => {
     expect(outcome.keptFromPhone).toEqual([at(3)]);
     expect(sessionTrashEntries(trashOf(pair), at(3)).map((e) => [e.origin, e.files.length])).toEqual([['telephone', 2]]);
     expect(await syncSessionFiles(pair.phone)).toEqual([0, 1, 2, 4, 5, 6, 7].map(fileOf));
-    // Rien n'est effacé du téléphone : la copie y est aussi mise de côté, hors de sa mémoire.
+    // Rien n'est effacé du téléphone : la copie y est aussi déposée dans sa corbeille.
     expect([...pair.phone.aside().keys()].filter((p) => p.includes(fileOf(3).replace(/.gpx$/, '')))).toHaveLength(2);
   });
 
@@ -599,8 +602,8 @@ describe('ce que la couche du bouton reçoit', () => {
     expect(trashOf(pair).some((e) => e.startMs === at(2))).toBe(true);
     expect(describeSyncQuestion(second)).toBeNull();
     expect(describeSyncOutcome(second).rows).toContainEqual(expect.objectContaining({ label: 'Mis de côté sur le téléphone' }));
-    // Rien n'est effacé du téléphone : la session est dans le dossier du jour de sa corbeille.
-    expect([...pair.phone.aside().keys()].some((p) => p.startsWith(`${PHONE_TRASH_ROOT}/`) && p.endsWith(fileOf(2)))).toBe(true);
+    // Rien n'est effacé du téléphone : la session est dans un dépôt de sa corbeille.
+    expect([...pair.phone.aside().keys()].some((p) => p.startsWith(`${TRASH_DIR}/${NOW}-${at(2)}/`) && p.endsWith(fileOf(2)))).toBe(true);
   });
 
   it('« Retirer du téléphone » d’une session déjà dans la corbeille : une seule entrée si les fichiers sont les mêmes, la copie du téléphone à part sinon', async () => {
@@ -1528,24 +1531,21 @@ describe('sûreté du téléphone (Tracker)', () => {
     expect(await syncSessionFiles(pair.phone)).toEqual([0, 1, 5, 6, 7, 8].map(fileOf));
   });
 
-  it('rien n’est effacé du téléphone : un retrait est une mise de côté dans Tracker-corbeille/<jour>/, sans écraser une session du même nom', async () => {
+  it('rien n’est effacé du téléphone : un retrait est un dépôt dans sa corbeille, sans écraser un dépôt de la même session', async () => {
     // Cinq sessions : en retirer une reste sous le garde-fou (le quart d'un côté).
     const pair = await syncedPair(5);
     await trashOnComputer(pair, 1);
     const outcome = await run(pair);
     expect(outcome.done.find((i) => i.startMs === at(1))?.ops.map((op) => op.kind)).toEqual(['removeFromPhone']);
-    const moved = [...pair.phone.aside().keys()].sort();
-    expect(moved).toEqual([recordFileName(fileOf(1)), fileOf(1)].map((n) => `${PHONE_TRASH_ROOT}/2026-11-21/sessions/${n}`).sort());
-    // La même session remise sur le téléphone puis retirée de nouveau le même jour : la première n'est pas écrasée.
+    const dir = `${TRASH_DIR}/${NOW}-${at(1)}`;
+    expect([...pair.phone.aside().keys()]).toEqual([fileOf(1), recordFileName(fileOf(1))].map((n) => `${dir}/${n}`));
+    // La même session remise sur le téléphone puis retirée de nouveau : un dépôt neuf, le premier n'est pas touché.
     putSyncSession(pair.phone, at(1), { imuBytes: 30 });
     putSyncSession(pair.computer, at(1), { imuBytes: 30 });
     await run(pair);
     await trashOnComputer(pair, 1);
     await run(pair);
-    expect([...pair.phone.aside().keys()].filter((p) => p.endsWith('.gpx')).sort()).toEqual([
-      `${PHONE_TRASH_ROOT}/2026-11-21/sessions/${fileOf(1).replace(/\.gpx$/, '-2.gpx')}`,
-      `${PHONE_TRASH_ROOT}/2026-11-21/sessions/${fileOf(1)}`,
-    ]);
+    expect([...pair.phone.aside().keys()].filter((p) => p.endsWith('.gpx')).sort()).toEqual([`${dir}-2/${fileOf(1)}`, `${dir}/${fileOf(1)}`]);
     expect(await syncSessionFiles(pair.phone)).toEqual([0, 2, 3, 4].map(fileOf));
   });
 
@@ -1693,5 +1693,198 @@ describe('relecture du commit 46b851d', () => {
         expect(before[side].filter((p) => !now.includes(p)), `${side} ${withoutDeletions}`).toEqual([]);
       }
     }
+  });
+});
+
+/**
+ * Le dossier du téléphone tel que l'application du téléphone le voit (pas le câble) : il lit et écrit directement, et
+ * efface (sa corbeille). Ses écritures ne passent pas par le protocole du câble.
+ */
+const phoneApp = (f: SyncFolder): TrashFolder & MemoryFolder => {
+  const bytes = (path: string): Uint8Array | null => {
+    const text = f.text(path);
+    return text === null ? null : new TextEncoder().encode(text);
+  };
+  return {
+    kind: 'device',
+    label: 'Téléphone',
+    list: async (dir) => {
+      const prefix = dir === '' ? '' : `${dir}/`;
+      const entries = new Map<string, { name: string; kind: 'file' | 'directory'; size: number; mtimeMs: number }>();
+      for (const path of f.paths().filter((p) => p.startsWith(prefix))) {
+        const rest = path.slice(prefix.length);
+        const cut = rest.indexOf('/');
+        if (cut < 0) entries.set(rest, { name: rest, kind: 'file', size: bytes(path)?.byteLength ?? 0, mtimeMs: 0 });
+        else entries.set(rest.slice(0, cut), { name: rest.slice(0, cut), kind: 'directory', size: 0, mtimeMs: 0 });
+      }
+      return [...entries.values()];
+    },
+    readText: async (path) => f.text(path),
+    readBytes: async (path) => bytes(path),
+    stat: async (path) => {
+      const b = bytes(path);
+      return b === null ? null : { size: b.byteLength, mtimeMs: 0 };
+    },
+    writeText: async (path, text) => f.put(path, text),
+    writeBytes: async (path, b) => f.put(path, b),
+    remove: async (path) => f.drop(path),
+    removeDir: async (path) => {
+      if (f.paths().some((p) => p.startsWith(`${path}/`))) throw new Error(`dossier non vide : ${path}`);
+    },
+  };
+};
+
+const PHONE_NOW = Date.UTC(2026, 10, 22, 8, 0, 0);
+const phoneTrashOf = (pair: Pair): TrashEntry[] => parseTrashIndex(pair.phone.text(TRASH_INDEX_PATH)).entries;
+
+/** Supprime une session sur le téléphone comme son application : copie dans sa corbeille, puis retrait. */
+const trashOnPhone = async (pair: Pair, k: number): Promise<void> => {
+  const app = phoneApp(pair.phone);
+  const names = [fileOf(k), recordFileName(fileOf(k)), imuFileName(fileOf(k))].map(sessionPath);
+  await stashInTrash(app, { kind: 'session', paths: names, main: names[0], startMs: at(k), name: `session ${k}` }, PHONE_NOW);
+  for (const path of names) pair.phone.drop(path);
+};
+
+describe('corbeilles jumelles (lot 242-1)', () => {
+  it('supprimée sur l’ordinateur : dépôt dans la corbeille du téléphone, depose.json d’abord, l’index du téléphone jamais écrit', async () => {
+    const pair = await syncedPair(5);
+    pair.phone.put(TRASH_INDEX_PATH, '{"index du téléphone":1}');
+    await trashOnComputer(pair, 1);
+    const outcome = await run(pair);
+    expect(outcome.complete).toBe(true);
+    const dir = `${TRASH_DIR}/${NOW}-${at(1)}`;
+    // Seule écriture de l'ordinateur dans la corbeille du téléphone : la fiche du dépôt.
+    expect(pair.phone.written().filter((p) => p.startsWith(`${TRASH_DIR}/`))).toEqual([`${dir}/${DEPOSIT_FILE}`]);
+    expect(pair.phone.text(TRASH_INDEX_PATH)).toBe('{"index du téléphone":1}');
+    expect(parseDeposit(pair.phone.text(`${dir}/${DEPOSIT_FILE}`))).toMatchObject({
+      origin: 'ordinateur', kind: 'session', startMs: at(1), files: [{ name: fileOf(1) }, { name: recordFileName(fileOf(1)) }],
+    });
+    // Le téléphone l'adopte : une entrée de son index, à son horloge, et plus de depose.json.
+    pair.phone.drop(TRASH_INDEX_PATH);
+    const adopted = await adoptDeposits(phoneApp(pair.phone), PHONE_NOW);
+    expect(adopted).toMatchObject([{ dir: `${NOW}-${at(1)}`, kind: 'session', startMs: at(1), main: fileOf(1), origin: 'ordinateur', deletedAtMs: PHONE_NOW }]);
+    expect(phoneTrashOf(pair).map((e) => e.startMs)).toEqual([at(1)]);
+    expect(pair.phone.text(`${dir}/${DEPOSIT_FILE}`)).toBeNull();
+    // Dans les deux corbeilles.
+    expect(sessionTrashEntries(trashOf(pair), at(1))).toHaveLength(1);
+  });
+
+  it('supprimée sur le téléphone : dans sa corbeille, puis dans celle de l’ordinateur à la synchronisation', async () => {
+    const pair = await syncedPair(5);
+    await trashOnPhone(pair, 2);
+    expect(phoneTrashOf(pair).map((e) => e.startMs)).toEqual([at(2)]);
+    const outcome = await run(pair);
+    expect(outcome.done.find((i) => i.startMs === at(2))?.case).toBe('deletedOnPhone');
+    expect(sessionTrashEntries(trashOf(pair), at(2))).toHaveLength(1);
+    expect(phoneTrashOf(pair).map((e) => e.startMs)).toEqual([at(2)]);
+    expect(pair.phone.written().filter((p) => p.startsWith(`${TRASH_DIR}/`))).toEqual([]);
+  });
+
+  it('supprimée des deux côtés : la base l’oublie, chaque corbeille garde la sienne', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 3);
+    await trashOnPhone(pair, 3);
+    const outcome = await run(pair);
+    expect(outcome.done.find((i) => i.startMs === at(3))?.case).toBe('deletedOnBoth');
+    expect(sessionTrashEntries(trashOf(pair), at(3))).toHaveLength(1);
+    expect(phoneTrashOf(pair).map((e) => e.startMs)).toEqual([at(3)]);
+    expect(baseOf(pair)?.sessions.map((l) => l.startMs)).not.toContain(at(3));
+  });
+
+  it('restaurée sur l’ordinateur : recopiée sur le téléphone sans question, et la corbeille du téléphone la voit revenue', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 1);
+    await run(pair);
+    await adoptDeposits(phoneApp(pair.phone), PHONE_NOW);
+    await restoreOnComputer(pair, 1);
+    const outcome = await run(pair);
+    expect(outcome.done.find((i) => i.startMs === at(1))).toMatchObject({ case: 'newOnComputer', restored: true });
+    expect(outcome.deletions).toBe('made');
+    expect(await syncSessionFiles(pair.phone)).toContain(fileOf(1));
+    // Au rechargement, le téléphone règle sa corbeille : la ligne de la session revenue est à régler (`settleReturnedTrash`).
+    expect(returnedTrashGroups(phoneTrashOf(pair), new Set([0, 1, 2, 3, 4].map(at))).map((g) => g.entry.startMs)).toEqual([at(1)]);
+  });
+
+  it('restaurée sur le téléphone : recopiée sur l’ordinateur sans question, dite restaurée', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 1);
+    await run(pair);
+    const app = phoneApp(pair.phone);
+    await adoptDeposits(app, PHONE_NOW);
+    const [entry] = phoneTrashOf(pair);
+    const plan = sessionRestorePlan(entry, await syncSessionFiles(pair.phone));
+    await copyFromTrash(app, plan.copies);
+    await dropTrashEntries(app, [entry.dir]);
+    const outcome = await run(pair);
+    expect(outcome.done.find((i) => i.startMs === at(1))).toMatchObject({ case: 'newOnPhone', restored: true, left: null });
+    expect(outcome.deletions).toBe('made');
+    expect(await syncSessionFiles(pair.computer)).toContain(fileOf(1));
+    expect(describeSyncOutcome(outcome).rows).toContainEqual(expect.objectContaining({ label: 'Restauré' }));
+    // L'ordinateur règle ensuite sa corbeille : la session y est encore, et revenue dans sa mémoire.
+    expect(returnedTrashGroups(trashOf(pair), new Set([0, 1, 2, 3, 4].map(at))).map((g) => g.entry.startMs)).toEqual([at(1)]);
+  });
+
+  it('« Vider » sur le téléphone ne vaut que pour lui : rien ne part vers l’ordinateur, sa corbeille garde la session', async () => {
+    const pair = await syncedPair(5);
+    await trashOnPhone(pair, 2);
+    await run(pair);
+    await emptyTrash(phoneApp(pair.phone));
+    expect(phoneTrashOf(pair)).toEqual([]);
+    const outcome = await run(pair);
+    expect(outcome.done.filter((i) => i.ops.length > 0)).toEqual([]);
+    expect(sessionTrashEntries(trashOf(pair), at(2))).toHaveLength(1);
+  });
+
+  it('« Vider » et la purge du téléphone épargnent un dépôt pas encore adopté', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 1);
+    await run(pair);
+    const app = phoneApp(pair.phone);
+    await emptyTrash(app);
+    expect(pair.phone.text(`${TRASH_DIR}/${NOW}-${at(1)}/${fileOf(1)}`)).not.toBeNull();
+    expect(await adoptDeposits(app, PHONE_NOW)).toHaveLength(1);
+  });
+
+  it('coupure juste après depose.json : rien n’a quitté sessions/, le dépôt attend ; la passe suivante en ouvre un neuf, l’ancien vide part', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 1);
+    // Le marqueur (2 opérations), puis la fiche du dépôt (2) : coupé juste après.
+    pair.phone.cutAfter(MARKER_STEPS + 2);
+    expect((await run(pair)).linkLost).not.toBeNull();
+    pair.phone.cutAfter(null);
+    const first = `${TRASH_DIR}/${NOW}-${at(1)}`;
+    expect(pair.phone.text(`${first}/${DEPOSIT_FILE}`)).not.toBeNull();
+    expect(await syncSessionFiles(pair.phone)).toContain(fileOf(1));
+    const app = phoneApp(pair.phone);
+    // Les fichiers manquants sont encore à leur place : le dépôt attend.
+    expect(await adoptDeposits(app, PHONE_NOW)).toEqual([]);
+    expect(pair.phone.text(`${first}/${DEPOSIT_FILE}`)).not.toBeNull();
+    expect((await run(pair)).complete).toBe(true);
+    expect(pair.phone.text(`${first}-2/${fileOf(1)}`)).not.toBeNull();
+    const adopted = await adoptDeposits(app, PHONE_NOW);
+    expect(adopted.map((e) => e.dir)).toEqual([`${NOW}-${at(1)}-2`]);
+    expect(pair.phone.paths().filter((p) => p.startsWith(`${first}/`))).toEqual([]);
+    expect(phoneTrashOf(pair).map((e) => [e.kind, e.startMs])).toEqual([['session', at(1)]]);
+  });
+
+  it('coupure après le GPX : la fiche restée seule repart dans un dépôt neuf, puis les deux dépôts sont adoptés ; rien de perdu', async () => {
+    const pair = await syncedPair(5);
+    await trashOnComputer(pair, 1);
+    // Le marqueur (2), la fiche du dépôt (2), le GPX (1) : coupé avant la fiche de la session.
+    pair.phone.cutAfter(MARKER_STEPS + 3);
+    expect((await run(pair)).linkLost).not.toBeNull();
+    pair.phone.cutAfter(null);
+    const first = `${TRASH_DIR}/${NOW}-${at(1)}`;
+    expect(pair.phone.text(`${first}/${fileOf(1)}`)).not.toBeNull();
+    expect(pair.phone.text(sessionPath(recordFileName(fileOf(1))))).not.toBeNull();
+    const app = phoneApp(pair.phone);
+    expect(await adoptDeposits(app, PHONE_NOW)).toEqual([]);
+    expect((await run(pair)).complete).toBe(true);
+    expect(pair.phone.text(sessionPath(recordFileName(fileOf(1))))).toBeNull();
+    const adopted = await adoptDeposits(app, PHONE_NOW);
+    expect(adopted.map((e) => [e.dir, e.kind]).sort()).toEqual([[`${NOW}-${at(1)}`, 'session'], [`${NOW}-${at(1)}-2`, 'restes']]);
+    // Chaque fichier de la session est dans la corbeille du téléphone, et rien de plus à adopter.
+    for (const name of [fileOf(1), recordFileName(fileOf(1))]) expect(pair.phone.paths().some((p) => p.startsWith(`${TRASH_DIR}/`) && p.endsWith(`/${name}`)), name).toBe(true);
+    expect(await adoptDeposits(app, PHONE_NOW)).toEqual([]);
   });
 });

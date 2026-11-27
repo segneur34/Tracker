@@ -3,7 +3,7 @@ import { routePath } from '../../library/folderLayout';
 import { parseSyncBase, readMarkerId, syncBasePath, type SyncBase } from '../../library/syncBase';
 import { describeSyncOutcome, describeSyncQuestion } from '../../library/syncReport';
 import { syncRouteListing } from '../../library/syncRoutes';
-import { TRASH_INDEX_PATH, parseTrashIndex, trashFilePath, type TrashEntry } from '../../library/trash';
+import { DEPOSIT_FILE, TRASH_INDEX_PATH, parseDeposit, parseTrashIndex, trashFilePath, type TrashEntry } from '../../library/trash';
 import { dropTrashEntries, emptyTrash, stashInTrash } from '../../library/trashFolder';
 import { ROUTE_FORMAT, ROUTE_VERSION, parseRouteRecord, serializeRouteRecord } from '../../planning/routeRecord';
 import { putSyncSession, syncMemoryFolder, type SyncFolder } from '../../test/syncFolder.fixture';
@@ -61,7 +61,7 @@ const baseOf = (pair: Pair): SyncBase | null => {
   const read = id ? parseSyncBase(pair.computer.text(syncBasePath(id))) : null;
   return read?.state === 'ok' ? read.base : null;
 };
-const REMOVED_ONE_ROUTE = "Mis de côté sur le téléphone : 1 itinéraire supprimé sur l'ordinateur : retiré de la mémoire du téléphone, rangé dans son dossier Documents/Tracker-corbeille (rien n'y est effacé)";
+const REMOVED_ONE_ROUTE = "Mis de côté sur le téléphone : 1 itinéraire supprimé sur l'ordinateur : retiré de la mémoire du téléphone, dans sa corbeille pour 30 jours";
 
 /** Ce que dit le compte rendu : ses phrases, ses lignes (« geste : ce qu'il a touché ») et ses exceptions. */
 const said = (outcome: SyncOutcome): string[] => {
@@ -124,6 +124,11 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     expect(await routesOf(pair.phone)).toEqual(['r1']);
     expect(trashOf(pair).filter((e) => e.kind === 'itineraire')).toHaveLength(1);
     expect(said(outcome)).toContain(REMOVED_ONE_ROUTE);
+    // Déposé dans la corbeille du téléphone : sa fiche de dépôt d'abord, puis GPX, puis fiche de l'itinéraire.
+    const dir = `${NOW}-r0`;
+    expect([...pair.phone.aside().keys()]).toEqual([trashFilePath(dir, 'r0.gpx'), trashFilePath(dir, 'r0.json')]);
+    expect(pair.phone.written().filter((p) => p.startsWith('corbeille/'))).toEqual([trashFilePath(dir, DEPOSIT_FILE)]);
+    expect(parseDeposit(pair.phone.text(trashFilePath(dir, DEPOSIT_FILE)))).toMatchObject({ kind: 'itineraire', routeBase: 'r0', createdAt: iso(0) });
   });
 
   // Le nom de fichier d'un itinéraire vient de son nom affiché : un itinéraire créé au même lieu le même jour, sans

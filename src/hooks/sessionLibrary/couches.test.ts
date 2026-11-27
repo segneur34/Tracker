@@ -19,7 +19,7 @@ const SRC = new URL('../../', import.meta.url);
 /** Les couches, de la plus basse à la plus haute. */
 const LAYERS = [
   'store', 'memory', 'summarySettings', 'recordWrites', 'cache', 'scan', 'summaryQueue', 'deviceSettings', 'placeQueue',
-  'trash', 'addSession', 'pending', 'importer', 'incoming', 'sessionRecords', 'lifecycle', 'trashRestore',
+  'trash', 'addSession', 'pending', 'importer', 'incoming', 'sessionRecords', 'trashSettle', 'lifecycle', 'trashRestore',
   'syncRouteFiles', 'sync', 'phoneSync',
 ] as const;
 

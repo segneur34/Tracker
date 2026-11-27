@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { FolderEntry } from '../platform/memoryFolder';
-import { TRASH_INDEX_PATH, TRASH_KEEP_MS, parseTrashIndex, sessionRestorePlan, type TrashEntry } from './trash';
+import { TRASH_INDEX_PATH, TRASH_KEEP_MS, parseTrashIndex, serializeDeposit, sessionRestorePlan, type TrashDeposit, type TrashEntry } from './trash';
 import {
-  TRASH_LOCKED_MESSAGE, copyFromTrash, dropTrashEntries, emptyTrash, purgeTrash, readTrashIndex, stashInTrash, type TrashFolder,
+  TRASH_LOCKED_MESSAGE, adoptDeposits, copyFromTrash, dropTrashEntries, emptyTrash, purgeTrash, readTrashIndex, stashInTrash, type TrashFolder,
   type TrashRequest,
 } from './trashFolder';
 
@@ -278,5 +278,89 @@ describe('index disparu, dossiers imbriqués', () => {
     await emptyTrash(again.folder);
     expect(parseTrashIndex(again.text(TRASH_INDEX_PATH)).entries).toEqual([]);
     expect([...again.files.keys()].filter((p) => p.startsWith('corbeille/') && p !== TRASH_INDEX_PATH)).toEqual([]);
+  });
+});
+
+describe('dépôts de l’ordinateur (corbeille du téléphone)', () => {
+  const START = 1763632800000;
+  const D = `${NOW - 5000}-${START}`;
+  const stem = '2026-11-20_10-00-00_wing';
+  const deposit: TrashDeposit = {
+    origin: 'ordinateur', kind: 'session', startMs: START, routeBase: null, createdAt: null, name: 'Wing · Carnon',
+    files: [{ name: `${stem}.gpx`, size: 16 }, { name: `${stem}.json`, size: 11 }],
+  };
+  /** Un dépôt : sa fiche, puis les fichiers `arrived` déplacés depuis `sessions/` ; les autres y sont encore. */
+  const withDeposit = (arrived: string[], extra: Record<string, string> = {}) => {
+    const all = sessionFiles(stem);
+    const initial: Record<string, string> = { [`corbeille/${D}/depose.json`]: serializeDeposit(deposit), ...extra };
+    for (const [path, text] of Object.entries(all)) {
+      const name = path.slice('sessions/'.length);
+      if (name.endsWith('.imu')) continue;
+      initial[arrived.includes(name) ? `corbeille/${D}/${name}` : path] = text;
+    }
+    return diskFolder(initial);
+  };
+
+  it('complet : inscrit à l’index à l’horloge de l’appareil, origine « cette mémoire », puis depose.json effacé', async () => {
+    const disk = withDeposit([`${stem}.gpx`, `${stem}.json`]);
+    const adopted = await adoptDeposits(disk.folder, NOW);
+    expect(adopted).toMatchObject([{ dir: D, kind: 'session', startMs: START, main: `${stem}.gpx`, deletedAtMs: NOW, origin: 'ordinateur', name: 'Wing · Carnon' }]);
+    expect(await entriesOf(disk.folder)).toEqual(adopted);
+    expect(disk.text(`corbeille/${D}/depose.json`)).toBeNull();
+    expect(disk.log.indexOf(`write ${TRASH_INDEX_PATH}`)).toBeLessThan(disk.log.indexOf(`remove corbeille/${D}/depose.json`));
+    // Rejoué : plus rien à adopter, rien de doublé.
+    expect(await adoptDeposits(disk.folder, NOW + 1)).toEqual([]);
+    expect(await entriesOf(disk.folder)).toHaveLength(1);
+  });
+
+  it('partiel : attend tant qu’un fichier manquant est encore à sa place, adopté une fois qu’il en est parti', async () => {
+    const disk = withDeposit([`${stem}.gpx`]);
+    expect(await adoptDeposits(disk.folder, NOW)).toEqual([]);
+    expect(disk.text(`corbeille/${D}/depose.json`)).not.toBeNull();
+    disk.files.delete(`sessions/${stem}.json`);
+    expect(await adoptDeposits(disk.folder, NOW)).toMatchObject([{ kind: 'session', files: [{ name: `${stem}.gpx` }] }]);
+  });
+
+  it('fiche arrivée pendant le contrôle de sa place d’origine : le dépôt attend la passe suivante, rien n’est laissé hors de l’entrée', async () => {
+    const disk = withDeposit([`${stem}.gpx`]);
+    // L'ordinateur déplace la fiche entre le listage du dépôt et le contrôle de sa place d'origine.
+    const stat = disk.folder.stat;
+    let moved = false;
+    disk.folder.stat = async (path) => {
+      if (!moved && path === `sessions/${stem}.json`) {
+        moved = true;
+        disk.files.set(`corbeille/${D}/${stem}.json`, disk.files.get(path)!);
+        disk.files.delete(path);
+      }
+      return stat(path);
+    };
+    expect(await adoptDeposits(disk.folder, NOW)).toEqual([]);
+    expect(disk.text(`corbeille/${D}/depose.json`)).not.toBeNull();
+    const [entry] = await adoptDeposits(disk.folder, NOW);
+    expect(entry.files.map((f) => f.name).sort()).toEqual([`${stem}.gpx`, `${stem}.json`]);
+  });
+
+  it('rien d’arrivé et plus rien en place : dossier vide effacé, aucune entrée ; depose.json illisible : entrée refaite des fichiers', async () => {
+    const vide = diskFolder({ [`corbeille/${D}/depose.json`]: serializeDeposit(deposit) });
+    expect(await adoptDeposits(vide.folder, NOW)).toEqual([]);
+    expect([...vide.files.keys()].filter((p) => p.startsWith('corbeille/'))).toEqual([]);
+    expect(vide.dirs.has(`corbeille/${D}`)).toBe(false);
+    const illisible = diskFolder({ [`corbeille/${D}/depose.json`]: '{abîmé', [`corbeille/${D}/${stem}.gpx`]: '<gpx>trace</gpx>', [`corbeille/${D}/${stem}.json`]: '{"name":"Lu"}' });
+    expect(await adoptDeposits(illisible.folder, NOW)).toMatchObject([{ kind: 'session', startMs: START, name: 'Lu', deletedAtMs: NOW }]);
+  });
+
+  it('la purge, « Vider » et un index refait n’effacent ni ne prennent jamais un dépôt pas encore adopté', async () => {
+    const disk = withDeposit([`${stem}.gpx`]);
+    await purgeTrash(disk.folder, NOW + 100 * DAY_MS);
+    expect(disk.text(`corbeille/${D}/${stem}.gpx`)).not.toBeNull();
+    expect(await entriesOf(disk.folder)).toEqual([]);
+    await emptyTrash(disk.folder);
+    expect(disk.text(`corbeille/${D}/${stem}.gpx`)).not.toBeNull();
+    expect(disk.text(`corbeille/${D}/depose.json`)).not.toBeNull();
+    // Un reste ordinaire (hors d'un index lisible), lui, part.
+    const reste = withDeposit([`${stem}.gpx`], { [`corbeille/${NOW}-9/x.json`]: '{}', [TRASH_INDEX_PATH]: '{"format":"tracker-corbeille","version":1,"entries":[]}' });
+    await purgeTrash(reste.folder, NOW);
+    expect(reste.text(`corbeille/${NOW}-9/x.json`)).toBeNull();
+    expect(reste.text(`corbeille/${D}/${stem}.gpx`)).not.toBeNull();
   });
 });

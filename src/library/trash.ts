@@ -5,18 +5,25 @@ import { ROUTES_DIR, SESSIONS_DIR } from './folderLayout';
 import { uniqueSessionFileName } from './naming';
 
 /**
- * Corbeille du programme Windows (élément 217, sous-lot 3a, porté du lot 448 de Gtracker) : ce qu'on y range,
- * combien de temps, et comment le ramener, sans rien lire ni écrire ici (les gestes sur le dossier sont dans
- * `trashFolder.ts`).
+ * Corbeille du programme Windows et du téléphone (élément 217, sous-lot 3a, porté du lot 448 de Gtracker ; corbeilles
+ * jumelles, lot 242-1) : ce qu'on y range, combien de temps, et comment le ramener, sans rien lire ni écrire ici (les
+ * gestes sur le dossier sont dans `trashFolder.ts`).
  *
  *     corbeille/
  *       corbeille.json                 l'index : une entrée par suppression
  *       <instant>-<startMs ou base>/   les fichiers supprimés, sous leurs noms d'origine
+ *         depose.json                  seulement dans un dépôt de l'ordinateur pas encore adopté (`TrashDeposit`)
  *
- * Une session (GPX, fiche, capteurs) ou un itinéraire (fiche, GPX) supprimé sur l'ordinateur y passe au lieu d'être
- * effacé, et y reste `TRASH_KEEP_DAYS` jours, comptés depuis son entrée dans la corbeille. La corbeille est hors de
- * `sessions/` et d'`itineraires/` : ni le balayage ni l'import ne la lisent, ses sessions ne comptent nulle part. Le
- * téléphone et le navigateur n'en ont pas.
+ * Une session (GPX, fiche, capteurs) ou un itinéraire (fiche, GPX) supprimé y passe au lieu d'être effacé, et y reste
+ * `TRASH_KEEP_DAYS` jours, comptés depuis son entrée dans la corbeille. La corbeille est hors de `sessions/` et
+ * d'`itineraires/` : ni le balayage ni l'import ne la lisent, ses sessions ne comptent nulle part. Le navigateur n'en a
+ * pas.
+ *
+ * Deux corbeilles jumelles, une par appareil, chacune seule à écrire son index : sur le téléphone, l'ordinateur n'écrit
+ * que `depose.json` dans un sous-dossier neuf, puis y déplace les fichiers qu'il retire ; le téléphone adopte ce dépôt
+ * (`depositAdoption`, `depositEntry`) en l'inscrivant à son index. L'origine d'une entrée (`TrashOrigin`) se lit du
+ * point de vue de la mémoire qui tient l'index : `ordinateur` veut dire « cette mémoire », sur chaque appareil (le nom
+ * vient du programme Windows et le format ne change pas).
  */
 
 export const TRASH_DIR = 'corbeille';
@@ -38,9 +45,9 @@ export const TRASH_KEEP_MS = TRASH_KEEP_DAYS * DAY_MS;
  */
 export type TrashKind = 'session' | 'itineraire' | 'restes';
 /**
- * D'où viennent les fichiers de l'entrée : `ordinateur`, sa mémoire (suppression faite ici) ; `telephone`, une copie
- * du téléphone que la synchronisation (à venir) y rangera avant de la retirer du téléphone. Seul `ordinateur` est
- * écrit pour l'instant.
+ * D'où viennent les fichiers de l'entrée, vu de la mémoire qui tient l'index : `ordinateur`, cette mémoire (suppression
+ * faite ici, ou dépôt de l'ordinateur adopté par le téléphone : ce sont ses propres fichiers) ; `telephone`, une copie
+ * de l'autre appareil que la synchronisation du programme Windows y a rangée avant de la retirer du téléphone.
  */
 export type TrashOrigin = 'ordinateur' | 'telephone';
 /** Pourquoi l'entrée est là. */
@@ -225,12 +232,100 @@ export const expiredTrashEntries = (entries: readonly TrashEntry[], nowMs: numbe
 /**
  * Sous-dossiers de la corbeille absents de l'index (copie coupée avant l'écriture de l'entrée, entrée retirée
  * avant ses fichiers) : à effacer. Seuls ceux dont le nom est celui d'une entrée (`isTrashDirName`) ; un dossier posé
- * là à la main reste.
+ * là à la main reste, et un dépôt de l'ordinateur pas encore adopté (`pending` : sous-dossiers qui tiennent
+ * `depose.json`) aussi : il n'est jamais pris pour un reste.
  */
-export const orphanTrashDirs = (entries: readonly TrashEntry[], listing: readonly { name: string; kind: 'file' | 'directory' }[]): string[] => {
-  const known = new Set(entries.map((e) => e.dir.toLowerCase()));
+export const orphanTrashDirs = (
+  entries: readonly TrashEntry[], listing: readonly { name: string; kind: 'file' | 'directory' }[], pending: readonly string[] = [],
+): string[] => {
+  const known = new Set([...entries.map((e) => e.dir), ...pending].map((d) => d.toLowerCase()));
   return listing.filter((e) => e.kind === 'directory' && isTrashDirName(e.name) && !known.has(e.name.toLowerCase())).map((e) => e.name);
 };
+
+// --- Dépôts de l'ordinateur dans la corbeille du téléphone ---
+
+/** Fichier qui fait d'un sous-dossier de la corbeille un dépôt de l'ordinateur, écrit avant tout déplacement. */
+export const DEPOSIT_FILE = 'depose.json';
+export const DEPOSIT_FORMAT = 'tracker-depot';
+export const DEPOSIT_VERSION = 1;
+
+/**
+ * Ce que l'ordinateur dit d'un dépôt (`depose.json`) : ce qu'il retire du téléphone, avec les noms et tailles des
+ * fichiers qu'il va y déplacer. Le téléphone en fait une entrée de son index (`depositEntry`) une fois les fichiers
+ * arrivés, à sa propre horloge.
+ */
+export interface TrashDeposit {
+  /** Qui a déposé : l'ordinateur, seul à le faire. */
+  origin: 'ordinateur';
+  kind: TrashKind;
+  startMs: number | null;
+  routeBase: string | null;
+  createdAt: string | null;
+  name: string;
+  files: TrashFile[];
+}
+
+export const serializeDeposit = (deposit: TrashDeposit): string => {
+  const { origin, kind, startMs, routeBase, createdAt, name, files } = deposit;
+  return `${stringifyJson({ format: DEPOSIT_FORMAT, version: DEPOSIT_VERSION, origine: origin, kind, startMs, routeBase, createdAt, name, files })}\n`;
+};
+
+/** Dépôt lu dans le texte de `depose.json` ; `null` s'il ne se lit pas (ou d'une version plus récente). */
+export const parseDeposit = (text: string | null): TrashDeposit | null => {
+  const value = text === null ? null : parseJson(text);
+  if (!isObject(value) || value.format !== DEPOSIT_FORMAT || value.version !== DEPOSIT_VERSION || value.origine !== 'ordinateur') return null;
+  const { kind, startMs, routeBase, createdAt, name, files } = value;
+  if (kind !== 'session' && kind !== 'itineraire' && kind !== 'restes') return null;
+  const base = stringOrNull(routeBase);
+  const created = stringOrNull(createdAt);
+  if (!(startMs === null || isFiniteNumber(startMs)) || base === undefined || created === undefined || !isString(name) || !Array.isArray(files)) return null;
+  const parsed = files.map(parseFile);
+  if (parsed.some((f) => f === null)) return null;
+  return { origin: 'ordinateur', kind, startMs: startMs as number | null, routeBase: base, createdAt: created, name, files: parsed as TrashFile[] };
+};
+
+/**
+ * Règle d'adoption d'un dépôt : `adopt` s'il est complet (chacun de ses fichiers est arrivé, `present`), ou partiel une
+ * fois qu'aucun fichier manquant n'est plus à sa place d'origine (`stillAtOrigin`, noms encore dans `sessions/` ou
+ * `itineraires/`) ; `wait` sinon, l'ordinateur ayant pu être coupé entre deux déplacements. Aucune horloge comparée.
+ */
+export const depositAdoption = (deposit: TrashDeposit, present: readonly string[], stillAtOrigin: readonly string[]): 'adopt' | 'wait' => {
+  const here = new Set(present.map((n) => n.toLowerCase()));
+  const origin = new Set(stillAtOrigin.map((n) => n.toLowerCase()));
+  return deposit.files.some((f) => !here.has(f.name.toLowerCase()) && origin.has(f.name.toLowerCase())) ? 'wait' : 'adopt';
+};
+
+/** Fichiers d'un dépôt qui manquent dans son sous-dossier : ceux qu'il faut chercher à leur place d'origine. */
+export const depositMissing = (deposit: TrashDeposit, present: readonly string[]): string[] => {
+  const here = new Set(present.map((n) => n.toLowerCase()));
+  return deposit.files.filter((f) => !here.has(f.name.toLowerCase())).map((f) => f.name);
+};
+
+/**
+ * Entrée de l'index faite d'un dépôt adopté (`dir`), d'après les fichiers arrivés (`files`, `depose.json` exclu) :
+ * entrée dans la corbeille à `nowMs`, horloge de l'appareil qui adopte ; origine `ordinateur`, « cette mémoire ». Une
+ * session sans son GPX arrivé, un itinéraire sans sa fiche, ne sont que des restes. `null` si rien n'est arrivé.
+ */
+export const depositEntry = (dir: string, deposit: TrashDeposit, files: readonly TrashFile[], nowMs: number): TrashEntry | null => {
+  if (files.length === 0) return null;
+  const lower = (n: string) => n.toLowerCase();
+  const sorted = [...files].map((f) => f.name).sort();
+  const gpx = sorted.find((n) => /\.gpx$/i.test(n) && deposit.files.some((f) => lower(f.name) === lower(n)));
+  const record = deposit.routeBase === null ? undefined : files.find((f) => lower(f.name) === lower(`${deposit.routeBase}.json`))?.name;
+  const base = { dir, startMs: null, routeBase: null, createdAt: null, name: deposit.name, deletedAtMs: nowMs, origin: 'ordinateur' as const, reason: 'supprimee' as const, files: [...files] };
+  if (deposit.kind === 'session' && deposit.startMs !== null && gpx) return { ...base, kind: 'session', startMs: deposit.startMs, main: gpx };
+  if (deposit.kind === 'itineraire' && record) return { ...base, kind: 'itineraire', routeBase: deposit.routeBase, createdAt: deposit.createdAt, main: record };
+  return { ...base, kind: 'restes', startMs: deposit.startMs, main: sorted[0] };
+};
+
+/**
+ * Lignes de la corbeille (`groupedTrashEntries`) dont la session est revenue dans la mémoire (`inMemory`, identités
+ * des sessions de la mémoire) : restaurée sur l'autre appareil puis recopiée ici, ou revenue par un import. Elles se
+ * règlent (`settleReturnedTrash`) : chaque entrée complète la session sans rien écraser, et ne part qu'une fois tout
+ * repris. Les itinéraires, que leur identité ne suffit pas à rapprocher, se règlent à part.
+ */
+export const returnedTrashGroups = (entries: readonly TrashEntry[], inMemory: ReadonlySet<number>): TrashGroup[] =>
+  groupedTrashEntries(entries).filter((g) => g.entry.kind === 'session' && g.entry.startMs !== null && inMemory.has(g.entry.startMs));
 
 /**
  * Entrée déjà faite pour la même session, à reprendre au lieu d'en créer une seconde : une suppression coupée après
@@ -349,11 +444,13 @@ export const routeRestorePlan = (entry: TrashEntry, taken: Iterable<string>): { 
 // --- Textes ---
 
 /**
- * Vrai si le dossier ouvert (`kind`, `readOnly`) a une corbeille : le dossier du disque du programme Windows, en
- * écriture. Partout ailleurs (téléphone, navigateur, dossier choisi dans le navigateur), les suppressions restent
- * définitives et leurs phrases ne changent pas. La même condition décide de la mise à la corbeille (`trashFolderOf`).
+ * Vrai si le dossier ouvert (`kind`, `readOnly`) a une corbeille : le dossier du disque du programme Windows, ou le
+ * dossier mémoire du téléphone, en écriture. Ailleurs (navigateur, dossier choisi dans le navigateur), les
+ * suppressions restent définitives et leurs phrases ne changent pas. La même condition décide de la mise à la
+ * corbeille (`trashFolderOf`).
  */
-export const deletesToTrash = (kind: MemoryKind | null | undefined, readOnly: boolean): boolean => kind === 'disk' && !readOnly;
+export const deletesToTrash = (kind: MemoryKind | null | undefined, readOnly: boolean): boolean =>
+  (kind === 'disk' || kind === 'device') && !readOnly;
 
 /** Bouton qui met à la corbeille, à la place de celui qui supprime (`otherwise`) quand le dossier ouvert en a une. */
 export const trashDeleteButton = (toTrash: boolean, otherwise: string): string =>
@@ -365,7 +462,7 @@ export const trashDeleteButton = (toTrash: boolean, otherwise: string): string =
  */
 export const sessionDiscardText = (toTrash: boolean, otherwise: string): string =>
   toTrash
-    ? `Son fichier, sa fiche et ses mesures de capteurs partent à la corbeille de cet ordinateur, où ils restent ${TRASH_KEEP_DAYS} jours (Réglages › Mémoire).`
+    ? `Son fichier, sa fiche et ses mesures de capteurs partent à la corbeille de cet appareil, où ils restent ${TRASH_KEEP_DAYS} jours (Réglages › Mémoire).`
     : otherwise;
 
 /** Combien la corbeille garde de sessions et d'itinéraires : une par ligne (`groupedTrashEntries`). */

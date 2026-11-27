@@ -45,12 +45,20 @@ vi.mock('./files', async (importOriginal) => ({
 }));
 
 /** Greffon MemoryFolder simulé. */
-const plugin = vi.hoisted(() => ({ stat: null as ((options: { uri: string; path: string }) => Promise<unknown>) | null }));
+const plugin = vi.hoisted(() => ({
+  stat: null as ((options: { uri: string; path: string }) => Promise<unknown>) | null,
+  list: null as ((options: { uri: string; path: string }) => Promise<unknown>) | null,
+  removed: [] as string[],
+}));
 vi.mock('@capacitor/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@capacitor/core')>()),
   registerPlugin: () => ({
     hasAccess: async () => ({ granted: true }),
     stat: (options: { uri: string; path: string }) => plugin.stat!(options),
+    list: (options: { uri: string; path: string }) => plugin.list!(options),
+    remove: async ({ path }: { uri: string; path: string }) => {
+      plugin.removed.push(path);
+    },
   }),
 }));
 vi.mock('./storage', async (importOriginal) => ({
@@ -67,6 +75,8 @@ beforeEach(() => {
   fs.broken.clear();
   fs.statBroken.clear();
   plugin.stat = null;
+  plugin.list = null;
+  plugin.removed = [];
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -159,6 +169,18 @@ describe('stat', () => {
     };
     const refused = await access.folder.stat('sessions/a.json').catch((err: unknown) => err);
     expect(fileErrorCode(refused)).toBe('PERMISSION');
+  });
+
+  it('téléphone : removeDir n’efface qu’un dossier relu vide (le greffon effacerait tout ce qu’il tient)', async () => {
+    native.on = true;
+    const { openMemoryFolder } = await loaded();
+    const access = await openMemoryFolder();
+    if (access.state !== 'ready') throw new Error(access.state);
+    plugin.list = async ({ path }) => ({ entries: path.endsWith('plein') ? [{ name: 'a.gpx', kind: 'file', size: 1, mtimeMs: 0 }] : [] });
+    await expect(access.folder.removeDir?.('corbeille/plein')).rejects.toThrow('pas vide');
+    expect(plugin.removed).toEqual([]);
+    await access.folder.removeDir?.('corbeille/vide');
+    expect(plugin.removed).toEqual(['Tracker/corbeille/vide']);
   });
 
   it('navigateur : date du fichier, null si absent', async () => {

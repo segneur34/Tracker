@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopPhoneBridge } from './desktopBridge';
-import { PHONE_TRASH_ROOT, phoneTrashDir, phoneTrashPaths } from '../library/syncBase';
+import { phoneDepositPaths } from '../library/syncBase';
+import { DEPOSIT_FILE, TRASH_DIR, trashDirName } from '../library/trash';
 import {
-  PHONE_RECORDING_MESSAGE, isPhoneRecordingError, listPhoneFiles, phoneCableAvailable, phoneCanWrite, phoneImportEntries, phoneIsRecording,
+  PHONE_RECORDING_MESSAGE, PHONE_TRASH_DIR, isPhoneRecordingError, listPhoneFiles, phoneCableAvailable, phoneCanWrite, phoneImportEntries, phoneIsRecording,
   phoneMemoryFolder, phoneState,
 } from './phoneCable';
 
@@ -33,7 +34,7 @@ interface ShellPhone {
   dossierLocal(stockage: string | null, options?: Options): unknown;
   gestionnairesTelephone(dossier: unknown, dossierTemp: string): Record<string, (argument: unknown) => Promise<Reponse>>;
   MESSAGE_ENREGISTREMENT: string;
-  CORBEILLE_PAGE: string;
+  DEPOT_TELEPHONE: string;
 }
 const SHELL_PHONE = fileURLToPath(new URL('../../bureau/telephone.ts', import.meta.url));
 const shell = (await import(/* @vite-ignore */ SHELL_PHONE)) as ShellPhone;
@@ -168,7 +169,7 @@ describe('téléphone branché par câble', () => {
 
 describe('le téléphone comme dossier mémoire (sorte phone)', () => {
   const NOW = new Date(2026, 10, 26, 12).getTime();
-  const dir = phoneTrashDir(NOW);
+  const dir = trashDirName(NOW, '1795000000000', []);
   const onPhone = (relatif: string): Promise<string> => fs.readFile(join(stockage, 'Documents', ...relatif.split('/')), 'utf8');
   const allFiles = async (): Promise<string[]> => (await fs.readdir(join(stockage, 'Documents'), { recursive: true })).map((p) => p.replace(/\\/g, '/')).sort();
 
@@ -215,34 +216,37 @@ describe('le téléphone comme dossier mémoire (sorte phone)', () => {
     expect(await allFiles()).toEqual(before);
   });
 
-  it('met de côté dans la corbeille du téléphone, aux noms que choisit le moteur, sans écraser', async () => {
+  it('dépose dans la corbeille de la mémoire du téléphone, depose.json d’abord, sous les noms d’origine, sans écraser', async () => {
+    expect(PHONE_TRASH_DIR).toBe(TRASH_DIR);
+    expect(shell.DEPOT_TELEPHONE).toBe(TRASH_DIR);
     await write('sessions/a.gpx', '<gpx>a</gpx>');
     await write('sessions/a.json', '{"a":1}');
     plug();
     const phone = phoneMemoryFolder('Téléphone');
     await phone.list('');
-    expect(dir.startsWith(`${shell.CORBEILLE_PAGE}/`)).toBe(true);
-    expect(shell.CORBEILLE_PAGE).toBe(PHONE_TRASH_ROOT);
+    expect(await phone.asideTaken()).toEqual([]);
     const paths = ['sessions/a.gpx', 'sessions/a.json'];
-    const targets = phoneTrashPaths(dir, paths, await phone.asideTaken(dir));
+    const targets = phoneDepositPaths(dir, paths);
+    // Sans sa fiche, le dépôt n'est pas ouvert : la coquille refuse, rien ne bouge.
+    await expect(phone.moveAside('sessions/a.gpx', targets.get('sessions/a.gpx') as string)).rejects.toMatchObject({ code: 'PERMISSION' });
+    await phone.writeText(`${TRASH_DIR}/${dir}/${DEPOSIT_FILE}`, '{"depot":1}');
+    expect(await phone.asideTaken()).toEqual([dir]);
     for (const path of paths) await phone.moveAside(path, targets.get(path) as string);
-    expect(await onPhone(`${dir}/sessions/a.gpx`)).toBe('<gpx>a</gpx>');
+    expect(await onPhone(`Tracker/corbeille/${dir}/a.gpx`)).toBe('<gpx>a</gpx>');
+    expect(await onPhone(`Tracker/corbeille/${dir}/depose.json`)).toBe('{"depot":1}');
     expect(await phone.stat('sessions/a.gpx')).toBeNull();
     expect((await phone.list('sessions')).map((e) => e.name)).toEqual([]);
-    // Une seconde session du même nom le même jour : le moteur choisit -2, rien n'est écrasé.
-    await write('sessions/a.gpx', '<gpx>a bis</gpx>');
-    await phone.list('');
-    const again = phoneTrashPaths(dir, ['sessions/a.gpx'], await phone.asideTaken(dir));
-    expect(again.get('sessions/a.gpx')).toBe(`${dir}/sessions/a-2.gpx`);
-    await phone.moveAside('sessions/a.gpx', again.get('sessions/a.gpx') as string);
-    expect(await onPhone(`${dir}/sessions/a.gpx`)).toBe('<gpx>a</gpx>');
-    expect(await onPhone(`${dir}/sessions/a-2.gpx`)).toBe('<gpx>a bis</gpx>');
+    // Une seconde fiche de dépôt au même endroit : refusée, la première reste.
+    await expect(phone.writeText(`${TRASH_DIR}/${dir}/${DEPOSIT_FILE}`, '{}')).rejects.toThrow('déjà pris');
+    // L'index de la corbeille n'est jamais écrit par l'ordinateur.
+    await expect(phone.writeText(`${TRASH_DIR}/corbeille.json`, '{}')).rejects.toMatchObject({ code: 'PERMISSION' });
     // Un fichier que le dernier listage ne porte pas : rien.
-    await phone.moveAside('sessions/inconnu.gpx', `${dir}/sessions/inconnu.gpx`);
+    await phone.moveAside('sessions/inconnu.gpx', `${TRASH_DIR}/${dir}/inconnu.gpx`);
     // Un chemin hors liste : refus de la coquille, sa phrase gardée.
     await write('reglages/pc.json', '{}');
     await phone.list('');
-    await expect(phone.moveAside('reglages/pc.json', `${dir}/reglages/pc.json`)).rejects.toMatchObject({ code: 'PERMISSION', message: expect.stringContaining('Chemin refusé') });
+    await expect(phone.moveAside('reglages/pc.json', `${TRASH_DIR}/${dir}/pc.json`)).rejects.toMatchObject({ code: 'PERMISSION', message: expect.stringContaining('Chemin refusé') });
+    expect((await allFiles()).filter((p) => p.startsWith('Tracker-corbeille'))).toEqual([]);
   });
 
   it('n’écrit ni ne met de côté pendant un enregistrement, et le dit', async () => {
@@ -255,7 +259,7 @@ describe('le téléphone comme dossier mémoire (sorte phone)', () => {
     const refused = await phone.writeText('sessions/b.json', '{}').catch((err: unknown) => err);
     expect(isPhoneRecordingError(refused)).toBe(true);
     expect((refused as Error).message).toBe(PHONE_RECORDING_MESSAGE);
-    const aside = await phone.moveAside('sessions/a.gpx', `${dir}/sessions/a.gpx`).catch((err: unknown) => err);
+    const aside = await phone.moveAside('sessions/a.gpx', `${TRASH_DIR}/${dir}/a.gpx`).catch((err: unknown) => err);
     expect(isPhoneRecordingError(aside)).toBe(true);
     expect(await allFiles()).toEqual(before);
     expect(isPhoneRecordingError(new Error(PHONE_RECORDING_MESSAGE))).toBe(false);

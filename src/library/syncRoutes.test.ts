@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROUTE_FORMAT, ROUTE_VERSION, parseRouteRecord, serializeRouteRecord } from '../planning/routeRecord';
 import { routePath } from './folderLayout';
 import {
-  emptySyncBase, otherSyncSide, phoneTrashPaths, withRouteHeld, withRouteLine, withSyncDone, withoutRouteLine,
+  emptySyncBase, otherSyncSide, phoneDepositPaths, withRouteHeld, withRouteLine, withSyncDone, withoutRouteLine,
   type SyncBase, type SyncSideName,
 } from './syncBase';
 import { SYNC_GUARD_LIMITS, SYNC_GUARD_MAX_REMOVALS, type SyncHeldChoice, type SyncScope } from './syncPlan';
@@ -112,7 +112,7 @@ const run = async (pair: RoutePair, options: RunOptions = {}): Promise<RouteSync
     return syncRouteSide(listing, texts);
   };
   const full = planRouteSync({
-    base: pair.base, computer: await sideOf('computer'), phone: await sideOf('phone'), trash, heldOnPhone: options.heldOnPhone, keep: options.keep, nowMs: SYNC_NOW_MS,
+    base: pair.base, computer: await sideOf('computer'), phone: await sideOf('phone'), trash, heldOnPhone: options.heldOnPhone, keep: options.keep,
   });
   const scope: SyncScope = { computer: true, phone: true, deletions: !full.guard.tripped || options.confirm !== false, ...options.scope };
   const plan = restrictRouteSyncPlan(full, scope);
@@ -136,9 +136,11 @@ const run = async (pair: RoutePair, options: RunOptions = {}): Promise<RouteSync
         dropRoute(pair.computer, op.files.base);
       } else if (op.kind === 'removeFromPhone') {
         if (op.keep) keep('phone', item, op.files);
-        // Jamais effacé du téléphone : déplacé dans sa corbeille datée, fiche puis GPX.
-        const paths = [routePath(op.files.json.name), ...(op.files.gpx ? [routePath(op.files.gpx.name)] : [])];
-        const targets = phoneTrashPaths(op.moveTo, paths, pair.phone.aside().keys());
+        // Jamais effacé du téléphone : déposé dans sa corbeille, `depose.json` d'abord, puis GPX et fiche.
+        const paths = [...(op.files.gpx ? [routePath(op.files.gpx.name)] : []), routePath(op.files.json.name)];
+        const dir = `${SYNC_NOW_MS}-${op.moveTo}`;
+        await pair.phone.writeText(`corbeille/${dir}/depose.json`, '{}');
+        const targets = phoneDepositPaths(dir, paths);
         for (const path of paths) await pair.phone.moveAside(path, targets.get(path) as string);
       } else {
         keep(op.side, item, op.files);
@@ -292,7 +294,8 @@ describe('suivi', () => {
     expect(itemOf(plan, iso(1))).toMatchObject({ case: 'deletedOnComputer', ops: [{ kind: 'removeFromPhone', keep: false, absent: 'r1.json' }] });
     expect(await routesOf(pair.phone)).toEqual(['r0']);
     expect(pair.trash).toHaveLength(1);
-    expect([...pair.phone.aside().keys()]).toEqual(['Tracker-corbeille/2026-11-25/itineraires/r1.json', 'Tracker-corbeille/2026-11-25/itineraires/r1.gpx']);
+    expect(itemOf(plan, iso(1))?.ops[0]).toMatchObject({ moveTo: 'r1' });
+    expect([...pair.phone.aside().keys()]).toEqual([`corbeille/${SYNC_NOW_MS}-r1/r1.gpx`, `corbeille/${SYNC_NOW_MS}-r1/r1.json`]);
   });
 
   it('la corbeille ne tient pas la même fiche (même taille, autre contenu) : la copie du téléphone y est rangée d’abord', async () => {
@@ -419,6 +422,18 @@ describe('corbeille', () => {
     const other = await syncedPair(2);
     dropRoute(other.phone, 'r1');
     expect(itemOf(await run(other, { keep: [iso(1)] }), iso(1))).toMatchObject({ case: 'newOnComputer', restored: false });
+  });
+
+  it('supprimé sur l’ordinateur puis restauré sur le téléphone : recopié sur l’ordinateur sans question, dit restauré', async () => {
+    const pair = await syncedPair(2);
+    trashRoute(pair, 'r1');
+    await run(pair);
+    expect(pair.base).toMatchObject({ removedRoutes: [iso(1)] });
+    putRoute(pair.phone, 'r1', iso(1), iso(1));
+    const back = await run(pair);
+    expect(itemOf(back, iso(1))).toMatchObject({ case: 'newOnPhone', restored: true, left: null, ops: [{ kind: 'copy', to: 'computer' }] });
+    expect(back.guard.tripped).toBe(false);
+    expect(await routesOf(pair.computer)).toEqual(['r0', 'r1']);
   });
 });
 
