@@ -34,7 +34,21 @@ public class HeartRateService extends Service {
     /** Verrou tenu au plus ce temps, renouvelé à chaque démarrage : une séance ne dure pas plus. */
     private static final long WAKE_TIMEOUT_MS = 6 * 60 * 60 * 1000L;
 
+    /** Vrai de `onCreate` à `onDestroy` (garde des écritures de l'ordinateur, ForegroundWork). */
+    private static volatile boolean running;
+
     private PowerManager.WakeLock wakeLock;
+
+    /** Vrai tant que le service tourne. */
+    static boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        running = true;
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -106,6 +120,7 @@ public class HeartRateService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();

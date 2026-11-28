@@ -64,6 +64,11 @@ public class IntervalTimerService extends Service {
     /** Service en marche, pour lui signaler la notification de l'enregistrement ; `null` sinon. */
     private static volatile IntervalTimerService running;
 
+    /** Vrai tant que le service tourne, de `onCreate` à `onDestroy` (garde des écritures de l'ordinateur, ForegroundWork). */
+    static boolean isRunning() {
+        return running != null;
+    }
+
     /**
      * Vrai dès l'arrêt du service (onDestroy) : un changement de phase ou une
      * notification reposée sur le fil du compteur, partis juste avant, ne

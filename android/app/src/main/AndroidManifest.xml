@@ -140,6 +140,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Carte « Autorisations » (PermissionsPlugin) : l'écran système qui lève l'optimisation de la batterie. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Liaison sans fil avec le programme Windows (ComputerLinkPlugin) : lire les réseaux du téléphone pour écarter
+         le réseau mobile ; permission normale, sans demande. L'accès au réseau local (ACCESS_LOCAL_NETWORK) ne se
+         déclare qu'avec une cible 37 ou plus (android/variables.gradle) : la documentation d'Android demande de ne pas
+         le faire avant, et le greffon ne le demande qu'à ce moment-là. La liaison passe par TLS. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Démarrage du téléphone : aucun usage ici ; retirée au cas où une bibliothèque la fusionnerait (l'ancien greffon GPS et androidx.work la déclaraient). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 </manifest>

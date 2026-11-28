@@ -321,3 +321,150 @@ describe('greffons maison : ce que la page appelle, le Java le porte (lot 232)',
     expect(appJava('GnssPlugin.java')).not.toMatch(/"delete_aiding_data"/);
   });
 });
+
+/** Méthodes du greffon de la liaison sans fil : l'appairage en quatre étapes, menées par la page (lot 250-4). */
+const COMPUTER_LINK_METHODS = ['connect', 'forget', 'pairConfirm', 'pairFinish', 'pairOffer', 'pairSearch', 'status'];
+
+/**
+ * La liaison sans fil a deux côtés écrits dans deux langages : `bureau/trames.ts`, `appairage.ts`, `sonde.ts` et
+ * `telephone.ts` côté PC, `ComputerLinkProtocol.java` et ses voisins côté téléphone (lot 250-3). Leurs jeux d'essai
+ * communs (`bureau/sansFil.vecteurs.json`, relus par `ComputerLinkProtocolTest.java`) éprouvent les octets et les
+ * règles de chemins ; ici, les constantes et les listes fermées que les jeux d'essai ne couvrent pas, relues dans les
+ * deux sources.
+ */
+describe('liaison sans fil : mêmes constantes au PC et au téléphone (lot 250-3)', () => {
+  const PROTOCOL = appJava('ComputerLinkProtocol.java');
+  const PLUGIN = appJava('ComputerLinkPlugin.java');
+  const COMMANDS = appJava('ComputerLinkCommands.java');
+  const bureau = (name: string): string => fs.readFileSync(new URL(`../../bureau/${name}`, import.meta.url), 'utf8');
+  const TRAMES = bureau('trames.ts');
+  const APPAIRAGE = bureau('appairage.ts');
+  const SONDE = bureau('sonde.ts');
+  const DISQUE = bureau('disque.ts');
+  const SPAKE2 = bureau('spake2.ts');
+  const TELEPHONE = bureau('telephone.ts');
+  /** Un entier écrit `48_247` ou `48247`. */
+  const int = (text: string): number => Number(text.replace(/_/g, ''));
+  const tsConst = (source: string, name: string): number => int(captured(source, new RegExp(`\\bexport const ${name} = ([\\d_]+)\\b`)));
+  const javaConst = (name: string): number => int(captured(PROTOCOL, new RegExp(`\\bstatic final (?:int|long) ${name} = ([\\d_]+)L?;`)));
+  const javaString = (source: string, name: string): string => captured(source, new RegExp(`\\bstatic final String ${name} = "([^"]+)";`));
+
+  it('version du protocole, ports, taille de bloc, identifiant, noms et messages', () => {
+    expect(javaConst('PROTOCOL_VERSION')).toBe(tsConst(TRAMES, 'PROTOCOLE_SANS_FIL'));
+    expect(javaConst('PORT')).toBe(tsConst(TRAMES, 'PORT_SANS_FIL'));
+    expect(javaConst('PROBE_PORT')).toBe(tsConst(SONDE, 'PORT_SONDE'));
+    // Jamais ceux de Gtracker : les deux programmes cohabitent sur un même PC.
+    expect(javaConst('PORT')).not.toBe(48217);
+    expect(javaConst('PROBE_PORT')).not.toBe(48218);
+    expect(javaConst('BLOCK_SIZE')).toBe(tsConst(TRAMES, 'TAILLE_BLOC'));
+    expect(javaConst('PREFIX_SIZE')).toBe(tsConst(TRAMES, 'TAILLE_PREFIXE'));
+    expect(javaConst('ID_MAX')).toBe(tsConst(TRAMES, 'ID_MAX'));
+    expect(javaConst('NAME_MAX')).toBe(tsConst(TRAMES, 'NOM_MAX'));
+    expect(javaConst('MESSAGE_MAX')).toBe(tsConst(TRAMES, 'MESSAGE_MAX'));
+    expect(javaConst('CODE_DIGITS')).toBe(tsConst(APPAIRAGE, 'CHIFFRES_CODE'));
+  });
+
+  it("limites des trames : celles d'une liaison reconnue et celles de l'accueil", () => {
+    const limits = (source: string, name: string): string[] =>
+      captured(source, new RegExp(`\\b${name}\\b[^=]*= (?:Object\\.freeze\\(\\{ enTete: |new Limits\\()([^)}]+)`)).split(/,\s*(?:corps:\s*)?/).map((v) => v.trim());
+    const ts = limits(TRAMES, 'LIMITES');
+    const java = limits(PROTOCOL, 'LIMITS');
+    expect(int(java[0])).toBe(int(ts[0]));
+    expect(java[1]).toBe('BLOCK_SIZE');
+    expect(ts[1]).toBe('TAILLE_BLOC');
+    expect(limits(PROTOCOL, 'WELCOME_LIMITS').map(int)).toEqual(limits(TRAMES, 'LIMITES_ACCUEIL').map(int));
+  });
+
+  it("tailles des messages de l'appairage et suffixes des écritures en cours", () => {
+    expect(javaConst('PART_SIZE')).toBe(tsConst(SPAKE2, 'TAILLE_PART'));
+    expect(javaConst('CONFIRMATION_SIZE')).toBe(tsConst(SPAKE2, 'TAILLE_CONFIRMATION'));
+    expect(javaConst('FINGERPRINT_SIZE')).toBe(tsConst(SPAKE2, 'TAILLE_EMPREINTE_SPAKE2'));
+    const memory = appJava('MemoryTree.java');
+    for (const source of [PROTOCOL, memory]) {
+      expect(javaString(source, 'TEMP_SUFFIX')).toBe(captured(DISQUE, /\bSUFFIXE_REMPLACEMENT = '([^']+)'/));
+      expect(javaString(source, 'NEW_SUFFIX')).toBe(captured(DISQUE, /\bSUFFIXE_NEUF = '([^']+)'/));
+    }
+  });
+
+  it("même capacité d'écriture, annoncée par le téléphone et lue par le PC", () => {
+    expect(javaString(PROTOCOL, 'CAPABILITY_WRITE')).toBe(captured(TRAMES, /\bexport const CAPACITE_ECRITURE = '([^']+)'/));
+    expect(javaString(PROTOCOL, 'CAPABILITY_SPAKE2')).toBe(captured(TRAMES, /\bexport const CAPACITE_SPAKE2 = '([^']+)'/));
+    expect(captured(PROTOCOL, /\bCAPABILITIES = [^;]*Arrays\.asList\(([^)]*)\)/).trim()).toBe('CAPABILITY_WRITE');
+    expect(captured(TRAMES, /\bexport const CAPACITES = \[([^\]]*)\]/).trim()).toBe('CAPACITE_ECRITURE');
+  });
+
+  it('découverte : signature, octet de version et étiquette de la trace, les mêmes des deux côtés', () => {
+    const bytes = (text: string): number[] => text.split(',').map((b) => Number(b.trim()));
+    const java = bytes(captured(PROTOCOL, /\bPROBE_SIGNATURE = \{([^}]*)\}/));
+    expect(java).toEqual(bytes(captured(SONDE, /\bexport const SIGNATURE_SONDE = Uint8Array\.from\(\[([^\]]*)\]\)/)));
+    expect(String.fromCharCode(...java)).toBe('TRKR');
+    expect(javaConst('PROBE_VERSION_2')).toBe(tsConst(SONDE, 'VERSION_SONDE_V2'));
+    expect(javaString(PROTOCOL, 'PROBE_LABEL')).toBe(captured(SONDE, /\bexport const ETIQUETTE_SONDE = '([^']+)'/));
+    expect(javaConst('PROBE_NONCE_SIZE')).toBe(tsConst(SONDE, 'TAILLE_NONCE_SONDE'));
+    expect(javaConst('COMPUTER_ID_SIZE')).toBe(tsConst(SONDE, 'TAILLE_IDENTIFIANT_PC'));
+  });
+
+  it('mêmes listes fermées des deux côtés : dossiers listés, écritures, retraits, corbeille du téléphone', () => {
+    /** Valeurs d'une liste dont chaque élément est un texte ou le nom d'une constante texte du même source. */
+    const values = (items: string, constant: (name: string) => string): string[] =>
+      items.split(',').map((item) => item.trim()).filter(Boolean).map((item) => {
+        const literal = /^["']([^"']*)["']$/.exec(item);
+        return literal ? literal[1] : constant(item);
+      });
+    const javaList = (name: string): string[] =>
+      values(captured(PROTOCOL, new RegExp(`\\b${name} = [^;]*Arrays\\.asList\\(([^)]*)\\)`)), (n) => javaString(PROTOCOL, n));
+    const tsList = (name: string): string[] =>
+      values(captured(TELEPHONE, new RegExp(`\\bexport const ${name}: readonly string\\[\\] = \\[([^\\]]*)\\]`)), (n) => captured(TELEPHONE, new RegExp(`\\bexport const ${n} = '([^']+)'`)));
+    expect(javaList('LISTED_DIRS')).toEqual(tsList('DOSSIERS_LISTES'));
+    expect(javaList('WRITABLE_DIRS')).toEqual(tsList('DOSSIERS_ECRIVABLES'));
+    expect(javaList('WRITABLE_ROOT_FILES')).toEqual(tsList('FICHIERS_RACINE_ECRIVABLES'));
+    expect(javaList('REMOVABLE_DIRS')).toEqual(tsList('DOSSIERS_RETIRABLES'));
+    expect(javaList('LISTED_DIRS')).toContain('journaux');
+    expect(javaList('WRITABLE_ROOT_FILES')).not.toContain('lieux.json');
+    expect(javaString(PROTOCOL, 'TRASH_DIR')).toBe(captured(TELEPHONE, /\bexport const DEPOT_TELEPHONE = '([^']+)'/));
+    expect(javaString(PROTOCOL, 'DEPOSIT_FILE')).toBe(captured(TELEPHONE, /\bexport const FICHIER_DEPOT = '([^']+)'/));
+    expect(javaConst('WRITE_PATH_MAX')).toBe(int(captured(TELEPHONE, /\bconst LONGUEUR_MAX = ([\d_]+)\b/)));
+    expect(javaConst('RAW_PATH_MAX')).toBe(tsConst(TELEPHONE, 'LONGUEUR_MAX_BRUT'));
+    expect(javaConst('DEPOSIT_IDENTITY_MAX')).toBe(int(captured(TELEPHONE, /\bconst IDENTITE_DEPOT_MAX = ([\d_]+)\b/)));
+  });
+
+  it("aucune commande d'effacement : le téléphone ne connaît pas `effacer`", () => {
+    expect(PROTOCOL).not.toMatch(/case "effacer"/);
+    expect(COMMANDS).not.toMatch(/case "effacer"|eraseFile/);
+    for (const type of ['listerTout', 'deplacer', 'listerCorbeille']) {
+      expect(PROTOCOL, type).toContain(`case "${type}":`);
+      expect(COMMANDS, type).toContain(`case "${type}":`);
+    }
+  });
+
+  it('pendant un service de premier plan, le refus est la phrase que la page reconnaît, et la garde lit les trois services du câble', () => {
+    expect(javaString(COMMANDS, 'RECORDING_REFUSAL')).toBe(captured(TELEPHONE, /\bexport const MESSAGE_ENREGISTREMENT = "([^"]+)"/));
+    const busy = between(appJava('ForegroundWork.java'), 'static boolean busy()', '}');
+    const services = [...busy.matchAll(/\b(\w+Service)\./g)].map((m) => m[1]);
+    const cable = [...captured(TELEPHONE, /\bexport const SERVICES_APPLICATION = \[([^\]]*)\]/).matchAll(/'(\w+)'/g)].map((m) => m[1]);
+    expect(services).toEqual(cable);
+    expect(PLUGIN).toContain('ForegroundWork::busy');
+  });
+
+  it('le test Java relit les jeux d’essai du PC dans le dépôt, sans copie', () => {
+    const test = fs.readFileSync(new URL('../../android/app/src/test/java/io/github/segneur/tracker/ComputerLinkProtocolTest.java', import.meta.url), 'utf8');
+    expect(test).toContain('"bureau/sansFil.vecteurs.json"');
+    expect(fs.existsSync(new URL('../../bureau/sansFil.vecteurs.json', import.meta.url))).toBe(true);
+  });
+
+  it('le greffon est déclaré sous son nom, et son événement porte le nom attendu', () => {
+    expect(MAIN_ACTIVITY).toContain('registerPlugin(ComputerLinkPlugin.class);');
+    expect(PLUGIN).toMatch(/@CapacitorPlugin\(\s*name = "ComputerLink",/);
+    expect(javaString(PLUGIN, 'EVENT_STATUS')).toBe('status');
+    expect(javaString(PLUGIN, 'PREFS')).toBe('tracker.ordinateur');
+    for (const name of COMPUTER_LINK_METHODS) expect(PLUGIN, name).toMatch(pluginMethod(name));
+  });
+
+  it('le jeton et l’empreinte gardée ne partent jamais vers la page', () => {
+    const status = between(PLUGIN, 'private JSObject statusObject()', 'private void notifyStatus()');
+    expect(status).not.toMatch(/KEY_TOKEN, null|KEY_FINGERPRINT|"jeton"|"empreinte"|"token"/);
+    const puts = [...PLUGIN.matchAll(/\bret\.put\(([^;]*)\);/g)].map((m) => m[1]);
+    expect(puts.length).toBeGreaterThan(0);
+    for (const put of puts) expect(put).not.toMatch(/token|jeton|KEY_FINGERPRINT|computerId/i);
+  });
+});

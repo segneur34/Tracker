@@ -177,3 +177,40 @@ describe('manifeste Android : fichiers reçus d\'une autre application (lot 35)'
     expect(MANIFEST).not.toMatch(/READ_EXTERNAL_STORAGE|READ_MEDIA|MANAGE_EXTERNAL_STORAGE/);
   });
 });
+
+describe('manifeste Android : liaison sans fil avec le programme Windows (lot 250-3)', () => {
+  const PLUGIN = repoFile('android/app/src/main/java/io/github/segneur/tracker/ComputerLinkPlugin.java');
+  /** Cible de l'application (`targetSdkVersion`), lue où Gradle la prend. */
+  const TARGET_SDK = Number(repoFile('android/variables.gradle').match(/\btargetSdkVersion\s*=\s*(\d+)/)?.[1]);
+
+  it('lit l’état des réseaux, sans compter sur le manifeste d’un greffon', () => {
+    const tag = tagWithName(MANIFEST, 'uses-permission', 'android.permission.ACCESS_NETWORK_STATE');
+    expect(tag).toBeDefined();
+    expect(tag).not.toContain('tools:node');
+  });
+
+  it('accès au réseau local déclaré seulement à partir de la cible 37, comme le demande la documentation d’Android', () => {
+    expect(Number.isFinite(TARGET_SDK)).toBe(true);
+    const tag = tagWithName(MANIFEST, 'uses-permission', 'android.permission.ACCESS_LOCAL_NETWORK');
+    if (TARGET_SDK < 37) expect(tag).toBeUndefined();
+    else expect(tag).toBeDefined();
+  });
+
+  it('accès au réseau local demandé seulement quand le téléphone et la cible de l’application atteignent 37', () => {
+    expect(PLUGIN).toContain('LOCAL_NETWORK_SDK = 37;');
+    const needs = PLUGIN.match(/private boolean needsLocalNetworkPermission\(\) \{([\s\S]*?)\n {4}\}/)?.[1] ?? '';
+    expect(needs).toMatch(/Build\.VERSION\.SDK_INT >= LOCAL_NETWORK_SDK/);
+    expect(needs).toMatch(/getApplicationInfo\(\)\.targetSdkVersion >= LOCAL_NETWORK_SDK/);
+    expect(needs).toMatch(/getPermissionState\(LOCAL_NETWORK\)/);
+  });
+
+  it('aucun trafic en clair autorisé', () => {
+    expect(MANIFEST).not.toContain('usesCleartextTraffic="true"');
+    expect(MANIFEST).not.toContain('networkSecurityConfig');
+  });
+
+  it("ni service ni tâche de fond : la liaison se ferme quand l'application quitte l'écran", () => {
+    expect(PLUGIN).not.toMatch(/startService|startForegroundService|WorkManager|JobScheduler|AlarmManager/);
+    expect(PLUGIN).toMatch(/protected void handleOnStop\(\) \{[\s\S]*?stopAll\(\);/);
+  });
+});

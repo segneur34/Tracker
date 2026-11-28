@@ -487,6 +487,13 @@ Il faut :
 - `moveDocument` existe depuis l'API 24 (le `minSdk` de Tracker) mais dépend du fournisseur : la copie de repli est obligatoire et essayée.
 - Le découpage de `MemoryFolderPlugin` touche la lecture de toute la mémoire : le banc ne voit pas le Java. C'est un des essais au téléphone (250-6).
 
+
+**Fait le 28/11** (commit « Lot 250-3 », version 1.0.41), codé dans une copie de travail en même temps que le 242-1 et le 242-2. `testDebugUnitTest` : 158 tests, dont 79 nouveaux (ComputerLinkProtocolTest 43, ComputerLinkCommandsTest 32, ForegroundWorkTest 4, MemoryTreeTest 6) ; nativeConstants +11, androidManifest +5. `MemoryFolderPlugin.java` de Tracker était identique à celui de Gtracker au point de séparation (aucun lot 232 ne l'avait touché) : remplacé par la forme découpée. `depose.json` écrivable en Java, jamais par-dessus un fichier, contrôlé contre `FICHIER_DEPOT` de `bureau/telephone.ts`.
+
+Écarts tranchés par l'agent, acceptés : `deplacer` crée `corbeille/<d>/` s'il manque et n'exige pas `depose.json` (la coquille du PC l'exige déjà avant d'envoyer) ; il efface d'abord un `nom.tracker-tmp` resté à côté de l'original, et refuse si ce provisoire est en cours d'écriture ; `listerTout` remet en ordre la racine et les dossiers listés seulement, et échoue entier sur un chemin de plus de 4 096 caractères plutôt que de livrer une copie incomplète ; `sentFiles` compte aussi les lectures de la copie de sécurité. Reporté au 250-4 : le contrôle `CANDIDATES_MAX` = `PAIR_CANDIDATES_MAX` (la page n'existe pas encore).
+
+Relecture : aucun défaut confirmé. Réserve ancienne, non régressive, à garder pour plus tard : sur un fournisseur qui ne sait pas renommer, un remplacement recopie sur place dans l'original (`MemoryWriter.commit`, `copyOrUndo`, comme le faisait déjà la page) ; si la recopie et le retrait de la cible partielle échouent tous deux, la lecture suivante voit un original tronqué à côté de `.tracker-tmp` et efface ce dernier. Cas improbable.
+
 ---
 
 ## 250-4 · Le téléphone se relie seul, et garde ce que l'ordinateur retire
