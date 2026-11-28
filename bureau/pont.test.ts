@@ -115,8 +115,12 @@ describe('preload', () => {
     expect(source).toMatch(/^\s+telephone,$/m)
     // Les textes de la coquille restent en français, écrits dans `main.ts` : aucun canal de textes ; deux seuls appels à `invoke` (`sans`, `avec`).
     expect(source.match(/ipcRenderer\.invoke\(/g)).toHaveLength(2)
-    // Seuls canaux de la coquille : la demande de vider les écritures avant la fermeture, et sa réponse (lot 232).
-    expect([...new Set([...source.matchAll(/'(coquille:[A-Za-z]+)'/g)].map((m) => m[1]))].sort()).toEqual(['coquille:fermeture', 'coquille:fermeturePrete'])
+    // Seuls canaux de la coquille : la demande de vider les écritures avant la fermeture, sa réponse (lot 232), et la
+    // ligne que la page note au journal daté (lot 242-2), servie par `main.ts` comme les autres.
+    const coquille = (texte: string) => [...new Set([...texte.matchAll(/'(coquille:[A-Za-z]+)'/g)].map((m) => m[1]))].sort()
+    expect(coquille(source)).toEqual(['coquille:fermeture', 'coquille:fermeturePrete', 'coquille:noter'])
+    expect(coquille(readFileSync(path.join(__dirname, 'main.ts'), 'utf8'))).toEqual(coquille(source))
+    expect(source).toContain("noter: avec('coquille:noter')")
     expect(source).toContain("ipcRenderer.on('coquille:fermeture',")
     expect(source).toContain("ipcRenderer.send('coquille:fermeturePrete')")
     expect(source).toMatch(/surFermeture: \(rappel/)

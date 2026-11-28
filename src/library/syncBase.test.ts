@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MEMORY_VERSION, markerText } from './folderLayout';
 import {
-  SYNC_BASE_FORMAT, SYNC_BASE_VERSION, emptySyncBase, hasRouteMemory, hasSyncMemory, isSyncId, markerTextWithId,
-  markerTextWithPass, parseSyncBase, phoneDepositPaths, readMarkerDevice, readMarkerId, readMarkerPass, serializeSyncBase,
+  SYNC_BASE_FORMAT, SYNC_BASE_VERSION, emptySyncBase, hasRouteMemory, hasSyncMemory, isSyncId, markerTextWithDevice, markerTextWithId, markerTextWithSync,
+  markerTextWithPass, parseSyncBase, phoneDepositPaths, readMarkerDevice, readMarkerId, readMarkerPass, readMarkerSync, serializeSyncBase,
   syncAncestorPath, syncBaseLine, syncBasePath, syncFileRole, syncRefusal, syncRouteBaseLine, withRouteHeld, withRouteLine, withSyncDone,
   withSyncHeld, withSyncLine, withoutRouteLine, withoutRouteMemory, withoutSyncLine, withoutSyncMemory,
   type SyncBaseRoute, type SyncBaseSession, type SyncFiles,
@@ -19,11 +19,43 @@ const line = (startMs: number): SyncBaseSession => ({ startMs, computer: files(`
 const base = () => ({ ...emptySyncBase('ordinateur-0001', 'telephone-0001', 'Documents/Tracker'), sessions: [line(10), line(20)] });
 
 describe('identifiant de l’appareil dans le marqueur de sa mémoire', () => {
-  it('aucune version ne l’écrit encore : lu nul ; posé à la main, il se lit', () => {
+  it('posé sans rien retirer, lu ensuite ; rien à réécrire quand il y est déjà', () => {
     expect(readMarkerDevice(markerText())).toBeNull();
-    expect(readMarkerDevice(JSON.stringify({ format: 'tracker-memoire', version: 1, appareil: 'appareil-1' }))).toBe('appareil-1');
+    const text = markerTextWithDevice(JSON.stringify({ format: 'tracker-memoire', version: 1, id: 'abcdef-123456', passage: 3, futur: 1 }), 'appareil-1');
+    expect(JSON.parse(text as string)).toEqual({ format: 'tracker-memoire', version: 1, id: 'abcdef-123456', passage: 3, futur: 1, appareil: 'appareil-1' });
+    expect(readMarkerDevice(text)).toBe('appareil-1');
+    expect(markerTextWithDevice(text, 'appareil-1')).toBeNull();
+    expect(readMarkerDevice(markerTextWithDevice(text, 'appareil-2'))).toBe('appareil-2');
+  });
+
+  it('jamais posé sur ce qui n’est pas un marqueur, ni sur un marqueur d’une version plus récente', () => {
+    expect(markerTextWithDevice('{ cassé', 'appareil-1')).toBeNull();
+    expect(markerTextWithDevice(null, 'appareil-1')).toBeNull();
+    expect(markerTextWithDevice(JSON.stringify({ format: 'tracker-memoire', version: MEMORY_VERSION + 1 }), 'appareil-1')).toBeNull();
     expect(readMarkerDevice(JSON.stringify({ format: 'tracker-memoire', version: 1, appareil: 12 }))).toBeNull();
     expect(readMarkerDevice('{ cassé')).toBeNull();
+  });
+});
+
+describe('instant de la dernière synchronisation dans le marqueur du téléphone', () => {
+  it('l’instant d’une synchronisation s’ajoute sans rien retirer, et change toujours', () => {
+    const before = JSON.stringify({ format: 'tracker-memoire', version: 1, id: 'abcdef-123456', futur: [1, 2] });
+    expect(readMarkerSync(before)).toBeNull();
+    const text = markerTextWithSync(before, 5000);
+    expect(JSON.parse(text as string)).toEqual({ format: 'tracker-memoire', version: 1, id: 'abcdef-123456', futur: [1, 2], synchro: 5000 });
+    expect(readMarkerSync(text)).toBe(5000);
+    expect(readMarkerId(text)).toBe('abcdef-123456');
+    // Même milliseconde qu'à la synchronisation précédente : l'instant change quand même.
+    expect(readMarkerSync(markerTextWithSync(text, 5000))).toBe(5001);
+    expect(readMarkerSync(markerTextWithSync(text, 9000))).toBe(9000);
+  });
+
+  it('un marqueur d’une version plus récente, ou qui n’en est pas un, ne reçoit pas d’instant', () => {
+    expect(markerTextWithSync(JSON.stringify({ format: 'tracker-memoire', version: MEMORY_VERSION + 1, id: 'abcdef-123456' }), 5000)).toBeNull();
+    expect(markerTextWithSync(null, 5000)).toBeNull();
+    expect(markerTextWithSync('{"format":"autre","version":1}', 5000)).toBeNull();
+    expect(readMarkerSync('{"format":"autre","version":1,"synchro":5}')).toBeNull();
+    expect(readMarkerSync(JSON.stringify({ format: 'tracker-memoire', version: 1, synchro: 'hier' }))).toBeNull();
   });
 });
 

@@ -119,7 +119,10 @@ export interface SyncOutcome {
   withheldForPhone: SyncItem[];
   /** Vrai si le téléphone a pu être écrit ; faux : seule la moitié de l'ordinateur a été faite. */
   phoneWritable: boolean;
-  /** Vrai si un fichier du téléphone a été écrit ou mis de côté : il faut y toucher « Mettre à jour » pour le voir. */
+  /**
+   * Vrai si un fichier du téléphone a été écrit ou mis de côté : l'instant de la synchronisation est alors posé dans son
+   * marqueur, et son application relit sa mémoire seule (`syncWatch.ts`).
+   */
   phoneChanged: boolean;
   /** Vrai si un enregistrement a commencé sur le téléphone en route : tout s'est arrêté là, proprement. */
   recordingStarted: boolean;

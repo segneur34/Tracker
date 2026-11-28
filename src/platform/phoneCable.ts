@@ -68,8 +68,12 @@ const writable = (phone: DesktopPhoneBridge | null): phone is WritablePhoneBridg
   && typeof phone.listerCorbeille === 'function'
   && typeof phone.mettreDeCote === 'function';
 
-/** Vrai dans le programme Windows dont la coquille sait écrire et mettre de côté sur le téléphone ; faux pour une plus ancienne. */
-export const phoneCanWrite = (): boolean => writable(phoneBridge());
+/**
+ * Vrai si le téléphone prêt (`state`) se lit par un canal qui sait aussi écrire et déposer (son état le dit :
+ * `ecriture`, posé par la coquille) et que la coquille en a les canaux ; faux pour un téléphone qui n'est pas prêt, et
+ * pour une coquille plus ancienne.
+ */
+export const phoneCanWrite = (state: PhoneState): boolean => state.etat === 'pret' && state.ecriture === true && writable(phoneBridge());
 
 const requireWriter = (): WritablePhoneBridge => {
   const phone = requirePhone();

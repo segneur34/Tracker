@@ -12,7 +12,7 @@ import { READ_ONLY_MEMORY_MESSAGE, browserMemoryIsGuaranteed, desktopMemoryPlace
 import { isDesktopApp, isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
-import PhoneSyncButton, { PhoneSyncPanel } from './PhoneSyncButton';
+import PhoneSyncButton from './PhoneSyncButton';
 import RefreshLibraryButton from './RefreshLibraryButton';
 import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
 import TrashZone from './TrashZone';
@@ -44,7 +44,7 @@ import { MAX_LISTED_FILE_BYTES } from '../library/reconcile';
  * premier lancement (« Utiliser ce dossier », « Choisir un autre dossier »),
  * introuvable (« Réessayer »), dans OneDrive ; jamais la mémoire du navigateur. Dans Réglages, il y ajoute
  * « Synchroniser avec le téléphone » (`PhoneSyncButton`), qui met l'ordinateur et le téléphone branché par câble à
- * jour l'un de l'autre après une confirmation chiffrée, et la
+ * jour l'un de l'autre en un clic, dans sa fenêtre (une question seulement si une perte est possible), et la
  * corbeille de l'ordinateur (`TrashZone`) quand elle n'est pas vide.
  */
 
@@ -119,7 +119,6 @@ function MemoryStatus({
           <PhoneSyncButton />
         </div>
       )}
-      {detailed && <PhoneSyncPanel />}
     </>
   );
 

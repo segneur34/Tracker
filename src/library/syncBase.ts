@@ -227,6 +227,28 @@ export const markerTextWithId = (text: string | null, id: string): string | null
 };
 
 /**
+ * Instant de la dernière synchronisation qui a changé ce dossier, écrit par l'ordinateur dans le marqueur du téléphone
+ * (champ `synchro`, horloge de l'ordinateur) ; `null` sans marqueur ou sans cet instant. Le téléphone ne compare que
+ * deux lectures entre elles : un instant qui change dit que ses sessions ont changé sous lui (`syncWatch.ts`).
+ */
+export const readMarkerSync = (text: string | null): number | null => {
+  const synchro = readMarker(text)?.synchro;
+  return isFiniteNumber(synchro) ? synchro : null;
+};
+
+/**
+ * Texte du marqueur avec l'instant d'une synchronisation, tout le reste gardé tel quel, toujours différent de celui
+ * qu'il portait (deux synchronisations de la même milliseconde se distinguent encore). `null` si le texte n'est pas
+ * un marqueur, ou s'il est d'une version plus récente : un tel marqueur n'est jamais réécrit.
+ */
+export const markerTextWithSync = (text: string | null, atMs: number): string | null => {
+  const marker = readMarker(text);
+  if (!marker || readMarkerVersion(text) > MEMORY_VERSION) return null;
+  const synchro = atMs === readMarkerSync(text) ? atMs + 1 : atMs;
+  return `${stringifyJson({ ...marker, synchro })}\n`;
+};
+
+/**
  * Passage écrit par l'ordinateur dans le marqueur du téléphone (champ `passage`, entier croissant) ; `null` sans
  * marqueur ou sans passage. Distinct de `synchro`, que le téléphone surveille pour savoir que ses sessions ont changé.
  */
@@ -256,6 +278,16 @@ const isDeviceId = (value: unknown): value is string => typeof value === 'string
 export const readMarkerDevice = (text: string | null): string | null => {
   const device = readMarker(text)?.appareil;
   return isDeviceId(device) ? device : null;
+};
+
+/**
+ * Texte du marqueur avec cet identifiant d'appareil, tout le reste gardé tel quel. `null` si le texte n'est pas un
+ * marqueur, s'il porte déjà cet identifiant (rien à réécrire), ou s'il est d'une version plus récente.
+ */
+export const markerTextWithDevice = (text: string | null, device: string): string | null => {
+  const marker = readMarker(text);
+  if (!marker || !isDeviceId(device) || marker.appareil === device || readMarkerVersion(text) > MEMORY_VERSION) return null;
+  return `${stringifyJson({ ...marker, appareil: device })}\n`;
 };
 
 /** Pourquoi deux dossiers ne se synchronisent pas, avant tout listage. */

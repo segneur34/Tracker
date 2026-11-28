@@ -33,6 +33,9 @@
 //                                   son sous-dossier `Documents/Tracker` est celui qui est lu, écrit, et dont on dépose
 //                                   dans `Documents/Tracker/corbeille`
 //   TRACKER_BANC_TELEPHONE_ETAT     état imposé : pret, absent, autorisation, horsLigne, adbIntrouvable, occupe ou plusieurs
+//   TRACKER_BANC_TELEPHONE_ETAT_FICHIER  fichier relu à chaque lecture de l'état : s'il porte un de ces noms (sauf
+//                                   pret), cet état est imposé ; absent, vide ou « pret », le téléphone d'essai répond
+//                                   comme d'ordinaire (une attente puis un départ seul, sans relancer le programme)
 //   TRACKER_BANC_TELEPHONE_COUPURE  téléphone débranché après ce nombre d'opérations réussies (lectures, écritures,
 //                                   mises de côté) ; une écriture coupée laisse son provisoire à moitié écrit
 //   TRACKER_BANC_TELEPHONE_ENREGISTREMENT  « 1 » : le téléphone d'essai enregistre, rien n'y est écrit
@@ -54,8 +57,11 @@ import { enReponse } from './pont'
 
 /** État du téléphone, tel que la page le lit. */
 export type EtatTelephone =
-  /** Un téléphone prêt à être lu ; `nom` est son modèle, pour le message. */
-  | { etat: 'pret'; nom: string }
+  /**
+   * Un téléphone prêt à être lu ; `nom` est son modèle, pour le message ; `ecriture` : vrai si la coquille sait aussi y
+   * écrire et y déposer (le câble, toujours), posé par `telephone:etat`.
+   */
+  | { etat: 'pret'; nom: string; ecriture?: boolean }
   /** Rien de branché, ou rien de vu. */
   | { etat: 'absent' }
   /** Le téléphone attend que l'utilisateur accepte cet ordinateur. */
@@ -390,6 +396,11 @@ export const NOM_TELEPHONE_ESSAI = "Téléphone d'essai"
 export type OptionsDossierLocal = {
   /** État imposé, à la place de celui que donne le dossier. */
   etatImpose?: EtatTelephone | null
+  /**
+   * Fichier relu à chaque lecture de l'état : un nom d'état (`etatDuNom`) autre que `pret` y est imposé ; absent, vide,
+   * illisible ou `pret`, rien n'est imposé. De quoi faire attendre puis partir une synchronisation, programme ouvert.
+   */
+  etatFichier?: string | null
   /** Téléphone débranché après ce nombre d'opérations réussies (lectures, écritures, mises de côté). */
   coupureApres?: number | null
   /** Nom de la racine sous `Documents` : `Tracker` par défaut. */
@@ -436,6 +447,8 @@ export function dossierLocal(stockage: string | null, options: OptionsDossierLoc
   async function etat(): Promise<EtatTelephone> {
     if (debranche) return { etat: 'absent' }
     if (options.etatImpose) return options.etatImpose
+    const lu = options.etatFichier ? etatDuNom((await readFile(options.etatFichier, 'utf8').catch(() => '')).trim(), DOSSIER_ADB_ESSAI) : null
+    if (lu !== null && lu.etat !== 'pret') return lu
     if (stockage === null) return { etat: 'absent' }
     try {
       return (await stat(stockage)).isDirectory() ? { etat: 'pret', nom: NOM_TELEPHONE_ESSAI } : { etat: 'absent' }
@@ -774,7 +787,8 @@ export function gestionnairesTelephone(dossier: DossierDistant, dossierTemp: str
           try {
             const e = await dossier.etat()
             if (e.etat !== 'pret') oublier()
-            return e
+            // Le câble sait toujours écrire et déposer : la page le lit dans l'état (`phoneCanWrite`).
+            return e.etat === 'pret' ? { ...e, ecriture: true } : e
           } catch (erreur) {
             oublier()
             throw erreur
@@ -905,10 +919,22 @@ export function gestionnairesTelephone(dossier: DossierDistant, dossierTemp: str
 
 // ---------- choix du téléphone d'après l'environnement ----------
 
+/** Dossier de l'outil dit par l'état `adbIntrouvable` lu dans le fichier d'état d'essai. */
+const DOSSIER_ADB_ESSAI = 'platform-tools'
+
+/** L'état d'essai que nomme `nom` (`TRACKER_BANC_TELEPHONE_ETAT` ou son fichier) ; `null` pour un nom vide ou inconnu. */
+function etatDuNom(nom: string, dossierAdb: string): EtatTelephone | null {
+  if (nom === 'pret') return { etat: 'pret', nom: NOM_TELEPHONE_ESSAI }
+  if (nom === 'adbIntrouvable') return { etat: 'adbIntrouvable', dossier: dossierAdb }
+  if (nom === 'plusieurs') return { etat: 'plusieurs', nombre: 2 }
+  if (nom === 'absent' || nom === 'autorisation' || nom === 'horsLigne' || nom === 'occupe') return { etat: nom }
+  return null
+}
+
 /** Le téléphone à lire : le vrai, par le débogage USB, sur une racine ; ou le dossier local du mode d'essai. */
 export type ChoixTelephone =
   | { canal: 'adb'; nomRacine: string }
-  | { canal: 'local'; stockage: string | null; etatImpose: EtatTelephone | null; coupureApres: number | null; nomRacine: string; enregistrement: boolean; panneListage?: boolean }
+  | { canal: 'local'; stockage: string | null; etatImpose: EtatTelephone | null; coupureApres: number | null; nomRacine: string; enregistrement: boolean; panneListage?: boolean; etatFichier?: string }
 
 /**
  * Le téléphone que la coquille lit et écrit, d'après l'environnement. Hors du mode d'essai (`TRACKER_BANC=1`), aucune
@@ -939,19 +965,16 @@ export function telephoneDepuisEnvironnement(
     return { canal: 'adb', nomRacine }
   }
   const nom = env.TRACKER_BANC_TELEPHONE_ETAT?.trim() ?? ''
-  let etatImpose: EtatTelephone | null = null
-  if (nom === 'pret') etatImpose = { etat: 'pret', nom: NOM_TELEPHONE_ESSAI }
-  else if (nom === 'adbIntrouvable') etatImpose = { etat: 'adbIntrouvable', dossier: dossierAdb }
-  else if (nom === 'plusieurs') etatImpose = { etat: 'plusieurs', nombre: 2 }
-  else if (nom === 'absent' || nom === 'autorisation' || nom === 'horsLigne' || nom === 'occupe') etatImpose = { etat: nom }
-  else if (nom !== '') journal(`état du téléphone d'essai inconnu, ignoré : ${nom}`)
+  const etatImpose = etatDuNom(nom, dossierAdb)
+  if (etatImpose === null && nom !== '') journal(`état du téléphone d'essai inconnu, ignoré : ${nom}`)
   const brut = env.TRACKER_BANC_TELEPHONE_COUPURE?.trim() ?? ''
   const coupureApres = /^\d+$/.test(brut) ? Number(brut) : null
   if (brut !== '' && coupureApres === null) journal(`coupure du téléphone d'essai illisible, ignorée : ${brut}`)
   const enregistrement = env.TRACKER_BANC_TELEPHONE_ENREGISTREMENT?.trim() === '1'
   const panneListage = env.TRACKER_BANC_TELEPHONE_PANNE?.trim() === 'listage' ? true : undefined
+  const etatFichier = env.TRACKER_BANC_TELEPHONE_ETAT_FICHIER?.trim() ? path.resolve(env.TRACKER_BANC_TELEPHONE_ETAT_FICHIER) : undefined
   journal(
-    `téléphone d'essai : ${stockage ?? 'aucun'}${etatImpose ? `, état ${etatImpose.etat}` : ''}${coupureApres !== null ? `, coupure après ${coupureApres}` : ''}${enregistrement ? ', enregistrement en cours' : ''}, racine Documents/${nomRacine}`,
+    `téléphone d'essai : ${stockage ?? 'aucun'}${etatImpose ? `, état ${etatImpose.etat}` : ''}${coupureApres !== null ? `, coupure après ${coupureApres}` : ''}${enregistrement ? ', enregistrement en cours' : ''}${etatFichier ? `, état relu dans ${etatFichier}` : ''}, racine Documents/${nomRacine}`,
   )
-  return { canal: 'local', stockage, etatImpose, coupureApres, nomRacine, enregistrement, panneListage }
+  return { canal: 'local', stockage, etatImpose, coupureApres, nomRacine, enregistrement, panneListage, ...(etatFichier ? { etatFichier } : {}) }
 }

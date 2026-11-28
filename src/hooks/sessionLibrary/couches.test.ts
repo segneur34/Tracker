@@ -27,15 +27,16 @@ const LAYERS = [
 const ENTRY_VALUES = [
   'adoptSettingsFile', 'answerImportQuestion', 'canChooseMemoryFolder', 'canImportSessions', 'chooseFolder', 'currentMemoryFolder', 'deleteFromTrash', 'dismissIncomingNotice', 'dismissLibraryMessage',
   'emptyWholeTrash', 'restoreFromTrash', 'stashRoute', 'trashStore',
-  'cancelPhoneSync', 'confirmPhoneSync', 'dismissPhoneSync', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
+  'answerPhoneSyncQuestion', 'cancelPhoneSyncWait', 'declineFirstSync', 'dismissPhoneSync', 'leavePhoneSyncQuestion', 'phoneSyncStep', 'reopenPhoneSyncQuestion',
+  'startFirstSync', 'synchronizeWithPhone', 'dismissSettingsOffer', 'findLibrarySession', 'flushBeforeExit', 'hasSessionMotion', 'importEntries', 'importFiles', 'importFromFolder',
   'importSettingsFile', 'librarySession', 'loadFullSession', 'loadSessionGpx', 'openLibrary', 'queueOutdatedRefresh',
   'readLibraryState', 'readSessionExport', 'readSessionGpx', 'readSessionMotion', 'reconnectFolder', 'refreshLibrary',
   'removeSession', 'renameDevice', 'reportStartupError', 'saveRecordedSession', 'settingsUpgraded', 'startIncomingFiles', 'startLibraryUi',
-  'startPhoneSync', 'startPlaceSearch',
+  'startPlaceSearch',
   'summarizeGpxText', 'switchToBrowserMemory', 'updateSessionRecord', 'useLibraryFields', 'useLibrarySelector',
   'useLibrarySession', 'usePhoneSync', 'useSessionName',
 ];
-const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneSyncStep', 'SettingsFileInfo', 'TrashState'];
+const ENTRY_TYPES = ['AddResult', 'AddStatus', 'LibraryState', 'LibraryStatus', 'PhoneSyncAnswer', 'PhoneSyncStep', 'SettingsFileInfo', 'TrashState'];
 
 const isCode = (name: string): boolean => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.fixture\.ts$/.test(name);
 

@@ -165,6 +165,21 @@ describe('dossier local', () => {
     const plusieurs = dossierLocal(stockage, { etatImpose: { etat: 'plusieurs', nombre: 2 } })
     await expect(plusieurs.lister()).rejects.toThrow('plusieurs')
   })
+
+  it('relit son fichier d’état à chaque lecture : un état imposé, puis le téléphone de nouveau là', async () => {
+    const fichier = path.join(tmp, 'etat.txt')
+    const t = dossierLocal(stockage, { etatFichier: fichier })
+    expect(await t.etat()).toEqual({ etat: 'pret', nom: NOM_TELEPHONE_ESSAI })
+    await writeFile(fichier, 'absent\n')
+    expect(await t.etat()).toEqual({ etat: 'absent' })
+    await writeFile(fichier, 'horsLigne')
+    expect(await t.etat()).toEqual({ etat: 'horsLigne' })
+    // « pret », vide ou inconnu : le téléphone répond comme d'ordinaire.
+    for (const texte of ['pret', '', 'inconnu']) {
+      await writeFile(fichier, texte)
+      expect(await t.etat()).toEqual({ etat: 'pret', nom: NOM_TELEPHONE_ESSAI })
+    }
+  })
 })
 
 describe('canaux du téléphone', () => {
@@ -187,7 +202,8 @@ describe('canaux du téléphone', () => {
     await poser('tracker.json', '{"v":1}')
     const avant = await empreinte(stockage)
     const c = canaux(dossierLocal(stockage))
-    expect(valeur(await c.etat())).toEqual({ etat: 'pret', nom: NOM_TELEPHONE_ESSAI })
+    // Le câble sait toujours écrire : l'état prêt le dit à la page.
+    expect(valeur(await c.etat())).toEqual({ etat: 'pret', nom: NOM_TELEPHONE_ESSAI, ecriture: true })
     const liste = valeur(await c.lister())
     expect(liste.map((f) => f.chemin)).toEqual(['sessions/sortie du matin é.gpx', 'tracker.json'])
     const octets = valeur(await c.lire({ chemin: 'sessions/sortie du matin é.gpx' }))
@@ -345,6 +361,9 @@ describe('mode d’essai', () => {
       enregistrement: false,
     })
     expect(telephoneDepuisEnvironnement({ TRACKER_BANC: '1', TRACKER_BANC_TELEPHONE_ETAT: 'plusieurs' }, 'x')).toMatchObject({ canal: 'local', stockage: null, etatImpose: { etat: 'plusieurs', nombre: 2 } })
+    // Le fichier d'état, en mode d'essai seulement.
+    expect(telephoneDepuisEnvironnement({ TRACKER_BANC: '1', TRACKER_BANC_TELEPHONE: 'C:\\telephone', TRACKER_BANC_TELEPHONE_ETAT_FICHIER: 'C:\\etat.txt' }, 'x')).toMatchObject({ canal: 'local', etatFichier: path.resolve('C:\\etat.txt') })
+    expect(telephoneDepuisEnvironnement({ TRACKER_BANC_TELEPHONE_ETAT_FICHIER: 'C:\\etat.txt' }, 'x')).toEqual({ canal: 'adb', nomRacine: 'Tracker' })
   })
 
   it('en mode d’essai, le vrai téléphone n’est lu que sur une racine d’essai', () => {

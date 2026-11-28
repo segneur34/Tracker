@@ -60,6 +60,12 @@ Ce que l'utilisateur y gagne : un clic, une question seulement si une perte est 
 
 ### 242-3 · La dernière saisie gagne, et les réglages (Opus | high)
 
+**À corriger d'abord** (relecture du 242-2, le 28/11 : trois défauts mineurs confirmés, sans perte de données, reportés ici pour clore la session) :
+1. `src/hooks/sessionLibrary/sync.ts`, le `catch` d'`executeSync` (vers les lignes 1086-1091) : `outcome.phoneChanged` y oublie `extras.done.some(op => op.to === 'phone')`, que le chemin normal compte. Si seuls des fichiers annexes ont été écrits sur le téléphone avant une erreur de l'ordinateur, le marqueur `synchro` n'est pas posé et le téléphone ne relit sa mémoire qu'à son prochain lancement.
+2. Même endroit, avec `phoneSync.ts` (vers 402-413) : une liaison perdue (`SyncLinkError`) sort avant `notifyPhone`, et la passe de reprise repart de l'état déjà écrit, donc sa `phoneChanged` reste fausse. Le marqueur n'est jamais posé pour ce qu'avait écrit la première passe : porter `phoneChanged` d'une passe à l'autre (ou poser le marqueur à la reprise).
+3. `bureau/main.ts:148` et `:169` : « réseau refusé : <hôte> » et « refus du serveur : <hôte> » vont maintenant dans `journal.txt` en usage réel ; `sansDonneesPersonnelles` ne retire que les adresses avec schéma. Ne pas écrire le nom d'hôte au journal (le garder pour la console du banc), conformément à « ni adresse » (`journal.ts:11`).
+Point non confirmé, à regarder : `ensureLayout` remplace un `appareil` existant par l'identifiant de l'appareil qui ouvre ; deux appareils sur un même dossier partagé s'écraseraient tour à tour le marqueur (sans perte, mais l'identifiant ne serait pas stable).
+
 Ce que l'utilisateur y gagne : une note changée sur le téléphone n'est plus écrasée ; un réglage n'est remplacé que sur son choix ; il choisit où va la copie de sécurité.
 
 - B19/P5 : `editedAt` dans `record.ts` (lu et réécrit) ; `withEditTimes` et `mergedEditTimes` dans `recordMerge.ts`, d'après Gtracker ; posé par `updateSessionRecord` et `sessionEdits.ts` ; dans `syncRecordMerge.ts`, la date départage avec `FUTURE_SKEW_MS` ; sans date, l'ordinateur gagne.

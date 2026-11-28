@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { routePath } from '../../library/folderLayout';
 import { parseSyncBase, readMarkerId, syncBasePath, type SyncBase } from '../../library/syncBase';
-import { describeSyncOutcome, describeSyncQuestion } from '../../library/syncReport';
+import { describeSync, describeSyncQuestion } from '../../library/syncReport';
 import { syncRouteListing } from '../../library/syncRoutes';
 import { DEPOSIT_FILE, TRASH_INDEX_PATH, parseDeposit, parseTrashIndex, trashFilePath, type TrashEntry } from '../../library/trash';
 import { dropTrashEntries, emptyTrash, stashInTrash } from '../../library/trashFolder';
@@ -61,12 +61,12 @@ const baseOf = (pair: Pair): SyncBase | null => {
   const read = id ? parseSyncBase(pair.computer.text(syncBasePath(id))) : null;
   return read?.state === 'ok' ? read.base : null;
 };
-const REMOVED_ONE_ROUTE = "Mis de côté sur le téléphone : 1 itinéraire supprimé sur l'ordinateur : retiré de la mémoire du téléphone, dans sa corbeille pour 30 jours";
+const REMOVED_ONE_ROUTE = "Supprimé : 1 itinéraire supprimé sur l'ordinateur, retiré du téléphone : il est dans la corbeille des deux appareils pour 30 jours";
 
 /** Ce que dit le compte rendu : ses phrases, ses lignes (« geste : ce qu'il a touché ») et ses exceptions. */
 const said = (outcome: SyncOutcome): string[] => {
-  const report = describeSyncOutcome(outcome);
-  return [...report.paragraphs, ...report.rows.map((row) => `${row.label} : ${row.text}`), ...report.notes];
+  const report = describeSync(outcome);
+  return [...report.paragraphs, ...report.rows.map((row) => `${row.label} : ${row.text}`), ...report.notes.map((note) => note.text)];
 };
 
 /** Une paire synchronisée avec les itinéraires `r0`… des deux côtés. */
@@ -88,7 +88,7 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     expect(await routesOf(pair.phone)).toEqual(['baie', 'tour du cap']);
     expect(pair.phone.text(routePath('tour du cap.json'))).toBe(pair.computer.text(routePath('tour du cap.json')));
     expect(baseOf(pair)?.routes.map((r) => r.id)).toEqual([iso(0), iso(1)]);
-    expect(said(outcome)).toEqual(expect.arrayContaining(['Copié vers l’ordinateur : 1 itinéraire', 'Copié vers le téléphone : 1 itinéraire']));
+    expect(said(outcome)).toEqual(expect.arrayContaining(['Reçu du téléphone : 1 itinéraire', 'Envoyé au téléphone : 1 itinéraire']));
     expect(outcome.phoneChanged).toBe(true);
     expect((await run(pair)).routes.done).toEqual([]);
   });
@@ -113,7 +113,7 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     const entry = trashOf(pair).find((e) => e.kind === 'itineraire');
     expect(entry).toMatchObject({ routeBase: 'r1', createdAt: iso(1), origin: 'ordinateur', main: 'r1.json' });
     expect(entry?.files.map((f) => f.name).sort()).toEqual(['r1.gpx', 'r1.json']);
-    expect(said(outcome)).toContain("Mis à la corbeille : 1 itinéraire supprimé sur le téléphone : dans la corbeille de l'ordinateur pour 30 jours");
+    expect(said(outcome)).toContain("Supprimé : 1 itinéraire supprimé sur le téléphone : il est dans la corbeille des deux appareils pour 30 jours");
     expect(baseOf(pair)?.routes.map((r) => r.id)).toEqual([iso(0)]);
   });
 
@@ -206,7 +206,7 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     const loser = trashOf(pair).find((e) => e.kind === 'itineraire');
     expect(loser?.origin).toBe('ordinateur');
     expect(parseRouteRecord(pair.computer.text(trashFilePath(loser?.dir as string, 'r0.json')) as string)?.updatedAt).toBe(iso(2));
-    expect(said(outcome).some((s) => /^Itinéraire « .+ » changé sur les deux appareils : le plus récent a été gardé/.test(s))).toBe(true);
+    expect(said(outcome).some((s) => /^1 itinéraire modifié sur les deux appareils : la version la plus récente est gardée/.test(s))).toBe(true);
   });
 
   it('une fiche d’une version plus récente n’est jamais écrasée', async () => {
@@ -215,7 +215,7 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     putRoute(pair.computer, 'r0', iso(0), iso(2), { lat: 44 });
     const outcome = await run(pair);
     expect(parseRouteRecord(pair.phone.text(routePath('r0.json')) as string)?.version).toBe(ROUTE_VERSION + 1);
-    expect(said(outcome)).toContain("1 élément d'une version plus récente de Tracker : laissé tel quel. Installez la dernière version de ce programme.");
+    expect(said(outcome)).toContain("1 itinéraire n'a pas été touché : il vient d'une version plus récente de Tracker. Installez la dernière version de ce programme.");
   });
 
   it('un itinéraire changé sur le téléphone pendant la synchronisation est laissé pour la fois suivante', async () => {
@@ -237,7 +237,7 @@ describe('synchronisation des itinéraires, de bout en bout', () => {
     const waiting = await run(pair, { phoneRoutes: false });
     expect(await routesOf(pair.phone)).toEqual(['r1']);
     expect(await routesOf(pair.computer)).toEqual(['r0']);
-    const routesWaiting = "Les itinéraires n'ont pas été échangés cette fois.";
+    const routesWaiting = "Les itinéraires n'ont pas été échangés : Tracker est trop ancien sur l'un des deux appareils. Installez sa dernière version.";
     expect(said(waiting)).toContain(routesWaiting);
     expect(said(await run(pair, { phoneRoutes: undefined }))).not.toContain(routesWaiting);
     expect(baseOf(pair)?.routes).toEqual([]);

@@ -23,6 +23,11 @@
 //                          en mode d'essai seulement, voir `telephone.ts` ; sans dossier local ni racine d'essai, le
 //                          mode d'essai ne lance jamais le vrai adb
 //
+// Le journal daté (`journal.ts`) : `journal.txt` dans le profil, toujours écrit, mode d'essai ou non ; il reçoit tout ce
+// que la coquille journalise (états lus du téléphone qui changent, refus) et les étapes que la page y note par le canal
+// `coquille:noter`, jamais un nom, un chemin ni une adresse web. En mode d'essai, les lignes de la coquille vont aussi
+// sur la sortie, avec leurs détails (`Journaliser`).
+//
 // Le dossier mémoire (un vrai dossier du disque) est lu et écrit ici, la page y passant par les canaux `memoire:*`
 // du pont (`preload.ts`, `memoire.ts`) ; seule la page de la fenêtre principale y a accès (`expediteurAdmis`).
 // Le dossier `Documents/Tracker` du téléphone branché est lu, écrit et mis de côté ici aussi (jamais effacé), par les
@@ -36,10 +41,12 @@ import path from 'node:path'
 import { dossierAdb, dossierAdbConseille } from './adb'
 import { creerMemoire, gestionnairesMemoire, optionsDepuisEnvironnement } from './memoire'
 import { ADRESSE_ACCUEIL, HOTE, estDeLApplication } from './origine'
-import { brancherCanaux, expediteurAdmis, uneALaFois } from './pont'
+import { brancherCanaux, echec, expediteurAdmis, reussite, uneALaFois } from './pont'
 import { CSP, reponseA } from './protocole'
 import { STATUT_REFUS, entetesSortants, estUnRefus } from './sortant'
 import type { DossierDistant } from './telephone'
+import type { Journal, Journaliser } from './journal'
+import { creerJournal, journaliseur, lireNote, suivreEtats } from './journal'
 import { DOSSIER_COPIES } from './copieSecurite'
 import { DOSSIER_LECTURES, dossierLocal, gestionnairesTelephone, telephoneDepuisEnvironnement, viderLectures } from './telephone'
 
@@ -66,9 +73,22 @@ const AUTORISATIONS = new Set(['fullscreen', 'clipboard-sanitized-write', 'fileS
 /** Fichier du profil qui retient taille et position de la fenêtre. */
 const FICHIER_FENETRE = 'fenetre.json'
 
-function journal(message: string): void {
-  if (BANC) console.log(`[Tracker] ${message}`)
+/** Le journal daté, ouvert au premier message : le profil (`TRACKER_PROFIL`) est alors choisi. */
+let journalDate: Journal | null = null
+
+/** Le journal daté seul, sans la sortie d'essai : ce qui ne sert qu'à relire le poste après coup. */
+const journalSeul: Journal = {
+  noter: (message) => {
+    journalDate ??= creerJournal({ dossier: app.getPath('userData'), masques: [app.getPath('home')] })
+    journalDate.noter(message)
+  },
 }
+
+/**
+ * Journal daté (`journal.txt` du profil, toujours écrit, sans nom ni chemin : `sansDonneesPersonnelles`), et en mode
+ * d'essai la sortie, que le banc relève, avec les détails que le fichier ne prend pas (`Journaliser`).
+ */
+const journal: Journaliser = journaliseur(journalSeul, BANC ? (ligne) => console.log(`[Tracker] ${ligne}`) : null)
 
 // ---------- garde du port de débogage ----------
 // Un port de débogage donne la main sur la page et sa mémoire : seul le mode d'essai l'accepte.
@@ -222,7 +242,7 @@ function ouvrirAuDehors(adresse: string): void {
     return
   }
   if (url.protocol !== 'https:' || estDeLApplication(adresse)) return
-  journal(`lien externe : ${url.href}`)
+  journal('lien externe ouvert', `lien externe : ${url.href}`)
   if (!BANC) void shell.openExternal(url.href)
 }
 
@@ -379,8 +399,11 @@ const choisirParFenetre = uneALaFois(async ({ titre, depart }: { titre: string; 
  */
 function creerTelephone(profil: string): DossierDistant {
   const choix = telephoneDepuisEnvironnement(process.env, dossierAdbConseille(profil), journal)
-  if (choix.canal === 'local') return dossierLocal(choix.stockage, choix)
-  return dossierAdb({ env: process.env, profil, programme: path.dirname(process.execPath), nomRacine: choix.nomRacine, journal })
+  const dossier = choix.canal === 'local'
+    ? dossierLocal(choix.stockage, choix)
+    : dossierAdb({ env: process.env, profil, programme: path.dirname(process.execPath), nomRacine: choix.nomRacine, journal })
+  // Chaque changement de l'état lu par la page va au journal daté (pas à la sortie d'essai, que le banc relève).
+  return suivreEtats(dossier, journalSeul.noter)
 }
 
 function brancherPont(): void {
@@ -400,7 +423,17 @@ function brancherPont(): void {
   brancherCanaux(
     ipcMain,
     (evenement) => expediteurAdmis(evenement, fenetrePrincipale?.webContents ?? null),
-    { ...gestionnairesMemoire(memoire), ...gestionnairesTelephone(creerTelephone(profil), lectures, { memoire: memoireRetenue, copies }) },
+    {
+      ...gestionnairesMemoire(memoire),
+      ...gestionnairesTelephone(creerTelephone(profil), lectures, { memoire: memoireRetenue, copies }),
+      // Une étape de la page (attente, départ, issue d'une synchronisation), au journal daté seulement.
+      'coquille:noter': async (argument) => {
+        const note = lireNote(argument)
+        if (note === null) return echec('UNKNOWN', 'Message mal formé : « texte » doit être un texte non vide.')
+        journalSeul.noter(`page : ${note}`)
+        return reussite(null)
+      },
+    },
     journal,
   )
 }
@@ -477,7 +510,9 @@ function demarrer(): void {
     gererAutorisations()
     brancherProtocole()
     brancherPont()
-    journal(`prêt : ${ADRESSE_ACCUEIL}, application ${DIST}, profil ${app.getPath('userData')}`)
+    // Au journal daté seulement : la version, qui change à chaque livraison, n'entre pas dans les relevés du banc.
+    journalSeul.noter(`lancement de Tracker ${VERSION}`)
+    journal('prêt', `prêt : ${ADRESSE_ACCUEIL}, application ${DIST}, profil ${app.getPath('userData')}`)
     ouvrirFenetre()
   })
 }

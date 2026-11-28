@@ -9,8 +9,8 @@
  * en lecture seule jusqu'à son adoption) ; la page ne donne jamais de chemin absolu.
  *
  * Les types sont décrits ici, à la main : ceux de la coquille emploient les types de Node, que l'application n'a pas.
- * La tâche à attendre avant de fermer la fenêtre s'y pose aussi (`onDesktopClose`, lot 232). Le téléphone branché
- * par câble s'y lit, s'y écrit et s'y met de côté, jamais effacé (`telephone`, élément 217) : `phoneCable.ts`.
+ * La tâche à attendre avant de fermer la fenêtre s'y pose aussi (`onDesktopClose`, lot 232), et une ligne du journal
+ * daté du programme (`noteJournal`, lot 242-2). Le téléphone branché par câble s'y lit, s'y écrit et s'y met de côté, jamais effacé (`telephone`, élément 217) : `phoneCable.ts`.
  */
 
 /** Code d'une erreur du pont, lisible par `fileErrorCode`. */
@@ -88,8 +88,11 @@ export interface DesktopMemoryBridge {
 
 /** État du téléphone branché par câble, lu par la coquille. */
 export type DesktopPhoneState =
-  /** Un téléphone prêt à être lu ; `nom` est son modèle. */
-  | { etat: 'pret'; nom: string }
+  /**
+   * Un téléphone prêt à être lu ; `nom` est son modèle ; `ecriture` : vrai si la coquille sait aussi y écrire et y
+   * déposer (le câble), absent d'une coquille plus ancienne.
+   */
+  | { etat: 'pret'; nom: string; ecriture?: boolean }
   /** Rien de branché, ou rien de vu. */
   | { etat: 'absent' }
   /** Le téléphone attend que l'utilisateur accepte cet ordinateur. */
@@ -159,6 +162,11 @@ export interface DesktopBridge {
    * de toute façon après son propre plafond. Absent d'une coquille plus ancienne.
    */
   surFermeture?(rappel: () => Promise<void>): void;
+  /**
+   * Écrit une étape de la page dans le journal daté du programme (`journal.txt` de son profil), bornée à 300
+   * caractères. Absent d'une coquille plus ancienne.
+   */
+  noter?(argument: { texte: string }): Promise<BridgeAnswer<null>>;
 }
 
 /** Le pont du programme Windows, `null` ailleurs (navigateur, téléphone). */
@@ -182,5 +190,32 @@ export const onDesktopClose = (task: () => Promise<void>): void => {
     bridge.surFermeture(() => task().catch(() => undefined));
   } catch {
     // Pont refermé : la fenêtre se ferme sans attendre, comme avec une coquille plus ancienne.
+  }
+};
+
+/** Longueur d'une ligne du journal du programme Windows gardée par la coquille, en caractères. */
+export const DESKTOP_JOURNAL_LINE_MAX = 300;
+
+/** Vrai dans le programme Windows dont la coquille tient un journal daté (`noteJournal`). */
+export const desktopJournalAvailable = (): boolean => typeof desktopBridge()?.noter === 'function';
+
+/**
+ * Note une étape de la page (attente du téléphone, départ d'une synchronisation, issue) dans le journal daté du
+ * programme Windows (`journal.txt` de son profil), pour comprendre après coup ce que l'utilisateur a vu ; rien de
+ * personnel n'y va (ni nom de session, ni contenu de fichier). Sans attendre ni jamais échouer : un refus ou un pont
+ * refermé perdent la ligne, rien de plus. Sans effet ailleurs et dans une coquille plus ancienne. Une ligne vide n'est
+ * pas envoyée ; une ligne trop longue est coupée avant l'envoi.
+ */
+export const noteJournal = (text: string): void => {
+  const bridge = desktopBridge();
+  if (typeof bridge?.noter !== 'function') return;
+  const line = text.trim();
+  if (line === '') return;
+  const letters = [...line];
+  const texte = letters.length > DESKTOP_JOURNAL_LINE_MAX ? letters.slice(0, DESKTOP_JOURNAL_LINE_MAX).join('') : line;
+  try {
+    void bridge.noter({ texte }).catch(() => undefined);
+  } catch {
+    // Pont refermé pendant l'appel : la ligne est perdue.
   }
 };

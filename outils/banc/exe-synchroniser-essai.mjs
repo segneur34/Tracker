@@ -13,10 +13,11 @@
 //   lot 242-1) existe déjà : rien n'est écrasé. Il ne retire pas `Tracker-essai` à la fin : à effacer à la main une fois
 //   le relevé lu ;
 // - il s'arrête si la coquille n'annonce pas « vrai téléphone, racine d'essai : Documents/Tracker-essai ».
-// Joué : aperçu sans écriture, « Annuler », première synchronisation avec copie de sécurité (sessions et itinéraires
-// dans les deux sens), puis une suppression de chaque côté et les retraits confirmés (corbeille de l'ordinateur ; sur le
-// téléphone, un dépôt dans la corbeille de sa mémoire, `Documents/Tracker-essai/corbeille/<dépôt>/`, ouvert par
-// `depose.json` : corbeilles jumelles, lot 242-1).
+// Joué (fenêtre en un geste, lot 242-2) : l'écran de départ, qui n'écrit rien, fermé sans rien faire ; puis
+// « Commencer » : première synchronisation avec copie de sécurité (sessions et itinéraires dans les deux sens) ; puis
+// une suppression de chaque côté, en un clic, sans question (corbeille de l'ordinateur ; sur le téléphone, un dépôt dans
+// la corbeille de sa mémoire, `Documents/Tracker-essai/corbeille/<dépôt>/`, ouvert par `depose.json` : corbeilles
+// jumelles, lot 242-1), et le marqueur du téléphone qui porte l'instant de la synchronisation.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -116,54 +117,71 @@ async function avecProgramme(profil, memoire, env, quoi, essai) {
 }
 
 const BOUTON = 'button.phone-sync';
-const PANNEAU = '.phone-sync__panel';
+const FENETRE = '.phone-sync__dialog';
+/** Réponses qui marquent une étape où la fenêtre s'arrête : compte rendu, écran de départ, attente, question. */
+const ARRETS = ['Fermer', 'Commencer', 'Annuler', 'Tout garder', 'La garder', 'Les garder', 'Le garder'];
+/** Ce que montre la fenêtre : titre, sous-titre, phrases, dossier, lignes (« geste : ce qu'il a touché »), encadrés, boutons. */
 const releve = (b) => b.evaluate(`(() => {
-  const d = document.querySelector(${JSON.stringify(PANNEAU)});
+  const d = document.querySelector(${JSON.stringify(FENETRE)});
   if (!d) return null;
-  const texte = (x) => x.textContent.trim().replace(/\\s+/g, ' ');
+  const texte = (x) => (x?.textContent ?? '').trim().replace(/\\s+/g, ' ');
   return {
-    titre: [...d.querySelectorAll(':scope > p.phone-sync__headline')].map(texte)[0] ?? null,
-    phrases: [...d.querySelectorAll(':scope > p.phone-sync__text')].map(texte),
-    lignes: [...d.querySelectorAll(':scope > ul.phone-sync__list > li')].map((li) => { const c = li.cloneNode(true); c.querySelectorAll('details').forEach((x) => x.remove()); return texte(c); }),
+    titre: texte(d.querySelector('.ui-dialog__head strong')),
+    sousTitre: d.querySelector('.phone-sync__subtitle') ? texte(d.querySelector('.phone-sync__subtitle')) : null,
+    phrases: [...d.querySelectorAll('.phone-sync__body > p')].map(texte),
+    etapes: [...d.querySelectorAll('.phone-sync__steps li')].map(texte),
+    dossier: d.querySelector('.phone-sync__folder') ? texte(d.querySelector('.phone-sync__folder')) : null,
+    lignes: [...d.querySelectorAll('.phone-sync__row summary')].map((s) => texte(s.querySelector('.phone-sync__row-label')) + ' : ' + texte(s.querySelector('.phone-sync__row-text'))),
+    notes: [...d.querySelectorAll('.phone-sync__note')].map((n) => ({ texte: texte(n.querySelector(':scope > p')), detail: n.querySelector('.phone-sync__detail p') ? texte(n.querySelector('.phone-sync__detail p')) : null })),
+    detail: d.querySelector('.phone-sync__body > .phone-sync__detail p') ? texte(d.querySelector('.phone-sync__body > .phone-sync__detail p')) : null,
     boutons: [...d.querySelectorAll('.phone-sync__actions button')].map(texte),
   };
 })()`);
 const montrer = (quoi, r) => {
-  console.log(`  ${quoi} : ${r?.titre ?? '(sans titre)'}`);
+  console.log(`  ${quoi} : ${r?.titre ?? '(fenêtre fermée)'}${r?.sousTitre ? ` — ${r.sousTitre}` : ''}`);
   for (const l of r?.phrases ?? []) console.log(`    | ${l}`);
+  if (r?.dossier) console.log(`    [${r.dossier}]`);
   for (const l of r?.lignes ?? []) console.log(`    · ${l}`);
+  for (const n of r?.notes ?? []) console.log(`    ! ${n.texte}${n.detail ? ` (${n.detail})` : ''}`);
   console.log(`    boutons : ${(r?.boutons ?? []).join(' / ')}`);
 };
+/** Ouvre Réglages (la carte Mémoire porte le bouton). */
 async function reglages(b) {
   await b.go('/parametres', 5000);
   await b.waitFor(`Boolean(document.querySelector(${JSON.stringify(BOUTON)}))`, { timeout: 10000, label: 'bouton Synchroniser' });
 }
 /**
  * Marque la rangée de boutons montrée avant un clic : `attendre` ne prend que celle d'après, jamais l'ancienne (un résultat
- * neuf, pas un texte « différent », qui peut rester le même). Entre deux, l'étape en cours n'a pas de rangée de boutons.
+ * neuf, pas un texte « différent », qui peut rester le même). Entre deux, l'avancement n'a pas de rangée de boutons.
  */
-const marquer = (b) => b.evaluate(`(() => { const r = document.querySelector('${PANNEAU} .phone-sync__actions'); if (r) r.dataset.bancAncien = '1'; return true; })()`);
+const marquer = (b) => b.evaluate(`(() => { const r = document.querySelector('${FENETRE} .phone-sync__actions'); if (r) r.dataset.bancAncien = '1'; return true; })()`);
+/** Attend que la fenêtre s'arrête sur une étape neuve (compte rendu, écran de départ, attente, question), puis la relève. */
 async function attendre(b, quoi) {
-  await b.waitFor(`[...document.querySelectorAll('${PANNEAU} .phone-sync__actions:not([data-banc-ancien]) button')].some((x) => ['Annuler', 'Fermer'].includes(x.textContent.trim()))`, { timeout: 180000, label: quoi });
-  await b.settle({ max: 300, label: `${quoi}, relevé` }); // le panneau fini de dessiner (l'ancienne attente fixe pour plafond)
+  await b.waitFor(`[...document.querySelectorAll('${FENETRE} .phone-sync__actions:not([data-banc-ancien]) button')].some((x) => ${JSON.stringify(ARRETS)}.includes(x.textContent.trim()))`, { timeout: 180000, label: quoi });
+  await b.settle({ max: 300, label: `${quoi}, relevé` }); // la fenêtre finit de dessiner (l'ancienne attente fixe pour plafond)
   const r = await releve(b);
   montrer(quoi, r);
   return r;
 }
+/** Clique « Synchroniser avec le téléphone » et attend la première étape où la fenêtre s'arrête. */
 async function synchroniser(b, quoi) {
   await marquer(b);
   check(`${quoi} : clic sur « Synchroniser avec le téléphone »`, (await b.click(BOUTON)) === 'ok');
-  return attendre(b, `${quoi}, aperçu`);
+  return attendre(b, quoi);
 }
 const repondre = async (b, texte, quoi) => {
   await marquer(b);
-  check(`${quoi} : clic sur « ${texte} »`, (await b.clickText(texte, '.phone-sync__actions button')) === 'ok');
+  check(`${quoi} : clic sur « ${texte} »`, (await b.clickText(texte, `${FENETRE} .phone-sync__actions button`)) === 'ok');
   return attendre(b, quoi);
 };
-const fermerPanneau = async (b) => {
-  await b.clickText('Fermer', '.phone-sync__actions button');
-  await b.waitFor(`!document.querySelector(${JSON.stringify(PANNEAU)})`, { timeout: 300, label: 'panneau refermé' });
+/** Ferme la fenêtre par son bouton « Fermer », ou par sa croix (`croix`). */
+const fermerFenetre = async (b, croix = false) => {
+  if (croix) await b.click(`${FENETRE} .ui-dialog__close`);
+  else await b.clickText('Fermer', `${FENETRE} .phone-sync__actions button`);
+  await b.waitFor(`!document.querySelector(${JSON.stringify(FENETRE)})`, { timeout: 2000, label: 'fenêtre refermée' });
 };
+/** Vrai si la fenêtre montre une question (le garde-fou ou la corbeille). */
+const question = (r) => (r?.boutons ?? []).some((x) => ['Tout garder', 'La garder', 'Les garder', 'Le garder'].includes(x));
 /**
  * Attend la page au repos (le minuteur de 800 ms des réécritures de fiches compris, `recordWrites.ts`) puis les dossiers
  * de l'ordinateur immobiles (aucun fichier écrit depuis 300 ms), `plafond` ms au plus : l'ancienne attente fixe des
@@ -233,21 +251,22 @@ try {
   const ENV = { TRACKER_BANC_RACINE_TELEPHONE: 'Tracker-essai' };
   const annonce = (p) => p.journal.some((l) => l.includes("vrai téléphone, racine d'essai : Documents/Tracker-essai"));
 
-  console.log('\n== a. Aperçu, « Annuler », puis première synchronisation');
+  console.log('\n== a. Écran de départ fermé, puis « Commencer » : première synchronisation');
   await avecProgramme(PC, MC, ENV, 'a', async (b, p) => {
     if (!annonce(p)) throw new Error(`la coquille n'annonce pas la racine d'essai : ${p.journal.slice(-5).join(' | ')}`);
     check('a. la coquille annonce « vrai téléphone, racine d’essai : Documents/Tracker-essai »', true);
     await reglages(b);
     const essaiAvant = empreinte(ESSAI);
     let r = await synchroniser(b, 'a');
-    check('a. l’aperçu n’a rien écrit sur le téléphone (dossier d’essai)', empreinte(ESSAI) === essaiAvant);
-    check('a. l’aperçu annonce la copie de sécurité', (r?.phrases ?? []).some((x) => x.includes('copie de sécurité')), JSON.stringify(r?.phrases));
-    check('a. « Annuler »', (await b.clickText('Annuler', '.phone-sync__actions button')) === 'ok');
+    check('a. l’écran de départ, « Commencer » seul', /^Première synchronisation avec/.test(r?.titre ?? '') && r?.boutons?.join('/') === 'Commencer', `${r?.titre} ${r?.boutons?.join('/')}`);
+    check('a. l’écran de départ n’a rien écrit sur le téléphone (dossier d’essai)', empreinte(ESSAI) === essaiAvant);
+    check('a. l’écran de départ annonce la copie de sécurité', (r?.phrases ?? []).some((x) => x.includes('par sécurité')), JSON.stringify(r?.phrases));
+    await fermerFenetre(b, true);
     await b.wait(400); // attente fixe voulue : le contrôle qui suit prouve aussi une absence (rien d'écrit sur le téléphone)
-    check('a. « Annuler » referme sans rien écrire', (await releve(b)) === null && empreinte(ESSAI) === essaiAvant);
+    check('a. fermer l’écran de départ ne fait rien', (await releve(b)) === null && empreinte(ESSAI) === essaiAvant);
     r = await synchroniser(b, 'a, de nouveau');
-    r = await repondre(b, 'Synchroniser sans rien supprimer', 'a. compte rendu');
-    check('a. titre « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
+    r = await repondre(b, 'Commencer', 'a. compte rendu');
+    check('a. titre « Synchronisation terminée »', r?.titre === 'Synchronisation terminée', r?.titre);
     await ecrituresFinies(b, [MC], 1500, 'a. après la synchronisation');
     const tel = liste(ESSAI);
     console.log(`  téléphone après : ${tel.join(' ; ')}`);
@@ -264,25 +283,24 @@ try {
       const a = readFileSync(join(copies, copie[0], 'telephone', 'sessions', surTel[0]));
       check('a. la session copiée du téléphone est identique à l’original, octet pour octet', a.equals(readFileSync(join(MP, 'sessions', surTel[0]))) && readFileSync(join(MC, 'sessions', surTel[0])).equals(a));
     }
-    await fermerPanneau(b);
+    check('a. le marqueur du téléphone porte l’instant de la synchronisation', /"synchro":\s*\d+/.test(sh(`cat ${ESSAI}/tracker.json`)));
+    await fermerFenetre(b);
     r = await synchroniser(b, 'a, sans rien à faire');
-    console.log(`  deuxième passage : ${r?.titre}`);
-    if ((r?.boutons ?? []).includes('Annuler')) await b.clickText('Annuler', '.phone-sync__actions button'); else await fermerPanneau(b);
+    check('a. deuxième passage : un clic, « Tout est à jour »', r?.titre === 'Tout est à jour', r?.titre);
+    await fermerFenetre(b);
   });
 
-  console.log('\n== b. Une suppression de chaque côté, retraits confirmés');
+  console.log('\n== b. Une suppression de chaque côté, en un clic');
   for (const n of [surTel[0], surTel[0].replace(/\.gpx$/, '.json')]) sh(`rm '${sousEssai(`${ESSAI}/sessions/${n}`)}'`);
   for (const n of [surPc[0], surPc[0].replace(/\.gpx$/, '.json')]) rmSync(join(MC, 'sessions', n), { force: true });
   console.log(`supprimée sur le téléphone : ${surTel[0]} ; supprimée sur l'ordinateur : ${surPc[0]}`);
   await avecProgramme(PC, MC, ENV, 'b', async (b, p) => {
     if (!annonce(p)) throw new Error('la coquille n’annonce pas la racine d’essai');
     await reglages(b);
-    let r = await synchroniser(b, 'b');
-    const retirer = (r?.boutons ?? []).find((x) => x.startsWith('Synchroniser et retirer'));
-    check('b. l’aperçu offre de retirer', retirer !== undefined, r?.boutons?.join(' / '));
-    if (retirer) {
-      r = await repondre(b, retirer, 'b. compte rendu');
-      check('b. titre « Synchronisation faite »', r?.titre === 'Synchronisation faite', r?.titre);
+    const r = await synchroniser(b, 'b');
+    check('b. un clic, aucune question', !question(r), r?.boutons?.join(' / '));
+    if (!question(r)) {
+      check('b. titre « Synchronisation terminée »', r?.titre === 'Synchronisation terminée', r?.titre);
       await ecrituresFinies(b, [MC], 1500, 'b. après les retraits');
       const tel = liste(ESSAI);
       console.log(`  téléphone après : ${tel.join(' ; ')}`);
@@ -293,7 +311,7 @@ try {
       check('b. … pour un dépôt de Documents/Tracker-essai/corbeille, ouvert par depose.json', liste(CORBEILLE).some((c) => c.endsWith(`/${surPc[0]}`)) && liste(CORBEILLE).some((c) => c.endsWith('/depose.json')));
       check('b. l’ordinateur n’a pas écrit l’index de la corbeille du téléphone', !tel.includes('corbeille/corbeille.json'));
       check('b. rien dans l’ancien Documents/Tracker-essai-corbeille', !existe(ANCIENNE_CORBEILLE));
-      await fermerPanneau(b);
+      await fermerFenetre(b);
     }
   });
 

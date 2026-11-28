@@ -99,7 +99,7 @@ describe('téléphone branché par câble', () => {
 
   it('état du téléphone, prêt ou imposé', async () => {
     plug();
-    expect(await phoneState()).toEqual({ etat: 'pret', nom: "Téléphone d'essai" });
+    expect(await phoneState()).toEqual({ etat: 'pret', nom: "Téléphone d'essai", ecriture: true });
     plug({ etatImpose: { etat: 'adbIntrouvable', dossier: 'C:\\profil' } });
     expect(await phoneState()).toEqual({ etat: 'adbIntrouvable', dossier: 'C:\\profil' });
     plug({ etatImpose: { etat: 'plusieurs', nombre: 2 } });
@@ -173,14 +173,20 @@ describe('le téléphone comme dossier mémoire (sorte phone)', () => {
   const onPhone = (relatif: string): Promise<string> => fs.readFile(join(stockage, 'Documents', ...relatif.split('/')), 'utf8');
   const allFiles = async (): Promise<string[]> => (await fs.readdir(join(stockage, 'Documents'), { recursive: true })).map((p) => p.replace(/\\/g, '/')).sort();
 
-  it("écrire n'existe que dans une coquille qui le sait", () => {
-    expect(phoneCanWrite()).toBe(false);
+  it("écrire n'existe que dans une coquille qui le sait, et que l'état du téléphone prêt dit", async () => {
+    const ready = { etat: 'pret', nom: 'Téléphone', ecriture: true } as const;
+    expect(phoneCanWrite(ready)).toBe(false);
     plug({}, true);
     expect(phoneCableAvailable()).toBe(true);
-    expect(phoneCanWrite()).toBe(false);
+    expect(phoneCanWrite(ready)).toBe(false);
     expect(() => phoneMemoryFolder('Téléphone')).toThrow('trop ancien');
     plug();
-    expect(phoneCanWrite()).toBe(true);
+    // L'état que rend la coquille porte l'écriture du câble.
+    const state = await phoneState();
+    expect(state).toMatchObject({ etat: 'pret', ecriture: true });
+    expect(phoneCanWrite(state)).toBe(true);
+    expect(phoneCanWrite({ etat: 'pret', nom: 'Téléphone' })).toBe(false);
+    expect(phoneCanWrite({ etat: 'absent' })).toBe(false);
   });
 
   it('liste, lit et date d’après le listage, écrit par la coquille et tient le listage à jour', async () => {

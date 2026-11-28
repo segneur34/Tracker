@@ -50,8 +50,11 @@ export { startPlaceSearch } from './sessionLibrary/placeQueue';
 export type { AddResult, AddStatus } from './sessionLibrary/addSession';
 export { answerImportQuestion, canImportSessions, importEntries, importFiles, importFromFolder, saveRecordedSession } from './sessionLibrary/importer';
 export { startIncomingFiles } from './sessionLibrary/incoming';
-export { cancelPhoneSync, confirmPhoneSync, dismissPhoneSync, startPhoneSync, usePhoneSync } from './sessionLibrary/phoneSync';
-export type { PhoneSyncStep } from './sessionLibrary/phoneSync';
+export {
+  answerPhoneSyncQuestion, cancelPhoneSyncWait, declineFirstSync, dismissPhoneSync, leavePhoneSyncQuestion, phoneSyncStep, reopenPhoneSyncQuestion,
+  startFirstSync, synchronizeWithPhone, usePhoneSync,
+} from './sessionLibrary/phoneSync';
+export type { PhoneSyncAnswer, PhoneSyncStep } from './sessionLibrary/phoneSync';
 export {
   loadFullSession, loadSessionGpx, readSessionExport, readSessionGpx, readSessionMotion, removeSession,
   updateSessionRecord,

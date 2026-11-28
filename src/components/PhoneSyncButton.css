@@ -1,38 +1,131 @@
-/* « Synchroniser avec le téléphone » (`PhoneSyncButton.tsx`), dans Réglages › Mémoire du programme Windows : le
-   bouton suit « Mettre à jour » ; étapes, confirmation et compte rendu dessous, en petit texte comme le reste de la carte. */
+/* « Synchroniser avec le téléphone » (`PhoneSyncButton.tsx`), dans Réglages › Mémoire du programme Windows : le bouton
+   suit « Mettre à jour » ; la fenêtre (`Dialog`) suit la synchronisation, d'après celle de Gtracker (lot 242-2). */
 
-.phone-sync__panel {
+/* Ce qu'il y a à faire sur le téléphone pendant l'attente. */
+.phone-sync__steps {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.phone-sync__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
 }
 
-.phone-sync__text {
+.phone-sync__body p {
   margin: 0;
-  font-size: var(--text-s);
-  line-height: 1.5;
 }
 
-.phone-sync__headline {
+/* Sous le titre : le téléphone et par où il est lu. */
+.phone-sync__subtitle {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Barre d'avancement : un trait à l'encre sur fond creusé ; sans valeur, le navigateur l'anime en attente. */
+.phone-sync__bar {
+  width: 100%;
+  height: 6px;
+  border: 0;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  accent-color: var(--ink);
+  appearance: none;
+}
+
+.phone-sync__bar::-webkit-progress-bar {
+  background: var(--surface-sunken);
+}
+
+.phone-sync__bar::-webkit-progress-value {
+  background: var(--ink);
+}
+
+.phone-sync__hint {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+/* Compte rendu et question : une ligne par geste ou par appareil, qui se déplie en noms. */
+.phone-sync__rows {
+  border-top: 1px solid var(--line);
+}
+
+.phone-sync__row {
+  border-bottom: 1px solid var(--line);
+}
+
+/* En grille, le résumé perd le triangle du navigateur : un chevron à droite le remplace, tourné vers le bas une
+   fois la ligne dépliée. */
+.phone-sync__row summary {
+  display: grid;
+  grid-template-columns: minmax(9em, auto) 1fr auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.phone-sync__row summary::-webkit-details-marker {
+  display: none;
+}
+
+.phone-sync__row-mark {
+  margin-top: 0.2em;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.phone-sync__row[open] .phone-sync__row-mark {
+  transform: rotate(90deg);
+}
+
+.phone-sync__row-label {
   font-weight: 600;
 }
 
-.phone-sync__muted {
-  color: var(--muted);
-}
-
-.phone-sync__list {
-  margin: 0;
-  padding-left: var(--space-4);
+.phone-sync__names {
+  max-height: 14em;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  color: var(--ink-2);
   font-size: var(--text-s);
-  line-height: 1.5;
 }
 
-.phone-sync__details > summary {
+/* Liste simple d'une question sur la corbeille. */
+.phone-sync__names--list {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunken);
+}
+
+/* Une exception, dans un encadré sous le compte rendu. */
+.phone-sync__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunken);
+  font-size: var(--text-s);
+}
+
+.phone-sync__detail summary {
   cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.phone-sync__detail p {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: var(--text-s);
 }
 
 /* Dossier à recopier : à part, sélectionnable, coupé n'importe où plutôt que de déborder. */
@@ -42,7 +135,6 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-s);
   background: var(--surface-sunken);
-  font-size: var(--text-s);
   overflow-wrap: anywhere;
   user-select: all;
 }
@@ -50,5 +142,6 @@
 .phone-sync__actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
 }

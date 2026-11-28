@@ -40,9 +40,9 @@ const memoire = Object.freeze({
 /**
  * Le dossier `Documents/Tracker` du téléphone branché (noms gardés égaux à ceux de `telephone.ts` par un test) :
  * `etat()`, `lister()`, `lireOctets({ chemin })` d'un fichier du dernier listage seulement, `enregistrement()`,
- * `ecrireOctets({ chemin, octets })` dans la liste fermée de la coquille, `listerCorbeille({ dossier })`, et
- * `mettreDeCote({ chemin, vers })` vers la corbeille du téléphone, et `copieSecurite()` des deux dossiers avant la
- * première synchronisation. Rien n'y efface un fichier.
+ * `ecrireOctets({ chemin, octets })` dans la liste fermée de la coquille, `listerCorbeille({ dossier: 'corbeille' })`
+ * (les dépôts de la corbeille de sa mémoire, seule valeur admise), `mettreDeCote({ chemin, vers })` dans un dépôt de
+ * cette corbeille, et `copieSecurite()` des deux dossiers avant la première synchronisation. Rien n'y efface un fichier.
  */
 const telephone = Object.freeze({
   etat: sans('telephone:etat'),
@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld(
     version: versionPassee(),
     memoire,
     telephone,
+    /** Écrit une étape de la page dans le journal daté du programme : `{ texte }`, borné à 300 caractères. */
+    noter: avec('coquille:noter'),
     /** Inscrit un rappel attendu avant la fermeture de la fenêtre ; rend la fonction de désabonnement. */
     surFermeture: (rappel: () => unknown) => {
       rappelsFermeture.add(rappel)

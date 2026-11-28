@@ -4,6 +4,8 @@ import {
 import { describeRefresh } from '../../library/importReport';
 import { folderId } from '../../library/libraryCache';
 import { imuFileName } from '../../library/record';
+import { markerTextWithDevice } from '../../library/syncBase';
+import { createSyncMarkerWatch, pollWhileVisible } from '../../library/syncWatch';
 import {
   canChooseFolder, chooseMemoryFolder, FolderRefusedError, forgetChosenFolder, openMemoryFolder, readOnlyFolder,
   reconnectMemoryFolder, type DesktopChoiceStart, type MemoryFolder,
@@ -19,7 +21,7 @@ import { cancelCacheUpdate } from './cache';
 import { scan } from './scan';
 import { completeScan } from './summaryQueue';
 import {
-  applySettingsChange, flushWrites, forgetSettingsEntries, libraryUiStarted, syncSettingsSafely, watchDeviceSettings,
+  applySettingsChange, deviceId, flushWrites, forgetSettingsEntries, libraryUiStarted, syncSettingsSafely, watchDeviceSettings,
 } from './deviceSettings';
 import { addGpx, countPending } from './addSession';
 import { flushPending } from './pending';
@@ -37,16 +39,40 @@ import { settleReturnedTrash } from './trashSettle';
 /**
  * Le dossier désigné, en lecture seule si son marqueur dit une disposition plus récente : il pourrait
  * ne plus se ranger comme on le croit (`MEMORY_VERSION`). Marqueur illisible ou non lu : dossier ordinaire.
+ * Rend aussi le texte du marqueur lu.
  */
-const guardedFolder = async (f: MemoryFolder): Promise<MemoryFolder> => {
+const guardedFolder = async (f: MemoryFolder): Promise<{ folder: MemoryFolder; marker: string | null }> => {
   const marker = await f.readText(MARKER_FILE).catch(() => null);
-  return readMarkerVersion(marker) > MEMORY_VERSION ? readOnlyFolder(f) : f;
+  return { folder: readMarkerVersion(marker) > MEMORY_VERSION ? readOnlyFolder(f) : f, marker };
 };
 
-/** Marqueur écrit s'il manque ; mode d'emploi récrit s'il manque ou a changé. Rien en lecture seule. */
+/** Relecture de la mémoire quand une synchronisation faite par l'ordinateur l'a changée (`library/syncWatch.ts`). */
+const syncWatch = createSyncMarkerWatch(() => refreshLibrary());
+
+/** Arrêt de la relecture lente du marqueur en cours (`pollWhileVisible`) : une seule à la fois. */
+let stopMarkerPolling: (() => void) | null = null;
+
+/**
+ * Retour de l'application au premier plan, ou relecture lente : le marqueur de la mémoire est relu, et la mémoire aussi
+ * si une synchronisation l'a changée entre-temps. Rien pendant une ouverture ou une relecture, qui le relisent elles-mêmes.
+ */
+const checkSyncMarker = async (): Promise<void> => {
+  const f = lib.folder;
+  if (!f || libraryState().status !== 'ready' || lib.refreshing) return;
+  await syncWatch.check(folderId(f), () => f.readText(MARKER_FILE));
+};
+
+/**
+ * Marqueur écrit s'il manque, et complété de l'identifiant de cet appareil s'il ne le porte pas : l'ordinateur qui
+ * synchronise ce dossier y reconnaît le fichier de réglages propre au téléphone (`readMarkerDevice`). Mode d'emploi
+ * récrit s'il manque ou a changé. Rien en lecture seule.
+ */
 const ensureLayout = async (f: MemoryFolder): Promise<void> => {
   if (f.readOnly) return;
-  if ((await f.readText(MARKER_FILE)) === null) await f.writeText(MARKER_FILE, markerText());
+  const read = await f.readText(MARKER_FILE);
+  const marker = read ?? markerText();
+  const text = markerTextWithDevice(marker, deviceId()) ?? (read === null ? marker : null);
+  if (text !== null) await f.writeText(MARKER_FILE, text);
   if ((await f.readText(README_FILE)) !== readmeText()) await f.writeText(README_FILE, readmeText());
 };
 
@@ -63,11 +89,12 @@ const attach = async (opened: MemoryFolder): Promise<boolean> => {
   lib.generation += 1;
   cancelCacheUpdate();
   const gen = lib.generation;
-  const f = await guardedFolder(opened);
+  const { folder: f, marker } = await guardedFolder(opened);
   if (gen !== lib.generation) return false;
   // Fiches pas écrites de l'ancien dossier : mises de côté, pour le report dans un dossier désigné (`carryUnwritten`).
   holdUnwritten();
   lib.folder = f;
+  syncWatch.note(folderId(f), marker);
   sessionDraftStore.enterMemory(folderId(f));
   lib.all = [];
   lib.publishPending = false;
@@ -206,10 +233,21 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     storageFailureShown = true;
     reportError('Stockage de l\'appareil plein ou bloqué : les derniers changements de réglages valent jusqu\'à la fermeture de l\'application, sans être gardés');
   });
-  // Écritures différées vidées dès que l'application passe en arrière-plan.
+  // Écritures différées vidées dès que l'application passe en arrière-plan ; au retour, le marqueur dit si une
+  // synchronisation a changé la mémoire entre-temps.
   const flushAll = () => void flushWrites();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushAll();
+    else void checkSyncMarker();
+  });
+  // Application restée à l'écran pendant une synchronisation par le câble : le marqueur est aussi relu à rythme lent.
+  stopMarkerPolling?.();
+  stopMarkerPolling = pollWhileVisible(() => void checkSyncMarker(), {
+    visible: () => document.visibilityState === 'visible',
+    subscribe: (listener) => {
+      document.addEventListener('visibilitychange', listener);
+      return () => document.removeEventListener('visibilitychange', listener);
+    },
   });
   window.addEventListener('pagehide', flushAll);
 };
@@ -348,6 +386,9 @@ export const refreshLibrary = (): Promise<void> => {
     const gen = lib.generation;
     // Relecture voulue : les résumés qu'on n'avait pas su refaire sont retentés.
     refreshFailed.clear();
+    // Ce que dit le marqueur avant la relecture : une synchronisation que la relecture couvre ne la relance pas.
+    const marker = await f.readText(MARKER_FILE).catch(() => undefined);
+    if (marker !== undefined) syncWatch.note(folderId(f), marker);
     const settingsChanged = await syncSettingsSafely(f);
     noteSettingsGestures(settingsChanged);
     const jobs = await scan(f, gen, editsBefore);

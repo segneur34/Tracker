@@ -3,8 +3,8 @@ import { sessionPath } from '../../library/folderLayout';
 import { restingHrFileText, type StoredRestingResult } from '../../library/restingHrStore';
 import { buildSettingsFile, serializeSettingsFile } from '../../library/settingsFile';
 import { imuFileName, recordFileName, type SessionRecord, type StoredSessionNotes } from '../../library/record';
-import { parseSyncBase, readMarkerId, readMarkerPass, syncBasePath } from '../../library/syncBase';
-import { describeSyncConfirmation, describeSyncOutcome, describeSyncQuestion } from '../../library/syncReport';
+import { parseSyncBase, readMarkerId, readMarkerPass, readMarkerSync, syncBasePath } from '../../library/syncBase';
+import { describeSync, describeSyncQuestion } from '../../library/syncReport';
 import {
   DEPOSIT_FILE, TRASH_DIR, TRASH_INDEX_PATH, parseDeposit, parseTrashIndex, returnedTrashGroups, sessionRestorePlan, sessionTrashEntries,
   shownTrashEntries, type TrashEntry,
@@ -276,7 +276,7 @@ describe('exécutant de la synchronisation', () => {
     expect(outcome.done.find((i) => i.startMs === at(1))?.conflicts).toEqual(['name']);
     for (const folder of [pair.computer, pair.phone]) expect(readSyncRecord(folder, fileOf(1))?.name).toBe('Ordinateur');
     expect(trashOf(pair)).toEqual([]);
-    expect(describeSyncOutcome(outcome).notes.some((n) => n.includes("La version de l'ordinateur a été gardée sur les deux."))).toBe(true);
+    expect(describeSync(outcome).notes.some((n) => n.text.includes("La version de l'ordinateur a été gardée sur les deux."))).toBe(true);
   });
 
   it('supprimée sur l’ordinateur avant toute synchronisation : laissée sur le téléphone, retenue par la base, jamais ramenée', async () => {
@@ -325,7 +325,7 @@ describe('exécutant de la synchronisation', () => {
     expect(await syncSessionFiles(pair.computer)).not.toContain(fileOf(15));
     expect(trashOf(pair).some((e) => e.startMs === at(15))).toBe(true);
     expect(half.withheldForPhone).toHaveLength(12);
-    expect(describeSyncOutcome(half).notes).toContain("Ce programme n'a rien pu écrire sur le téléphone : installez sa dernière version.");
+    expect(describeSync(half).notes.map((n) => n.text)).toContain("Ce programme n'a rien pu écrire sur le téléphone : installez sa dernière version.");
     // Par le câble, les douze retraits du téléphone dépassent le garde-fou.
     const whole = await run(pair);
     expect(whole).toMatchObject({ deletions: 'awaitingConfirmation' });
@@ -601,7 +601,7 @@ describe('ce que la couche du bouton reçoit', () => {
     expect(await syncSessionFiles(pair.phone)).not.toContain(fileOf(2));
     expect(trashOf(pair).some((e) => e.startMs === at(2))).toBe(true);
     expect(describeSyncQuestion(second)).toBeNull();
-    expect(describeSyncOutcome(second).rows).toContainEqual(expect.objectContaining({ label: 'Mis de côté sur le téléphone' }));
+    expect(describeSync(second).rows).toContainEqual(expect.objectContaining({ label: 'Supprimé', text: expect.stringMatching(/sur l'ordinateur, retirée du téléphone/) }));
     // Rien n'est effacé du téléphone : la session est dans un dépôt de sa corbeille.
     expect([...pair.phone.aside().keys()].some((p) => p.startsWith(`${TRASH_DIR}/${NOW}-${at(2)}/`) && p.endsWith(fileOf(2)))).toBe(true);
   });
@@ -689,7 +689,7 @@ describe('ce que la couche du bouton reçoit', () => {
     const half = await run(pair, { phoneWritable: false });
     expect(describeSyncQuestion(half)).toBeNull();
     expect(half.withheldForPhone.map((i) => i.startMs)).toEqual([at(7)]);
-    expect(describeSyncOutcome(half).notes).toContain("Ce programme n'a rien pu écrire sur le téléphone : installez sa dernière version.");
+    expect(describeSync(half).notes.map((n) => n.text)).toContain("Ce programme n'a rien pu écrire sur le téléphone : installez sa dernière version.");
   });
 });
 
@@ -1430,7 +1430,7 @@ describe('une copie plus ancienne du dossier du téléphone ne supprime rien', (
     expect(newId).not.toBe(oldId);
     // L'ancienne base reste, pour le téléphone qui tiendrait encore l'ancien identifiant.
     expect(pair.computer.text(syncBasePath(oldId as string))).not.toBeNull();
-    expect(describeSyncOutcome(outcome).paragraphs[0]).toMatch(/^Le dossier du téléphone est une copie plus ancienne/);
+    expect(describeSync(outcome).paragraphs[0]).toMatch(/^Le dossier du téléphone est une copie plus ancienne/);
     // La fois suivante, la paire est suivie.
     expect((await run(pair)).first).toBeNull();
   });
@@ -1504,7 +1504,7 @@ describe('sûreté du téléphone (Tracker)', () => {
     expect(outcome.refusal).toBe('phoneRecording');
     expect(asked).toBe(1);
     expect({ computer: pictureAll(pair.computer), phone: pictureAll(pair.phone) }).toEqual(before);
-    expect(describeSyncOutcome(outcome).paragraphs[0]).toMatch(/^Le téléphone enregistre une session : rien n'a été fait/);
+    expect(describeSync(outcome)).toMatchObject({ paragraphs: [expect.stringMatching(/^Le téléphone enregistre une session : rien n'a été fait/)], action: 'retry' });
     // Libre ensuite : la synchronisation se fait.
     expect((await run(pair, { phoneRecording: async () => false })).complete).toBe(true);
   });
@@ -1524,7 +1524,8 @@ describe('sûreté du téléphone (Tracker)', () => {
     const stopped = await run(pair, {}, starting);
     expect(stopped).toMatchObject({ recordingStarted: true, linkLost: null, complete: false });
     expect(pair.computer.text(SYNC_RUNNING_PATH)).not.toBeNull();
-    expect(describeSyncOutcome(stopped).notes.some((n) => n.startsWith('Un enregistrement a commencé sur le téléphone'))).toBe(true);
+    expect(describeSync(stopped)).toMatchObject({ title: 'Synchronisation arrêtée', action: 'restart' });
+    expect(describeSync(stopped).notes.some((n) => n.text.startsWith('Un enregistrement a commencé sur le téléphone'))).toBe(true);
     await everyGpxHasRecord(pair.phone);
     const resumed = await run(pair);
     expect(resumed).toMatchObject({ interrupted: true, complete: true });
@@ -1598,7 +1599,7 @@ describe('corbeille relue avant toute mise de côté (relecture du 217)', () => 
     expect(outcome.failed[0].detail).toMatch(/relue, n'est pas identique : rien n'a été retiré/);
     expect(await syncSessionFiles(pair.phone)).toContain(fileOf(1));
     expect(pair.phone.aside().size).toBe(0);
-    expect(describeSyncOutcome(outcome)).toMatchObject({ title: 'Synchronisation incomplète', retry: true });
+    expect(describeSync(outcome)).toMatchObject({ title: 'Synchronisation terminée', action: 'restart' });
   });
 });
 
@@ -1626,7 +1627,7 @@ describe('ce que les relecteurs n’avaient pas regardé', () => {
     expect(held).toMatchObject({ deletions: 'awaitingConfirmation', complete: false });
     expect(await syncSessionFiles(pair.computer)).toHaveLength(12);
     expect(trashOf(pair)).toEqual([]);
-    expect(describeSyncOutcome(held).title).toBe('Synchronisation incomplète');
+    expect(describeSyncQuestion(held)).toMatchObject({ kind: 'guard' });
     const small = await syncedPair(8);
     for (let k = 0; k < 3; k++) deleteSyncSession(small.phone, fileOf(k));
     expect((await run(small)).deletions).toBe('awaitingConfirmation');
@@ -1642,16 +1643,15 @@ describe('brouillon non enregistré sur l’ordinateur', () => {
     // L'aperçu ne la compte pas parmi les retraits, et le dit.
     const preview = await run(pair, { ...options, dryRun: true });
     expect(preview.drafted.map((i) => i.startMs)).toEqual([at(1)]);
-    expect(describeSyncConfirmation(preview).numbers.toRemove).toBe(0);
-    expect(describeSyncConfirmation(preview).notes.some((n) => n.endsWith("a des modifications non enregistrées : elle n'a pas été retirée. Enregistrez-la ou annulez, puis réessayez."))).toBe(true);
+    expect(preview.plan?.items.find((i) => i.startMs === at(1))?.ops.some((op) => op.kind === 'trash')).not.toBe(true);
     // La synchronisation la laisse : rien à la corbeille, la session reste sur l'ordinateur, compte rendu « incomplète ».
     const outcome = await run(pair, { ...options, confirmDeletions: true, confirmedDeletions: [] });
     expect(outcome).toMatchObject({ complete: false, deletions: 'made' });
     expect(trashOf(pair)).toEqual([]);
     expect(await syncSessionFiles(pair.computer)).toContain(fileOf(1));
-    const report = describeSyncOutcome(outcome);
-    expect(report).toMatchObject({ title: 'Synchronisation incomplète', retry: true });
-    expect(report.notes.some((n) => n.includes('a des modifications non enregistrées'))).toBe(true);
+    const report = describeSync(outcome);
+    expect(report).toMatchObject({ title: 'Synchronisation terminée', action: 'close' });
+    expect(report.notes.some((n) => n.text.includes('a des modifications non enregistrées'))).toBe(true);
     // Brouillon enregistré ou annulé : la suppression du téléphone se fait.
     withDraft.clear();
     const after = await run(pair, options);
@@ -1674,8 +1674,8 @@ describe('relecture du commit 46b851d', () => {
     expect(half.withheldDeletions).toEqual([]);
     expect(half).toMatchObject({ complete: false, cut: 1 });
     expect(baseOf(pair)?.syncedAtMs).toBe(doneBefore);
-    const report = describeSyncOutcome(half);
-    expect(report.notes).toContain("Rien n'a été supprimé : des restes de sessions déjà supprimées attendent d'être retirés. Ils le seront quand vous accepterez les retraits.");
+    const report = describeSync(half);
+    expect(report.notes.map((n) => n.text)).toContain("1 élément n'a pas pu être traité entièrement cette fois : la prochaine synchronisation s'en chargera.");
     // Restes permis : la synchronisation est entière, et datée.
     const whole = await run(pair, { now: () => NOW + 120_000 });
     expect(whole).toMatchObject({ complete: true, cut: 0 });
@@ -1819,7 +1819,7 @@ describe('corbeilles jumelles (lot 242-1)', () => {
     expect(outcome.done.find((i) => i.startMs === at(1))).toMatchObject({ case: 'newOnPhone', restored: true, left: null });
     expect(outcome.deletions).toBe('made');
     expect(await syncSessionFiles(pair.computer)).toContain(fileOf(1));
-    expect(describeSyncOutcome(outcome).rows).toContainEqual(expect.objectContaining({ label: 'Restauré' }));
+    expect(describeSync(outcome).rows).toContainEqual(expect.objectContaining({ label: 'Restauré' }));
     // L'ordinateur règle ensuite sa corbeille : la session y est encore, et revenue dans sa mémoire.
     expect(returnedTrashGroups(trashOf(pair), new Set([0, 1, 2, 3, 4].map(at))).map((g) => g.entry.startMs)).toEqual([at(1)]);
   });
@@ -1886,5 +1886,31 @@ describe('corbeilles jumelles (lot 242-1)', () => {
     // Chaque fichier de la session est dans la corbeille du téléphone, et rien de plus à adopter.
     for (const name of [fileOf(1), recordFileName(fileOf(1))]) expect(pair.phone.paths().some((p) => p.startsWith(`${TRASH_DIR}/`) && p.endsWith(`/${name}`)), name).toBe(true);
     expect(await adoptDeposits(app, PHONE_NOW)).toEqual([]);
+  });
+});
+
+describe('le téléphone se met à jour seul (lot 242-2)', () => {
+  it('le téléphone changé reçoit l’instant de la synchronisation dans son marqueur ; inchangé, rien n’y est posé', async () => {
+    const pair = await syncedPair(2);
+    const before = readMarkerSync(pair.phone.text('tracker.json'));
+    // Rien de neuf : le marqueur garde son instant.
+    expect((await run(pair, { now: () => NOW + 1000 })).phoneChanged).toBe(false);
+    expect(readMarkerSync(pair.phone.text('tracker.json'))).toBe(before);
+    // Une session neuve sur l'ordinateur part au téléphone : l'instant change, le reste du marqueur demeure.
+    const id = readMarkerId(pair.phone.text('tracker.json'));
+    putSyncSession(pair.computer, at(5));
+    const outcome = await run(pair, { now: () => NOW + 2000 });
+    expect(outcome.phoneChanged).toBe(true);
+    expect(readMarkerSync(pair.phone.text('tracker.json'))).toBe(NOW + 2000);
+    expect(readMarkerId(pair.phone.text('tracker.json'))).toBe(id);
+  });
+
+  it('un passage à blanc ou un téléphone qui enregistre ne touchent pas au marqueur', async () => {
+    const pair = await syncedPair(1);
+    putSyncSession(pair.computer, at(3));
+    const marker = pair.phone.text('tracker.json');
+    await run(pair, { dryRun: true });
+    expect((await run(pair, { phoneRecording: async () => true })).refusal).toBe('phoneRecording');
+    expect(pair.phone.text('tracker.json')).toBe(marker);
   });
 });

@@ -52,7 +52,7 @@ export const COMMUNS = [
 export const SCRIPTS_EXE = [
   {
     nom: 'synchroniser', fichier: 'exe-synchroniser.mjs', port: 9630, duree: 30,
-    quand: ['bureau/telephone.ts', 'bureau/adb.ts', 'bureau/copieSecurite.ts', 'bureau/disque.ts',
+    quand: ['bureau/telephone.ts', 'bureau/adb.ts', 'bureau/copieSecurite.ts', 'bureau/disque.ts', 'bureau/journal.ts',
       'src/library/sync*.ts', 'src/hooks/sessionLibrary/{phoneSync,sync,syncRouteFiles}.ts',
       'src/components/PhoneSyncButton.tsx (« Synchroniser avec le téléphone »)', 'src/platform/phoneCable.ts',
       'corbeille : src/library/trash*.ts, src/hooks/sessionLibrary/trash*.ts', 'src/planning/routeRecord.ts'],

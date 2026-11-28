@@ -3,7 +3,7 @@ import { JOURNALS_DIR, MARKER_FILE, RESTING_HR_FILE, SESSIONS_DIR, SETTINGS_DIR,
 import { isCompleteGpxText } from '../../library/pendingTemps';
 import type { SessionRecord } from '../../library/record';
 import {
-  SYNC_DIR, SYNC_SIDES, emptySyncBase, hasSyncMemory, markerTextWithId, markerTextWithPass, otherSyncSide, parseSyncBase, readMarkerDevice, readMarkerId, readMarkerPass,
+  SYNC_DIR, SYNC_SIDES, emptySyncBase, hasSyncMemory, markerTextWithId, markerTextWithPass, markerTextWithSync, otherSyncSide, parseSyncBase, readMarkerDevice, readMarkerId, readMarkerPass,
   serializeSyncBase, syncAncestorPath, syncBaseLine, syncBasePath, syncRefusal, withSyncDone, withSyncHeld, withSyncLine, withoutSyncLine,
   withoutSyncMemory,
   type SyncBase, type SyncFiles, type SyncSideName, type SyncStamp,
@@ -71,7 +71,9 @@ import { holdTrashDuring, recordShownName, reloadTrash, trashFolderOf } from './
  *   l'ordinateur seulement ; rien n'est supprimé.
  * - Le téléphone qui enregistre une session n'est pas touché : refus avant toute écriture (`phoneRecording`), et arrêt
  *   de tout si un enregistrement commence en route (la coquille refuse alors chaque écriture).
- * - Le téléphone relit sa mémoire au lancement ou à « Mettre à jour » : le compte rendu le rappelle.
+ * - À la fin, si un fichier du téléphone a été écrit ou mis de côté, l'instant de la synchronisation est posé dans son
+ *   marqueur (`markerTextWithSync`) : l'application du téléphone, qui le relit au retour au premier plan et toutes les
+ *   25 s tant qu'elle est affichée (`library/syncWatch.ts`), relit alors sa mémoire seule.
  */
 
 /** Témoin d'une synchronisation en cours : présent au départ suivant, la précédente a été coupée. */
@@ -404,6 +406,20 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
   outcome.phoneWritable = scope.phone;
   /** Vrai dès qu'un fichier de sessions ou d'itinéraires du téléphone a été écrit ou mis de côté. */
   let phoneChanged = false;
+  /**
+   * Le téléphone qui a changé l'apprend par l'instant posé dans son marqueur (`markerTextWithSync`), relu par son
+   * application (`syncWatch.ts`). Écriture de plus, jamais un échec de la synchronisation : sans elle, le téléphone
+   * relit sa mémoire à son prochain lancement ou à « Mettre à jour ». Rien si la coquille refuse (enregistrement).
+   */
+  const notifyPhone = async (): Promise<void> => {
+    if (!outcome.phoneChanged) return;
+    try {
+      const text = markerTextWithSync(await phone.readText(MARKER_FILE), now());
+      if (text !== null) await phone.writeText(MARKER_FILE, text);
+    } catch {
+      // Téléphone injoignable à cet instant : il verra les changements à sa prochaine relecture.
+    }
+  };
   try {
     if (!deletesToTrash(computer.kind, computer.readOnly === true)) return emptyOutcome('noTrash');
     const markers = { computer: await computer.readText(MARKER_FILE), phone: await phone.readText(MARKER_FILE) };
@@ -1062,6 +1078,7 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
       await saveBase();
     }
     outcome.phoneChanged = phoneChanged || outcome.extras.done.some((op) => op.to === 'phone');
+    await notifyPhone();
     await computer.remove(SYNC_RUNNING_PATH);
     return outcome;
   } catch (err) {
@@ -1070,6 +1087,8 @@ export const executeSync = async (computer: MemoryFolder, remote: SyncRemote, op
     if (err instanceof SyncLinkError) {
       return err.recording ? { ...outcome, recordingStarted: true, complete: false } : { ...outcome, linkLost: detail, complete: false };
     }
+    // Arrêtée par une erreur de l'ordinateur : ce qui a déjà changé sur le téléphone s'y voit quand même.
+    await notifyPhone();
     return { ...outcome, error: detail, complete: false };
   }
 };
